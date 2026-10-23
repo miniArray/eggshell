@@ -1,0 +1,68 @@
+#!/usr/bin/env nix-shell
+#! nix-shell -i bash -p bash coreutils gawk
+# Native-free signal bridge and bounded native teardown after the game drains saves.
+set -uo pipefail
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+engine=${EGGSHELL_ENGINE:-$ROOT/build/godot/bin/godot}
+request=${EGGSHELL_SHUTDOWN_REQUEST:-${TMPDIR:-/tmp}/eggshell-$$.shutdown}
+ack=$request.done
+export EGGSHELL_SHUTDOWN_REQUEST=$request EGGSHELL_EXIT_ACK=$ack
+rm -f "$request" "$ack"
+child=
+watchdog=
+started=
+
+is_child() {
+  [[ -n "$child" && -r /proc/$child/stat ]] || return 1
+  [[ $(awk '{print $22}' "/proc/$child/stat" 2>/dev/null) == "$started" ]]
+}
+
+# Trap callbacks are invoked by Bash, not by direct function calls.
+# shellcheck disable=SC2329
+terminate() { : > "$request"; }
+# shellcheck disable=SC2329
+cleanup() {
+  if is_child; then
+    : > "$request"
+    wait "$child" 2>/dev/null || true
+  fi
+  if [[ -n "$watchdog" ]]; then
+    kill -TERM "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+  fi
+  rm -f "$request" "$ack"
+}
+trap 'terminate' TERM INT HUP
+trap 'cleanup' EXIT
+"$engine" "$@" &
+child=$!
+started=$(awk '{print $22}' "/proc/$child/stat")
+if [[ -n "${EGGSHELL_ENGINE_PID_FILE:-}" ]]; then
+  printf '%s %s\n' "$child" "$started" > "$EGGSHELL_ENGINE_PID_FILE"
+fi
+printf 'EGGSHELL_ENGINE_PID %s\n' "$child"
+# Some native Wayland runs finish the tree and diagnostics but stall in engine
+# teardown. Only after the game's save-drain acknowledgment may we terminate it.
+(
+  trap - TERM INT HUP EXIT
+  while kill -0 "$child" 2>/dev/null && [[ ! -e "$ack" ]]; do sleep 0.1; done
+  if [[ -e "$ack" ]]; then
+    sleep 2
+    if is_child; then
+      printf 'EGGSHELL_NATIVE_EXIT_FALLBACK: game acknowledged save drain; terminating stalled native teardown\n' >&2
+      kill -TERM "$child"
+      sleep 1
+      if is_child; then kill -KILL "$child"; fi
+    fi
+  fi
+) &
+watchdog=$!
+# A trapped signal interrupts wait; continue until the owned engine really exits.
+while true; do
+  wait "$child"
+  status=$?
+  if ! is_child; then break; fi
+done
+if [[ -e "$ack" && ( "$status" == 143 || "$status" == 137 ) ]]; then status=0; fi
+child=
+exit "$status"

@@ -1,0 +1,26 @@
+; Engine configuration file.
+; Godot 4.x. The runtime work pins the exact version in flake.nix.
+
+config_version=5
+
+[application]
+
+config/name="Eggshell"
+run/main_scene="res://src/view/game.tscn"
+run/flush_stdout_on_print=true
+config/features=PackedStringArray("4.6", "GL Compatibility")
+
+[autoload]
+
+FrameLog="*res://src/diag/frame_log.gd"
+
+[display]
+
+window/size/viewport_width=832
+window/size/viewport_height=448
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0

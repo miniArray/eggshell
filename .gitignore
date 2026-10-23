@@ -1,0 +1,17 @@
+# Worktrees
+.worktree/
+
+# Godot caches and build output
+.godot/
+build/
+export/
+
+# Private imported packs stay outside Git; only the built-in Pantry pack ships.
+/packs/*
+!/packs/pantry/
+*.eggpack
+*.zip
+
+# Nix
+result
+result-*
