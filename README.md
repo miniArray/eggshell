@@ -3,8 +3,12 @@
 Eggshell is a Godot platform-level player for Linux. It uses a fixed 60 Hz
 integer simulation, separate graphics packs and resumable play sessions.
 
-Pantry is the bundled graphics pack. It currently draws diagnostic shapes.
-No external artwork, music, fonts or levels ship with the player.
+Pantry is the bundled graphics pack: a chick in half an eggshell in a kitchen
+at insect scale. It draws the `garden`, `levelEnd` and `water3` tilemaps, the
+player, 24 object codes, a 1:1 kitchen wall and wall-mounted shelves under
+raised terrain. Other tilemaps and object codes still draw as diagnostic shapes. See
+[graphics packs](docs/graphics.md) and the [art sources](art/pantry/README.md).
+No third-party artwork, music, fonts or levels ship with the player.
 
 ## Run
 
@@ -13,6 +17,8 @@ Enter the pinned development shell and build its engine link:
 ```sh
 nix develop
 nix build .#godot --out-link build/godot
+# Import built-in textures after a fresh checkout or artwork change:
+godot --headless --path . --editor --import
 bash tools/play --path . -- --level-code=tests/fixtures/stride.level.json
 ```
 

@@ -17,6 +17,7 @@ def run(*args):
 def main():
     run("godot", "--version")
     run("nix", "build", ".#godot", "--out-link", "build/godot")
+    run("godot", "--headless", "--path", ROOT, "--editor", "--import")
     for name in ["core", "objects", "enemies", "damage"]:
         run("godot", "--headless", "--path", ".", "--script", f"tests/{name}.gd")
     for blocked in [False, True]:

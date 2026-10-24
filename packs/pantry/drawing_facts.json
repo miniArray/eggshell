@@ -1,3 +1,102 @@
 {
-  "tilemaps": {}
+  "tilemaps": {
+    "garden32": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 0
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 0
+        }
+      ]
+    },
+    "garden32_1": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 0
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 0
+        }
+      ]
+    },
+    "garden64": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 0
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 0
+        }
+      ]
+    },
+    "garden64_1": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 0
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 0
+        }
+      ]
+    },
+    "levelEnd": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 1
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 1
+        }
+      ]
+    },
+    "levelEnd_2": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 1
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 6,
+          "z_order": 1
+        }
+      ]
+    },
+    "water3": {
+      "instances": [
+        {
+          "layer": "TilesL2",
+          "layer_index": 4,
+          "z_order": 2
+        },
+        {
+          "layer": "TilesL1",
+          "layer_index": 14,
+          "z_order": 2
+        }
+      ]
+    }
+  }
 }

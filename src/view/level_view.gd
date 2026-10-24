@@ -6,6 +6,7 @@ const State = preload("res://src/sim/play_state.gd")
 const Plan = preload("res://src/view/screen_plan.gd")
 const Reader = preload("res://src/level/level_code.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
+const Dressing = preload("res://src/view/pack_dressing.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
 var _world: Dictionary
@@ -98,37 +99,45 @@ func setup(world: Dictionary, pack: String) -> void:
 				break
 		if _animations.is_empty():
 			break
-	# The v2 pack has no object frames. Reuse diagnostic flat textures, not new art.
+	Dressing.room(_root, manifest, pack, world)
+	Dressing.supports(_root, manifest, pack, world)
+	Dressing.placed(_root, manifest, pack, world)
+	# Packs without object art keep the diagnostic flat textures.
+	var spring_art := Dressing.object_art(manifest, pack, "o11")
 	for spring: Dictionary in world.springs:
 		var size := 48 if spring.large else 32
-		var node := Sprite2D.new()
-		node.texture = placeholder("o11", size)
-		node.centered = false
-		node.offset = Vector2(-size / 2.0, -size)
-		node.z_index = 10
+		var node: Sprite2D
+		if spring_art.is_empty():
+			node = Sprite2D.new()
+			node.texture = placeholder("o11", size)
+			node.centered = false
+			node.offset = Vector2(-size / 2.0, -size)
+			node.z_index = 10
+			node.set_meta("base", 1.0)
+		else:
+			node = Dressing.sprite(spring_art, 10)
+			node.set_meta("base", size / float(spring_art.texture.get_height()))
 		_root.add_child(node)
 		_spring_nodes.append(node)
+	var bridge_art := Dressing.object_art(manifest, pack, "p1")
 	for bridge: Dictionary in world.bridges:
 		var node := Sprite2D.new()
-		node.texture = placeholder("p1", 32)
+		var width := float(bridge.right - bridge.left) / State.SCALE
 		node.centered = false
 		node.position = Vector2(bridge.left, bridge.top) / State.SCALE
-		node.scale.x = float(bridge.right - bridge.left) / (32 * State.SCALE)
 		node.z_index = 10
+		if bridge_art.is_empty():
+			node.texture = placeholder("p1", 32)
+			node.scale.x = width / 32.0
+		else:
+			node.texture = bridge_art.texture
+			node.scale.x = width / bridge_art.texture.get_width()
 		_root.add_child(node)
+	var head_art := Dressing.object_art(manifest, pack, "e5_head")
 	for enemy: Dictionary in world.enemies:
-		var node := Sprite2D.new()
-		node.texture = placeholder(enemy.code, 32)
-		node.centered = false
-		node.z_index = 10
-		_root.add_child(node)
-		_enemy_nodes.append(node)
-		var head := Sprite2D.new()
-		head.texture = node.texture
-		head.centered = false
-		head.z_index = 10
-		_root.add_child(head)
-		_head_nodes.append(head)
+		var art := Dressing.object_art(manifest, pack, enemy.code)
+		_enemy_nodes.append(actor_node(art, placeholder(enemy.code, 32)))
+		_head_nodes.append(actor_node(head_art, _enemy_nodes[-1].texture))
 	_player.centered = false
 	_player.z_index = 11
 	_root.add_child(_player)
@@ -137,15 +146,17 @@ func setup(world: Dictionary, pack: String) -> void:
 	var goal_image := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 	goal_image.fill(GOAL_COLOR)
 	var goal_texture := ImageTexture.create_from_image(goal_image)
+	var goal_art := Dressing.object_art(manifest, pack, "o5")
 	for goal: Array in world.goals:
 		var marker := Sprite2D.new()
-		marker.texture = goal_texture
+		marker.texture = goal_texture if goal_art.is_empty() else goal_art.texture
 		marker.z_index = 10
 		marker.set_meta("goal", true)
 		marker.position = Vector2(goal[0], goal[1]) / State.SCALE
 		_root.add_child(marker)
 	# Recovery first appears mid-run; share the same generated texture and warmed shader.
-	_recovery_marker.texture = goal_texture
+	var recovery_art := Dressing.object_art(manifest, pack, "recovery")
+	_recovery_marker.texture = (goal_texture if recovery_art.is_empty() else recovery_art.texture)
 	_recovery_marker.z_index = 12
 	_recovery_marker.set_meta("recovery", true)
 	_root.add_child(_recovery_marker)
@@ -182,24 +193,21 @@ func render(state: Dictionary) -> void:
 		var squash: int = mini(ball.squash, 12 - ball.squash)
 		node.position = Vector2(ball.x, ball.y) / State.SCALE
 		node.visible = bool(ball.active)
-		node.scale = Vector2((size + 16.0 * squash / 6) / size, (size - 16.0 * squash / 6) / size)
+		node.scale = (
+			Vector2((size + 16.0 * squash / 6) / size, (size - 16.0 * squash / 6) / size)
+			* float(node.get_meta("base"))
+		)
 	for index in _enemy_nodes.size():
 		var enemy: Dictionary = state.enemies[index]
 		var code: String = _world.enemies[index].code
 		var bounds := Motion.box(enemy, code)
 		var node := _enemy_nodes[index]
-		node.position = Vector2(enemy.x + bounds[0], enemy.y + bounds[1]) / State.SCALE
-		node.scale = Vector2(bounds[2] - bounds[0], bounds[3] - bounds[1]) / (32 * State.SCALE)
+		place_actor(node, enemy, bounds)
 		node.visible = enemy.status == 1
 		var head := _head_nodes[index]
 		head.visible = enemy.status == 1 and code == "e5" and enemy.mode != 0
 		if head.visible:
-			var head_bounds := Plant.head_box(enemy)
-			head.position = Vector2(head_bounds[0], head_bounds[1]) / State.SCALE
-			head.scale = (
-				Vector2(head_bounds[2] - head_bounds[0], head_bounds[3] - head_bounds[1])
-				/ (32 * State.SCALE)
-			)
+			place_actor(head, enemy, Plant.head_box(enemy), false)
 	_player.visible = (
 		not state.captured_by and (not state.invulnerable or (120 - state.invulnerable) % 6 < 3)
 	)
@@ -223,13 +231,41 @@ func render(state: Dictionary) -> void:
 	_goal_label.position = Vector2(8, 8)
 
 
+func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:
+	var node: Sprite2D
+	if art.is_empty():
+		node = Sprite2D.new()
+		node.texture = fallback
+		node.centered = false
+		node.z_index = 10
+	else:
+		node = Dressing.sprite(art, 10)
+		node.set_meta("bottom", Dressing.bottom_anchored(art))
+	_root.add_child(node)
+	return node
+
+
+static func place_actor(node: Sprite2D, enemy: Dictionary, bounds: Array, relative := true) -> void:
+	# Diagnostic textures stretch to the hitbox; pack art keeps its size and faces the motion.
+	var x := float(enemy.x if relative else 0)
+	var y := float(enemy.y if relative else 0)
+	if not node.has_meta("bottom"):
+		node.position = Vector2(x + bounds[0], y + bounds[1]) / State.SCALE
+		node.scale = Vector2(bounds[2] - bounds[0], bounds[3] - bounds[1]) / (32 * State.SCALE)
+		return
+	var anchor_y: float = (
+		float(bounds[3]) if node.get_meta("bottom") else (bounds[1] + bounds[3]) / 2.0
+	)
+	node.position = Vector2(x + (bounds[0] + bounds[2]) / 2.0, y + anchor_y) / State.SCALE
+	node.flip_h = int(enemy.get("facing", 1)) < 0
+
+
 static func draw_before(a: Dictionary, b: Dictionary) -> bool:
 	return a.slot[0] < b.slot[0] or (a.slot[0] == b.slot[0] and a.slot[1] < b.slot[1])
 
 
 static func load_texture(path: String) -> Texture2D:
-	var image := Image.load_from_file(path)
-	return ImageTexture.create_from_image(image) if image != null else null
+	return Dressing.load_texture(path)
 
 
 static func placeholder(name: String, size: int) -> Texture2D:

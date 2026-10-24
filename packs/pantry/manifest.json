@@ -1,6 +1,336 @@
 {
   "version": 2,
-  "tiles": {},
-  "player": {},
-  "drawing_facts": "drawing_facts.json"
+  "drawing_facts": "drawing_facts.json",
+  "tiles": {
+    "garden64": "tiles/bread-garden64.png",
+    "garden64_1": "tiles/bread-garden64.png",
+    "garden32": "tiles/bread-garden32.png",
+    "garden32_1": "tiles/bread-garden32.png",
+    "levelEnd": "tiles/carton-levelend.png",
+    "levelEnd_2": "tiles/carton-levelend.png",
+    "water3": "tiles/water3.png"
+  },
+  "player": {
+    "Idle0": {
+      "speed": 3,
+      "frames": [
+        {
+          "file": "player/Idle0_0.png",
+          "origin": [
+            25.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Idle0_1.png",
+          "origin": [
+            25.0,
+            60
+          ]
+        }
+      ]
+    },
+    "Walk0": {
+      "speed": 10,
+      "frames": [
+        {
+          "file": "player/Walk0_0.png",
+          "origin": [
+            30.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Walk0_1.png",
+          "origin": [
+            25.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Walk0_2.png",
+          "origin": [
+            30.0,
+            59
+          ]
+        },
+        {
+          "file": "player/Walk0_3.png",
+          "origin": [
+            26.0,
+            60
+          ]
+        }
+      ]
+    },
+    "Sprint0": {
+      "speed": 14,
+      "frames": [
+        {
+          "file": "player/Sprint0_0.png",
+          "origin": [
+            26.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Sprint0_1.png",
+          "origin": [
+            26.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Sprint0_2.png",
+          "origin": [
+            26.5,
+            60
+          ]
+        },
+        {
+          "file": "player/Sprint0_3.png",
+          "origin": [
+            26.5,
+            60
+          ]
+        }
+      ]
+    },
+    "Jump0": {
+      "speed": 1,
+      "frames": [
+        {
+          "file": "player/Jump0_0.png",
+          "origin": [
+            27.0,
+            60
+          ]
+        }
+      ]
+    },
+    "Fall0": {
+      "speed": 1,
+      "frames": [
+        {
+          "file": "player/Fall0_0.png",
+          "origin": [
+            26.5,
+            60
+          ]
+        }
+      ]
+    },
+    "Flutter0": {
+      "speed": 12,
+      "frames": [
+        {
+          "file": "player/Flutter0_0.png",
+          "origin": [
+            27.0,
+            60
+          ]
+        },
+        {
+          "file": "player/Flutter0_1.png",
+          "origin": [
+            27.5,
+            60
+          ]
+        }
+      ]
+    }
+  },
+  "objects": {
+    "e1": {
+      "file": "objects/e1.png",
+      "origin": [
+        18.0,
+        25
+      ]
+    },
+    "e2": {
+      "file": "objects/e2.png",
+      "origin": [
+        14.0,
+        13.0
+      ]
+    },
+    "e3": {
+      "file": "objects/e3.png",
+      "origin": [
+        10.0,
+        34
+      ]
+    },
+    "e5": {
+      "file": "objects/e5.png",
+      "origin": [
+        7.5,
+        44
+      ]
+    },
+    "e5_head": {
+      "file": "objects/e5_head.png",
+      "origin": [
+        15.0,
+        8.5
+      ]
+    },
+    "e20": {
+      "file": "objects/e20.png",
+      "origin": [
+        16.0,
+        12.0
+      ]
+    },
+    "o1": {
+      "file": "objects/o1.png",
+      "origin": [
+        9.0,
+        9.0
+      ]
+    },
+    "o2": {
+      "file": "objects/o2.png",
+      "origin": [
+        8.5,
+        9.0
+      ]
+    },
+    "o3": {
+      "file": "objects/o3.png",
+      "origin": [
+        9.0,
+        9.0
+      ]
+    },
+    "o5": {
+      "file": "objects/o5.png",
+      "origin": [
+        10.5,
+        22.0
+      ]
+    },
+    "o6": {
+      "file": "objects/o6.png",
+      "origin": [
+        15.0,
+        15.0
+      ]
+    },
+    "o7": {
+      "file": "objects/o7.png",
+      "origin": [
+        13.0,
+        14.0
+      ]
+    },
+    "o8": {
+      "file": "objects/o8.png",
+      "origin": [
+        15.0,
+        15.0
+      ]
+    },
+    "o9": {
+      "file": "objects/o9.png",
+      "origin": [
+        12.0,
+        12.0
+      ]
+    },
+    "o11": {
+      "file": "objects/o11.png",
+      "origin": [
+        16.0,
+        32
+      ]
+    },
+    "o17": {
+      "file": "objects/o17.png",
+      "origin": [
+        15.0,
+        13.0
+      ]
+    },
+    "o18": {
+      "file": "objects/o18.png",
+      "origin": [
+        8.5,
+        16.0
+      ]
+    },
+    "o19": {
+      "file": "objects/o19.png",
+      "origin": [
+        16.0,
+        10.0
+      ]
+    },
+    "o22": {
+      "file": "objects/o22.png",
+      "origin": [
+        11.5,
+        17.0
+      ]
+    },
+    "o23": {
+      "file": "objects/o23.png",
+      "origin": [
+        6.0,
+        64
+      ]
+    },
+    "p1": {
+      "file": "objects/p1.png",
+      "origin": [
+        32.0,
+        9.0
+      ]
+    },
+    "d1": {
+      "file": "objects/d1.png",
+      "origin": [
+        10.0,
+        12
+      ]
+    },
+    "d2": {
+      "file": "objects/d2.png",
+      "origin": [
+        7.0,
+        7.0
+      ]
+    },
+    "d3": {
+      "file": "objects/d3.png",
+      "origin": [
+        9.0,
+        9.0
+      ]
+    },
+    "d4": {
+      "file": "objects/d4.png",
+      "origin": [
+        11.0,
+        11.0
+      ]
+    },
+    "recovery": {
+      "file": "objects/recovery.png",
+      "origin": [
+        12.0,
+        11.0
+      ]
+    }
+  },
+  "supports": {
+    "bracket": "supports/bracket.png",
+    "shelf": "supports/shelf.png"
+  },
+  "background": {
+    "wall": "background/wall.png",
+    "counter": "background/counter.png",
+    "cabinet": "background/cabinet.png"
+  }
 }

@@ -71,6 +71,7 @@ class PackSelectionTests(unittest.TestCase):
     def check_started(self, result, pack):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("SCRIPT ERROR", result.stderr)
+        self.assertNotIn("ERROR:", result.stderr)
         self.assertIn(f"EGGSHELL_PACK {pack}\n", result.stdout)
         self.assertIn("EGGSHELL_EXIT 2", result.stdout)
 
