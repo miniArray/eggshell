@@ -1,7 +1,8 @@
 extends RefCounted
-## Integer actor sweeps and periodic math. Collision-only; no engine physics.
+## Integer actor movement and periodic math. No engine physics.
 
 const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
 
 
@@ -76,48 +77,29 @@ static func overlaps(enemy: Dictionary, world: Dictionary, bounds: Array, dx: in
 static func move(
 	enemy: Dictionary, world: Dictionary, bounds: Array, distance: int, horizontal: bool
 ) -> int:
-	var actual := distance
-	if overlaps(enemy, world, bounds, distance if horizontal else 0, 0 if horizontal else distance):
-		var low := 0
-		var high := absi(distance)
-		var signum := 1 if distance > 0 else -1
-		while low < high:
-			var middle := (low + high + 1) / 2
-			if overlaps(
-				enemy,
-				world,
-				bounds,
-				middle * signum if horizontal else 0,
-				0 if horizontal else middle * signum
-			):
-				high = middle - 1
-			else:
-				low = middle
-		actual = low * signum
+	if not Collision.prepare(enemy, world, bounds):
+		return 0
+	var support := Collision.floor_at(enemy, world, bounds)
 	if horizontal:
-		enemy.x += actual
-	else:
-		enemy.y += actual
-	return actual
+		return Collision.horizontal(enemy, world, bounds, distance, support, false, 640 * 60)
+	return Collision.vertical(enemy, world, bounds, distance, support)
 
 
 static func gravity(enemy: Dictionary, world: Dictionary, code: String) -> bool:
 	var bounds := box(enemy, code)
+	if not Collision.prepare(enemy, world, bounds):
+		enemy.vy = 0
+		return false
+	var support := Collision.track_floor(enemy, world, bounds)
+	if support != 0 and enemy.vy >= 0:
+		enemy.vy = 0
+		return true
 	enemy.vy = mini(enemy.vy + 2048, 704 * 60)
-	var before: int = enemy.y + bounds[3]
 	var distance: int = enemy.vy
-	var actual := move(enemy, world, bounds, distance, false)
-	var landed: bool = distance >= 0 and actual != distance
-	for bridge: Dictionary in world.bridges:
-		if (
-			distance >= 0
-			and before <= bridge.top
-			and enemy.y + bounds[3] >= bridge.top
-			and enemy.x + bounds[2] > bridge.left
-			and enemy.x + bounds[0] < bridge.right
-		):
-			enemy.y = bridge.top - bounds[3]
-			landed = true
+	var actual := Collision.vertical(enemy, world, bounds, distance, support)
+	var landed := (
+		distance >= 0 and (actual != distance or Collision.floor_at(enemy, world, bounds) != 0)
+	)
 	if landed or actual != distance:
 		enemy.vy = 0
 	return landed

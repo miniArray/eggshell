@@ -1,7 +1,7 @@
 extends RefCounted
 
 const State = preload("res://src/sim/play_state.gd")
-const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := State.SCALE
 
 
@@ -13,32 +13,21 @@ static func advance(state: Dictionary, world: Dictionary) -> void:
 		if ball.squash:
 			ball.squash -= 1
 			continue
-		ball.vy = mini(ball.vy + 2048, 704 * 60)
 		var half_width: int = (22 if world.springs[index].large else 14) * S
 		var height: int = (46 if world.springs[index].large else 30) * S
-		var distance: int = ball.vy
-		if World.overlaps_box(
-			world,
-			ball.x - half_width,
-			ball.y + distance - height,
-			ball.x + half_width,
-			ball.y + distance
-		):
-			var low := 0
-			var high := absi(distance)
-			var signum := 1 if distance > 0 else -1
-			while low < high:
-				var middle := (low + high + 1) / 2
-				var y: int = ball.y + middle * signum
-				if World.overlaps_box(
-					world, ball.x - half_width, y - height, ball.x + half_width, y
-				):
-					high = middle - 1
-				else:
-					low = middle
-			distance = low * signum
+		var bounds := [-half_width, -height, half_width, 0]
+		if not Collision.prepare(ball, world, bounds):
 			ball.vy = 0
-		ball.y += distance
+			continue
+		var support := Collision.track_floor(ball, world, bounds)
+		if support != 0:
+			ball.vy = 0
+			continue
+		ball.vy = mini(ball.vy + 2048, 704 * 60)
+		var distance: int = ball.vy
+		var actual := Collision.vertical(ball, world, bounds, distance)
+		if actual != distance:
+			ball.vy = 0
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
