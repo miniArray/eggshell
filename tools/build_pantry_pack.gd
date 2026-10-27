@@ -48,7 +48,7 @@ const PLAYER := {
 }
 var _out := "res://packs/pantry"
 var _facts: Dictionary
-var _manifest := {"version": 2, "drawing_facts": "drawing_facts.json", "tiles": {}, "player": {}}
+var _manifest := {"version": 3, "drawing_facts": "drawing_facts.json", "tiles": {}, "player": {}}
 
 
 func _initialize() -> void:
@@ -81,7 +81,7 @@ func _initialize() -> void:
 			var cell: Array = PLAYER[name][1][index]
 			var path := "player/%s_%d.png" % [name, index]
 			frames.append(sprite(sheets, ["chick", cell[0], cell[1], 60, "bottom"], path))
-		_manifest.player[name] = {"speed": PLAYER[name][0], "frames": frames}
+		_manifest.player[name] = {"fps": PLAYER[name][0], "loop": true, "frames": frames}
 	_manifest["background"] = {
 		"wall": save(resized(source("wall"), 192, 192), "background/wall.png"),
 		"counter": save(tileable_strip(source("wood"), 64, 16), "background/counter.png"),

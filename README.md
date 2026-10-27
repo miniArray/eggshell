@@ -28,7 +28,7 @@ and either upper face button for run. F5 saves a manual slot and F9 restores it.
 The game automatically resumes the last session by default.
 
 Use `--pack=/absolute/path` after the argument separator to select an external
-version 2 graphics pack. A pack never supplies the level.
+version 2 or 3 graphics pack. A pack never supplies the level.
 
 ## Implemented behavior
 

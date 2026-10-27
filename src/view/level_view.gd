@@ -7,14 +7,19 @@ const Plan = preload("res://src/view/screen_plan.gd")
 const Reader = preload("res://src/level/level_code.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
 const Dressing = preload("res://src/view/pack_dressing.gd")
+const Frames = preload("res://src/view/pack_frames.gd")
+const Background = preload("res://src/view/pack_background.gd")
+const AudioMap = preload("res://src/view/pack_audio.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
+var audio := AudioMap.new()
 var _world: Dictionary
 var _root := Node2D.new()
 var _player := Sprite2D.new()
 var _animations := {}
+var _frames := Frames.new()
+var _background := Background.new()
 var _goal_label := Label.new()
-var _last_texture: Texture2D
 var _spring_nodes: Array[Sprite2D] = []
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
@@ -25,6 +30,11 @@ func setup(world: Dictionary, pack: String) -> void:
 	_world = world
 	add_child(_root)
 	var manifest := Pack.read(pack)
+	var source: Dictionary = world.source
+	var map: Dictionary = source.maps["map%d" % int(source.startpoint.map)]
+	audio.setup(manifest, pack)
+	_background.setup(manifest, pack, map)
+	_root.add_child(_background)
 	var layers: Array = world.layers.duplicate(true)
 	if not manifest.is_empty():
 		for layer: Dictionary in layers:
@@ -77,28 +87,23 @@ func setup(world: Dictionary, pack: String) -> void:
 				if cell & Reader.FLIPPED_DIAGONAL:
 					flags |= TileSetAtlasSource.TRANSFORM_TRANSPOSE
 				node.set_cell(Vector2i(column, row), 0, coords, flags)
-	if not manifest.is_empty():
+	if not manifest.is_empty() and not manifest.player.is_empty():
+		var states := {}
 		for name: String in manifest.player:
-			var animation: Dictionary = manifest.player[name]
-			var frames := []
-			for frame: Dictionary in animation.frames:
-				frames.append(
-					{
-						"texture": load_texture(pack.path_join(frame.file)),
-						"origin": Vector2(frame.origin[0], frame.origin[1])
-					}
-				)
-			_animations[name] = {"frames": frames, "speed": animation.speed}
-	for name: String in ["Idle0", "Walk0", "Sprint0", "Jump0", "Fall0", "Flutter0"]:
-		if not _animations.has(name) or _animations[name].frames.is_empty():
-			_animations.clear()
-			break
-		for frame: Dictionary in _animations[name].frames:
-			if frame.texture == null:
-				_animations.clear()
-				break
-		if _animations.is_empty():
-			break
+			states[name] = name
+		_animations = (
+			_frames
+			. visual(
+				pack,
+				{
+					"animations": manifest.player,
+					"default_animation": "Idle0",
+					"states": states,
+				}
+			)
+		)
+		if not _animations.is_empty():
+			_player.set_meta("pack_art", _animations)
 	Dressing.room(_root, manifest, pack, world)
 	Dressing.supports(_root, manifest, pack, world)
 	Dressing.placed(_root, manifest, pack, world)
@@ -117,6 +122,10 @@ func setup(world: Dictionary, pack: String) -> void:
 		else:
 			node = Dressing.sprite(spring_art, 10)
 			node.set_meta("base", size / float(spring_art.texture.get_height()))
+		node.set_meta("pack_variant", int(spring.large) + 2 * int(spring.single_use))
+		if not spring_art.is_empty():
+			Frames.apply(node, 0)
+			node.set_meta("base", size / float(node.texture.get_height()))
 		_root.add_child(node)
 		_spring_nodes.append(node)
 	var bridge_art := Dressing.object_art(manifest, pack, "p1")
@@ -135,8 +144,9 @@ func setup(world: Dictionary, pack: String) -> void:
 		_root.add_child(node)
 	var head_art := Dressing.object_art(manifest, pack, "e5_head")
 	for enemy: Dictionary in world.enemies:
-		var art := Dressing.object_art(manifest, pack, enemy.code)
+		var art := Dressing.object_art(manifest, pack, enemy.code, int(enemy.variant))
 		_enemy_nodes.append(actor_node(art, placeholder(enemy.code, 32)))
+		_enemy_nodes[-1].set_meta("pack_variant", int(enemy.variant))
 		_head_nodes.append(actor_node(head_art, _enemy_nodes[-1].texture))
 	_player.centered = false
 	_player.z_index = 11
@@ -150,6 +160,9 @@ func setup(world: Dictionary, pack: String) -> void:
 	for goal: Array in world.goals:
 		var marker := Sprite2D.new()
 		marker.texture = goal_texture if goal_art.is_empty() else goal_art.texture
+		if not goal_art.is_empty():
+			marker.centered = false
+			marker.set_meta("pack_art", goal_art)
 		marker.z_index = 10
 		marker.set_meta("goal", true)
 		marker.position = Vector2(goal[0], goal[1]) / State.SCALE
@@ -157,18 +170,22 @@ func setup(world: Dictionary, pack: String) -> void:
 	# Recovery first appears mid-run; share the same generated texture and warmed shader.
 	var recovery_art := Dressing.object_art(manifest, pack, "recovery")
 	_recovery_marker.texture = (goal_texture if recovery_art.is_empty() else recovery_art.texture)
+	if not recovery_art.is_empty():
+		_recovery_marker.centered = false
+		_recovery_marker.set_meta("pack_art", recovery_art)
 	_recovery_marker.z_index = 12
 	_recovery_marker.set_meta("recovery", true)
 	_root.add_child(_recovery_marker)
-	var background: PackedStringArray = world.bgcolor.split(",")
+	var background := str(world.bgcolor).split(",")
 	if background.size() == 3:
-		RenderingServer.set_default_clear_color(
-			Color(
-				float(background[0]) / 255.0,
-				float(background[1]) / 255.0,
-				float(background[2]) / 255.0
-			)
-		)
+		var channels := []
+		for channel: String in background:
+			if not channel.is_valid_float() or not is_finite(float(channel)):
+				channels.clear()
+				break
+			channels.append(clampf(float(channel) / 255.0, 0, 1))
+		if channels.size() == 3:
+			RenderingServer.set_default_clear_color(Color(channels[0], channels[1], channels[2]))
 	_goal_label.text = "Goal"
 	_goal_label.visible = false
 	add_child(_goal_label)
@@ -185,6 +202,10 @@ func render(state: Dictionary) -> void:
 	var plan := Plan.plan(viewport, Vector2(_world.width, _world.height) / State.SCALE, focus)
 	_root.scale = Vector2.ONE * plan.scale
 	_root.position = plan.offset
+	_background.render(plan, state.frame)
+	for child: Node in _root.get_children():
+		if child is Sprite2D and child != _player and not child.get_meta("stateful", false):
+			Frames.apply(child, state.frame)
 	_player.position = Vector2(state.x, state.y) / State.SCALE
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
@@ -202,12 +223,25 @@ func render(state: Dictionary) -> void:
 		var code: String = _world.enemies[index].code
 		var bounds := Motion.box(enemy, code)
 		var node := _enemy_nodes[index]
+		Frames.apply(node, state.frame, enemy_pose(enemy, code))
 		place_actor(node, enemy, bounds)
 		node.visible = enemy.status == 1
 		var head := _head_nodes[index]
 		head.visible = enemy.status == 1 and code == "e5" and enemy.mode != 0
 		if head.visible:
-			place_actor(head, enemy, Plant.head_box(enemy), false)
+			Frames.apply(head, state.frame, "chew" if enemy.mode == 4 else "active")
+			if head.get_meta("position_anchor", false):
+				head.position = (
+					Vector2(enemy.x, enemy.y) / State.SCALE + Vector2(enemy.facing * 2, -10)
+				)
+				head.rotation = Vector2(enemy.head_dx, enemy.head_dy).angle()
+				head.flip_v = enemy.facing > 0
+				head.scale = (
+					Vector2(16 + 48 * enemy.head_size / 15.0, 16 + 38 * enemy.head_size / 15.0)
+					/ Vector2(64, 54)
+				)
+			else:
+				place_actor(head, enemy, Plant.head_box(enemy), false)
 	_player.visible = (
 		not state.captured_by and (not state.invulnerable or (120 - state.invulnerable) % 6 < 3)
 	)
@@ -218,14 +252,10 @@ func render(state: Dictionary) -> void:
 		var name: String = ["Idle0", "Walk0", "Sprint0", "Jump0", "Fall0", "Idle0", "Flutter0"][
 			state.movement
 		]
-		var animation: Dictionary = _animations[name]
-		var index: int = int(state.frame * animation.speed / 60.0) % animation.frames.size()
-		var frame: Dictionary = animation.frames[index]
-		if frame.texture != _last_texture:
-			_player.texture = frame.texture
-			_last_texture = frame.texture
+		if state.swimming:
+			name = "Swim0" if state.water_deep else "Float0"
+		Frames.apply(_player, state.frame, name)
 		_player.scale.x = state.facing
-		_player.offset = -frame.origin
 	_goal_label.visible = bool(state.goal_reached or state.separated)
 	_goal_label.text = "Goal" if state.goal_reached else "Recover: %d" % state.health
 	_goal_label.position = Vector2(8, 8)
@@ -241,6 +271,9 @@ func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:
 	else:
 		node = Dressing.sprite(art, 10)
 		node.set_meta("bottom", Dressing.bottom_anchored(art))
+		node.set_meta("position_anchor", art.get("anchor", "box") == "position")
+		node.set_meta("art_facing", art.get("facing", 1))
+	node.set_meta("stateful", true)
 	_root.add_child(node)
 	return node
 
@@ -253,11 +286,31 @@ static func place_actor(node: Sprite2D, enemy: Dictionary, bounds: Array, relati
 		node.position = Vector2(x + bounds[0], y + bounds[1]) / State.SCALE
 		node.scale = Vector2(bounds[2] - bounds[0], bounds[3] - bounds[1]) / (32 * State.SCALE)
 		return
+	if node.get_meta("position_anchor", false):
+		node.position = Vector2(x, y) / State.SCALE
+		node.scale.x = 1 if int(enemy.get("facing", 1)) == node.get_meta("art_facing", 1) else -1
+		return
 	var anchor_y: float = (
 		float(bounds[3]) if node.get_meta("bottom") else (bounds[1] + bounds[3]) / 2.0
 	)
 	node.position = Vector2(x + (bounds[0] + bounds[2]) / 2.0, y + anchor_y) / State.SCALE
 	node.flip_h = int(enemy.get("facing", 1)) < 0
+
+
+static func enemy_pose(enemy: Dictionary, code: String) -> String:
+	if code == "e2":
+		return "fly"
+	if code == "e3" and enemy.mode:
+		return "turn"
+	if code == "e5":
+		return "active" if enemy.mode else "idle"
+	if code == "e20":
+		if enemy.mode == 2:
+			return "prepare"
+		if enemy.water and enemy.mode != 3:
+			return "swim"
+		return "jump" if enemy.vy < 0 else "fall"
+	return "walk" if enemy.vx else "idle"
 
 
 static func draw_before(a: Dictionary, b: Dictionary) -> bool:

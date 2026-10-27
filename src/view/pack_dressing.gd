@@ -3,6 +3,7 @@ extends RefCounted
 ## every terrain underside that faces open air, and sprites for placed objects.
 ## Drawing only: nothing here reads input or writes play state.
 
+const Frames = preload("res://src/view/pack_frames.gd")
 const State = preload("res://src/sim/play_state.gd")
 const Reader = preload("res://src/level/level_code.gd")
 const CollisionTable = preload("res://src/level/collision_table.gd")
@@ -12,6 +13,7 @@ const BOARD_HEIGHT := 6.0
 const BACK_TINT := Color(0.84, 0.82, 0.78)
 const WALL_Z := -20
 const BRACKET_Z := -15
+static var _frames := Frames.new()
 
 
 static func load_texture(path: String) -> Texture2D:
@@ -22,15 +24,14 @@ static func load_texture(path: String) -> Texture2D:
 	return ImageTexture.create_from_image(image) if image != null else null
 
 
-static func object_art(manifest: Dictionary, pack: String, code: String) -> Dictionary:
+static func object_art(
+	manifest: Dictionary, pack: String, code: String, variant := 0
+) -> Dictionary:
 	var objects: Dictionary = manifest.get("objects", {})
-	if not objects.has(code):
-		return {}
-	var entry: Dictionary = objects[code]
-	var texture := load_texture(pack.path_join(entry.file))
-	if texture == null:
-		return {}
-	return {"texture": texture, "origin": Vector2(entry.origin[0], entry.origin[1])}
+	var entry: Variant = objects.get(code, {})
+	if entry is Dictionary and entry.get("variants") is Dictionary:
+		entry = entry.variants.get(str(variant), entry)
+	return _frames.visual(pack, entry)
 
 
 static func sprite(art: Dictionary, z: int) -> Sprite2D:
@@ -38,6 +39,7 @@ static func sprite(art: Dictionary, z: int) -> Sprite2D:
 	node.texture = art.texture
 	node.centered = false
 	node.offset = -art.origin
+	node.set_meta("pack_art", art)
 	node.z_index = z
 	return node
 
@@ -236,16 +238,20 @@ static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dict
 		var code: String = object.A
 		if code in SIMULATED:
 			continue
-		var art := object_art(manifest, pack, code)
+		var art := object_art(manifest, pack, code, int(object.get("F", 0)))
 		if art.is_empty():
 			continue
 		var node := sprite(art, 7 if code.begins_with("d") else 8)
 		node.position = Vector2(float(object.X), float(object.Y))
 		node.rotation_degrees = float(object.get("R", 0))
 		node.flip_h = int(object.get("M", 0)) == 1
+		node.set_meta("pack_variant", int(object.get("F", 0)))
 		if code == "o23":
 			var tall := float(object.get("E1", 64))
 			node.scale = Vector2(
 				minf(32.0 / art.texture.get_width(), 2.0), tall / art.texture.get_height()
 			)
+		if art.get("anchor", "box") == "position" and node.flip_h:
+			node.flip_h = false
+			node.scale.x *= -1
 		root.add_child(node)

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "drawing_facts": "drawing_facts.json",
   "tiles": {
     "garden64": "tiles/bread-garden64.png",
@@ -12,7 +12,8 @@
   },
   "player": {
     "Idle0": {
-      "speed": 3,
+      "fps": 3,
+      "loop": true,
       "frames": [
         {
           "file": "player/Idle0_0.png",
@@ -31,7 +32,8 @@
       ]
     },
     "Walk0": {
-      "speed": 10,
+      "fps": 10,
+      "loop": true,
       "frames": [
         {
           "file": "player/Walk0_0.png",
@@ -64,7 +66,8 @@
       ]
     },
     "Sprint0": {
-      "speed": 14,
+      "fps": 14,
+      "loop": true,
       "frames": [
         {
           "file": "player/Sprint0_0.png",
@@ -97,7 +100,8 @@
       ]
     },
     "Jump0": {
-      "speed": 1,
+      "fps": 1,
+      "loop": true,
       "frames": [
         {
           "file": "player/Jump0_0.png",
@@ -109,7 +113,8 @@
       ]
     },
     "Fall0": {
-      "speed": 1,
+      "fps": 1,
+      "loop": true,
       "frames": [
         {
           "file": "player/Fall0_0.png",
@@ -121,7 +126,8 @@
       ]
     },
     "Flutter0": {
-      "speed": 12,
+      "fps": 12,
+      "loop": true,
       "frames": [
         {
           "file": "player/Flutter0_0.png",
