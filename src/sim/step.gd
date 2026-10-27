@@ -9,6 +9,7 @@ const Springs = preload("res://src/sim/bounce_pad.gd")
 const Enemies = preload("res://src/sim/enemies.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Water = preload("res://src/sim/water.gd")
+const Maps = preload("res://src/sim/maps.gd")
 const S := State.SCALE
 const LEFT := 1
 const RIGHT := 2
@@ -25,6 +26,8 @@ const PLAYER_BOX := [-12 * S, -56 * S, 12 * S, 0]
 
 
 static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
+	if not Maps.sync(state, world):
+		return
 	if state.goal_reached:
 		return
 	var pressed: int = input & ~state.previous_input
