@@ -103,7 +103,8 @@ static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary) -> v
 	var leg: int = enemy.phase if enemy.phase <= 180 else 360 - enemy.phase
 	enemy.vx = (-128 * 60 + 256 * 60 * leg / 180) * enemy.cycles
 	Motion.move(enemy, world, Motion.box(enemy, "e2"), enemy.vx, true)
-	enemy.facing = 1 if enemy.vx > 0 else -1
+	if enemy.vx != 0:
+		enemy.facing = 1 if enemy.vx > 0 else -1
 	enemy.y = source.y + Motion.sine(enemy.phase, 180, 12 * S)
 
 
@@ -118,7 +119,11 @@ static func flower(enemy: Dictionary, world: Dictionary) -> void:
 	if enemy.mode == 0:
 		var speed := 24 if World.water_at(world, enemy.x, enemy.y) else 48
 		enemy.vx = enemy.facing * speed * 60
-		if Motion.move(enemy, world, Motion.box(enemy, "e3"), enemy.vx, true) != enemy.vx:
+		var distance: int = enemy.vx
+		if (
+			Motion.move(enemy, world, Motion.box(enemy, "e3"), distance, true) != distance
+			or enemy.vx == 0
+		):
 			enemy.mode = 1
 			enemy.timer = 108
 			enemy.vx = 0

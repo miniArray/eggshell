@@ -39,8 +39,9 @@ version 2 graphics pack. A pack never supplies the level.
 - Exact versioned snapshots with threaded autosave and automatic resume.
 - Container-sized camera fitting with nearest-neighbor graphics.
 
-Tile collision currently uses polygon bounding boxes. Slopes are approximate.
-The recovery marker is stationary. Audio and a level editor are not implemented.
+Terrain collision uses integer polygons, slope walking and floor snapping.
+Actor collision boxes are fixed. The recovery marker is stationary.
+Audio and a level editor are not implemented.
 
 ## Physics and screens
 

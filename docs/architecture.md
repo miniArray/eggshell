@@ -23,12 +23,29 @@ the same bytes. Rendering must not mutate those fields.
 High-refresh presentation must interpolate between simulation steps. It must
 not change the step rate or retune physics constants.
 
+## Terrain contacts
+
+Level loading caches transformed integer tile polygons and their bounds. Bounds
+only reject distant candidates; polygon edges and containment decide contact,
+including concave shapes. Touching an edge counts as contact. Solid movement
+uses pixel-step push-out followed by four fractional probes, down to 1/16 pixel.
+A one-pixel raised side probe separates walkable slopes from walls. Grounded
+movement follows descending slopes only within a speed-sized probe distance.
+Floor detection probes one pixel below the actor without moving saved state.
+
+The player, terrain-aware enemies and bounce pads share `src/sim/collision.gd`.
+Bridges catch downward entry from above, not upward travel or entry from below.
+All contact queries and movement after level loading use integer arithmetic.
+No contact cache or new mutable state enters snapshots.
+
 ## Limits
 
-Tile polygons currently collide through their bounding boxes. Curved motion
-uses integer approximations. Recovery uses a stationary marker and an immediate
-reset at countdown zero. These choices are tested behavior, not unfinished
-runtime migrations.
+Actor collision boxes stay fixed rather than following animation shapes.
+Overlap recovery and sideways push limits use those fixed actor dimensions.
+Movement tests endpoints and pushes out; it is not a continuous collision sweep.
+Curved motion uses integer approximations. Recovery uses a stationary marker
+and an immediate reset at countdown zero. Recorded routes need hardening after
+physics changes; polygon contacts do not establish whole-game movement parity.
 
 ## Test ownership
 

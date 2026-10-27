@@ -4,6 +4,7 @@ extends RefCounted
 
 const State = preload("res://src/sim/play_state.gd")
 const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const Springs = preload("res://src/sim/bounce_pad.gd")
 const Enemies = preload("res://src/sim/enemies.gd")
 const Damage = preload("res://src/sim/damage.gd")
@@ -20,6 +21,7 @@ const JUMP_VELOCITY := -776 * 60
 const MAX_FALL := 704 * 60
 const WALK_SPEED := 240 * 60
 const RUN_SPEED := 400 * 60
+const PLAYER_BOX := [-12 * S, -56 * S, 12 * S, 0]
 
 
 static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
@@ -41,6 +43,11 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		pressed = 0
 		released = 0
 	Springs.advance(state, world)
+	var can_move := Collision.prepare(state, world, PLAYER_BOX)
+	var support := Collision.track_floor(state, world, PLAYER_BOX)
+	state.on_floor = int(support != 0 and state.vy >= 0)
+	if state.on_floor:
+		state.vy = 0
 	state.jump_buffer = 5 if pressed & JUMP else maxi(0, state.jump_buffer - 1)
 	state.flutter_cooldown = maxi(0, state.flutter_cooldown - 1)
 	if released & JUMP:
@@ -61,8 +68,15 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		state.vx = approach(state.vx, direction * speed, ACCELERATION)
 	else:
 		state.vx = approach(state.vx, 0, state.hurt_deceleration if state.hurt else DECELERATION)
-	if not state.swimming and state.on_floor and state.jump_buffer:
+	var jumped := false
+	if (
+		not state.swimming
+		and state.on_floor
+		and state.jump_buffer
+		and not Collision.overlaps(state, world, PLAYER_BOX, 0, -S)
+	):
 		state.vy = JUMP_VELOCITY
+		jumped = true
 		state.on_floor = 0
 		state.jump_buffer = 0
 		state.flutter_ready = 0
@@ -91,34 +105,28 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		if state.flutter_remaining == 0:
 			state.flutter_cooldown = 16
 	else:
-		state.vy = mini(state.vy + GRAVITY, MAX_FALL)
-	var moved := move_axis(state, world, state.vx, true)
-	if moved != state.vx:
+		state.vy = 0 if state.on_floor else mini(state.vy + GRAVITY, MAX_FALL)
+	var moved := 0
+	var horizontal_distance: int = state.vx
+	if can_move:
+		moved = Collision.horizontal(
+			state, world, PLAYER_BOX, horizontal_distance, support, jumped, -JUMP_VELOCITY
+		)
+	if moved != horizontal_distance:
 		state.vx = 0
 	var vertical_distance: int = state.vy + bob
 	var falling: bool = vertical_distance >= 0
-	var before_y: int = state.y
-	moved = move_axis(state, world, vertical_distance, false)
-	state.on_floor = int(falling and moved != vertical_distance)
-	state.support_bridge = 0
-	for index in world.bridges.size():
-		var bridge: Dictionary = world.bridges[index]
-		if (
-			falling
-			and before_y <= bridge.top
-			and state.y >= bridge.top
-			and state.x + 12 * S > bridge.left
-			and state.x - 12 * S < bridge.right
-		):
-			state.y = bridge.top
-			state.on_floor = 1
-			state.support_bridge = index + 1
-			moved = state.y - before_y
+	moved = (
+		Collision.vertical(state, world, PLAYER_BOX, vertical_distance, support) if can_move else 0
+	)
+	var floor := Collision.floor_at(state, world, PLAYER_BOX)
+	state.on_floor = int(can_move and falling and (moved != vertical_distance or floor != 0))
+	state.support_bridge = maxi(0, floor) if state.on_floor else 0
 	if state.on_floor:
 		state.boosted_flutter = 0
 		state.flutter_remaining = 0
 		state.flutter_cooldown = 0
-	if state.on_floor or moved != vertical_distance:
+	if can_move and (state.on_floor or moved != vertical_distance):
 		state.vy = 0
 	state.x = clampi(state.x, 12 * S, world.width - 12 * S)
 	if state.y > world.height + 96 * S:
@@ -151,26 +159,9 @@ static func approach(value: int, target: int, amount: int) -> int:
 
 
 static func move_axis(state: Dictionary, world: Dictionary, distance: int, horizontal: bool) -> int:
-	if distance == 0:
+	if not Collision.prepare(state, world, PLAYER_BOX):
 		return 0
-	var dx := distance if horizontal else 0
-	var dy := 0 if horizontal else distance
-	var moved := distance
-	if World.overlaps(world, state.x + dx, state.y + dy):
-		var low := 0
-		var high := absi(distance)
-		var signum := 1 if distance > 0 else -1
-		while low < high:
-			var middle := (low + high + 1) / 2
-			dx = middle * signum if horizontal else 0
-			dy = 0 if horizontal else middle * signum
-			if World.overlaps(world, state.x + dx, state.y + dy):
-				high = middle - 1
-			else:
-				low = middle
-		moved = low * signum
+	var support := Collision.floor_at(state, world, PLAYER_BOX)
 	if horizontal:
-		state.x += moved
-	else:
-		state.y += moved
-	return moved
+		return Collision.horizontal(state, world, PLAYER_BOX, distance, support, state.vy < 0)
+	return Collision.vertical(state, world, PLAYER_BOX, distance, support)

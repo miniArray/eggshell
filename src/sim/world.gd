@@ -3,6 +3,7 @@ extends RefCounted
 
 const Reader = preload("res://src/level/level_code.gd")
 const State = preload("res://src/sim/play_state.gd")
+const Polygon = preload("res://src/sim/polygon.gd")
 const S := State.SCALE
 
 
@@ -91,10 +92,13 @@ static func build(code: String, facts: Dictionary) -> Dictionary:
 			if slot.is_empty():
 				return {"ok": false, "error": "Missing source draw slot: " + name}
 			var bounds := {}
+			var polygons := {}
 			if tile.solid_family or tile.water_family:
 				for cell: int in grid.cells:
 					if cell != -1 and not bounds.has(cell):
-						bounds[cell] = tile_bounds(cell, tile)
+						var points := tile_polygon(cell, tile)
+						polygons[cell] = points
+						bounds[cell] = polygon_bounds(points)
 			world.layers.append(
 				{
 					"name": name,
@@ -105,6 +109,7 @@ static func build(code: String, facts: Dictionary) -> Dictionary:
 					"height": int(grid.height),
 					"cells": grid.cells,
 					"bounds": bounds,
+					"polygons": polygons,
 					"solid": tile.solid_family,
 					"water": tile.water_family
 				}
@@ -117,32 +122,48 @@ static func _draw_before(a: Dictionary, b: Dictionary) -> bool:
 	return a.slot[0] < b.slot[0] or (a.slot[0] == b.slot[0] and a.slot[1] < b.slot[1])
 
 
-static func tile_bounds(cell: int, facts: Dictionary) -> Array:
+static func tile_polygon(cell: int, facts: Dictionary) -> PackedInt64Array:
+	var points := PackedInt64Array()
 	var id := cell & Reader.TILE_ID_MASK
-	if float(id) in facts.collision_disabled:
-		return []
+	if cell == -1 or float(id) in facts.collision_disabled:
+		return points
 	var polygon: Array = facts.collision_polygons.get(str(id), [0, 0, 1, 0, 1, 1, 0, 1])
-	var left := S
-	var top := S
-	var right := 0
-	var bottom := 0
+	var width := int(facts.tile_size[0]) * S
+	var height := int(facts.tile_size[1]) * S
 	for index in range(0, polygon.size(), 2):
-		var x := roundi(polygon[index] * S)
-		var y := roundi(polygon[index + 1] * S)
+		# Quantize physical vertices once, not intermediate tile fractions.
+		var x := roundi(polygon[index] * width)
+		var y := roundi(polygon[index + 1] * height)
 		if cell & Reader.FLIPPED_DIAGONAL:
 			var swap := x
 			x = y
 			y = swap
 		if cell & Reader.FLIPPED_HORIZONTAL:
-			x = S - x
+			x = width - x
 		if cell & Reader.FLIPPED_VERTICAL:
-			y = S - y
-		left = mini(left, x)
-		top = mini(top, y)
-		right = maxi(right, x)
-		bottom = maxi(bottom, y)
-	var size := int(facts.tile_size[0])
-	return [left * size, top * size, right * size, bottom * size]
+			y = height - y
+		points.append(x)
+		points.append(y)
+	return points
+
+
+static func tile_bounds(cell: int, facts: Dictionary) -> Array:
+	return polygon_bounds(tile_polygon(cell, facts))
+
+
+static func polygon_bounds(points: PackedInt64Array) -> Array:
+	if points.is_empty():
+		return []
+	var left := points[0]
+	var top := points[1]
+	var right := left
+	var bottom := top
+	for index in range(2, points.size(), 2):
+		left = mini(left, points[index])
+		top = mini(top, points[index + 1])
+		right = maxi(right, points[index])
+		bottom = maxi(bottom, points[index + 1])
+	return [left, top, right, bottom]
 
 
 static func overlaps(world: Dictionary, x: int, y: int) -> bool:
@@ -151,55 +172,49 @@ static func overlaps(world: Dictionary, x: int, y: int) -> bool:
 
 static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
 	for layer: Dictionary in world.layers:
-		if not layer.solid:
-			continue
-		var size: int = layer.size * S
-		var x0 := maxi(0, floor_div(left, size))
-		var x1 := mini(layer.width - 1, floor_div(right - 1, size))
-		var y0 := maxi(0, floor_div(top, size))
-		var y1 := mini(layer.height - 1, floor_div(bottom - 1, size))
-		for row in range(y0, y1 + 1):
-			for column in range(x0, x1 + 1):
-				var cell: int = layer.cells[row * layer.width + column]
-				var box: Array = layer.bounds.get(cell, [])
-				if box.is_empty():
-					continue
-				if (
-					left < column * size + box[2]
-					and right > column * size + box[0]
-					and top < row * size + box[3]
-					and bottom > row * size + box[1]
-				):
-					return true
+		if layer.solid and layer_overlaps(layer, left, top, right, bottom):
+			return true
 	return false
 
 
 static func water_at(world: Dictionary, x: int, y: int) -> bool:
-	return water_overlaps(world, x, y, x + 1, y + 1)
+	return water_overlaps(world, x, y, x, y)
 
 
 static func water_overlaps(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
 	for layer: Dictionary in world.layers:
-		if not layer.water:
-			continue
-		var size: int = layer.size * S
-		for row in range(
-			maxi(0, floor_div(top, size)), mini(layer.height - 1, floor_div(bottom - 1, size)) + 1
-		):
-			for column in range(
-				maxi(0, floor_div(left, size)),
-				mini(layer.width - 1, floor_div(right - 1, size)) + 1
+		if layer.water and layer_overlaps(layer, left, top, right, bottom):
+			return true
+	return false
+
+
+static func layer_overlaps(layer: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
+	var size: int = layer.size * S
+	# Contact includes edges, including the far edge of the preceding cell.
+	var x0 := maxi(0, floor_div(left - 1, size))
+	var x1 := mini(layer.width - 1, floor_div(right, size))
+	var y0 := maxi(0, floor_div(top - 1, size))
+	var y1 := mini(layer.height - 1, floor_div(bottom, size))
+	for row in range(y0, y1 + 1):
+		for column in range(x0, x1 + 1):
+			var cell: int = layer.cells[row * layer.width + column]
+			var box: Array = layer.bounds.get(cell, [])
+			if box.is_empty():
+				continue
+			var local_left := left - column * size
+			var local_top := top - row * size
+			var local_right := right - column * size
+			var local_bottom := bottom - row * size
+			if (
+				local_left <= box[2]
+				and local_right >= box[0]
+				and local_top <= box[3]
+				and local_bottom >= box[1]
+				and Polygon.overlaps_box(
+					layer.polygons[cell], local_left, local_top, local_right, local_bottom
+				)
 			):
-				var cell: int = layer.cells[row * layer.width + column]
-				var box: Array = layer.bounds.get(cell, [])
-				if (
-					not box.is_empty()
-					and left < column * size + box[2]
-					and right > column * size + box[0]
-					and top < row * size + box[3]
-					and bottom > row * size + box[1]
-				):
-					return true
+				return true
 	return false
 
 
