@@ -1,23 +1,47 @@
 class_name Snapshot
 extends RefCounted
-## Canonical little-endian bytes; no Variant deserialization or executable objects.
+## Canonical little-endian int64 fields and UTF-8 codes; never Variant decoding.
 
 const State = preload("res://src/sim/play_state.gd")
-const VERSION := 3
-const HEADER := 44
-const SPRING_FIELDS := ["x", "y", "vx", "vy", "squash", "active"]
-const COUNT_OFFSET := 324  # Version 3: 44-byte header + 35 scalar int64 fields.
-const MIN_SIZE := COUNT_OFFSET + 8 + 32
+const Registry = preload("res://src/sim/registry.gd")
+const VERSION := 4
+const HEADER := 76
+const CHECKSUM_SIZE := 32
+const MAX_ENTITIES := 100_000
+const MAX_CODE_BYTES := 4096
+const MAX_BYTES := 67_108_864
+
+
+static func count_offset() -> int:
+	return HEADER + State.fields().size() * 8
+
+
+static func minimum_size() -> int:
+	return count_offset() + 4 + CHECKSUM_SIZE
+
+
+static func schema_hash() -> PackedByteArray:
+	var schema := ["code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS]
+	for code: String in Registry.codes():
+		schema.append([code, Registry.fields(code)])
+	return checksum(JSON.stringify(schema).to_utf8_buffer())
 
 
 static func encode(state: Dictionary) -> PackedByteArray:
-	assert(HEADER + State.FIELDS.size() * 8 == COUNT_OFFSET, "Snapshot version/layout mismatch")
-	var body_size: int = (
-		MIN_SIZE
-		- 32
-		+ state.springs.size() * SPRING_FIELDS.size() * 8
-		+ state.enemies.size() * State.ENEMY_FIELDS.size() * 8
-	)
+	if not valid_state(state) or not valid_identity(state.get("identity", "")):
+		push_warning("Cannot encode invalid snapshot state")
+		return PackedByteArray()
+	var body_size := count_offset() + 4
+	for entity: Dictionary in state.entities:
+		var code_bytes: PackedByteArray = entity.code.to_utf8_buffer()
+		var id_bytes: PackedByteArray = entity.id.to_utf8_buffer()
+		if code_bytes.size() > MAX_CODE_BYTES or id_bytes.size() > MAX_CODE_BYTES:
+			push_warning("Cannot encode oversized entity code or id")
+			return PackedByteArray()
+		body_size += 12 + code_bytes.size() + id_bytes.size() + Registry.fields(entity.code).size() * 8
+	if body_size + CHECKSUM_SIZE > MAX_BYTES:
+		push_warning("Cannot encode oversized snapshot")
+		return PackedByteArray()
 	var bytes := PackedByteArray()
 	bytes.resize(body_size)
 	var magic := "EGGSTATE".to_ascii_buffer()
@@ -25,162 +49,149 @@ static func encode(state: Dictionary) -> PackedByteArray:
 		bytes[index] = magic[index]
 	bytes.encode_u32(8, VERSION)
 	var identity: PackedByteArray = state.identity.hex_decode()
+	var schema := schema_hash()
 	for index in 32:
 		bytes[12 + index] = identity[index]
-	for index in State.FIELDS.size():
-		bytes.encode_s64(HEADER + index * 8, state[State.FIELDS[index]])
-	bytes.encode_u32(COUNT_OFFSET, state.springs.size())
-	var cursor := COUNT_OFFSET + 4
-	for ball: Dictionary in state.springs:
-		for field: String in SPRING_FIELDS:
-			bytes.encode_s64(cursor, ball[field])
-			cursor += 8
-	bytes.encode_u32(cursor, state.enemies.size())
+		bytes[44 + index] = schema[index]
+	var cursor := HEADER
+	for pair: Array in State.fields():
+		bytes.encode_s64(cursor, state[pair[0]])
+		cursor += 8
+	bytes.encode_u32(cursor, state.entities.size())
 	cursor += 4
-	for enemy: Dictionary in state.enemies:
-		for field: String in State.ENEMY_FIELDS:
-			bytes.encode_s64(cursor, enemy[field])
+	for entity: Dictionary in state.entities:
+		for text: String in [entity.code, entity.id]:
+			var encoded := text.to_utf8_buffer()
+			bytes.encode_u32(cursor, encoded.size())
+			cursor += 4
+			for value: int in encoded:
+				bytes[cursor] = value
+				cursor += 1
+		var fields := Registry.fields(entity.code)
+		bytes.encode_u32(cursor, fields.size())
+		cursor += 4
+		for pair: Array in fields:
+			bytes.encode_s64(cursor, entity[pair[0]])
 			cursor += 8
 	bytes.append_array(checksum(bytes))
 	return bytes
 
 
-static func decode(bytes: PackedByteArray, identity: String) -> Dictionary:
+static func decode(bytes: PackedByteArray, identity: String, world: Dictionary = {}) -> Dictionary:
 	if bytes.size() < 12:
-		return {"ok": false, "error": "Snapshot size/truncation"}
-	if bytes.slice(0, 8).get_string_from_ascii() != "EGGSTATE" or bytes.decode_u32(8) != VERSION:
-		return {"ok": false, "error": "Snapshot format/version"}
-	if bytes.size() < MIN_SIZE:
-		return {"ok": false, "error": "Snapshot size/truncation"}
-	var count := bytes.decode_u32(COUNT_OFFSET)
-	var enemy_offset := COUNT_OFFSET + 4 + count * SPRING_FIELDS.size() * 8
-	if enemy_offset + 4 + 32 > bytes.size():
-		return {"ok": false, "error": "Snapshot spring count/size"}
-	var enemy_count := bytes.decode_u32(enemy_offset)
-	if bytes.size() != enemy_offset + 4 + enemy_count * State.ENEMY_FIELDS.size() * 8 + 32:
-		return {"ok": false, "error": "Snapshot enemy count/size"}
-	if bytes.slice(-32) != checksum(bytes.slice(0, -32)):
-		return {"ok": false, "error": "Snapshot checksum"}
-	if bytes.slice(12, 44).hex_encode() != identity:
-		return {"ok": false, "error": "Snapshot level identity"}
-	var state := {"identity": identity, "springs": [], "enemies": []}
-	for index in State.FIELDS.size():
-		state[State.FIELDS[index]] = bytes.decode_s64(HEADER + index * 8)
-	if not valid_player(state):
-		return {"ok": false, "error": "Snapshot invalid state"}
-	var cursor := COUNT_OFFSET + 4
-	for index in count:
-		var ball := {}
-		for field: String in SPRING_FIELDS:
-			ball[field] = bytes.decode_s64(cursor)
-			cursor += 8
-		if (
-			ball.vx != 0
-			or ball.vy < 0
-			or ball.vy > 704 * 60
-			or ball.squash < 0
-			or ball.squash > 12
-			or ball.active not in [0, 1]
-		):
-			return {"ok": false, "error": "Snapshot invalid spring"}
-		state.springs.append(ball)
+		return error("Snapshot size/truncation")
+	if bytes.slice(0, 8).get_string_from_ascii() != "EGGSTATE":
+		return error("Snapshot format")
+	var version := bytes.decode_u32(8)
+	if version != VERSION:
+		print("Ignoring snapshot version %d; expected %d" % [version, VERSION])
+		return error("Snapshot format/version")
+	if bytes.size() < minimum_size() or bytes.size() > MAX_BYTES:
+		return error("Snapshot size/truncation")
+	var end := bytes.size() - CHECKSUM_SIZE
+	if bytes.slice(end) != checksum(bytes.slice(0, end)):
+		return error("Snapshot checksum")
+	if not valid_identity(identity) or bytes.slice(12, 44).hex_encode() != identity:
+		return error("Snapshot level identity")
+	if bytes.slice(44, HEADER) != schema_hash():
+		return error("Snapshot schema")
+	var state := {"identity": identity, "entities": []}
+	var cursor := HEADER
+	for pair: Array in State.fields():
+		state[pair[0]] = bytes.decode_s64(cursor)
+		cursor += 8
+	var count := bytes.decode_u32(cursor)
 	cursor += 4
-	for index in enemy_count:
-		var enemy := {}
-		for field: String in State.ENEMY_FIELDS:
-			enemy[field] = bytes.decode_s64(cursor)
+	if count > MAX_ENTITIES:
+		return error("Snapshot entity count")
+	for index in count:
+		var code_result := read_text(bytes, cursor, end)
+		if not code_result.ok:
+			return code_result
+		cursor = code_result.cursor
+		var id_result := read_text(bytes, cursor, end)
+		if not id_result.ok:
+			return id_result
+		cursor = id_result.cursor
+		if cursor + 4 > end:
+			return error("Snapshot entity schema/truncation")
+		var code: String = code_result.value
+		var fields := Registry.fields(code)
+		if bytes.decode_u32(cursor) != fields.size():
+			return error("Snapshot entity schema")
+		cursor += 4
+		if fields.size() * 8 > end - cursor:
+			return error("Snapshot entity fields/truncation")
+		var entity := {"code": code, "id": id_result.value}
+		for pair: Array in fields:
+			entity[pair[0]] = bytes.decode_s64(cursor)
 			cursor += 8
-		if not valid_enemy(enemy):
-			return {"ok": false, "error": "Snapshot invalid enemy"}
-		state.enemies.append(enemy)
-	if state.captured_by > enemy_count:
-		return {"ok": false, "error": "Snapshot invalid capture"}
-	if state.captured_by:
-		var captor: Dictionary = state.enemies[state.captured_by - 1]
-		if captor.status != 1 or captor.mode != 4:
-			return {"ok": false, "error": "Snapshot invalid capture state"}
+		state.entities.append(entity)
+	if cursor != end:
+		return error("Snapshot trailing bytes/count")
+	Registry.attach_views(state)
+	if not valid_state(state):
+		return error("Snapshot invalid state")
+	if not world.is_empty() and not Registry.valid_world(state, world):
+		return error("Snapshot world entity table")
 	return {"ok": true, "state": state}
 
 
-static func valid_player(state: Dictionary) -> bool:
-	return not (
-		state.frame < 0
-		or state.deaths < 0
-		or state.movement < 0
-		or state.movement > 6
-		or state.facing not in [-1, 1]
-		or state.on_floor not in [0, 1]
-		or state.goal_reached not in [0, 1]
-		or state.previous_input < 0
-		or state.previous_input > 15
-		or state.jump_buffer < 0
-		or state.jump_buffer > 5
-		or state.flutter_remaining < 0
-		or state.flutter_remaining > 50
-		or state.flutter_cooldown < 0
-		or state.flutter_cooldown > 16
-		or state.flutter_ready not in [0, 1]
-		or state.support_bridge < 0
-		or state.swimming not in [0, 1]
-		or state.water_wait < 0
-		or state.water_wait > 15
-		or state.water_phase < 0
-		or state.water_phase >= 60
-		or state.water_deep not in [0, 1]
-		or state.boosted_flutter not in [0, 1]
-		or state.hurt < 0
-		or state.hurt > 60
-		or state.invulnerable < 0
-		or state.invulnerable > 120
-		or state.health < 1
-		or state.health > 30
-		or state.health_wait < 0
-		or state.health_wait > 120
-		or state.separated not in [0, 1]
-		or state.recovery_delay < 0
-		or state.recovery_delay > 36
-		or state.hits < 0
-		or state.captured_by < 0
-		or state.rng < 0
-		or state.rng > 0x7fffffff
-		or state.hurt_deceleration not in [0, 648, 1296]
-		or (state.hurt > 0 and state.hurt_deceleration == 0)
-		or (state.health_wait == 0 and (state.separated == 1 or state.health < 10))
-		or (state.flutter_remaining > 40 and state.boosted_flutter == 0)
+static func read_text(bytes: PackedByteArray, cursor: int, end: int) -> Dictionary:
+	if cursor + 4 > end:
+		return error("Snapshot entity string/truncation")
+	var size := bytes.decode_u32(cursor)
+	cursor += 4
+	if size > MAX_CODE_BYTES or size > end - cursor:
+		return error("Snapshot entity string/size")
+	var encoded := bytes.slice(cursor, cursor + size)
+	var text := encoded.get_string_from_utf8()
+	if text.to_utf8_buffer() != encoded:
+		return error("Snapshot entity string encoding")
+	return {"ok": true, "value": text, "cursor": cursor + size}
+
+
+static func valid_identity(identity: Variant) -> bool:
+	return (
+		identity is String and identity.length() == 64
+		and identity.is_valid_hex_number() and identity.to_lower() == identity
 	)
 
 
-static func valid_enemy(enemy: Dictionary) -> bool:
-	return not (
-		enemy.status < 0
-		or enemy.status > 3
-		or enemy.facing not in [-1, 1]
-		or enemy.phase < 0
-		or enemy.phase > 360
-		or enemy.timer < 0
-		or enemy.timer > 210
-		or enemy.cycles < -1
-		or enemy.cycles > 180
-		or enemy.mode < 0
-		or enemy.mode > 5
-		or enemy.water not in [0, 1]
-		or enemy.contact not in [0, 1]
-		or enemy.offscreen not in [0, 1]
-		or absi(enemy.head_dx) > 3600
-		or absi(enemy.head_dy) > 3600
-		or enemy.head_size < 0
-		or enemy.head_size > 15
-		or enemy.pin_size < 0
-		or enemy.pin_size > 15
-		or (enemy.mode == 4 and enemy.pin_size > enemy.head_size)
-		or enemy.rise_ticks < 0
-		or enemy.rise_ticks > 60
-		or enemy.rise_velocity < 0
-		or enemy.rise_velocity > 704 * 60
-		or absi(enemy.vx) > 128 * 60
-		or enemy.vy < -944 * 60
-		or enemy.vy > 704 * 60
-	)
+static func valid_state(state: Dictionary) -> bool:
+	if not State.valid(state) or not state.get("entities") is Array or state.entities.size() > MAX_ENTITIES:
+		return false
+	var actors := []
+	var ids := {}
+	var pads := 0
+	for index in state.entities.size():
+		var entity: Variant = state.entities[index]
+		if not entity is Dictionary or not Registry.valid(entity) or entity.source_index != index:
+			return false
+		if ids.has(entity.id):
+			return false
+		ids[entity.id] = true
+		if entity.map_index != state.get("map_index", 0):
+			return false
+		if entity.code in Registry.Actor.CODES:
+			if entity.family_index != actors.size():
+				return false
+			actors.append(entity)
+		elif entity.code == "o11":
+			if entity.family_index != pads:
+				return false
+			pads += 1
+	if state.captured_by > actors.size():
+		return false
+	if state.captured_by:
+		var captor: Dictionary = actors[state.captured_by - 1]
+		if captor.code != "e5" or captor.status != 1 or captor.mode != 4:
+			return false
+	return true
+
+
+static func error(message: String) -> Dictionary:
+	return {"ok": false, "error": message}
 
 
 static func checksum(bytes: PackedByteArray) -> PackedByteArray:

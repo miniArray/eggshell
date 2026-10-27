@@ -5,8 +5,7 @@ extends RefCounted
 const State = preload("res://src/sim/play_state.gd")
 const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
-const Springs = preload("res://src/sim/bounce_pad.gd")
-const Enemies = preload("res://src/sim/enemies.gd")
+const Registry = preload("res://src/sim/registry.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Water = preload("res://src/sim/water.gd")
 const S := State.SCALE
@@ -33,7 +32,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.frame += 1
 	if Damage.prepare(state):
 		Damage.respawn(state, world)
-	Enemies.advance(state, world, pressed)
+	Registry.advance(state, world, pressed)
 	if state.captured_by:
 		state.camera_x = state.x
 		state.camera_y = state.y - 28 * S
@@ -42,7 +41,6 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if state.hurt:
 		pressed = 0
 		released = 0
-	Springs.advance(state, world)
 	var can_move := Collision.prepare(state, world, PLAYER_BOX)
 	var support := Collision.track_floor(state, world, PLAYER_BOX)
 	state.on_floor = int(support != 0 and state.vy >= 0)
@@ -132,8 +130,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if state.y > world.height + 96 * S:
 		Damage.respawn(state, world)
 	Water.finish(state, world)
-	Springs.contact(state, action, world)
-	Enemies.contact(state, action, world)
+	Registry.contact(state, action, world)
 	Damage.recover(state)
 	# Store the desired focus only. View-size-dependent clamping belongs to the view.
 	state.camera_x = state.x
@@ -143,15 +140,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		state.movement = 3 if state.vy < 0 else 4
 	if state.flutter_remaining:
 		state.movement = 6
-	for goal: Array in world.goals:
-		if (
-			state.x + 12 * S > goal[0] - 8 * S
-			and state.x - 12 * S < goal[0] + 8 * S
-			and state.y > goal[1] - 8 * S
-			and state.y - 56 * S < goal[1] + 8 * S
-		):
-			state.goal_reached = 1
-			state.movement = 5
+	if state.goal_reached:
+		state.movement = 5
 
 
 static func approach(value: int, target: int, amount: int) -> int:
