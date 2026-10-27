@@ -1,6 +1,6 @@
 extends RefCounted
-## Built-in and optional external graphics packs share the v2 loader contract.
-const VERSION := 2
+## Pack metadata is presentation input only. Version 2 remains readable.
+const VERSION := 3
 const DEFAULT_PATH := "res://packs/pantry"
 
 
@@ -13,16 +13,9 @@ static func read(path: String) -> Dictionary:
 	if not manifest is Dictionary:
 		printerr("Invalid asset pack manifest; using placeholders")
 		return {}
-	if manifest.get("version") != VERSION:
-		printerr(
-			(
-				(
-					"Unsupported asset pack version %s; expected %d. "
-					+ "Provide a version 2 graphics pack; using placeholders"
-				)
-				% [str(manifest.get("version")), VERSION]
-			)
-		)
+	var version: Variant = manifest.get("version")
+	if not number_ok(version) or version != 2 and version != VERSION:
+		printerr("Unsupported asset pack version; expected 2 or 3; using placeholders")
 		return {}
 	if (
 		not manifest.get("tiles") is Dictionary
@@ -37,9 +30,104 @@ static func read(path: String) -> Dictionary:
 	if not drawing is Dictionary or not drawing.get("tilemaps") is Dictionary:
 		printerr("Invalid asset pack drawing facts; using placeholders")
 		return {}
-	for name: String in manifest.tiles:
-		if not drawing.tilemaps.has(name) or not drawing.tilemaps[name].get("instances") is Array:
-			printerr("Missing asset pack draw slots; using placeholders")
-			return {}
+	for name: Variant in drawing.tilemaps.keys():
+		if not slots_ok(drawing.tilemaps[name]):
+			drawing.tilemaps.erase(name)
+	for name: Variant in manifest.tiles.keys():
+		if (
+			not safe_file(manifest.tiles[name])
+			or not drawing.tilemaps.get(name) is Dictionary
+			or not drawing.tilemaps[name].get("instances") is Array
+		):
+			manifest.tiles.erase(name)
+	for name: Variant in manifest.player.keys():
+		if not animation_ok(manifest.player[name]):
+			manifest.player.erase(name)
+	for section: String in ["objects", "backgrounds", "gradients", "hud", "fonts", "audio"]:
+		if not manifest.get(section, {}) is Dictionary:
+			printerr("Invalid optional pack section: " + section)
+			manifest[section] = {}
+	var objects: Dictionary = manifest.get("objects", {})
+	for code: Variant in objects.keys():
+		if not visual_ok(objects[code]):
+			objects.erase(code)
+	for section: String in ["background", "supports"]:
+		if not manifest.has(section):
+			continue
+		var value: Variant = manifest[section]
+		var keys := (
+			["wall", "counter", "cabinet"] if section == "background" else ["shelf", "bracket"]
+		)
+		if not value is Dictionary:
+			manifest.erase(section)
+			continue
+		for key: String in keys:
+			if not safe_file(value.get(key)):
+				manifest.erase(section)
+				break
 	manifest["drawing"] = drawing
 	return manifest
+
+
+static func slots_ok(value: Variant) -> bool:
+	if not value is Dictionary or not value.get("instances") is Array:
+		return false
+	for slot: Variant in value.instances:
+		if (
+			not slot is Dictionary
+			or not slot.get("layer") is String
+			or not number_ok(slot.get("layer_index"))
+			or not number_ok(slot.get("z_order"))
+		):
+			return false
+	return true
+
+
+static func safe_file(value: Variant) -> bool:
+	return (
+		value is String
+		and not value.is_empty()
+		and not value.is_absolute_path()
+		and not ":" in value
+		and not "\\" in value
+		and not ".." in value.split("/")
+	)
+
+
+static func point_ok(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and number_ok(value[0]) and number_ok(value[1])
+
+
+static func number_ok(value: Variant) -> bool:
+	return (value is float or value is int) and is_finite(float(value))
+
+
+static func animation_ok(value: Variant) -> bool:
+	if not value is Dictionary or not value.get("frames") is Array or value.frames.is_empty():
+		return false
+	var fps: Variant = value.get("fps", value.get("speed", 0))
+	if not number_ok(fps) or fps < 0 or not value.get("loop", true) is bool:
+		return false
+	for frame: Variant in value.frames:
+		if (
+			not frame is Dictionary
+			or not safe_file(frame.get("file"))
+			or not point_ok(frame.get("origin", value.get("origin", [0, 0])))
+			or not number_ok(frame.get("duration", 1))
+			or frame.get("duration", 1) <= 0
+		):
+			return false
+	return true
+
+
+static func visual_ok(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	if not value.has("animations"):
+		return safe_file(value.get("file")) and point_ok(value.get("origin", [0, 0]))
+	if not value.get("animations") is Dictionary or value.animations.is_empty():
+		return false
+	for animation: Variant in value.animations.values():
+		if not animation_ok(animation):
+			return false
+	return true
