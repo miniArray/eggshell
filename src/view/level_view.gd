@@ -10,10 +10,16 @@ const Dressing = preload("res://src/view/pack_dressing.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
 const Background = preload("res://src/view/pack_background.gd")
 const AudioMap = preload("res://src/view/pack_audio.gd")
+const Maps = preload("res://src/sim/maps.gd")
+const Effects = preload("res://src/view/map_effects.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
 var audio := AudioMap.new()
 var _world: Dictionary
+var _level_world: Dictionary
+var _pack_path := ""
+var _built_map := 0
+var _effects := Effects.new()
 var _root := Node2D.new()
 var _player := Sprite2D.new()
 var _animations := {}
@@ -27,11 +33,36 @@ var _recovery_marker := Sprite2D.new()
 
 
 func setup(world: Dictionary, pack: String) -> void:
+	_level_world = world
+	_pack_path = pack
+	if _effects.get_parent() == null:
+		add_child(_effects)
+	_build_map(Maps.map_world(world, int(world.map_index)), pack)
+
+
+func _build_map(world: Dictionary, pack: String) -> void:
+	# Map selection comes from saved state, including restoration into another map.
+	for node: Node in [_player, _background, _recovery_marker]:
+		if is_instance_valid(node) and node.get_parent() == null:
+			node.free()
+	if is_instance_valid(_goal_label):
+		_goal_label.free()
+	if is_instance_valid(_root):
+		_root.free()
+	_root = Node2D.new()
+	_player = Sprite2D.new()
+	_background = Background.new()
+	_recovery_marker = Sprite2D.new()
+	_goal_label = Label.new()
+	_spring_nodes.clear()
+	_enemy_nodes.clear()
+	_head_nodes.clear()
+	_animations = {}
 	_world = world
+	_built_map = int(world.map_index)
 	add_child(_root)
 	var manifest := Pack.read(pack)
-	var source: Dictionary = world.source
-	var map: Dictionary = source.maps["map%d" % int(source.startpoint.map)]
+	var map: Dictionary = world.map_source
 	audio.setup(manifest, pack)
 	_background.setup(manifest, pack, map)
 	_root.add_child(_background)
@@ -62,6 +93,7 @@ func setup(world: Dictionary, pack: String) -> void:
 		tiles.tile_size = Vector2i(layer.size, layer.size)
 		tiles.add_source(atlas, 0)
 		var node := TileMapLayer.new()
+		node.set_meta("tilemap_name", layer.name)
 		node.set_meta("water", bool(layer.water))
 		node.tile_set = tiles
 		node.z_index = layer.slot[0]
@@ -176,16 +208,7 @@ func setup(world: Dictionary, pack: String) -> void:
 	_recovery_marker.z_index = 12
 	_recovery_marker.set_meta("recovery", true)
 	_root.add_child(_recovery_marker)
-	var background := str(world.bgcolor).split(",")
-	if background.size() == 3:
-		var channels := []
-		for channel: String in background:
-			if not channel.is_valid_float() or not is_finite(float(channel)):
-				channels.clear()
-				break
-			channels.append(clampf(float(channel) / 255.0, 0, 1))
-		if channels.size() == 3:
-			RenderingServer.set_default_clear_color(Color(channels[0], channels[1], channels[2]))
+	_goal_label.z_index = 32
 	_goal_label.text = "Goal"
 	_goal_label.visible = false
 	add_child(_goal_label)
@@ -197,6 +220,12 @@ func setup(world: Dictionary, pack: String) -> void:
 
 
 func render(state: Dictionary) -> void:
+	var map_index := int(state.get("map_index", _level_world.initial_map))
+	if map_index != _built_map:
+		var selected := Maps.map_world(_level_world, map_index)
+		if selected.is_empty():
+			return
+		_build_map(selected, _pack_path)
 	var viewport := get_viewport_rect().size
 	var focus := Vector2(state.camera_x, state.camera_y) / State.SCALE
 	var plan := Plan.plan(viewport, Vector2(_world.width, _world.height) / State.SCALE, focus)
@@ -260,6 +289,7 @@ func render(state: Dictionary) -> void:
 	_goal_label.visible = bool(state.goal_reached or state.separated)
 	_goal_label.text = "Goal" if state.goal_reached else "Recover: %d" % state.health
 	_goal_label.position = Vector2(8, 8)
+	_effects.update(_root, _player, _world, state, plan, viewport)
 
 
 func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:

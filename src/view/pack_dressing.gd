@@ -233,7 +233,7 @@ static func brace(
 static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dictionary) -> void:
 	# Objects without simulated behaviour still appear; touching them does nothing yet.
 	var source: Dictionary = world.source
-	var map: Dictionary = source.maps["map%d" % int(source.startpoint.map)]
+	var map: Dictionary = world.get("map_source", source.maps["map%d" % int(source.startpoint.map)])
 	for object: Dictionary in map.objects.values():
 		var code: String = object.A
 		if code in SIMULATED:
@@ -242,6 +242,8 @@ static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dict
 		if art.is_empty():
 			continue
 		var node := sprite(art, 7 if code.begins_with("d") else 8)
+		node.set_meta("placed_code", code)
+		node.set_meta("placed_source", object)
 		node.position = Vector2(float(object.X), float(object.Y))
 		node.rotation_degrees = float(object.get("R", 0))
 		node.flip_h = int(object.get("M", 0)) == 1

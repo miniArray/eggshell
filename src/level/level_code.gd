@@ -21,9 +21,17 @@ static func parse(code: String) -> Dictionary:
 	if not parsed.ok:
 		return parsed
 	var level: Dictionary = parsed.value
+	# An absent author can be exported as numeric zero. Keep display text usable.
+	if _number(level.get("author")):
+		level.author = String.num(float(level.author)).trim_suffix(".0")
 	for field in ["version", "name", "desc", "author"]:
 		if not level.get(field) is String:
 			return _error("Level.%s must be a string" % field)
+	for field: String in ["flowers", "redcoins"]:
+		var value: Variant = level.get(field, 0)
+		if not _number(value) or value < -0x80000000 or value > 0x7fffffff or floor(value) != value:
+			return _error("Level.%s must be a bounded integer" % field)
+		level[field] = int(value)
 	if not level.get("startpoint") is Dictionary:
 		return _error("Level.startpoint must be an object")
 	var start: Dictionary = level.startpoint
@@ -37,6 +45,11 @@ static func parse(code: String) -> Dictionary:
 		return _error("Level.startpoint references a missing map")
 	var total_cells := 0
 	for map_name: String in level.maps:
+		var map_number := map_name.trim_prefix("map")
+		if not map_name.begins_with("map") or not map_number.is_valid_int():
+			return _error("Map keys must use map followed by a positive integer")
+		if int(map_number) < 1 or str(int(map_number)) != map_number:
+			return _error("Map keys must use map followed by a positive integer")
 		if not level.maps[map_name] is Dictionary:
 			return _error("%s must be an object" % map_name)
 		var map: Dictionary = level.maps[map_name]
@@ -50,6 +63,7 @@ static func parse(code: String) -> Dictionary:
 				return _error("%s.objects.%s must have a string A" % [map_name, object_id])
 			if not _number(object.get("X")) or not _number(object.get("Y")):
 				return _error("%s.objects.%s must have finite X and Y" % [map_name, object_id])
+		_normalize_objects(map.objects, level.version)
 		for layer_name in ["layer1", "layer2", "layer3"]:
 			if not map.has(layer_name):
 				continue
@@ -68,6 +82,27 @@ static func parse(code: String) -> Dictionary:
 				layer[tilemap_name] = tile_result.tilemap
 				total_cells += tile_result.tilemap.cells.size()
 	return {"ok": true, "level": level}
+
+
+static func revision(version: String) -> Array[int]:
+	var result: Array[int] = []
+	if not version.begins_with("s"):
+		return result
+	for part: String in version.substr(1).split("."):
+		if not part.is_valid_int() or int(part) < 0:
+			return []
+		result.append(int(part))
+	return result
+
+
+static func _normalize_objects(objects: Dictionary, version: String) -> void:
+	# This legacy gate compares writer strings, not numeric revision components.
+	if version >= "s3.8":
+		return
+	for object: Dictionary in objects.values():
+		if object.A == "o14" and object.get("E1", "") == "1":
+			object.F = 1
+			object.erase("E1")
 
 
 static func decode_tilemap(code: String, remaining_cells: int = MAX_CELLS) -> Dictionary:
