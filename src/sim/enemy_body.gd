@@ -10,6 +10,7 @@ const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const FREE := 0
 const HELD := 1
@@ -28,7 +29,9 @@ const FIELDS := [
 	["mirror", 0],
 	["spawn_x", 0],
 	["spawn_y", 0],
-	["started", 0]
+	["started", 0],
+	["frozen", 0],
+	["thaw_ticks", 0]
 ]
 static var _registry: Script = null
 
@@ -350,6 +353,9 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.vy >= Options.MIN_VERTICAL
 		and entity.vy <= Options.MAX_VERTICAL
 		and not (entity.held and entity.spat)
+		and entity.frozen in [0, 1]
+		and entity.thaw_ticks >= 0
+		and entity.thaw_ticks <= Elements.THAW_TICKS * entity.frozen
 	)
 
 

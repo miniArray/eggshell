@@ -489,8 +489,9 @@ func _melon_checks() -> void:
 	check(seen_seed, "Holding use spits seeds")
 	check(state.move_ammo_count < 30, "Spitting spends seeds")
 	check(target.status == Registry.DEFEATED, "A seed defeats the walker in its path")
-	check(_degrades("o25", {"F": 3}), "A fire melon is not built yet and becomes a placeholder")
-	check(_degrades("o25", {"F": 6}), "An ice melon is not built yet and becomes a placeholder")
+	check(not _degrades("o25", {"F": 3}), "A fire melon is built")
+	check(not _degrades("o25", {"F": 8}), "An ice melon is built")
+	check(_degrades("o25", {"F": 9}), "An unknown melon form becomes a placeholder")
 
 
 func _balloon_checks() -> void:

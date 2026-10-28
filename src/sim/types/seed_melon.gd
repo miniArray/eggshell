@@ -1,13 +1,14 @@
 extends RefCounted
 ## A melon that falls to the ground and waits to be eaten. Eating a plain melon
-## loads the player with seeds to spit. The fire and ice melon forms are not
-## built yet.
+## loads the player with seeds to spit; forms 3 to 5 load fire and forms 6 to 8
+## load ice, three, one or nine shots by size.
 
 const S := preload("res://src/sim/units.gd").SCALE
 const Moves = preload("res://src/sim/moves.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Life = preload("res://src/sim/life.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const CODES := ["o25"]
 const STEP_PHASE := 0
 const CONTACT_PHASE := -1
@@ -23,8 +24,8 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "Invalid melon form"}
 	if form < 0:
 		return {"ok": false, "error": "Invalid melon form"}
-	if form > 2:
-		return {"ok": false, "degrade": true, "error": "fire or ice melon F=%d" % form}
+	if form > Elements.LAST_MELON:
+		return {"ok": false, "degrade": true, "error": "melon form F=%d" % form}
 	return {"ok": true}
 
 
@@ -51,12 +52,20 @@ static func step(entity: Dictionary, _state: Dictionary, world: Dictionary) -> v
 static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) -> int:
 	if entity.held or entity.status != 1 or Life.blocks_step(state):
 		return 0
-	if Moves.catch_item(state, entity.token, 0, Moves.SEED, SEEDS[entity.form], 1):
+	var ammo := ammunition(entity.form)
+	if Moves.catch_item(state, entity.token, 0, ammo[0], ammo[1], 1):
 		entity.held = 1
 		entity.vy = 0
 		entity.request_cursor = state.move_emit_serial
 		return 1
 	return 0
+
+
+## `[ammunition kind, count]` loaded by eating one melon form.
+static func ammunition(form: int) -> Array:
+	if form < SEEDS.size():
+		return [Moves.SEED, SEEDS[form]]
+	return Elements.melon_ammo(form)
 
 
 static func consume_requests(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
@@ -80,7 +89,7 @@ static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 static func valid(entity: Dictionary) -> bool:
 	return (
 		entity.form >= 0
-		and entity.form < SEEDS.size()
+		and entity.form <= Elements.LAST_MELON
 		and entity.held in [0, 1]
 		and entity.request_cursor >= 0
 	)
