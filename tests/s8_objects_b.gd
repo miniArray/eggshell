@@ -22,6 +22,7 @@ func _initialize() -> void:
 	soft_walker_checks()
 	soft_giant_checks()
 	gust_checks()
+	dice_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -77,7 +78,9 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 
 
 func registration_checks() -> void:
-	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24", "e33"]:
+	for code: String in [
+		"p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24", "e33", "o33", "o34"
+	]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
 	for pair: Array in [
@@ -444,6 +447,51 @@ func gust_checks() -> void:
 	type.contact(up, state, world, 0)
 	check(state.invulnerable > 0, "Touching it from below hurts")
 	check(_degrades("e33", {"M": 3}), "An unknown mirror becomes a placeholder")
+
+
+func dice_checks() -> void:
+	var world := _world_for(
+		{
+			"switch": _place("o33", 300, 120, {"E1": "255", "E2": "0", "E3": "0", "E4": "1"}),
+			"solid": _place("o34", 400, 200, {"E4": "1", "F": 1}),
+			"outline": _place("o34", 432, 200, {"E4": "1"}),
+			"other": _place("o34", 600, 200, {"E4": "2", "F": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 900 * S
+	state.y = 500 * S
+	var type: Script = Registry.lookup("o34")
+	var solid := _by_id(state, "solid")
+	var outline := _by_id(state, "outline")
+	check(not type.solid_box(solid).is_empty(), "F 1 starts as a solid dice block")
+	check(type.solid_box(outline).is_empty(), "A missing F starts as a passable outline")
+	var switch := _by_id(state, "switch")
+	check(type.trigger(switch, state, world), "A struck switch toggles its group")
+	check(type.solid_box(solid).is_empty(), "The solid block becomes an outline")
+	check(not type.solid_box(outline).is_empty(), "The outline becomes solid")
+	check(not type.solid_box(_by_id(state, "other")).is_empty(), "Other groups stay put")
+	check(switch.on == 1 and switch.busy == 12, "The switch shows its toggled face and lifts")
+	check(not type.trigger(switch, state, world), "A lifting switch ignores another strike")
+	for _tick in 12:
+		type.step(switch, state, world)
+	state.x = 400 * S
+	state.y = 210 * S
+	check(type.trigger(switch, state, world), "A returned switch can be struck again")
+	check(
+		type.solid_box(solid).is_empty() and solid.on == 0,
+		"A block that turns solid under the player waits for the player to leave"
+	)
+	state.x = 900 * S
+	type.step(solid, state, world)
+	check(not type.solid_box(solid).is_empty(), "Once the player leaves, it is solid")
+	var egg := {"code": "o7", "x": 300 * S}
+	for _tick in 12:
+		type.step(switch, state, world)
+	check(type.projectile_contact(switch, egg, state, world) == 1, "An egg on a switch is consumed")
+	check(outline.on == 0 and solid.on == 1, "An egg strike toggles the group")
+	check(type.projectile_contact(solid, egg, state, world) == 0, "Eggs pass through outlines")
+	check(_degrades("o34", {"F": 2}), "An unknown dice block form becomes a placeholder")
 
 
 func snapshot_checks() -> void:

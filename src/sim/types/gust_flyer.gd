@@ -142,7 +142,7 @@ static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 		"visible": entity.held == 0,
 		"rotation": float(sprite) / 1000.0,
 		# Upright when travelling rightward or straight down, mirrored otherwise.
-		"flip_x": int(not (sprite >= 1000 and sprite <= 180000))
+		"flip_x": not (sprite >= 1000 and sprite <= 180000)
 	}
 
 
