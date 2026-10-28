@@ -59,6 +59,8 @@ const TYPES := [
 	preload("res://src/sim/types/ride_hound.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
+const Collision = preload("res://src/sim/collision.gd")
+const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
 const MAX_DYNAMIC_SERIAL := 0x7fffffffffffffff - TOKEN_BASE
@@ -94,32 +96,70 @@ const COMMON_FIELDS := [
 ]
 
 static var _ordered_level_fields := compose_level_schema()
+# Dispatch caches. Types and their constants never change at run time, so these
+# answer exactly what a scan of TYPES and get_script_constant_map() would.
+static var _by_code := compose_lookup()
+static var _enemy_codes := {}
 # Each code's ordered schema is composed once and shared read-only.
 static var _fields_by_code := {}
+static var _facts_by_code := {}
 
 
 static func lookup(code: String) -> Script:
+	return _by_code.get(code, Inert)
+
+
+## Per-code dispatch facts for the per-entity loops: the type, its phases and which
+## optional hooks it has. Read once per code; the answers equal lookup(),
+## phase_for() and has_method() on the type.
+static func facts(code: String) -> Dictionary:
+	var cached: Variant = _facts_by_code.get(code)
+	if cached == null:
+		var type := lookup(code)
+		cached = {
+			"type": type,
+			"step_phase": phase_for(type, "STEP_PHASE", 0),
+			"contact_phase":
+			phase_for(type, "CONTACT_PHASE", 1) if type.has_method("contact") else -1,
+			"consume": type.has_method("consume_requests"),
+			"finished": type.has_method("finished"),
+			"toggle": type.has_method("toggle"),
+		}
+		_facts_by_code[code] = cached
+	return cached
+
+
+## The first type in TYPES that lists a code wins, as the original linear scan did.
+static func compose_lookup() -> Dictionary:
+	var result := {}
 	for type: Script in TYPES:
-		if code in type.CODES:
-			return type
-	return Inert
+		for code: String in type.CODES:
+			if not result.has(code):
+				result[code] = type
+	return result
+
+
+## A type's script constant, read once per type. Callers must not mutate the value.
+static func constant(type: Script, key: String, fallback: Variant = null) -> Variant:
+	return Constants.read(type, key, fallback)
 
 
 static func implemented(code: String) -> bool:
 	return lookup(code) != Inert
 
 
+## The shared, read-only field schema of a code. Copy it before changing it.
 static func fields(code: String) -> Array:
 	var cached: Variant = _fields_by_code.get(code)
-	if cached != null:
-		return cached
-	var result := COMMON_FIELDS.duplicate(true)
-	result.append_array(lookup(code).FIELDS.duplicate(true))
-	for pair: Array in result:
-		pair.make_read_only()
-	result.make_read_only()
-	_fields_by_code[code] = result
-	return result
+	if cached == null:
+		var result := COMMON_FIELDS.duplicate(true)
+		result.append_array(lookup(code).FIELDS.duplicate(true))
+		for pair: Array in result:
+			pair.make_read_only()
+		result.make_read_only()
+		_fields_by_code[code] = result
+		cached = result
+	return cached
 
 
 static func level_fields() -> Array:
@@ -183,10 +223,16 @@ static func consume_requests(state: Dictionary, world: Dictionary) -> void:
 	for type: Script in TYPES:
 		if type.has_method("consume_level_requests"):
 			type.consume_level_requests(state, world)
+	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
-		if type.has_method("consume_requests"):
-			type.consume_requests(entity, state, world)
+		var known: Dictionary = facts(entity.code)
+		if known.consume:
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
+			known.type.consume_requests(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 
 
 static func codes() -> Array[String]:
@@ -342,7 +388,7 @@ static func spawn_dynamic(
 	state: Dictionary, world: Dictionary, code: String, x: int, y: int, options: Dictionary
 ) -> Dictionary:
 	var type := lookup(code)
-	if type == Inert or not type.get_script_constant_map().get("DYNAMIC", false):
+	if type == Inert or not constant(type, "DYNAMIC", false):
 		return spawn_error("Object type does not permit runtime creation: " + code)
 	if not state.get("dynamic_serial") is int or state.dynamic_serial < 1:
 		return spawn_error("Invalid runtime creation serial")
@@ -444,14 +490,14 @@ static func compact(state: Dictionary) -> void:
 		captor_token = state.enemies[state.captured_by - 1].token
 	var remaining := []
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
+		var known: Dictionary = facts(entity.code)
 		if (
 			entity.source_index == -1
 			and entity.status == DEFEATED
 			and entity.token != state.get("move_held_id", 0)
 			and entity.token != captor_token
 			and entity.get("held", 0) != 1
-			and (not type.has_method("finished") or type.finished(entity))
+			and (not known.finished or known.type.finished(entity))
 		):
 			continue
 		remaining.append(entity)
@@ -473,7 +519,12 @@ static func tongue_contact(state: Dictionary, world: Dictionary, box: Array) -> 
 			continue
 		var result := 0
 		if type.has_method("tongue"):
+			var row: Variant = _solid_row(Collision.solid_rows(world), entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			result = type.tongue(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 		elif phase_for(type, "SOLID", 0) == 1:
 			for solid: Array in solid_boxes(entity, type):
 				if (
@@ -502,10 +553,53 @@ static func solid_boxes(entity: Dictionary, type: Script) -> Array:
 
 static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 	# Switch links are map-wide, not limited to the camera or active entities.
+	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
-		if type.has_method("toggle"):
-			type.toggle(entity, state, world)
+		var known: Dictionary = facts(entity.code)
+		if known.toggle:
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
+			known.type.toggle(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
+
+
+## This step's solid index row for an entity, or null. See Collision.refresh.
+static func _solid_row(solids: Dictionary, entity: Dictionary) -> Variant:
+	if solids.is_empty():
+		return null
+	var row: Variant = solids.get(entity.token)
+	return row if row != null and is_same(row.entity, entity) else null
+
+
+## Entities whose bounds may overlap `box` ([left, top, right, bottom], simulation units),
+## in entity order. Touching edges count, so the result is a superset of strict overlap.
+## It includes every status; callers keep their own status, held and hidden checks.
+## Use it instead of iterating state.entities for an area query.
+static func nearby(state: Dictionary, _world: Dictionary, box: Array) -> Array:
+	var result := []
+	var left: int = box[0]
+	var top: int = box[1]
+	var right: int = box[2]
+	var bottom: int = box[3]
+	for entity: Dictionary in state.entities:
+		var type: Script = _by_code.get(entity.code, Inert)
+		var x: int = entity.x
+		var y: int = entity.y
+		if not type.has_method("bounds"):
+			if x >= left and x <= right and y >= top and y <= bottom:
+				result.append(entity)
+			continue
+		var bounds: Array = type.bounds(entity)
+		if (
+			x + bounds[2] >= left
+			and x + bounds[0] <= right
+			and y + bounds[3] >= top
+			and y + bounds[1] <= bottom
+		):
+			result.append(entity)
+	return result
 
 
 static func overlaps_box(entity: Dictionary, type: Script, box: Array) -> bool:
@@ -609,7 +703,11 @@ static func attach_views(state: Dictionary, reindex: bool = true) -> void:
 
 
 static func is_enemy(code: String) -> bool:
-	return code in Actor.CODES or bool(lookup(code).get_script_constant_map().get("ENEMY", false))
+	var cached: Variant = _enemy_codes.get(code)
+	if cached == null:
+		cached = code in Actor.CODES or bool(constant(lookup(code), "ENEMY", false))
+		_enemy_codes[code] = cached
+	return cached
 
 
 static func source_for(entity: Dictionary, world: Dictionary) -> Dictionary:
@@ -625,7 +723,7 @@ static func source_for(entity: Dictionary, world: Dictionary) -> Dictionary:
 
 
 static func phase_for(type: Script, key: String, fallback: int) -> int:
-	return int(type.get_script_constant_map().get(key, fallback))
+	return int(constant(type, key, fallback))
 
 
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
@@ -634,17 +732,27 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 	for phase in [0, 1]:
 		if phase == 1 and state.captured_by:
 			break
+		var solids := Collision.solid_rows(world)
 		for entity: Dictionary in state.entities:
-			var type := lookup(entity.code)
-			if phase_for(type, "STEP_PHASE", 0) != phase:
+			var known: Dictionary = facts(entity.code)
+			if known.step_phase != phase:
 				continue
+			var type: Script = known.type
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			lifecycle(entity, state, world)
 			if entity.status == ACTIVE:
 				type.step(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if entity.status == DEFEATED or entity.get("held", 0) == 1:
+		return
+	# An active entity that cannot despawn has no transition below; skip the box work.
+	if entity.status == ACTIVE and not entity.can_despawn:
 		return
 	var type := lookup(entity.code)
 	var box := activation_box(entity, type)
@@ -706,18 +814,22 @@ static func activation_box(entity: Dictionary, type: Script) -> Array:
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 	for phase in [0, 1, 2]:
 		for entity: Dictionary in state.entities:
-			var type := lookup(entity.code)
+			var known: Dictionary = facts(entity.code)
 			if (
-				type.has_method("contact")
-				and phase_for(type, "CONTACT_PHASE", 1) == phase
+				known.contact_phase == phase
 				and entity.status == ACTIVE
 				and entity.get("held", 0) != 1
 				and entity.get("hidden", 0) != 1
 			):
-				type.contact(entity, state, world, input)
+				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
+				if row != null:
+					Collision.dispatch_begin(world, row)
+				known.type.contact(entity, state, world, input)
+				if row != null:
+					Collision.dispatch_end(world, row)
 
 
-static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callable) -> void:
+static func goal_convert(state: Dictionary, world: Dictionary, on_coin: Callable) -> void:
 	if not on_coin.is_valid():
 		return
 	for entity: Dictionary in state.entities:
@@ -726,7 +838,7 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 			entity.status != ACTIVE
 			or entity.get("held", 0) == 1
 			or entity.get("hidden", 0) == 1
-			or not type.get_script_constant_map().get("GOAL_COIN", false)
+			or not constant(type, "GOAL_COIN", false)
 		):
 			continue
 		var bounds: Array = type.bounds(entity)
@@ -737,16 +849,17 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 			and entity.y + bounds[1] < state.camera_y + 224 * S
 		):
 			entity.status = DEFEATED
+			Collision.refresh(world, entity)
 			on_coin.call(state)
 
 
 static func valid(entity: Dictionary) -> bool:
 	if not entity.get("code") is String or not entity.get("id") is String:
 		return false
-	var schema := fields(entity.code)
-	if entity.size() != schema.size() + 2:
+	var declared := fields(entity.code)
+	if entity.size() != declared.size() + 2:
 		return false
-	for pair: Array in schema:
+	for pair: Array in declared:
 		if not entity.get(pair[0]) is int:
 			return false
 	for key: String in [
@@ -775,7 +888,7 @@ static func valid(entity: Dictionary) -> bool:
 			serial < 1
 			or entity.token != TOKEN_BASE + serial
 			or not implemented(entity.code)
-			or not lookup(entity.code).get_script_constant_map().get("DYNAMIC", false)
+			or not constant(lookup(entity.code), "DYNAMIC", false)
 			or entity.can_respawn
 			or entity.spawn_mode
 		):

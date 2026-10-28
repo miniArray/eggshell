@@ -1,6 +1,7 @@
 extends RefCounted
 ## Saved food, spit and impact state shared by enemy families.
 
+const Constants = preload("res://src/sim/script_constants.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Damage = preload("res://src/sim/damage.gd")
@@ -29,6 +30,7 @@ const FIELDS := [
 	["spawn_y", 0],
 	["started", 0]
 ]
+static var _registry: Script = null
 
 
 static func create(source: Dictionary) -> Dictionary:
@@ -266,10 +268,7 @@ static func hit_others(
 			continue
 		if overlap(box, world_box(other, type.bounds(other))):
 			var reaction := 0
-			if (
-				type.has_method("projectile_contact")
-				and type.get_script_constant_map().get("ENEMY", false)
-			):
+			if type.has_method("projectile_contact") and Constants.read(type, "ENEMY", false):
 				reaction = type.projectile_contact(other, entity, state, world)
 			elif type.has_method("hit"):
 				type.hit(other, state, world, kind, entity.x)
@@ -306,7 +305,7 @@ static func projectile_kind(projectile: Dictionary) -> int:
 		return Hits.SPIT
 	var registry: Script = registry_for()
 	var type: Script = registry.lookup(projectile.code)
-	return int(type.get_script_constant_map().get("HIT_KIND", Hits.SPIT))
+	return int(Constants.read(type, "HIT_KIND", Hits.SPIT))
 
 
 static func strike_wall(
@@ -324,7 +323,7 @@ static func strike_wall(
 		if other.id == entity.id or other.status != 1:
 			continue
 		var type: Script = registry.lookup(other.code)
-		if type.get_script_constant_map().get("SOLID", 0) != 1 or not type.has_method("hit"):
+		if Constants.read(type, "SOLID", 0) != 1 or not type.has_method("hit"):
 			continue
 		if overlap(box, type.solid_box(other)):
 			type.hit(other, state, world, kind, entity.x)
@@ -357,4 +356,8 @@ static func valid(entity: Dictionary) -> bool:
 static func registry_for(world: Dictionary = {}) -> Script:
 	# Resolve after type loading to avoid a registry/type import cycle.
 	var bound: Variant = Collision.registry_for(world)
-	return bound if bound is Script else load("res://src/sim/registry.gd")
+	if bound is Script:
+		return bound
+	if _registry == null:
+		_registry = load("res://src/sim/registry.gd")
+	return _registry

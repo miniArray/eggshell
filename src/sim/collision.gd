@@ -4,39 +4,224 @@ extends RefCounted
 ## Per-step bindings are rebuilt before object motion, never saved as play facts.
 
 const World = preload("res://src/sim/world.gd")
+const Constants = preload("res://src/sim/script_constants.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const DEFAULT_JUMP := 776 * 60
 const POUND_FALL := 2
+## Solid index cell edge. Probes are actor-sized, so most touch one to four cells.
+const CELL := 128 * S
+## A probe covering more cells than this scans every row, as the unindexed path did.
+const MAX_PROBE_CELLS := 64
+## Tests and the identity proof set this to compare every indexed query with a full scan.
+static var verify_index := false
+static var verify_failures := 0
 
 
 static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -> void:
-	var rows := []
+	var solids := []
 	for entity: Dictionary in state.get("entities", []):
 		var type: Script = registry.lookup(entity.code)
-		var mode := int(type.get_script_constant_map().get("SOLID", 0))
-		if mode not in [1, 2]:
-			continue
-		rows.append(
-			{
-				"entity": entity,
-				"type": type,
-				"mode": mode,
-				"x": entity.x,
-				"y": entity.y,
-				"status": entity.status,
-				"old_boxes": _boxes(type, entity).duplicate(true),
-				"handles": []
-			}
-		)
-	world.solids_step = {
+		var mode := _solid_mode(type)
+		if mode in [1, 2]:
+			solids.append([entity, type, mode])
+	var previous: Dictionary = world.get("solids_step", {})
+	# The same table keeps its index: rows were refiled after every dispatch last step.
+	var reuse := _same_rows(previous, state, registry, solids)
+	var context := {
 		"state": state,
 		"registry": registry,
 		"frame": int(state.get("frame", 0)),
-		"rows": rows,
+		"rows": previous.rows if reuse else [],
 		"shapes": [],
 		"carried": false,
-		"bumps": {}
+		"bumps": {},
+		"grid": previous.grid if reuse else {},
+		"by_token": previous.by_token if reuse else {},
+		"dispatching": []
 	}
+	var rows: Array = context.rows
+	for index in solids.size():
+		var entity: Dictionary = solids[index][0]
+		var boxes := _boxes(solids[index][1], entity)
+		if reuse:
+			var row: Dictionary = rows[index]
+			var moved: bool = row.x != entity.x or row.y != entity.y or row.status != entity.status
+			row.x = entity.x
+			row.y = entity.y
+			row.status = entity.status
+			row.old_boxes = boxes.duplicate(true)
+			row.handles = []
+			if moved or not _inside(row.region, boxes):
+				_place(context, row, boxes)
+			continue
+		var fresh := {
+			"index": index,
+			"entity": entity,
+			"type": solids[index][1],
+			"mode": solids[index][2],
+			"x": entity.x,
+			"y": entity.y,
+			"status": entity.status,
+			"old_boxes": boxes.duplicate(true),
+			"handles": [],
+			"cells": [],
+			"region": []
+		}
+		rows.append(fresh)
+		context.by_token[entity.get("token", -1 - index)] = fresh
+		_place(context, fresh, boxes)
+	if reuse and state.get("modal_token", 0):
+		# The modal holder stepped before this call, outside registry dispatch tracking.
+		var holder: Variant = context.by_token.get(state.modal_token)
+		if holder != null:
+			_place(context, holder, _boxes(holder.type, holder.entity))
+	world.solids_step = context
+
+
+static func _same_rows(
+	previous: Dictionary, state: Dictionary, registry: Script, solids: Array
+) -> bool:
+	if (
+		previous.is_empty()
+		or not is_same(previous.state, state)
+		or previous.registry != registry
+		or previous.rows.size() != solids.size()
+	):
+		return false
+	for index in solids.size():
+		if not is_same(previous.rows[index].entity, solids[index][0]):
+			return false
+	return true
+
+
+static func _inside(region: Array, boxes: Array) -> bool:
+	if region.is_empty():
+		return boxes.is_empty()
+	for box: Array in boxes:
+		if box[0] < region[0] or box[1] < region[1] or box[2] > region[2] or box[3] > region[3]:
+			return false
+	return true
+
+
+static func _solid_mode(type: Script) -> int:
+	return int(Constants.read(type, "SOLID", 0))
+
+
+## Solid index. Each row is filed under the cells of its region: the union of its live
+## boxes and its bounds around its position. A row is refiled at begin_step, after every
+## registry dispatch on its entity and after a bump callback on it. While a dispatch on a
+## row's entity runs, that row is always a candidate, so a solid that moves itself is seen
+## by nested queries. Between dispatches, other code may only shrink or remove a solid's
+## boxes (hits, removal) or enable boxes inside its bounds (switch toggles, which the
+## registry also refiles). Code that moves or enlarges another entity's solid boxes must
+## call refresh(). Every query evaluates candidate boxes live, so results, their order and
+## side effects equal a scan of every row.
+static func refresh(world: Dictionary, entity: Dictionary) -> void:
+	var context := _context(world)
+	if context.is_empty():
+		return
+	var row: Variant = context.by_token.get(entity.get("token", 0))
+	if row != null and is_same(row.entity, entity):
+		_place(context, row, _boxes(row.type, entity))
+
+
+## The token-to-row map of this step's solids, for registry dispatch bookkeeping.
+static func solid_rows(world: Dictionary) -> Dictionary:
+	var context := _context(world)
+	return context.by_token if not context.is_empty() else {}
+
+
+static func dispatch_begin(world: Dictionary, row: Dictionary) -> void:
+	var context := _context(world)
+	if not context.is_empty():
+		context.dispatching.append(row.index)
+
+
+static func dispatch_end(world: Dictionary, row: Dictionary) -> void:
+	var context := _context(world)
+	if not context.is_empty():
+		context.dispatching.pop_back()
+		_place(context, row, _boxes(row.type, row.entity))
+
+
+static func _place(context: Dictionary, row: Dictionary, boxes: Array) -> void:
+	var entity: Dictionary = row.entity
+	var left := 0
+	var top := 0
+	var right := -1
+	var bottom := -1
+	var empty := true
+	if row.type.has_method("bounds"):
+		var b: Array = row.type.bounds(entity)
+		left = entity.x + mini(b[0], b[2])
+		top = entity.y + mini(b[1], b[3])
+		right = entity.x + maxi(b[0], b[2])
+		bottom = entity.y + maxi(b[1], b[3])
+		empty = false
+	for box: Array in boxes:
+		if empty:
+			left = box[0]
+			top = box[1]
+			right = box[2]
+			bottom = box[3]
+			empty = false
+		else:
+			left = mini(left, box[0])
+			top = mini(top, box[1])
+			right = maxi(right, box[2])
+			bottom = maxi(bottom, box[3])
+	var cells: Array = []
+	if not empty:
+		cells = [
+			World.floor_div(left, CELL),
+			World.floor_div(top, CELL),
+			World.floor_div(right, CELL),
+			World.floor_div(bottom, CELL)
+		]
+	row.region = [left, top, right, bottom] if not empty else []
+	if cells == row.cells:
+		return
+	var grid: Dictionary = context.grid
+	if not row.cells.is_empty():
+		for cy in range(row.cells[1], row.cells[3] + 1):
+			for cx in range(row.cells[0], row.cells[2] + 1):
+				var bucket: Array = grid[_cell_key(cx, cy)]
+				bucket.erase(row.index)
+	row.cells = cells
+	if not cells.is_empty():
+		for cy in range(cells[1], cells[3] + 1):
+			for cx in range(cells[0], cells[2] + 1):
+				var key := _cell_key(cx, cy)
+				if not grid.has(key):
+					grid[key] = []
+				grid[key].append(row.index)
+
+
+static func _cell_key(cx: int, cy: int) -> int:
+	return (cx << 32) ^ (cy & 0xffffffff)
+
+
+## Row indices that may have a box touching the inclusive probe, in row order.
+static func _candidates(context: Dictionary, left: int, top: int, right: int, bottom: int) -> Array:
+	var cx0 := World.floor_div(left, CELL)
+	var cy0 := World.floor_div(top, CELL)
+	var cx1 := World.floor_div(right, CELL)
+	var cy1 := World.floor_div(bottom, CELL)
+	if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > MAX_PROBE_CELLS or right < left or bottom < top:
+		return range(context.rows.size())
+	var found := {}
+	var grid: Dictionary = context.grid
+	for cy in range(cy0, cy1 + 1):
+		for cx in range(cx0, cx1 + 1):
+			var bucket: Variant = grid.get(_cell_key(cx, cy))
+			if bucket != null:
+				for index: int in bucket:
+					found[index] = true
+	for index: int in context.dispatching:
+		found[index] = true
+	var result := found.keys()
+	result.sort()
+	return result
 
 
 static func registry_for(world: Dictionary) -> Script:
@@ -54,7 +239,13 @@ static func overlaps(
 		body.y + bounds[3] + dy
 	):
 		return true
-	for shape: Dictionary in _shapes(world):
+	for shape: Dictionary in _shapes(
+		world,
+		body.x + bounds[0] + dx,
+		body.y + bounds[1] + dy,
+		body.x + bounds[2] + dx,
+		body.y + bounds[3] + dy
+	):
 		if (
 			shape.mode == 1
 			and not is_same(body, shape.row.entity)
@@ -89,7 +280,9 @@ static func bridges_at(body: Dictionary, world: Dictionary, bounds: Array) -> Ar
 	for index in world.bridges.size():
 		if bridge_overlap(body, world.bridges[index], bounds):
 			found.append(index + 1)
-	for shape: Dictionary in _shapes(world):
+	for shape: Dictionary in _shapes(
+		world, body.x + bounds[0], body.y + bounds[1], body.x + bounds[2], body.y + bounds[3]
+	):
 		if (
 			shape.mode == 2
 			and not is_same(body, shape.row.entity)
@@ -111,7 +304,14 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 		body.y + bounds[3] + S
 	):
 		return -1
-	for shape: Dictionary in _shapes(world):
+	var below := _shapes(
+		world,
+		body.x + bounds[0],
+		body.y + bounds[1] + S,
+		body.x + bounds[2],
+		body.y + bounds[3] + S
+	)
+	for shape: Dictionary in below:
 		if (
 			shape.mode == 1
 			and not is_same(body, shape.row.entity)
@@ -122,7 +322,7 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 		var bridge: Dictionary = world.bridges[index]
 		if body.y + bounds[3] <= bridge.top and bridge_overlap(body, bridge, bounds, 0, S):
 			return index + 1
-	for shape: Dictionary in _shapes(world):
+	for shape: Dictionary in below:
 		if (
 			shape.mode == 2
 			and not is_same(body, shape.row.entity)
@@ -299,23 +499,53 @@ static func _boxes(type: Script, entity: Dictionary) -> Array:
 	return boxes
 
 
-static func _shapes(world: Dictionary) -> Array:
+## Live shapes of the rows that may touch the inclusive probe, in row then part order.
+## Shapes outside the probe can appear; every caller tests overlap with this probe.
+static func _shapes(world: Dictionary, left: int, top: int, right: int, bottom: int) -> Array:
 	var context := _context(world)
 	var result := []
 	if context.is_empty():
 		return result
-	for row: Dictionary in context.rows:
+	var rows: Array = context.rows
+	for index: int in _candidates(context, left, top, right, bottom):
+		var row: Dictionary = rows[index]
 		if row.entity.status != 1:
 			continue
 		var boxes := _boxes(row.type, row.entity)
 		for part in boxes.size():
+			# Handles are transient, unique per row part, and only compared for identity.
 			while row.handles.size() <= part:
 				row.handles.append(-2 - context.shapes.size())
 				context.shapes.append({"row": row, "part": row.handles.size() - 1})
 			result.append(
 				{"handle": row.handles[part], "mode": row.mode, "box": boxes[part], "row": row}
 			)
+	if verify_index:
+		_verify(context, result, [left, top, right, bottom])
 	return result
+
+
+## Compares the indexed shapes touching a probe with a scan of every row.
+static func _verify(context: Dictionary, result: Array, probe: Array) -> void:
+	var expected := []
+	for row: Dictionary in context.rows:
+		if row.entity.status != 1:
+			continue
+		var boxes := _boxes(row.type, row.entity)
+		for part in boxes.size():
+			if _touches(boxes[part], probe):
+				expected.append([row.index, part, boxes[part]])
+	var actual := []
+	for shape: Dictionary in result:
+		if _touches(shape.box, probe):
+			actual.append([shape.row.index, shape.row.handles.find(shape.handle), shape.box])
+	if actual != expected:
+		verify_failures += 1
+		push_error("Solid index differs from a full scan at %s" % [probe])
+
+
+static func _touches(box: Array, probe: Array) -> bool:
+	return box[2] >= probe[0] and box[0] <= probe[2] and box[3] >= probe[1] and box[1] <= probe[3]
 
 
 static func _selected(world: Dictionary, handle: int) -> Dictionary:
@@ -375,18 +605,26 @@ static func _carry(body: Dictionary, world: Dictionary, bounds: Array) -> void:
 	if body.vy != 0 or not body.get("on_floor", 0):
 		return
 	for row: Dictionary in context.rows:
-		if row.status != 1 or row.entity.status != 1 or _boxes(row.type, row.entity).is_empty():
-			continue
+		# The cheap old-box test runs first; every condition must hold, so order is free.
+		var supported := false
 		for box: Array in row.old_boxes:
-			if body.y + bounds[3] > box[1] or not _box_overlap(body, bounds, box, 0, S):
-				continue
-			var dx: int = row.entity.x - row.x
-			var dy: int = row.entity.y - row.y
-			body.x += dx
-			body.y += dy
-			if overlaps(body, world, bounds) and (dx or dy):
-				_carry_retreat(body, world, bounds, dx, dy)
-			return
+			if body.y + bounds[3] <= box[1] and _box_overlap(body, bounds, box, 0, S):
+				supported = true
+				break
+		if (
+			not supported
+			or row.status != 1
+			or row.entity.status != 1
+			or _boxes(row.type, row.entity).is_empty()
+		):
+			continue
+		var dx: int = row.entity.x - row.x
+		var dy: int = row.entity.y - row.y
+		body.x += dx
+		body.y += dy
+		if overlaps(body, world, bounds) and (dx or dy):
+			_carry_retreat(body, world, bounds, dx, dy)
+		return
 
 
 static func _carry_retreat(
@@ -438,7 +676,9 @@ static func _bump(
 	if context.is_empty() or not is_same(body, context.state):
 		return
 	var targets := []
-	for shape: Dictionary in _shapes(world):
+	for shape: Dictionary in _shapes(
+		world, body.x + bounds[0], body.y + bounds[1], body.x + bounds[2], body.y + bounds[3]
+	):
 		if shape.mode == 2 and shape.handle != one_way:
 			continue
 		if side == 0 and previous_edge < shape.box[3] or side == 1 and previous_edge > shape.box[1]:
@@ -452,7 +692,9 @@ static func _bump(
 		if context.bumps.has(key) or row.entity.status != 1:
 			continue
 		context.bumps[key] = true
+		dispatch_begin(world, row)
 		row.type.bump(row.entity, context.state, world, side)
+		dispatch_end(world, row)
 
 
 static func support_in_box(
@@ -470,7 +712,7 @@ static func support_in_box(
 			return true
 	var probe := {"x": 0, "y": 0}
 	var bounds := [left, top, right, bottom]
-	for shape: Dictionary in _shapes(world):
+	for shape: Dictionary in _shapes(world, left, top, right, bottom):
 		if is_same(ignore, shape.row.entity):
 			continue
 		if shape.mode == 2 and top > shape.box[1]:
@@ -501,6 +743,7 @@ static func strike_above(
 			and foot >= box[1] - 2 * S
 		):
 			type.hit(target, state, world, kind, entity.x)
+			refresh(world, target)
 
 
 static func push_out(
