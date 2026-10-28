@@ -100,7 +100,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if entity.mode == THROWN:
 		travel(entity, state, world)
 		if entity.mode == THROWN and entity.status == 1:
-			enter_liquid(entity, world)
+			enter_liquid(entity, state, world)
 	elif entity.mode == SKIP:
 		skip(entity, state, world)
 	elif entity.mode == FALLING:
@@ -108,13 +108,10 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.y += entity.vy
 	elif not entity.floating and Motion.fall(entity, world, bounds(entity), 1600, 576 * 60):
 		entity.vx = 0
-	var box := bounds(entity)
-	for name: String in ["lava", "lava_3"]:
-		if World.named_overlaps(
-			world, name, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-		):
-			remove(entity, state, world, false)
-			return
+	# Thrown and skipping eggs meet lava through their liquid rules instead.
+	if entity.status == 1 and entity.mode not in [THROWN, SKIP] and liquid_at(world, entity) == 2:
+		remove(entity, state, world, false)
+		return
 
 
 static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, _input: int) -> void:
@@ -459,11 +456,18 @@ static func blocked_at(world: Dictionary, box: Array, x: int, y: int, shapes: Ar
 	return false
 
 
-static func enter_liquid(entity: Dictionary, world: Dictionary) -> void:
+static func liquid_at(world: Dictionary, entity: Dictionary) -> int:
 	var box := bounds(entity)
-	if not World.water_overlaps(
-		world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-	):
+	var area := [entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
+	for name: String in ["lava", "lava_3"]:
+		if World.named_overlaps(world, name, area[0], area[1], area[2], area[3]):
+			return 2
+	return int(World.water_overlaps(world, area[0], area[1], area[2], area[3]))
+
+
+static func enter_liquid(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	var kind := liquid_at(world, entity)
+	if kind == 0:
 		return
 	if entity.vx == 0 and entity.vy == 0:
 		return
@@ -474,7 +478,10 @@ static func enter_liquid(entity: Dictionary, world: Dictionary) -> void:
 	elif angle > 150000 and angle < 180000:
 		start_skip(entity, -speed / 2, angle / 3000 + 120)
 	elif angle > 30000 and angle < 150000:
-		settle(entity, -256 * 60, true)
+		if kind == 2:
+			remove(entity, state, world, false)
+		else:
+			settle(entity, -256 * 60, true)
 
 
 static func start_skip(entity: Dictionary, vx: int, ticks: int) -> void:
@@ -498,13 +505,11 @@ static func settle(entity: Dictionary, vy: int, in_liquid: bool) -> void:
 
 
 static func skip(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	# A shallow water entry glides on the surface while its speed eases to zero.
+	# A shallow liquid entry glides on the surface while its speed eases to zero.
 	entity.skip_ticks += 1
 	entity.vx = entity.skip_vx * (entity.skip_total - entity.skip_ticks) / entity.skip_total
 	var box := bounds(entity)
-	if World.water_overlaps(
-		world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-	):
+	if liquid_at(world, entity) != 0:
 		entity.vy = -256 * 60
 	else:
 		entity.vy = mini(704 * 60, entity.vy + 1536)
@@ -522,13 +527,11 @@ static func skip(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		settle(entity, -256 * 60, false)
 		return
 	if entity.skip_ticks >= entity.skip_total:
-		settle(
-			entity,
-			0,
-			World.water_overlaps(
-				world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-			)
-		)
+		var kind := liquid_at(world, entity)
+		if kind == 2:
+			remove(entity, state, world, false)
+			return
+		settle(entity, 0, kind == 1)
 	if entity.x == x and entity.vx != 0:
 		entity.skip_ghost = 1
 

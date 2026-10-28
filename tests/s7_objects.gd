@@ -659,7 +659,9 @@ func egg_terrain_checks() -> void:
 		Collision.begin_step(state, ground_world, Registry)
 		type.travel(egg, state, ground_world)
 	check(egg.bounces == 3, "A floor ricochet spends one hit")
-	check(egg.vx > 600 * 60 and egg.vy < -600 * 60, "A diagonal floor hit keeps its run and turns up")
+	check(
+		egg.vx > 600 * 60 and egg.vy < -600 * 60, "A diagonal floor hit keeps its run and turns up"
+	)
 	var pool := _world_for({})
 	var water := []
 	for index in 64:
@@ -693,6 +695,33 @@ func egg_terrain_checks() -> void:
 		egg.mode == type.STATIONARY and egg.despawn_ticks > 470,
 		"A steep water entry sinks and starts the 8 s removal"
 	)
+	var hot := _world_for({})
+	var molten := []
+	for index in 64 * 16:
+		molten.append(0 if index >= 64 * 4 else -1)
+	var lava := _tile_layer("lava", molten, 64, [0, 0, 32, 0, 32, 32, 0, 32], true)
+	lava.water = false
+	hot.layers = [lava]
+	state = State.create(hot)
+	state.x = 2000 * S
+	egg = _thrown_egg(state, hot, 40 * S, 120 * S, 1000 * 60, 200 * 60)
+	for tick in 3:
+		Collision.begin_step(state, hot, Registry)
+		type.step(egg, state, hot)
+	check(egg.mode == type.SKIP and egg.status == 1, "A shallow lava entry skips first")
+	for tick in 240:
+		if egg.status == 1:
+			Collision.begin_step(state, hot, Registry)
+			type.step(egg, state, hot)
+	check(egg.status == Registry.DEFEATED and egg.loot_created == 0, "The skip ends by burning")
+	state = State.create(hot)
+	state.x = 2000 * S
+	egg = _thrown_egg(state, hot, 100 * S, 100 * S, 200 * 60, 1000 * 60)
+	for tick in 3:
+		if egg.status == 1:
+			Collision.begin_step(state, hot, Registry)
+			type.step(egg, state, hot)
+	check(egg.status == Registry.DEFEATED, "A steep lava entry burns the egg")
 
 
 func _hound_world(extra: Dictionary) -> Dictionary:
