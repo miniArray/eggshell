@@ -3,13 +3,13 @@ extends Node
 
 const World = preload("res://src/sim/world.gd")
 const State = preload("res://src/sim/play_state.gd")
-const Sim = preload("res://src/sim/step.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Store = preload("res://src/save/store.gd")
 const Settings = preload("res://src/save/settings.gd")
 const View = preload("res://src/view/level_view.gd")
 const AudioPlayer = preload("res://src/view/audio_player.gd")
+const FrameLoop = preload("res://src/view/frame_loop.gd")
 const CollisionTable = preload("res://src/level/collision_table.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
 const FrameLogger = preload("res://src/diag/frame_log.gd")
@@ -30,6 +30,7 @@ var _shutdown_request := ""
 var _profile_file: FileAccess
 var _sim_usec := 0
 var _slot_bytes := PackedByteArray()
+var _loop := FrameLoop.new()
 
 
 func _ready() -> void:
@@ -85,8 +86,13 @@ func _ready() -> void:
 	_view = View.new()
 	add_child(_view)
 	_view.setup(world, pack)
+	_view.zoom = int(settings.zoom)
 	_audio = AudioPlayer.create(_view.audio, world, settings, _options.has("mute"))
 	add_child(_audio)
+	_loop.smooth = FrameLoop.wants_smooth(
+		_options.get("smooth", "auto"), DisplayServer.screen_get_refresh_rate()
+	)
+	print("EGGSHELL_SMOOTH ", "on" if _loop.smooth else "off")
 	if not _setup_diagnostics():
 		return
 	_start_usec = Time.get_ticks_usec()
@@ -139,6 +145,7 @@ func _level_code() -> String:
 func _physics_process(_delta: float) -> void:
 	if not _initialized or _closing:
 		return
+	_loop.tick()
 	if not _shutdown_request.is_empty() and FileAccess.file_exists(_shutdown_request):
 		_closing = true
 		get_tree().quit()
@@ -151,11 +158,10 @@ func _physics_process(_delta: float) -> void:
 	else:
 		input = action_mask()
 	var began := Time.get_ticks_usec() if _profile_file != null else 0
-	Sim.advance(state, input, world)
+	# Sound follows each saved step inside the loop; it reads state and never writes it.
+	_loop.step(state, input, world, _audio)
 	if _profile_file != null:
 		_sim_usec += Time.get_ticks_usec() - began
-	# Sound follows each saved step; it reads state and never writes it.
-	_audio.observe(state)
 	if _options.has("trace"):
 		print("EGGSHELL_TICK ", state.frame)
 	if state.frame % 60 == 0 and not state.goal_reached and _resume:
@@ -177,8 +183,12 @@ func _process(_delta: float) -> void:
 	if not _shutdown_request.is_empty() and FileAccess.file_exists(_shutdown_request):
 		_closing = true
 		get_tree().quit()
+	_zoom_input()
 	var began := Time.get_ticks_usec() if _profile_file != null else 0
-	_view.render(state)
+	# Pictures blend saved states between fixed steps; the view never writes state.
+	_view.render(
+		_loop.picture(state, Engine.get_physics_interpolation_fraction(), is_physics_processing())
+	)
 	if _profile_file != null:
 		_profile_file.store_line(
 			(
@@ -216,6 +226,31 @@ func _process(_delta: float) -> void:
 		_screen_wait += 1
 		if _screen_wait == 3:
 			capture.call_deferred()
+
+
+func _zoom_input() -> void:
+	var step := (
+		int(Input.is_action_just_pressed("zoom_in")) - int(Input.is_action_just_pressed("zoom_out"))
+	)
+	var reset := Input.is_action_just_pressed("zoom_reset")
+	if step == 0 and not reset:
+		return
+	var plan: Dictionary = _view.plan
+	var target := 0
+	if not reset:
+		target = clampi(
+			int(plan.get("zoom", _view.zoom)) + step,
+			int(plan.get("zoom_min", -Settings.ZOOM_LIMIT)),
+			int(plan.get("zoom_max", Settings.ZOOM_LIMIT))
+		)
+	target = clampi(target, -Settings.ZOOM_LIMIT, Settings.ZOOM_LIMIT)
+	if target == _view.zoom:
+		return
+	_view.zoom = target
+	print("EGGSHELL_ZOOM ", target)
+	var error := Settings.save_zoom(_save_dir, target)
+	if not error.is_empty():
+		printerr(error)
 
 
 func capture() -> void:
@@ -264,6 +299,7 @@ func load_slot(slot: String) -> void:
 	var loaded := Snapshot.decode(bytes, world.identity, world)
 	if loaded.ok:
 		state = loaded.state
+		_loop.restored()
 		print("EGGSHELL_RESUME ", slot, " ", state.frame)
 	else:
 		printerr("Ignoring ", slot, ": ", loaded.error)
@@ -316,7 +352,10 @@ func setup_input() -> void:
 		"load": [KEY_F9],
 		"slot_modifier": [],
 		"slot_save": [],
-		"slot_load": []
+		"slot_load": [],
+		"zoom_in": [KEY_EQUAL, KEY_KP_ADD],
+		"zoom_out": [KEY_MINUS, KEY_KP_SUBTRACT],
+		"zoom_reset": [KEY_0, KEY_KP_0]
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -338,7 +377,8 @@ func setup_input() -> void:
 		"aim_lock": [JOY_BUTTON_RIGHT_SHOULDER],
 		"slot_modifier": [JOY_BUTTON_BACK],
 		"slot_save": [JOY_BUTTON_LEFT_SHOULDER],
-		"slot_load": [JOY_BUTTON_RIGHT_SHOULDER]
+		"slot_load": [JOY_BUTTON_RIGHT_SHOULDER],
+		"zoom_reset": [JOY_BUTTON_RIGHT_STICK]
 	}
 	for action: String in buttons:
 		for button: int in buttons[action]:
@@ -354,6 +394,13 @@ func setup_input() -> void:
 		vertical.axis = JOY_AXIS_LEFT_Y
 		vertical.axis_value = direction
 		InputMap.action_add_event("move_up" if direction < 0 else "move_down", vertical)
+		# The right stick is free; a firm push zooms one step.
+		var zoom := InputEventJoypadMotion.new()
+		zoom.axis = JOY_AXIS_RIGHT_Y
+		zoom.axis_value = direction
+		InputMap.action_add_event("zoom_in" if direction < 0 else "zoom_out", zoom)
+	for action: String in ["zoom_in", "zoom_out"]:
+		InputMap.action_set_deadzone(action, 0.6)
 
 
 static func action_mask() -> int:

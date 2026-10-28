@@ -19,7 +19,13 @@ const Hud = preload("res://src/view/hud.gd")
 const TerrainStrips = preload("res://src/view/terrain_strips.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
+## Tint for placed enemies that the simulation has not activated (see docs/graphics.md).
+const INACTIVE_TINT := Color(0.6, 0.6, 0.6, 0.55)
 var audio := AudioMap.new()
+## Whole-number zoom step on top of the container fit. ScreenPlan clamps it.
+var zoom := 0
+## The camera plan used for the last rendered frame.
+var plan: Dictionary = {}
 var _world: Dictionary
 var _level_world: Dictionary
 var _pack_path := ""
@@ -250,10 +256,12 @@ func render(state: Dictionary) -> void:
 				Frames.unsnap(child)
 	var viewport := get_viewport_rect().size
 	var focus := Vector2(state.camera_x, state.camera_y) / State.SCALE
-	var plan := Plan.plan(
-		viewport, Vector2(_world.width, _world.height) / State.SCALE, focus, _density
+	plan = Plan.plan(
+		viewport, Vector2(_world.width, _world.height) / State.SCALE, focus, _density, zoom
 	)
 	_root.scale = Vector2.ONE * plan.scale
+	# HUD art keeps the unzoomed multiple; zoom changes the world only.
+	_root.set_meta("hud_scale", plan.base_scale)
 	# Half-pixel translations can put nearest samples on texel boundaries.
 	_root.position = plan.offset.round()
 	_background.render(plan, state.frame)
@@ -287,6 +295,12 @@ func render(state: Dictionary) -> void:
 		)
 		var node := _enemy_nodes[index]
 		var art: Dictionary = node.get_meta("entity_art", {})
+		var head := _head_nodes[index]
+		if inactive_shown(enemy):
+			present_inactive(node, enemy, type, art)
+			head.visible = false
+			continue
+		node.self_modulate = Color.WHITE
 		var look: Dictionary = (
 			type.view_state(enemy, state)
 			if type.has_method("view_state")
@@ -300,7 +314,6 @@ func render(state: Dictionary) -> void:
 			and not enemy.get("hidden", 0)
 			and look.get("visible", true)
 		)
-		var head := _head_nodes[index]
 		if type.has_method("head_box"):
 			Head.present(head, enemy, state)
 			continue
@@ -336,6 +349,32 @@ func render(state: Dictionary) -> void:
 		for child: Node in _root.get_children():
 			if child is Sprite2D:
 				Frames.snap(child, plan.scale)
+
+
+## Placed enemies that are waiting for activation, or queued to respawn, are drawn
+## still and dimmed at their placement. Defeated rows stay hidden.
+static func inactive_shown(enemy: Dictionary) -> bool:
+	return (
+		int(enemy.get("source_index", -1)) >= 0
+		and not enemy.get("held", 0)
+		and (
+			enemy.status == Registry.WAITING
+			or (enemy.status == Registry.QUEUED and enemy.get("can_respawn", 0))
+		)
+	)
+
+
+func present_inactive(node: Sprite2D, enemy: Dictionary, type: Script, art: Dictionary) -> void:
+	var source: Dictionary = Registry.source_for(enemy, _world)
+	var still := enemy.duplicate()
+	still.x = int(source.get("x", enemy.x))
+	still.y = int(source.get("y", enemy.y))
+	still.facing = 1 if source.get("mirror", 0) == 1 else -1
+	var bounds: Array = type.body_bounds() if type.has_method("body_bounds") else type.bounds(still)
+	Runtime.apply_frame(node, art, 0, int(enemy.get("variant", 0)), {})
+	Runtime.place(node, still, bounds, art, {})
+	node.self_modulate = INACTIVE_TINT
+	node.visible = true
 
 
 func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:

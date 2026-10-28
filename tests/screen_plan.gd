@@ -70,8 +70,56 @@ func _initialize() -> void:
 				plan.offset.is_equal_approx(case[0] / 2 - plan.center * plan.scale),
 				"Offset keeps the clamped center in the container center"
 			)
+	zoom_checks(large_level)
 	print("SCREEN_PLAN_RESULT: %d assertions, %d failures" % [_checks, _failures])
 	quit(1 if _failures else 0)
+
+
+func zoom_checks(large_level: Vector2) -> void:
+	# 1920 by 1080 fits at 2; zoom in stops before fewer than 208 by 112 world pixels.
+	var wide := Plan.plan(Vector2(1920, 1080), large_level, large_level / 2)
+	check(wide.zoom == 0 and wide.base_scale == 2.0, "No zoom keeps the fitted scale")
+	check(wide.zoom_min == -1 and wide.zoom_max == 7, "1920 by 1080 zoom range")
+	for zoom in range(-6, 12):
+		var plan := Plan.plan(Vector2(1920, 1080), large_level, large_level / 2, 1, zoom)
+		check(plan.zoom == clampi(zoom, -1, 7), "Zoom %d clamps into range" % zoom)
+		check(plan.scale == 2.0 + plan.zoom, "Zoom %d changes the multiple by whole steps" % zoom)
+		check(plan.base_scale == 2.0, "Zoom %d keeps the base scale" % zoom)
+		check(
+			plan.visible.x >= 208 and plan.visible.y >= 112, "Zoom %d keeps a minimum view" % zoom
+		)
+	# One screen pixel either side of the zoom-in limit.
+	for case: Array in [[Vector2(2400, 1119), 9], [Vector2(2400, 1120), 10]]:
+		var plan := Plan.plan(case[0], large_level, large_level / 2, 1, 99)
+		check(plan.scale == float(case[1]), "Zoom-in limit at height %d" % case[0].y)
+	# Density keeps every art pixel a whole number of screen pixels.
+	var dense := Plan.plan(Vector2(3840, 2160), large_level, large_level / 2, 2, -99)
+	check(dense.scale == 2.0 and dense.zoom == dense.zoom_min, "Density 2 zooms out to one")
+	var closer := Plan.plan(Vector2(3840, 2160), large_level, large_level / 2, 2, 99)
+	check(int(closer.scale) % 2 == 0 and closer.visible.y >= 112, "Density 2 zooms in whole")
+	# Zoom never shows space outside the level, at any container shape.
+	for container: Vector2 in [
+		Vector2(1920, 1080), Vector2(832, 448), Vector2(170, 1280), Vector2(1280, 80), Vector2(1, 1)
+	]:
+		for level: Vector2 in [Vector2(640, 480), Vector2(2000, 300), Vector2(300, 2000)]:
+			for zoom: int in [-99, -2, -1, 0, 1, 3, 99]:
+				for density in [1, 2]:
+					var plan := Plan.plan(container, level, level, density, zoom)
+					var start: Vector2 = plan.center - plan.visible / 2
+					var end: Vector2 = plan.center + plan.visible / 2
+					check(
+						start.x >= -0.001 and start.y >= -0.001,
+						"Zoom %d at %s in %s starts inside" % [zoom, container, level]
+					)
+					check(
+						end.x <= level.x + 0.001 and end.y <= level.y + 0.001,
+						"Zoom %d at %s in %s ends inside" % [zoom, container, level]
+					)
+					check(plan.zoom_min <= 0 and plan.zoom_max >= 0, "Zero is always in range")
+					check(int(plan.scale) % density == 0, "Zoomed scale stays whole per art pixel")
+	# A level just larger than the window cannot be zoomed out past its bounds.
+	var tight := Plan.plan(Vector2(832, 448), Vector2(900, 500), Vector2(450, 250), 1, -3)
+	check(tight.scale == 1.0 and tight.zoom_min == 0, "Fit limits zoom out")
 
 
 func check(condition: bool, label: String) -> void:

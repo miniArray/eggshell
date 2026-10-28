@@ -132,7 +132,9 @@ func render(state: Dictionary, container: Vector2, world_root: Node2D) -> void:
 		)
 		Frames.apply(node, int(state.frame))
 	_items = readouts(state)
-	var art_scale := maxi(1, roundi(world_root.scale.x / int(_manifest.get("density", 1))))
+	# The view stores the unzoomed scale so zoom never resizes HUD art.
+	var world_scale: float = world_root.get_meta("hud_scale", world_root.scale.x)
+	var art_scale := maxi(1, roundi(world_scale / int(_manifest.get("density", 1))))
 	var widths: Array[float] = []
 	var heights: Array[float] = []
 	for item: Dictionary in _items:
