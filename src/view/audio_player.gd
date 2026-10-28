@@ -517,3 +517,26 @@ static func _set_loop(stream: AudioStream, loop: bool, loop_start: float) -> voi
 	if stream is AudioStreamOggVorbis:
 		stream.loop = loop
 		stream.loop_offset = loop_start if loop else 0.0
+
+
+## Change the music and effect volumes (0..100) of current and later sounds. The
+## pause menu calls it; it never reads or writes play state.
+func set_volumes(music_volume: int, effects_volume: int) -> void:
+	var old_music := _music_db
+	_music_db = linear_to_db(music_volume / 100.0) if music_volume > 0 else -INF
+	_effects_db = linear_to_db(effects_volume / 100.0) if effects_volume > 0 else -INF
+	if _muted:
+		return
+	if _music_db == -INF:
+		_music.stop()
+		_music_role = ""
+	elif old_music == -INF:
+		# The level track did not start while silent; the next observation starts it.
+		_music_track = ""
+	else:
+		_music.volume_db += _music_db - old_music
+	for voice: AudioStreamPlayer in _voices:
+		if _effects_db == -INF:
+			voice.stop()
+		else:
+			voice.volume_db = _effects_db
