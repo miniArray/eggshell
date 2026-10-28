@@ -204,6 +204,27 @@ The message type exposes immutable text through `message(state, world)` and save
 paging through `message_state(state, world)`. A plain default-font HUD panel reads
 these values without handling input or changing simulation state.
 
+## Sound events
+
+Some objects react to what they hear, so a sound is play state, not only audio.
+`src/sim/sound_events.gd` owns the core level fields `sound_serial`, `sound_kind`,
+`sound_x` and `sound_y`: a counter of events and the kind and position of the latest
+one. `SoundEvents.emit(state, kind, x, y)` is pure; the serial wraps to 1, never to 0.
+Kinds: `PLAYER` (a player sound effect at the body centre, 28 px above the feet),
+`PICKUP` (a coin, flower or star at the pickup), `SWITCH` (a pressed switch) and
+`RELEASE` (a flower releasing a pickup, heard by each listener at its own position).
+
+Player events come from the moments that voice the player: a jump, a flutter start,
+starting and landing a ground pound, the tongue, a toss, a head bump, getting hurt,
+a slow death, reaching the goal and the companion rejoining. Aim ticks, pushing and
+ducking are silent to listeners. Collection, switch and flower types emit their own.
+
+A listener saves the serial it last heard and reacts when the state's serial
+differs, so it hears only the latest event of a step, one step later. It takes the
+current serial when it activates, so sounds from before then are not news. A restored
+snapshot carries the serial and every cursor, so restoring replays nothing. The
+audio view still derives its cues from state and does not read these fields.
+
 ## Terrain contacts
 
 Level loading caches transformed integer tile polygons and their bounds. Bounds

@@ -59,6 +59,14 @@ the placed object's `F` value. A state map may use `walk`, `idle`, `turn`, `fly`
 The view uses the saved tick as its animation clock. It does not write an
 animation clock, change simulation state or add fields to saves.
 
+Two span parts come from the placement's `E2`, drawn by `src/view/span_dressing.gd`.
+`p6`, `p7` and `p8` hang a stalk `E2` pixels tall from the ledge's bottom edge,
+32 pixels wide; the entry `<code>_stem` repeats down that height. `p11` and `p12`
+stand spike strip `E2` (0 or 1) on the span's top edge, 10 pixels tall and as wide as
+the span, turning with it; the entry `<code>_spikes` may pick the strip through
+`variants` and keeps 36-pixel end caps while its middle repeats. Without an entry,
+each part draws as a diagnostic box of the same size. The parts have no collision.
+
 The view reads `bg1`, `bg2`, `bg3`, `gradient` and `bgcolor` from the selected
 map. A background setting is `id,frame`, with frame 0 as the default. Entries
 may supply `slots.bg1`, `slots.bg2` and `slots.bg3` scroll overrides and
