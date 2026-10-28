@@ -13,6 +13,14 @@ const Elements = preload("res://src/sim/elements.gd")
 const Reactions = preload("res://src/sim/element_reactions.gd")
 const Shot = preload("res://src/sim/types/element_shot.gd")
 const S := State.SCALE
+## Options that make each reacting code compile in its ordinary form.
+const TYPE_OPTIONS := {
+	"e14": {"F": 1},
+	"e22": {"E1": "90"},
+	"e33": {"R": 270},
+	"e35": {"E1": "82"},
+	"e43": {"E1": "2", "E2": "0.5", "E3": "192"},
+}
 var checks := 0
 var failures := 0
 
@@ -482,16 +490,6 @@ func _snapshot_checks() -> void:
 	walker.frozen = 2
 	check(not Snapshot.valid_state(state), "The frozen flag is binary")
 	walker.frozen = 1
-
-
-## Options that make each reacting code compile in its ordinary form.
-const TYPE_OPTIONS := {
-	"e14": {"F": 1},
-	"e22": {"E1": "90"},
-	"e33": {"R": 270},
-	"e35": {"E1": "82"},
-	"e43": {"E1": "2", "E2": "0.5", "E3": "192"},
-}
 
 
 ## Every enemy that declares reactions burns or freezes as declared, a frozen one
