@@ -27,6 +27,7 @@ func _initialize() -> void:
 	petal_checks()
 	juggler_checks()
 	egg_terrain_checks()
+	hound_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -669,6 +670,67 @@ func egg_terrain_checks() -> void:
 	)
 
 
+func hound_world(extra: Dictionary) -> Dictionary:
+	var objects := {"floor": place("p2", 1000, 316, {"E1": "1600"})}
+	objects.merge(extra, true)
+	return world_for(objects)
+
+
+func hound_checks() -> void:
+	var world := hound_world({"dog": place("o16", 1000, 284), "stay": place("o16", 1400, 284, {"E1": "1"})})
+	var state := State.create(world)
+	var dog := by_id(state, "dog")
+	var type: Script = Registry.lookup("o16")
+	check(type.SOLID == 2, "The runner's back is top-only")
+	check(dog.can_despawn == 1 and by_id(state, "stay").can_despawn == 0, "E1 1 keeps the runner")
+	check(dog.decel == 512 and by_id(state, "stay").decel == 448, "Each runner lowers the deceleration")
+	check(not Registry.is_enemy("o16"), "The runner is not an enemy")
+	state.x = 700 * S
+	state.y = 300 * S - S / 16
+	state.on_floor = 1
+	for tick in 30:
+		Sim.advance(state, 0, world)
+	check(dog.status == 1 and dog.mode == type.WALK and dog.vx < 0, "A far player is followed")
+	check(dog.vx == -30 * 256 or dog.vx < -6000, "The runner accelerates at 256 px/s per second")
+	for tick in 200:
+		Sim.advance(state, 0, world)
+	check(absi(dog.x - state.x) <= 140 * S, "It stops near the player")
+	check(dog.vx == 0, "And then stands still")
+	state.x = dog.x
+	state.y = dog.y - 32 * S - S / 16
+	state.vx = 0
+	state.vy = 0
+	state.on_floor = 1
+	state.facing = dog.facing
+	var start: int = dog.x
+	for tick in 40:
+		Sim.advance(state, 0, world)
+	check(dog.ridden == 1, "Standing on its back rides it")
+	check((dog.x - start) * dog.facing > 20 * S, "A rider makes it run the way the rider faces")
+	check(absi(state.x - dog.x) < 30 * S and state.y < dog.y - 30 * S, "The rider is carried")
+	var enemy_world := hound_world(
+		{"dog": place("o16", 1000, 284), "walker": place("e7", 960, 284)}
+	)
+	state = State.create(enemy_world)
+	dog = by_id(state, "dog")
+	var walker := by_id(state, "walker")
+	dog.status = 1
+	walker.status = 1
+	dog.vx = -100 * 60
+	Collision.begin_step(state, enemy_world, Registry)
+	type._flatten(dog, state, enemy_world, type.bounds(dog))
+	check(walker.status == Registry.DEFEATED, "A moving runner defeats an enemy it touches")
+	var egg := {"code": "o7", "x": dog.x - 20 * S, "mode": 1, "token": 77, "vx": 1, "vy": 0}
+	dog.playing = 0
+	dog.ridden = 0
+	check(type.projectile_contact(dog, egg, state, enemy_world) == 2, "A thrown egg is caught")
+	check(
+		egg.mode == 0 and egg.vx == -384 * 60 and egg.vy == -384 * 60 and dog.playing == 1,
+		"It drops as a resting egg the runner plays with"
+	)
+	check(type.valid(dog), "Runner state stays valid")
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -683,7 +745,8 @@ func snapshot_checks() -> void:
 			"i": place("e25", 900, 100, {"F": 1, "M": 2}),
 			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2}),
 			"k": place("e18", 1100, 100),
-			"l": place("e42", 1200, 100)
+			"l": place("e42", 1200, 100),
+			"m": place("o16", 1300, 100, {"E1": "1"})
 		}
 	)
 	var state := State.create(world)
