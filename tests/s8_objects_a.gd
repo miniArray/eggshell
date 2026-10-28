@@ -22,6 +22,8 @@ func _initialize() -> void:
 	flyer_checks()
 	thief_checks()
 	mace_checks()
+	lantern_checks()
+	spear_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_A_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -361,6 +363,66 @@ func mace_checks() -> void:
 	check(type.valid(mace), "Walker state stays valid")
 
 
+func lantern_checks() -> void:
+	var world := _floor_world(
+		{"lamp": _place("e32", 600, 284, {"F": 2, "M": 1}), "plain": _place("e1", 800, 284)}
+	)
+	var state := State.create(world)
+	state.x = 700 * S
+	state.y = 300 * S - S / 16
+	var lamp := _by_id(state, "lamp")
+	var plain := _by_id(state, "plain")
+	var type: Script = Registry.lookup("e32")
+	check(Registry.is_enemy("e32") and lamp.code == "e32", "The lantern walker is an enemy")
+	check(_degrades("e32", {"F": 4}), "An unknown lantern form degrades")
+	var walked := false
+	for tick in 200:
+		Sim.advance(state, 0, world)
+		walked = walked or lamp.mode == 1
+	check(walked and lamp.status == 1, "It walks like the plain walker")
+	check(lamp.code == "e32", "Its code is restored after every step")
+	check(type.view_state(lamp, state).animation.begins_with("7"), "Forms 0..3 draw looks 5..8")
+	var egg := {"code": "o7", "x": lamp.x - 20 * S, "fall_on_terrain": 0}
+	check(type.projectile_contact(lamp, egg, state, world) == 1, "An egg is used up")
+	check(lamp.roll == 1 and lamp.code == "e32", "It rolls away like the plain walker")
+	check(type.valid(lamp) and Registry.lookup("e1").valid(plain), "Both stay valid")
+
+
+func spear_checks() -> void:
+	var world := _floor_world({"guard": _place("e22", 600, 284, {"E1": "90", "F": 3})})
+	var state := State.create(world)
+	var guard := _by_id(state, "guard")
+	var type: Script = Registry.lookup("e22")
+	check(guard.spear == 90 * S and guard.variant == 3, "E1 sets the spear and F the look")
+	check(_degrades("e22", {"E1": "9000"}), "An absurd spear degrades")
+	guard.status = 1
+	guard.started = 1
+	state.x = 2000 * S
+	state.y = 300 * S - S / 16
+	var x0: int = guard.x
+	Collision.begin_step(state, world, Registry)
+	type.step(guard, state, world)
+	check(x0 - guard.x == 48 * 60, "It walks at 48 px/s")
+	var spear: Array = type.spear_box(guard)
+	check(spear[1] == guard.y - 114 * S and spear[3] == guard.y + 4 * S, "The spear rises by E1")
+	state.x = guard.x
+	state.y = guard.y - 60 * S
+	state.invulnerable = 0
+	type.contact(guard, state, world, 0)
+	check(state.invulnerable > 0, "The spear hurts")
+	state.facing = 1
+	state.x = guard.x - 60 * S
+	check(type.tongue(guard, state, world) == 2, "A tongue at the spear side bounces off")
+	check(guard.knock_ticks == type.KNOCK_TICKS and guard.knock_vx > 0, "And pushes it back")
+	var front := {"code": "o7", "x": guard.x - 30 * S, "vx": 16 * S, "fall_on_terrain": 0}
+	check(type.projectile_contact(guard, front, state, world) == 1, "A front egg is used up")
+	check(guard.status == 1, "A front egg only pushes it back")
+	var back := {"code": "o7", "x": guard.x + 30 * S, "vx": -16 * S, "fall_on_terrain": 0}
+	type.projectile_contact(guard, back, state, world)
+	check(guard.status == Registry.DEFEATED, "An egg from behind defeats it")
+	check(type.valid(_by_id(State.create(world), "guard")), "Spear state is valid")
+
+
 func _tile_layer(name: String, cells: Array, columns: int, points: Array) -> Dictionary:
 	var polygon := PackedInt64Array()
 	for value: int in points:
@@ -389,7 +451,9 @@ func snapshot_checks() -> void:
 			"d": _place("o22", 400, 100, {"E1": "8"}),
 			"e": _place("e14", 500, 100, {"F": 1, "M": 2}),
 			"f": _place("e10", 600, 100, {"M": 2}),
-			"g": _place("e27", 700, 100, {"M": 1})
+			"g": _place("e27", 700, 100, {"M": 1}),
+			"h": _place("e32", 800, 100, {"F": 3}),
+			"i": _place("e22", 900, 100, {"E1": "64", "F": 4, "M": 1})
 		}
 	)
 	var state := State.create(world)

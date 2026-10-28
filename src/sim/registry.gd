@@ -65,6 +65,8 @@ const TYPES := [
 	preload("res://src/sim/types/sneak_thief.gd"),
 	preload("res://src/sim/types/mace_walker.gd"),
 	preload("res://src/sim/types/mace_ball.gd"),
+	preload("res://src/sim/types/lantern_walker.gd"),
+	preload("res://src/sim/types/spear_guard.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
