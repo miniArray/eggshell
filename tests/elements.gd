@@ -32,6 +32,7 @@ func _initialize() -> void:
 	_cloud_checks()
 	_launcher_checks()
 	_snapshot_checks()
+	_every_type_checks()
 	if "verify_failures" in collision:
 		check(int(collision.get("verify_failures")) == 0, "Indexed solid queries match a full scan")
 	print("ELEMENTS_RESULT: %d assertions, %d failures" % [checks, failures])
@@ -481,6 +482,66 @@ func _snapshot_checks() -> void:
 	walker.frozen = 2
 	check(not Snapshot.valid_state(state), "The frozen flag is binary")
 	walker.frozen = 1
+
+
+## Options that make each reacting code compile in its ordinary form.
+const TYPE_OPTIONS := {
+	"e14": {"F": 1},
+	"e22": {"E1": "90"},
+	"e33": {"R": 270},
+	"e35": {"E1": "82"},
+	"e43": {"E1": "2", "E2": "0.5", "E3": "192"},
+}
+
+
+## Every enemy that declares reactions burns or freezes as declared, a frozen one
+## holds still, and touching it shatters it.
+func _every_type_checks() -> void:
+	var skip := ["e16", "e37", "d25", "d26", "o8", "enemy_runner", "enemy_shot", "enemy_petal"]
+	for code: String in Registry.codes():
+		var type: Script = Registry.lookup(code)
+		var declared := int(type.get_script_constant_map().get("ELEMENT_REACTIONS", 0))
+		if not declared or code in skip:
+			continue
+		for kind: int in [Hits.FIRE, Hits.ICE]:
+			var world := _world_for(
+				{"floor": _floor(), "it": _place(code, 500, 270, TYPE_OPTIONS.get(code, {}))}
+			)
+			var state := State.create(world)
+			_stand(state, world, 380, 4)
+			var entity := _by_id(state, "it")
+			if entity.status != Registry.ACTIVE:
+				check(false, "Reacting code activates: " + code)
+				continue
+			var flags := declared
+			if type.has_method("element_reactions"):
+				flags = type.element_reactions(entity)
+			type.hit(entity, state, world, kind, entity.x)
+			if kind == Hits.FIRE:
+				var burnt: bool = entity.status == Registry.DEFEATED
+				check(burnt == bool(flags & Elements.BURNS), "Fire burns as declared: " + code)
+				continue
+			check(
+				entity.frozen == int(bool(flags & Elements.FREEZES)),
+				"Ice freezes as declared: " + code
+			)
+			if not entity.frozen:
+				continue
+			var x: int = entity.x
+			for _tick in 30:
+				Sim.advance(state, 0, world)
+				state.x = 380 * S
+			check(entity.x == x, "A frozen body does not walk: " + code)
+			check(entity.status == Registry.ACTIVE, "A frozen body waits: " + code)
+			var box: Array = type.bounds(entity)
+			state.x = entity.x + box[0] - 8 * S
+			state.y = entity.y + box[3] - S / 16
+			state.invulnerable = 0
+			state.vx = 24 * 60
+			for _tick in 3:
+				Sim.advance(state, Moves.InputBits.RIGHT, world)
+			check(entity.status == Registry.DEFEATED, "Touch shatters the frozen body: " + code)
+			check(state.invulnerable == 0, "A frozen body does not hurt: " + code)
 
 
 func check(value: bool, message: String) -> void:
