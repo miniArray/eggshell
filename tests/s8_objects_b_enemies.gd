@@ -25,6 +25,7 @@ func _initialize() -> void:
 	_stilt_checks()
 	_helmet_checks()
 	_slime_checks()
+	_ghost_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -634,3 +635,52 @@ func check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		push_error("FAIL: " + message)
+
+
+func _ghost_checks() -> void:
+	var world := _world_for(
+		{"ghost": _place("e26", 600, 300), "pink": _place("e26", 200, 300, {"F": 3})}
+	)
+	var state := State.create(world)
+	state.x = 400 * S
+	state.y = 300 * S
+	state.facing = -1
+	var type: Script = Registry.lookup("e26")
+	var ghost := _by_id(state, "ghost")
+	var pink := _by_id(state, "pink")
+	_activate(ghost)
+	_activate(pink)
+	type.step(ghost, state, world)
+	check(
+		ghost.x == 600 * S - 64 * 60 and ghost.facing == -1,
+		"Unwatched, it drifts toward the player"
+	)
+	state.facing = 1
+	for _tick in 13:
+		type.step(ghost, state, world)
+	check(ghost.phase == type.HIDE, "Watched, it hides after 0.2 s")
+	var hidden_x: int = ghost.x
+	type.step(ghost, state, world)
+	check(ghost.x == hidden_x, "A hiding ghost stays put")
+	type.step(pink, state, world)
+	check(type.solid_box(pink).is_empty(), "A moving pink ghost is not solid")
+	state.facing = 1
+	for _tick in 14:
+		type.step(pink, state, world)
+	check(pink.phase == type.STALK, "The pink ghost behind the player keeps coming")
+	state.facing = -1
+	for _tick in 14:
+		type.step(pink, state, world)
+	check(not type.solid_box(pink).is_empty(), "A hiding pink ghost is a solid block")
+	state.facing = -1
+	for _tick in 14:
+		type.step(ghost, state, world)
+	check(ghost.phase == type.STALK, "Looked away from, it comes out again")
+	var front := {"code": "o7", "x": ghost.x - 20 * S, "vx": 300 * 60, "fall_on_terrain": 0}
+	check(type.projectile_contact(ghost, front, state, world) == 0, "An egg from the front passes")
+	var behind := {"code": "o7", "x": ghost.x + 20 * S, "vx": -300 * 60, "fall_on_terrain": 0}
+	check(
+		type.projectile_contact(ghost, behind, state, world) == 3, "An egg from behind defeats it"
+	)
+	check(ghost.status == Registry.DEFEATED, "It leaves a star when defeated")
+	check(_degrades("e26", {"F": 4}), "An unknown ghost form becomes a placeholder")
