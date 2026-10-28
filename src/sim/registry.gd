@@ -77,6 +77,7 @@ const TYPES := [
 	preload("res://src/sim/types/bump_walker.gd"),
 	preload("res://src/sim/types/stilt_walker.gd"),
 	preload("res://src/sim/types/helmet_walker.gd"),
+	preload("res://src/sim/types/slime_drop.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
