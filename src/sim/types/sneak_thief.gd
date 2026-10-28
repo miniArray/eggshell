@@ -10,7 +10,6 @@ const Damage = preload("res://src/sim/damage.gd")
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Hits = preload("res://src/sim/hits.gd")
-const Near = preload("res://src/sim/types/near.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e10"]
 const ENEMY := true

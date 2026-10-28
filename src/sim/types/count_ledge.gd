@@ -3,7 +3,7 @@ extends RefCounted
 ## stepping off at one breaks it.
 
 const Moves = preload("res://src/sim/moves.gd")
-const Near = preload("res://src/sim/types/near.gd")
+const Near = preload("res://src/sim/types/near_query.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o32"]
 const SOLID := 2
@@ -107,7 +107,7 @@ static func _bodies(entity: Dictionary, state: Dictionary, world: Dictionary, ar
 	var registry: Script = load("res://src/sim/registry.gd")
 	var result := []
 	var probe := [area[0], area[1] - 4 * S, area[2], area[3] + 4 * S]
-	for other: Dictionary in Near.query(state, world, probe):
+	for other: Dictionary in Near.nearby(state, world, probe):
 		if (
 			other.get("token", 0) == entity.token
 			or other.status != 1

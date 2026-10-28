@@ -1,23 +1,20 @@
 extends RefCounted
-## Neighbour queries for object types. Uses the registry index when it exists;
-## otherwise it scans every entity in table order, with the same result order.
+## Shared neighbour queries for object types, answered by `Registry.nearby` in entity order.
+## Callers still apply their own exact overlap tests.
 
 const Collision = preload("res://src/sim/collision.gd")
+static var _registry: Script = null
 
 
+## The registry, resolved after type loading to avoid a registry/type import cycle.
 static func registry() -> Script:
-	return load("res://src/sim/registry.gd")
+	if _registry == null:
+		_registry = load("res://src/sim/registry.gd")
+	return _registry
 
 
 static func nearby(state: Dictionary, world: Dictionary, box: Array) -> Array:
-	var dispatch := registry()
-	if dispatch.has_method("nearby"):
-		return dispatch.nearby(state, world, box)
-	var result := []
-	for entity: Dictionary in state.get("entities", []):
-		if dispatch.overlaps_box(entity, dispatch.lookup(entity.code), box):
-			result.append(entity)
-	return result
+	return registry().nearby(state, world, box)
 
 
 ## Strike every active, visible entity with a hit hook inside a world-space box.
@@ -40,9 +37,6 @@ static func strike(
 
 
 ## Refile another entity's solid boxes after this code moved or enlarged them.
-## The solid index refiles the dispatched entity itself; without an index this
-## does nothing.
+## The solid index refiles the dispatched entity itself.
 static func refresh_solid(world: Dictionary, entity: Dictionary) -> void:
-	var collision: Script = Collision
-	if collision.has_method("refresh"):
-		collision.call("refresh", world, entity)
+	Collision.refresh(world, entity)

@@ -4,7 +4,7 @@ extends RefCounted
 
 const Body = preload("res://src/sim/enemy_body.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
-const Near = preload("res://src/sim/types/near.gd")
+const Near = preload("res://src/sim/types/near_query.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o22"]
 const STEP_PHASE := 0
@@ -101,7 +101,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 static func _swallow(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var sensor := cup(entity)
 	var dispatch := registry()
-	for other: Dictionary in Near.query(state, world, sensor):
+	for other: Dictionary in Near.nearby(state, world, sensor):
 		if (
 			other.get("token", 0) == entity.token
 			or other.status != 1
