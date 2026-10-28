@@ -19,6 +19,16 @@ const TYPES := [
 	preload("res://src/sim/types/item_egg.gd"),
 	preload("res://src/sim/types/item_star.gd"),
 	preload("res://src/sim/types/item_stem.gd"),
+	# slice 6: s6-enemies
+	preload("res://src/sim/types/flat_walker.gd"),
+	preload("res://src/sim/types/shell_walker.gd"),
+	preload("res://src/sim/types/armored_walker.gd"),
+	preload("res://src/sim/types/hanging_roller.gd"),
+	preload("res://src/sim/types/masked_shooter.gd"),
+	preload("res://src/sim/types/spitting_stem.gd"),
+	preload("res://src/sim/types/enemy_spike.gd"),
+	preload("res://src/sim/types/enemy_pellet.gd"),
+	preload("res://src/sim/types/enemy_overlap.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]

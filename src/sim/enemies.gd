@@ -5,6 +5,8 @@ const World = preload("res://src/sim/world.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Plant = preload("res://src/sim/enemy_plant.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Body = preload("res://src/sim/enemy_body.gd")
+const Hits = preload("res://src/sim/hits.gd")
 const S := 3600
 const ACTIVE := 1
 const DEFEATED := 3
@@ -90,20 +92,11 @@ static func contact_entity(
 			return
 		return
 	var bounds := Motion.box(enemy, code)
-	var overlap: bool = (
-		state.x + 12 * S > enemy.x + bounds[0]
-		and state.x - 12 * S < enemy.x + bounds[2]
-		and state.y > enemy.y + bounds[1]
-		and state.y - 56 * S < enemy.y + bounds[3]
-	)
+	var overlap := Body.player_overlap(enemy, state, bounds)
 	if overlap:
 		if enemy.y > state.y - 8 * S and not enemy.contact:
-			state.vy = -absi(enemy.vy / 2) - (704 if input & 4 else 320) * 60
-			state.on_floor = 0
-			state.jump_buffer = 0
-			state.flutter_remaining = 0
-			state.boosted_flutter = 1
-			state.flutter_ready = 1
+			if not Body.pounding(state):
+				Body.bounce(enemy, state, input)
 			enemy.status = DEFEATED
 		elif enemy.y < state.y - 8 * S:
 			Damage.hurt(state, enemy.x)

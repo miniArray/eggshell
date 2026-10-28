@@ -9,6 +9,7 @@ const Sim = preload("res://src/sim/step.gd")
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
 const FIXTURE_OPTIONS := {
+	"enemy_overlap": {"a": 1, "b": 2},
 	"o17": {"E1": "o7"},
 }
 var checks := 0
