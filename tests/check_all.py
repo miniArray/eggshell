@@ -20,6 +20,7 @@ def main():
     run("godot", "--headless", "--path", ROOT, "--editor", "--import")
     for name in [
         "collision",
+        "collision_table",
         "pack_manifest",
         "pack_density",
         "screen_plan",

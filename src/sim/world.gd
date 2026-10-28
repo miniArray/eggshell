@@ -88,9 +88,12 @@ static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) 
 			if not facts.tilemaps.has(name):
 				return {"ok": false, "error": "Unsupported tilemap: " + name}
 			var tile: Dictionary = facts.tilemaps[name]
+			if tile.tile_size[0] != tile.tile_size[1]:
+				# Cell lookup assumes square cells; refuse rather than misplace terrain.
+				return {"ok": false, "error": "Unsupported tile shape: " + name}
 			var grid: Dictionary = map[layer_name][name]
 			var slot := []
-			for instance: Dictionary in tile.instances:
+			for instance: Dictionary in tile.get("instances", []):
 				var source_layer: String = instance.layer
 				if (
 					(layer_name == "layer1" and source_layer.ends_with("L1"))
@@ -101,7 +104,8 @@ static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) 
 				# Optional overlay terrain has no physical role.
 				slot = [16, 0]
 			if slot.is_empty():
-				return {"ok": false, "error": "Missing source draw slot: " + name}
+				# Draw order never blocks play: use the diagnostic layer2-before-layer1 slot.
+				slot = [0 if layer_name == "layer2" else 1, world.layers.size()]
 			var bounds := {}
 			var polygons := {}
 			if tile.solid_family or tile.water_family or name in ["lava", "lava_3", "ySSpikes"]:

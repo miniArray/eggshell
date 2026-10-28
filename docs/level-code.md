@@ -67,13 +67,18 @@ and comma-separated run data. `4x0` repeats tile zero four times; `-1` is empty.
 Suffixes `h`, `v` and `d` select transforms. Decoded cells are signed int32.
 
 Draw slots put rear terrain behind regular terrain and preserve front-family
-slots. Optional `layer3` draws at overlay slot 16, after regular terrain and
-actors. This is an Eggshell fallback; it has neither solid nor liquid contacts.
+slots. A tileset with no draw slot for its layer still loads: it takes the
+diagnostic slot (`layer2` behind `layer1`). Draw order never blocks play.
+Optional `layer3` draws at overlay slot 16, after regular terrain and actors.
+This is an Eggshell fallback; it has neither solid nor liquid contacts.
 
 `src/level/collision_table.json` version 2 supplies tile size, solid and water
-membership, disabled tiles, full tiles and tile-local polygons. Graphics packs
-can replace draw order, never physical membership. Non-solid contact terrain
-also caches polygons. Its pure query is:
+membership, disabled tiles, full tiles and tile-local polygons for every
+tileset the level format can name. A level that names a tileset absent from the
+table is refused (`Unsupported tilemap`); terrain is never skipped. A tileset
+with non-square tiles is refused (`Unsupported tile shape`) because cell lookup
+assumes square cells. Graphics packs can replace draw order, never physical
+membership. Non-solid contact terrain also caches polygons. Its pure query is:
 
 ```gdscript
 World.named_overlaps(world, tilemap_name, left, top, right, bottom)
