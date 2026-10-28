@@ -32,6 +32,7 @@ const FIXTURE_OPTIONS := {
 	"o27": {"F": 1},
 	"e12": {"M": 1},
 	"e37": {"E1": "Aim", "F": 1},
+	"o25": {"F": 1},
 }
 var checks := 0
 var failures := 0

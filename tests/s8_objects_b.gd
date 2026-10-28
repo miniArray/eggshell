@@ -27,6 +27,7 @@ func _initialize() -> void:
 	spore_checks()
 	launcher_checks()
 	shot_checks()
+	melon_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -683,6 +684,47 @@ func shot_checks() -> void:
 	state.invulnerable = 0
 	type.contact(side, state, world, 0)
 	check(state.invulnerable > 0, "A shot hurts from the side")
+
+
+func melon_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
+			"melon": _place("o25", 450, 284),
+			"target": _place("e23", 700, 284)
+		}
+	)
+	var state := State.create(world)
+	state.x = 400 * S
+	state.y = 300 * S - S / 16
+	state.facing = 1
+	var melon := _by_id(state, "melon")
+	var target := _by_id(state, "target")
+	for _tick in 3:
+		Sim.advance(state, 0, world)
+	check(melon.status == Registry.ACTIVE, "The melon activates on screen")
+	Sim.advance(state, Moves.InputBits.USE, world)
+	for _tick in 30:
+		Sim.advance(state, 0, world)
+	check(melon.status == Registry.DEFEATED, "The tongue eats the melon")
+	check(
+		state.move_ammo == Moves.SEED and state.move_ammo_count == 30,
+		"A plain melon loads 30 seeds"
+	)
+	var seen_seed := false
+	for _tick in 40:
+		Sim.advance(state, Moves.InputBits.USE, world)
+		seen_seed = (
+			seen_seed
+			or state.entities.any(
+				func(entity: Dictionary) -> bool: return entity.code == "seed_shot"
+			)
+		)
+	check(seen_seed, "Holding use spits seeds")
+	check(state.move_ammo_count < 30, "Spitting spends seeds")
+	check(target.status == Registry.DEFEATED, "A seed defeats the walker in its path")
+	check(_degrades("o25", {"F": 3}), "A fire melon is not built yet and becomes a placeholder")
+	check(_degrades("o25", {"F": 6}), "An ice melon is not built yet and becomes a placeholder")
 
 
 func snapshot_checks() -> void:
