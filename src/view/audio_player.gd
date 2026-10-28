@@ -15,6 +15,7 @@ const VOICES := 8
 const MAX_STEP_GAP := 4
 const SWITCH_TICKS := 630
 const AIM_TICK_FRAMES := 4
+const HELD_EVENTS := ["switch_timer"]
 const SNOW_STEP_FRAMES := 18
 const QUIET_PHASES := [Life.DEAD, Life.FADE_OUT, Life.RESPAWN, Life.GOAL, Life.COMPLETE]
 const REQUEST_EVENTS := {
@@ -251,7 +252,8 @@ static func _health_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
 
 static func _move_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
 	var switched: bool = c.switch_sound_serial != p.switch_sound_serial
-	var rising: bool = c.vy < 0 and p.vy >= 0 and not switched and c.invulnerable <= p.invulnerable
+	var launched: bool = switched or c.invulnerable > p.invulnerable or _sprung(p, c)
+	var rising: bool = c.vy < 0 and p.vy >= 0 and not launched
 	var pounding: bool = c.move_action in [Moves.POUND_START, Moves.POUND_FALL, Moves.POUND_LAND]
 	if rising and c.boosted_flutter:
 		cues.append(_effect("stomp"))
@@ -308,6 +310,17 @@ static func _level_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
 				cues.append(_effect("message_close"))
 	elif c.message_stage == 2 and c.message_section != p.message_section:
 		cues.append(_effect("message_scroll"))
+
+
+static func _sprung(p: Dictionary, c: Dictionary) -> bool:
+	var before: Dictionary = p.get("objects", {})
+	var after: Dictionary = c.get("objects", {})
+	for token: int in after:
+		var was: Array = before.get(token, [])
+		if after[token][0] == "o11" and was.size() == 2 and was[0] == "o11":
+			if after[token][1] > was[1]:
+				return true
+	return false
 
 
 static func _object_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
@@ -472,7 +485,12 @@ func _play_effect(event: String, from_position := 0.0) -> void:
 				chosen = index
 				break
 	if chosen < 0:
-		chosen = _voice_order.find(_voice_order.min())
+		# Steal the oldest voice, but keep the long switch timer sound.
+		for index in _voices.size():
+			if _voice_events[index] in HELD_EVENTS:
+				continue
+			if chosen < 0 or _voice_order[index] < _voice_order[chosen]:
+				chosen = index
 	_order += 1
 	var voice := _voices[chosen]
 	voice.stop()

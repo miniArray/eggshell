@@ -80,6 +80,15 @@ func derivation_checks() -> void:
 		["hit"],
 		"damage knockback is a hit, not a jump"
 	)
+	var pad := base()
+	pad.vy = 3000
+	pad.boosted_flutter = 1
+	pad.objects = {5: ["o11", 0]}
+	var sprung := after(pad, {"vy": -23040, "objects": {5: ["o11", 12]}})
+	check(
+		events(Player.derive(pad, sprung)) == ["spring"],
+		"a pad launch after an enemy bounce is not a stomp"
+	)
 	expect({"flutter_remaining": 40}, ["flutter"], "flutter start")
 	expect({"flutter_remaining": 39}, [], "flutter continues silently", {"flutter_remaining": 40})
 	expect({"move_action": Moves.POUND_START}, ["pound_start"], "pound start")
