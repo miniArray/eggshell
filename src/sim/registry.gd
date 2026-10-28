@@ -101,10 +101,31 @@ static var _ordered_level_fields := compose_level_schema()
 static var _by_code := compose_lookup()
 static var _enemy_codes := {}
 static var _fields_by_code := {}
+static var _facts_by_code := {}
 
 
 static func lookup(code: String) -> Script:
 	return _by_code.get(code, Inert)
+
+
+## Per-code dispatch facts for the per-entity loops: the type, its phases and which
+## optional hooks it has. Read once per code; the answers equal lookup(),
+## phase_for() and has_method() on the type.
+static func facts(code: String) -> Dictionary:
+	var cached: Variant = _facts_by_code.get(code)
+	if cached == null:
+		var type := lookup(code)
+		cached = {
+			"type": type,
+			"step_phase": phase_for(type, "STEP_PHASE", 0),
+			"contact_phase":
+			phase_for(type, "CONTACT_PHASE", 1) if type.has_method("contact") else -1,
+			"consume": type.has_method("consume_requests"),
+			"finished": type.has_method("finished"),
+			"toggle": type.has_method("toggle"),
+		}
+		_facts_by_code[code] = cached
+	return cached
 
 
 ## The first type in TYPES that lists a code wins, as the original linear scan did.
@@ -203,12 +224,12 @@ static func consume_requests(state: Dictionary, world: Dictionary) -> void:
 			type.consume_level_requests(state, world)
 	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
-		if type.has_method("consume_requests"):
+		var known: Dictionary = facts(entity.code)
+		if known.consume:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
-			type.consume_requests(entity, state, world)
+			known.type.consume_requests(entity, state, world)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -468,14 +489,14 @@ static func compact(state: Dictionary) -> void:
 		captor_token = state.enemies[state.captured_by - 1].token
 	var remaining := []
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
+		var known: Dictionary = facts(entity.code)
 		if (
 			entity.source_index == -1
 			and entity.status == DEFEATED
 			and entity.token != state.get("move_held_id", 0)
 			and entity.token != captor_token
 			and entity.get("held", 0) != 1
-			and (not type.has_method("finished") or type.finished(entity))
+			and (not known.finished or known.type.finished(entity))
 		):
 			continue
 		remaining.append(entity)
@@ -533,12 +554,12 @@ static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 	# Switch links are map-wide, not limited to the camera or active entities.
 	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
-		var type := lookup(entity.code)
-		if type.has_method("toggle"):
+		var known: Dictionary = facts(entity.code)
+		if known.toggle:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
-			type.toggle(entity, state, world)
+			known.type.toggle(entity, state, world)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -712,9 +733,10 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 			break
 		var solids := Collision.solid_rows(world)
 		for entity: Dictionary in state.entities:
-			var type := lookup(entity.code)
-			if phase_for(type, "STEP_PHASE", 0) != phase:
+			var known: Dictionary = facts(entity.code)
+			if known.step_phase != phase:
 				continue
+			var type: Script = known.type
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
@@ -791,10 +813,9 @@ static func activation_box(entity: Dictionary, type: Script) -> Array:
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 	for phase in [0, 1, 2]:
 		for entity: Dictionary in state.entities:
-			var type := lookup(entity.code)
+			var known: Dictionary = facts(entity.code)
 			if (
-				type.has_method("contact")
-				and phase_for(type, "CONTACT_PHASE", 1) == phase
+				known.contact_phase == phase
 				and entity.status == ACTIVE
 				and entity.get("held", 0) != 1
 				and entity.get("hidden", 0) != 1
@@ -802,7 +823,7 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
 				if row != null:
 					Collision.dispatch_begin(world, row)
-				type.contact(entity, state, world, input)
+				known.type.contact(entity, state, world, input)
 				if row != null:
 					Collision.dispatch_end(world, row)
 

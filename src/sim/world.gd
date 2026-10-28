@@ -117,12 +117,15 @@ static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) 
 				slot = [0 if layer_name == "layer2" else 1, world.layers.size()]
 			var bounds := {}
 			var polygons := {}
+			var rectangles := {}
 			if tile.solid_family or tile.water_family or name in LAVA_LAYERS or name == SPIKE_LAYER:
 				for cell: int in grid.cells:
 					if cell != -1 and not bounds.has(cell):
 						var points := tile_polygon(cell, tile)
 						polygons[cell] = points
 						bounds[cell] = polygon_bounds(points)
+						if axis_rectangle(points):
+							rectangles[cell] = true
 			world.layers.append(
 				{
 					"name": name,
@@ -134,6 +137,7 @@ static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) 
 					"cells": grid.cells,
 					"bounds": bounds,
 					"polygons": polygons,
+					"rectangles": rectangles,
 					"solid": tile.solid_family and layer_name != "layer3",
 					"water": tile.water_family and layer_name != "layer3"
 				}
@@ -362,6 +366,7 @@ static func lava_overlaps(world: Dictionary, left: int, top: int, right: int, bo
 
 static func layer_overlaps(layer: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
 	var size: int = layer.size * S
+	var rectangles: Dictionary = layer.get("rectangles", {})
 	# Contact includes edges, including the far edge of the preceding cell.
 	var x0 := maxi(0, floor_div(left - 1, size))
 	var x1 := mini(layer.width - 1, floor_div(right, size))
@@ -382,12 +387,37 @@ static func layer_overlaps(layer: Dictionary, left: int, top: int, right: int, b
 				and local_right >= box[0]
 				and local_top <= box[3]
 				and local_bottom >= box[1]
-				and Polygon.overlaps_box(
-					layer.polygons[cell], local_left, local_top, local_right, local_bottom
+				and (
+					rectangles.has(cell)
+					or Polygon.overlaps_box(
+						layer.polygons[cell], local_left, local_top, local_right, local_bottom
+					)
 				)
 			):
 				return true
 	return false
+
+
+## A closed axis-aligned rectangle with positive area: four corners, each edge along one
+## axis. For such a polygon, Polygon.overlaps_box equals the inclusive bounds test, which
+## layer_overlaps() has already passed, so the polygon test can be skipped.
+static func axis_rectangle(points: PackedInt64Array) -> bool:
+	if points.size() != 8:
+		return false
+	var box := polygon_bounds(points)
+	if box[0] >= box[2] or box[1] >= box[3]:
+		return false
+	var corners := {}
+	for index in range(0, 8, 2):
+		var next := (index + 2) % 8
+		var x := points[index]
+		var y := points[index + 1]
+		if (x != box[0] and x != box[2]) or (y != box[1] and y != box[3]):
+			return false
+		if (x != points[next]) == (y != points[next + 1]):
+			return false
+		corners["%d,%d" % [x, y]] = true
+	return corners.size() == 4
 
 
 static func floor_div(value: int, divisor: int) -> int:
