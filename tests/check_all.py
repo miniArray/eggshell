@@ -32,6 +32,7 @@ def main():
         "life_hud",
         "hud_backing",
         "pack_background",
+        "enemy_head",
         "foundations",
         "items",
         "platforms",

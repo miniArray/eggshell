@@ -34,6 +34,9 @@ static func present(node: Sprite2D, entity: Dictionary, state: Dictionary) -> vo
 		return
 	Frames.apply(node, state.frame)
 	var box: Array = Registry.lookup(entity.code).head_box(entity)
+	if box.is_empty():
+		node.visible = false
+		return
 	node.position = Vector2(box[0], box[1]) / S
 	node.offset = Vector2.ZERO
 	node.scale = Vector2(box[2] - box[0], box[3] - box[1]) / S / node.texture.get_size()
