@@ -34,7 +34,7 @@ const FIELDS := (
 )
 
 
-static func prepare(source: Dictionary, world: Dictionary) -> Dictionary:
+static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var raw: Variant = source.properties.get("E1", "0")
 	var length := 0
 	if raw is String:
