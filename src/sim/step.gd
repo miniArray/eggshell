@@ -39,27 +39,27 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.previous_input = input
 	Collision.begin_step(state, world, Registry)
 	Registry.advance(state, world, pressed)
-	if state.captured_by:
-		state.camera_x = state.x
-		state.camera_y = state.y - 28 * S
-		return
 	var action := 0 if state.hurt else input
-	if state.hurt:
-		pressed = 0
-		released = 0
-	Moves.advance(state, action, world, pressed, released)
-	var phase: int = state.life_phase
-	Registry.contact(state, action, world)
-	if phase != Life.GOAL and state.life_phase == Life.GOAL:
-		Registry.goal_convert(state, world, Life.goal_coin)
-	var tongue := Moves.tongue_reach_box(state)
-	if not tongue.is_empty():
-		Life.catch_companion(state, tongue[0], tongue[1], tongue[2], tongue[3])
+	if not state.captured_by:
+		if state.hurt:
+			pressed = 0
+			released = 0
+		Moves.advance(state, action, world, pressed, released)
+		var phase: int = state.life_phase
+		Registry.contact(state, action, world)
+		if phase != Life.GOAL and state.life_phase == Life.GOAL:
+			Registry.goal_convert(state, world, Life.goal_coin)
+		Registry.tongue_contact(state, world, Moves.tongue_box(state))
+		var tongue := Moves.tongue_reach_box(state)
+		if not tongue.is_empty():
+			Life.catch_companion(state, tongue[0], tongue[1], tongue[2], tongue[3])
+	Registry.consume_requests(state, world)
 	Life.after_step(state, world)
+	Registry.compact(state)
 	# Store the desired focus only. View-size-dependent clamping belongs to the view.
 	state.camera_x = state.x
 	state.camera_y = state.y - 28 * S
-	if not Life.blocks_step(state):
+	if not state.captured_by and not Life.blocks_step(state):
 		Moves.finish(state, action, world)
 
 

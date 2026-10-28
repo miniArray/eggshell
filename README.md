@@ -47,20 +47,27 @@ version 2 or 3 graphics pack. A pack never supplies the level.
 - Acceleration, turns, jumping, fluttering, crouching, ground pounds and swimming.
 - Directed tongue, held-item, digestion, aiming and emission state with object hooks.
 - Bounce pads, semisolid bridges, checkpoints and a timed goal sequence.
-- Walkers, flyers, tumblers, rooted biters and fish.
+- Walkers, flyers, tumblers, shelled and armored walkers, shooters and fish.
+- Coins, red coins, flowers, health drops, food contacts and thrown inventory items.
+- Releasing blocks, linked solids, timed switches and saved message pages.
+- Moving and falling supports, redirect clouds, rock blocks, posts and rotated gates.
+- Typed decorations, top-only decoration strips and tick-driven effects.
 - Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
 - Countdown, capture, death and checkpoint respawn phases with a run HUD.
 - Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 4 snapshots with autosave and automatic resume.
+- A type registry and composed version 5 snapshots with autosave and automatic resume.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
 Player colliders follow the action and posture. Companion rescue uses the full
 tongue reach; eating keeps its separate tip sensor. Map travel is a simulation
 interface; no travel object is implemented yet.
-Food contacts, carried items and projectile objects are not yet wired to their
-player-side hooks. Packs without an action pose use their usual default pose.
-Audio and a level editor are not implemented.
+Registered food and projectile families use the saved player-side requests.
+Thrown inventory items still lack slope-normal ricochets and liquid responses.
+The large inventory payload and some object codes and variants remain unsupported.
+Packs without art use diagnostic shapes; absent action poses use the default pose.
+Messages use Up/Down for pages and Throw to close. Red coins change only the red
+counter. Audio and a level editor are not implemented.
 
 ## Physics and screens
 

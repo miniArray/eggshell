@@ -25,7 +25,13 @@ const FIELDS := [
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var mirror: Variant = source.properties.get("M", 0)
-	if not (mirror is int or mirror is float) or mirror not in [0, 1, 2]:
+	if (
+		not (mirror is int or mirror is float)
+		or not is_finite(mirror)
+		or mirror < 0
+		or mirror > 2
+		or mirror != floor(mirror)
+	):
 		return {"ok": false, "error": "Unsupported health drop direction"}
 	return {"ok": true}
 

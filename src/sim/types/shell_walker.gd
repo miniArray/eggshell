@@ -63,8 +63,8 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	values.mode = [WALK, HOP, FLY, IDLE, SPIN][values.variant]
 	values.inside = int(values.variant <= 2)
 	if source.code == "enemy_runner":
-		values.mode = SLIDE if Options.option(source, "slide") else BARE
-		values.timer = Options.option(source, "slide")
+		values.mode = Options.option(source, "mode", BARE)
+		values.timer = Options.option(source, "timer")
 		values.origin_shell = Options.option(source, "origin_shell")
 		values.slide_direction = Options.option(source, "slide_direction", 1)
 		values.grace = Options.option(source, "grace")
@@ -236,7 +236,8 @@ static func eject(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 		{
 			"colour": entity.colour,
 			"origin_shell": entity.token,
-			"slide": 60,
+			"mode": SLIDE,
+			"timer": 60,
 			"slide_direction": direction,
 			"facing": -direction,
 			"grace": 1

@@ -59,7 +59,13 @@ static func registry() -> Script:
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if not (form is int or form is float) or form not in [0, 1, 2, 3]:
+	if (
+		not (form is int or form is float)
+		or not is_finite(form)
+		or form < 0
+		or form > 3
+		or form != floor(form)
+	):
 		return {"ok": false, "error": "Unsupported inventory item form"}
 	return {"ok": true}
 
@@ -283,8 +289,8 @@ static func travel(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 		if not contact.alive:
 			return
 		if contact.redirected:
-			dx = entity.vx * (index + 1) / steps - entity.vx * index / steps
-			dy = entity.vy * (index + 1) / steps - entity.vy * index / steps
+			# The receiver snapped the egg; its new motion starts next tick.
+			return
 		var vx: int = entity.vx
 		var vy: int = entity.vy
 		var box := bounds(entity)
@@ -354,9 +360,11 @@ static func object_collisions(
 			result.alive = false
 			return result
 		if response == 2:
+			entity.last_target = other.token
 			result.redirected = true
-		if response == 3:
-			# A solid's last hit still has its pre-destruction bounce. Non-solids pierce.
+			return result
+		if response == 3 and not dispatch.is_enemy(other.code):
+			# A solid's last hit still bounces. Enemy reactions pierce even a rideable body.
 			result.solids.append_array(old_shapes)
 		if response in [2, 3]:
 			entity.last_target = other.token

@@ -12,7 +12,13 @@ const BOX := [-16 * S, -16 * S, 16 * S, 16 * S]
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if not (form is int or form is float) or form not in [0, 1]:
+	if (
+		not (form is int or form is float)
+		or not is_finite(form)
+		or form < 0
+		or form > 1
+		or form != floor(form)
+	):
 		return {"ok": false, "error": "Invalid falling span form"}
 	return {"ok": true}
 

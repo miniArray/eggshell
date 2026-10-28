@@ -79,26 +79,30 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 4 writes these schemas and the registry's entity schemas.
+Snapshot version 5 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 
 ## Fixed step order
 
-1. Synchronize the selected map and increment the simulation frame.
-2. Advance lifetime phases with the registry reset callback and the bound map
-   change callback. On respawn, reset movement-owned fields. A blocking phase
-   returns before input, actor or player motion.
-3. Sample input edges, then advance registered actors and pads. Capture keeps
-   its early exit and fixed camera follow point.
-4. Advance player actions and motion. Water entry and exit set braking to 128
-   and 1296; a release value persists until one of those transitions.
-5. Dispatch registered pad, actor and sensor contacts in phase order. Entering
-   the goal phase converts active eligible actor bodies in the fixed reference
-   area into coins once. An extended plant head is not a separate award.
-6. Check the full tongue reach for companion rescue, then check lifetime terrain
-   hazards and body rescue. Save the follow point and finish the player pose
-   only while play remains active. The delayed goal pose stays intact.
+1. Synchronize the selected map and increment the simulation frame. Dispatch
+   `Registry.modal_step`; return while a message or switch holds the world.
+2. Advance `Life.before_step` with the registry reset callback and bound map
+   change callback. Reset Moves on respawn. Return when `Life.blocks_step` holds.
+3. Sample input edges. Call `Collision.begin_step` immediately before
+   `Registry.advance`, capturing the old solid geometry before object motion.
+4. Unless captured, advance Moves. Its `Collision.prepare` carries the player
+   using old and new support positions before floor and jump processing. Object
+   motion must precede this carry. Water entry/exit braking remains 128/1296.
+5. Dispatch registry contacts. On a not-GOAL to GOAL transition, convert eligible
+   visible active enemy bodies once. Keep the goal pose and delay.
+6. Dispatch `Registry.tongue_contact` with the eating tip sensor. Check companion
+   rescue with the full tongue reach, not that tip.
+7. Call `Registry.consume_requests`, then `Life.after_step`, then `Registry.compact`
+   once outside entity loops. Captured players skip movement/contact paths but
+   still reach request cleanup and compaction.
+8. Save the fixed follow point. Finish the movement pose only during uncaptured
+   active play.
 
 Life and Maps call their callbacks immediately. They never store callbacks in
 state or world. `move_tongue.gd` supplies read-only tongue geometry; movement
@@ -147,17 +151,23 @@ consumers use `consume_level_requests(state, world)`; entity consumers use
 `consume_requests(entity, state, world)` and save their own cursors.
 
 A projectile first calls optional `projectile_contact`: 0 ignores, 1 consumes,
-2 redirects, and 3 reacts and continues. Without that hook, `hit` receives the
+2 redirects and stops travel for the rest of that tick, and 3 reacts and continues.
+The redirected velocity starts on the next tick. Without that hook, `hit` receives the
 integer kind from `hits.gd`, and consumes the projectile. Reaction 3 preserves
-a solid's normal bounce, including its last pre-destruction geometry; a
-non-solid target can be pierced. Pickup `origin_token` links collection back to
+a non-enemy solid's normal bounce, including its last pre-destruction geometry.
+Enemy reactions are pierced, including a flattened rideable enemy. Pickup `origin_token` links collection back to
 a retained producer row before checkpoint flags are captured.
 
 `runtime_objects.gd` draws the runtime suffix using pack frames or the existing
 diagnostic textures. `view_state` can select visibility, a literal animation,
 a held frame, pixel offsets/sizes, degree rotation, horizontal flip and alpha.
-The helper changes nodes only. The message type exposes immutable text through
-`message(state, world)` and saved paging through `message_state(state, world)`.
+The helper changes nodes only. The view calls it once for all dynamic rows,
+including enemies; placed enemies keep their own nodes. Both paths hide held
+and hidden rows. Separate head hulls use `head_box` for their diagnostic views.
+Art density, integer camera scales and pixel snapping apply to the new paths too.
+The message type exposes immutable text through `message(state, world)` and saved
+paging through `message_state(state, world)`. A plain default-font HUD panel reads
+these values without handling input or changing simulation state.
 
 ## Terrain contacts
 
@@ -172,7 +182,11 @@ Floor detection probes one pixel below the actor without moving saved state.
 The player, terrain-aware enemies and bounce pads share `src/sim/collision.gd`.
 Bridges catch downward entry from above, not upward travel or entry from below.
 All contact queries and movement after level loading use integer arithmetic.
-No contact cache or new mutable state enters snapshots.
+Registered `SOLID` types supply world-space `solid_box` or `solid_boxes`, with
+an optional `solid_touches` narrow phase. Top-only boxes keep strip gaps open.
+The transient `world.solids_step` cache is rebuilt each normal step. It carries
+support history and deduplicates bump callbacks, but never enters snapshots.
+The legacy saved bridge index never refers to a transient support handle.
 
 ## Limits
 

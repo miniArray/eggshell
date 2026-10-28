@@ -569,13 +569,15 @@ static func _decoration(
 				node.add_child(line)
 				bounds = bounds.merge(rect) if bounds.has_area() else rect
 		else:
-			var child := _draw_part(part, pack)
+			var child := _draw_part(part, pack, int(manifest.get("density", 1)))
 			node.add_child(child)
 			var rect: Rect2 = child.get_meta("part_bounds", Rect2())
 			bounds = bounds.merge(rect) if bounds.has_area() else rect
 	node.set_meta("look_size", Vector2(maxf(1, bounds.size.x), maxf(1, bounds.size.y)))
 	if source.code == "d22":
-		var puff_art := _frames.visual(pack, _visual_animation(manifest, "BigDustNoDelay"))
+		var puff_art := _frames.visual(
+			pack, _visual_animation(manifest, "BigDustNoDelay"), int(manifest.get("density", 1))
+		)
 		var puffs: Array[Sprite2D] = []
 		for index in 8:
 			var puff := (
@@ -592,18 +594,20 @@ static func _decoration(
 	return node
 
 
-static func _draw_part(part: Dictionary, pack: String) -> Node2D:
+static func _draw_part(part: Dictionary, pack: String, density: int = 1) -> Node2D:
 	var root := Node2D.new()
 	root.position = part.position
-	var art := _frames.visual(pack, part.entry)
+	var art := _frames.visual(pack, part.entry, density)
 	var frame: Dictionary = (
 		view_sample(art, 0, {"animation": part.animation}, part.variant)
 		if not art.is_empty()
 		else {}
 	)
-	var native: Vector2 = frame.texture.get_size() if not frame.is_empty() else Vector2(12, 12)
+	var native: Vector2 = (
+		Vector2(frame.texture.get_size()) / density if not frame.is_empty() else Vector2(12, 12)
+	)
 	var height: float = part.height if part.resize else native.y
-	var origin: Vector2 = frame.origin if not frame.is_empty() else native / 2
+	var origin: Vector2 = frame.origin / density if not frame.is_empty() else native / 2
 	if part.resize:
 		origin = Vector2(native.x / 2, height if part.bottom else 0)
 	var rectangle := Rect2(-origin, Vector2(native.x, height))
@@ -612,14 +616,15 @@ static func _draw_part(part: Dictionary, pack: String) -> Node2D:
 		var patch := NinePatchRect.new()
 		patch.texture = frame.texture
 		patch.position = rectangle.position
-		patch.patch_margin_left = int(part.margins[0])
-		patch.patch_margin_right = int(part.margins[1])
-		patch.patch_margin_top = int(part.margins[2])
-		patch.patch_margin_bottom = int(part.margins[3])
+		patch.scale = Vector2.ONE / density
+		patch.patch_margin_left = int(part.margins[0]) * density
+		patch.patch_margin_right = int(part.margins[1]) * density
+		patch.patch_margin_top = int(part.margins[2]) * density
+		patch.patch_margin_bottom = int(part.margins[3]) * density
 		patch.axis_stretch_horizontal = NinePatchRect.AXIS_STRETCH_MODE_TILE
 		patch.axis_stretch_vertical = NinePatchRect.AXIS_STRETCH_MODE_TILE
 		patch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		patch.size = rectangle.size
+		patch.size = rectangle.size * density
 		root.add_child(patch)
 	else:
 		var image := _marker(rectangle.size, origin) if art.is_empty() else sprite(art, 0)
@@ -633,8 +638,8 @@ static func _draw_part(part: Dictionary, pack: String) -> Node2D:
 		if part.resize and not art.is_empty():
 			image.region_enabled = true
 			image.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-			image.region_rect = Rect2(Vector2.ZERO, rectangle.size)
-			image.offset = -origin
+			image.region_rect = Rect2(Vector2.ZERO, rectangle.size * density)
+			image.offset = -origin * density
 			image.remove_meta("pack_art")
 		root.add_child(image)
 	return root

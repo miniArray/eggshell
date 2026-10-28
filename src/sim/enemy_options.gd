@@ -8,7 +8,6 @@ const INTERNAL_LIMITS := {
 	"vx": [-MAX_SPEED, MAX_SPEED],
 	"vy": [MIN_VERTICAL, MAX_VERTICAL],
 	"colour": [0, 1],
-	"slide": [0, 60],
 	"origin_shell": [0, 0x7fffffffffffffff],
 	"slide_direction": [-1, 1],
 	"grace": [0, 1]

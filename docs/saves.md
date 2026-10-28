@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 4 stores the complete integer play state in little-endian
+Snapshot version 5 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 3 and all other versions are rejected with a log line;
+object families. Version 4 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -18,10 +18,13 @@ old saves are not migrated.
 
 Both strings use a u32 byte length followed by UTF-8, with a 4096-byte limit
 per string. An entity's `id` is the original placement key, not an integer
-conversion or an array position. Its int64 `source_index` is the zero-based
-position in the active map's compiled entity table. Entity order is placement
-order. Unknown codes use the common schema and stay inert; their ids and state
-round trip like known types. Placement properties stay in the immutable world,
+conversion or an array position. Placed rows form a fixed prefix. Their
+`source_index` matches their position in the compiled table and their common
+`token` is `source_index + 1`. Dynamic rows follow with `source_index = -1`,
+unique id `+n` and token `1_000_000 + n`, allocated from saved `dynamic_serial`.
+Only types that opt into runtime creation may occupy this suffix. Dynamic rows
+cannot camera-respawn. Unknown placed codes use the common schema and stay inert;
+their ids and state round trip like known types. Placement properties stay in the immutable world,
 which the level identity binds to the snapshot.
 
 The schema digest covers ordered level/player declarations, common entity
@@ -41,19 +44,23 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 4 state
+## Composed version 5 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
 items, egg counts and the saved emission history. Lifetime owns damage, companion
 and rescue motion, countdown, death and goal phases, checkpoints and counters.
-Maps owns selected map, map count and collectible targets. All three owner
-validation hooks run. Derived actor and pad views share the entity dictionaries
+Maps owns selected map, map count and collectible targets. Registry and type
+`LEVEL_FIELDS` add the dynamic serial, modal holder, inventory metadata, message
+pages and shared switch timer/sound state. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-This slice keeps version 4 while composing the owners' complete schemas. It does
-not retain an intermediate stub layout. Saved nodes, callbacks and view state
-are never part of the payload.
+Version 5 records the new common interaction tokens, expanded enemy/type fields
+and type-owned level fields. Version 4 has a different layout and is not migrated.
+The schema digest binds the complete ordered declarations. Saved nodes, callbacks,
+view state and transient solid-contact caches are never part of the payload.
+Restore rebuilds enemy/pad views without repairing encoded family indices.
+Compaction preserves held rows and captors, then remaps the captor index by token.
 
 ## Checkpoint collection flags
 
@@ -63,8 +70,10 @@ active map's entities and their derived compatibility views. The default clears
 both flags. With `keep_flags = true`, it matches same-map old entities by their
 stable string id. It restores `collected` from the old `checkpoint_collected`
 and keeps that checkpoint flag. It does not retain pickups taken after the
-checkpoint, carry flags between maps, or clear level counters. Future pickup
-types use these flags to suppress their own effects and presentation.
+checkpoint, carry flags between maps, or clear level counters. Pickup and producer
+types use these flags to suppress their own effects and presentation. A non-keep
+map reset clears old held-item references, request histories and modal/captor
+references before reusing placed tokens.
 
 ## Slots and writes
 

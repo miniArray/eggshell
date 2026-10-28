@@ -4,6 +4,7 @@ extends RefCounted
 const Registry = preload("res://src/sim/registry.gd")
 const Dressing = preload("res://src/view/pack_dressing.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
+const Head = preload("res://src/view/enemy_head.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 var _nodes := {}
 var _root: Node2D
@@ -41,11 +42,15 @@ func render(
 		if not visible:
 			if not entry.is_empty() and is_instance_valid(entry.node):
 				entry.node.visible = false
+				if is_instance_valid(entry.get("head")):
+					entry.head.visible = false
 			continue
 		var variant := int(entity.get("variant", 0))
 		if not entry.is_empty() and (entry.code != entity.code or entry.variant != variant):
 			if is_instance_valid(entry.node):
 				entry.node.free()
+			if is_instance_valid(entry.get("head")):
+				entry.head.free()
 			entry = {}
 		if entry.is_empty() or not is_instance_valid(entry.node):
 			entry = make_node(entity, root, manifest, pack, fallback)
@@ -55,15 +60,21 @@ func render(
 		var node: Sprite2D = entry.node
 		node.visible = true
 		apply_frame(node, entry.art, state.frame, variant, style)
-		var box: Array = (
-			type.bounds(entity) if type.has_method("bounds") else [-16 * S, -16 * S, 16 * S, 16 * S]
-		)
+		var box: Array = [-16 * S, -16 * S, 16 * S, 16 * S]
+		if type.has_method("body_bounds"):
+			box = type.body_bounds()
+		elif type.has_method("bounds"):
+			box = type.bounds(entity)
 		place(node, entity, box, entry.art, style)
+		if is_instance_valid(entry.get("head")):
+			Head.present(entry.head, entity, state)
 	for token: int in _nodes.keys():
 		if not seen.has(token):
 			var node: Sprite2D = _nodes[token].node
 			if is_instance_valid(node):
 				node.free()
+			if is_instance_valid(_nodes[token].get("head")):
+				_nodes[token].head.free()
 			_nodes.erase(token)
 
 
@@ -71,6 +82,8 @@ func clear() -> void:
 	for entry: Dictionary in _nodes.values():
 		if is_instance_valid(entry.node):
 			entry.node.free()
+		if is_instance_valid(entry.get("head")):
+			entry.head.free()
 	_nodes.clear()
 
 
@@ -95,7 +108,10 @@ static func make_node(
 	node.set_meta("stateful", true)
 	node.set_meta("entity_token", entity.token)
 	root.add_child(node)
-	return {"node": node, "art": art, "code": entity.code, "variant": variant}
+	var head: Sprite2D
+	if Registry.lookup(entity.code).has_method("head_box"):
+		head = Head.create(entity.code, root, manifest, pack, fallback)
+	return {"node": node, "head": head, "art": art, "code": entity.code, "variant": variant}
 
 
 static func apply_frame(
@@ -129,7 +145,8 @@ static func apply_frame(
 static func place(
 	node: Sprite2D, entity: Dictionary, box: Array, art: Dictionary, style: Dictionary
 ) -> void:
-	node.scale = Vector2.ONE
+	var density := int(art.get("density", 1))
+	node.scale = Vector2.ONE / density
 	node.flip_h = false
 	node.flip_v = false
 	var position_anchor: bool = not art.is_empty() and art.get("anchor", "box") == "position"
@@ -139,7 +156,7 @@ static func place(
 		node.scale = Vector2(box[2] - box[0], box[3] - box[1]) / (32 * S)
 	elif position_anchor:
 		node.position = Vector2(entity.x, entity.y) / S
-		node.scale.x = 1 if entity.facing == art.get("facing", 1) else -1
+		node.scale.x = (1.0 if entity.facing == art.get("facing", 1) else -1.0) / density
 	else:
 		var anchor: float = box[3] if Dressing.bottom_anchored(art) else (box[1] + box[3]) / 2.0
 		node.position = Vector2(entity.x + (box[0] + box[2]) / 2.0, entity.y + anchor) / S

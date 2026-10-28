@@ -4,6 +4,7 @@ extends Node2D
 const Pack = preload("res://src/level/asset_pack.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
 const Life = preload("res://src/sim/life.gd")
+const Message = preload("res://src/view/message_panel.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const FONT_SIZE := 16
 const GAP := 8
@@ -22,13 +23,14 @@ var _manifest: Dictionary = {}
 var _items: Array[Dictionary] = []
 var _plan := {}
 var _dense := false
+var _message: Control
 
 
 static func present(
 	host: Node2D,
 	world_root: Node2D,
 	state: Dictionary,
-	_world: Dictionary,
+	world: Dictionary,
 	manifest: Dictionary,
 	pack: String
 ) -> void:
@@ -41,6 +43,15 @@ static func present(
 		host.add_child(hud)
 		hud.setup(manifest, pack)
 	hud.render(state, host.get_viewport_rect().size, world_root)
+	hud.present_message(state, world, host.get_viewport_rect().size)
+
+
+func present_message(state: Dictionary, world: Dictionary, container: Vector2) -> void:
+	if not is_instance_valid(_message):
+		_message = Message.new()
+		add_child(_message)
+	var bottom: float = _plan.get("size", Vector2.ZERO).y
+	_message.present(state, world, container, bottom)
 
 
 func setup(manifest: Dictionary, pack: String) -> void:

@@ -1,6 +1,8 @@
 extends Node2D
 
-const Motion = preload("res://src/sim/enemy_motion.gd")
+const Registry = preload("res://src/sim/registry.gd")
+const Runtime = preload("res://src/view/runtime_objects.gd")
+const Head = preload("res://src/view/enemy_head.gd")
 const Plant = preload("res://src/sim/enemy_plant.gd")
 const State = preload("res://src/sim/play_state.gd")
 const Plan = preload("res://src/view/screen_plan.gd")
@@ -34,6 +36,7 @@ var _spring_nodes: Array[Sprite2D] = []
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
 var _placed_nodes: Dictionary = {}
+var _runtime := Runtime.new()
 
 
 func setup(world: Dictionary, pack: String) -> void:
@@ -46,6 +49,7 @@ func setup(world: Dictionary, pack: String) -> void:
 
 func _build_map(world: Dictionary, pack: String) -> void:
 	# Map selection comes from saved state, including restoration into another map.
+	_runtime.clear()
 	for node: Node in [_player, _background]:
 		if is_instance_valid(node) and node.get_parent() == null:
 			node.free()
@@ -195,8 +199,15 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	for enemy: Dictionary in world.enemies:
 		var art := Dressing.object_art(manifest, pack, enemy.code, int(enemy.variant))
 		_enemy_nodes.append(actor_node(art, placeholder(enemy.code, 32)))
+		_enemy_nodes[-1].set_meta("entity_art", art)
 		_enemy_nodes[-1].set_meta("pack_variant", int(enemy.variant))
-		_head_nodes.append(actor_node(head_art, _enemy_nodes[-1].texture))
+		_head_nodes.append(
+			(
+				Head.create(enemy.code, _root, manifest, pack, placeholder)
+				if Registry.lookup(enemy.code).has_method("head_box")
+				else actor_node(head_art, _enemy_nodes[-1].texture)
+			)
+		)
 	_player.centered = false
 	_player.z_index = 11
 	_root.add_child(_player)
@@ -268,13 +279,30 @@ func render(state: Dictionary) -> void:
 	for index in _enemy_nodes.size():
 		var enemy: Dictionary = state.enemies[index]
 		var code: String = _world.enemies[index].code
-		var bounds := Motion.box(enemy, code)
+		var type := Registry.lookup(code)
+		var bounds: Array = (
+			type.body_bounds() if type.has_method("body_bounds") else type.bounds(enemy)
+		)
 		var node := _enemy_nodes[index]
-		Frames.apply(node, state.frame, enemy_pose(enemy, code))
-		place_actor(node, enemy, bounds)
-		node.visible = enemy.status == 1
+		var art: Dictionary = node.get_meta("entity_art", {})
+		var look: Dictionary = (
+			type.view_state(enemy, state)
+			if type.has_method("view_state")
+			else {"animation": enemy_pose(enemy, code)}
+		)
+		Runtime.apply_frame(node, art, state.frame, int(enemy.get("variant", 0)), look)
+		Runtime.place(node, enemy, bounds, art, look)
+		node.visible = (
+			enemy.status == Registry.ACTIVE
+			and not enemy.get("held", 0)
+			and not enemy.get("hidden", 0)
+			and look.get("visible", true)
+		)
 		var head := _head_nodes[index]
-		head.visible = enemy.status == 1 and code == "e5" and enemy.mode != 0
+		if type.has_method("head_box"):
+			Head.present(head, enemy, state)
+			continue
+		head.visible = node.visible and code == "e5" and enemy.mode != 0
 		if head.visible:
 			Frames.apply(head, state.frame, "chew" if enemy.mode == 4 else "active")
 			if head.get_meta("position_anchor", false):
@@ -299,6 +327,7 @@ func render(state: Dictionary) -> void:
 		_player.set_meta("pack_variant", pose.frame)
 		Frames.apply(_player, pose.tick, pose.name)
 		_player.scale.x = float(state.facing) / _density
+	_runtime.render(state, _world, _root, _hud_manifest, _hud_pack, placeholder)
 	Hud.present(self, _root, state, _world, _hud_manifest, _hud_pack)
 	_effects.update(_root, _player, _world, state, plan, viewport)
 	if _density > 1:
