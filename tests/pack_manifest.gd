@@ -37,6 +37,7 @@ func _initialize() -> void:
 	manifest["backgrounds"] = {"7": {"layers": []}}
 	manifest["gradients"] = {"sky": {"strips": []}}
 	manifest["hud"] = {"meter": {"file": "hud/meter.png"}}
+	manifest.hud["backing"] = {"color": [12, 34, 56]}
 	manifest["fonts"] = {}
 	manifest["audio"] = {"music": {"1": "audio/one.ogg"}, "effects": {}}
 	write_json("manifest.json", manifest)
@@ -46,6 +47,20 @@ func _initialize() -> void:
 		"invalid optional visuals removed"
 	)
 	check(loaded.player.keys() == ["Idle0"], "invalid player animation removed")
+	check(
+		(
+			Pack.hud_backing_ok(loaded.hud.backing)
+			and loaded.hud.backing.color[0] == 12
+			and not loaded.hud.backing.has("padding")
+		),
+		"Optional backing retained"
+	)
+	manifest.hud.backing = {"color": [0, 0, 0], "padding": 17}
+	write_json("manifest.json", manifest)
+	loaded = Pack.read(_directory)
+	check(
+		not loaded.hud.has("backing") and loaded.hud.has("meter"), "Invalid backing alone removed"
+	)
 	check(loaded.backgrounds.has("7") and loaded.audio.music.has("1"), "optional maps retained")
 	manifest = base(2)
 	manifest.player = {

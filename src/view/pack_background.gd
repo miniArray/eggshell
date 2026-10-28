@@ -10,13 +10,17 @@ var _gradient_scroll := Vector2.ZERO
 var _reference := Vector2.ZERO
 var _tick := 0
 var _density := 1
+var _binary_alpha := {}
 
 
 func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 	z_index = -30
 	_density = int(manifest.get("density", 1))
 	var backgrounds: Dictionary = manifest.get("backgrounds", {})
+	var previous := {}
 	for slot: String in ["bg1", "bg2", "bg3"]:
+		var preceding := previous
+		var layers: Array[Dictionary] = []
 		var choice := str(map.get(slot, "0")).split(",")
 		var entry: Variant = backgrounds.get(choice[0], {})
 		if not entry is Dictionary:
@@ -82,7 +86,7 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 			if not Pack.point_ok(period):
 				continue
 			(
-				_layers
+				layers
 				. append(
 					{
 						"texture": texture,
@@ -112,6 +116,13 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 					}
 				)
 			)
+		if layers.is_empty():
+			continue
+		previous = {"id": choice[0], "variant": variant, "layers": layers}
+		# Only consecutive identical drawn groups are idempotent. Intervening art
+		# changes painter order; partial alpha accumulates even for identical groups.
+		if previous != preceding or not _binary_layers(layers):
+			_layers.append_array(layers)
 	var parts := str(map.get("gradient", "")).split("_")
 	var gradients: Dictionary = manifest.get("gradients", {})
 	var gradient: Variant = gradients.get(parts[0], {})
@@ -152,6 +163,52 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 			}
 		)
 		y += height
+
+
+func _binary_layers(layers: Array[Dictionary]) -> bool:
+	for layer: Dictionary in layers:
+		if not _binary_texture(layer.texture):
+			return false
+		for animation: Dictionary in layer.art.get("animations", {}).values():
+			for frame: Dictionary in animation.frames:
+				if not _binary_texture(frame.texture):
+					return false
+	return true
+
+
+func _binary_texture(texture: Texture2D) -> bool:
+	var key := texture.get_instance_id()
+	if not _binary_alpha.has(key):
+		_binary_alpha[key] = _binary_image(texture.get_image())
+	return _binary_alpha[key]
+
+
+static func _binary_image(image: Image) -> bool:
+	if image == null:
+		return false
+	if image.is_compressed() and image.decompress() != OK:
+		return false
+	# Only byte formats can be converted without rounding fractional alpha away.
+	if not (
+		image.get_format()
+		in [
+			Image.FORMAT_L8,
+			Image.FORMAT_LA8,
+			Image.FORMAT_R8,
+			Image.FORMAT_RG8,
+			Image.FORMAT_RGB8,
+			Image.FORMAT_RGBA8
+		]
+	):
+		return false
+	image.convert(Image.FORMAT_RGBA8)
+	var pixels := image.get_data()
+	# detect_alpha() treats alpha 1 as transparent and 254 as opaque. Neither
+	# is idempotent, so inspect the exact stored alpha instead of that hint.
+	for index in range(3, pixels.size(), 4):
+		if pixels[index] != 0 and pixels[index] != 255:
+			return false
+	return true
 
 
 static func decode_strips(value: String) -> Array:

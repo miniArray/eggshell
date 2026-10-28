@@ -12,6 +12,10 @@ Select an external pack with `--pack=/absolute/path` after `--`, or with the
 logs the problem and uses placeholders. `--placeholder` bypasses pack loading.
 Graphics never select or supply the level. Pass `--level-code=PATH` separately.
 
+`tools/device.py pack PATH` uploads either supported manifest version, including
+dense packs. The remote directory stays `/tmp/eggshell/packs/external-v2` for
+existing `--pack=` callers; the directory name does not restrict the version.
+
 ## Manifest versions 2 and 3
 
 The loader accepts `version: 2` and `version: 3`. Both require `tiles` and
@@ -41,7 +45,7 @@ Version 3 adds these optional dictionaries:
 | `objects` | Object code to a visual entry: `file` and pixel `origin`, or `animations` keyed by name. Animated entries may name `default_animation` and a `states` map. |
 | `backgrounds` | Background id to `layers`, with optional per-frame `variants`. A layer has `file`, `frames` or `animation`, `scroll: [x,y]`, `scale: [x,y]`, `offset: [x,y]`, `reference: [x,y]`, `repeat_x` and `repeat_y`. `anchor` can replace `offset` and uses the selected frame's origin. |
 | `gradients` | Name to `strips` of `{height, color: [r,g,b]}`, with optional `scroll` and `reference`. RGB values use 0–255. |
-| `hud` | Named visual entries, reserved for future HUD drawing. |
+| `hud` | Named visual entries and optional opaque readout `backing`. See [HUD backing](#hud-backing). |
 | `fonts` | Named font files or bitmap sheets and glyph metadata, reserved for future text drawing. |
 | `audio` | `music` and `effects` dictionaries mapping ids or names to relative Ogg Vorbis files. |
 | `terrain` | Tilemap or tileset family name to optional `surface`, `underside` and `side` strips. A strip has `file` and `edge`. See [Terrain strips](#terrain-strips). |
@@ -61,20 +65,43 @@ may supply `slots.bg1`, `slots.bg2` and `slots.bg3` scroll overrides and
 `offset_by_height` maps. Scroll 1 follows terrain; scroll 0 stays fixed relative
 to the reference point. Attached layers may specify a pack-pixel `repeat_size`
 to keep their parent's spacing, `min_repeat` to limit repeated copies, and
-`frame` for a fixed animation variant. Backgrounds repeat only across the visible region. The base RGB color remains
-behind the gradient and all three background slots. A gradient setting is
+`frame` for a fixed animation variant. Backgrounds repeat only across the visible
+region. The base RGB color remains behind the gradient and all three background
+slots. Consecutive drawn slot groups with the same id, variant and resolved layer
+records draw once when every image (including all animation frames) has only
+fully opaque or fully transparent pixels. Partial alpha and intervening different
+slots keep every draw, to preserve compositing. A gradient setting is
 `name_offset_scale`, or custom `height,r,g,b` groups in place of the name.
 The offset replaces the first strip height; scale multiplies strip heights.
 
 `src/view/pack_audio.gd` holds the audio maps. It can lazily load a requested
-stream, but creates no audio player and plays nothing. HUD and font metadata
-is retained but is not used by the current diagnostic labels.
+stream, but creates no audio player and plays nothing. HUD icons and font metadata
+are used by the read-only run display.
 
 Fast metadata checks, without starting the game:
 
 ```sh
 nix develop -c godot --headless --path . --script tests/pack_manifest.gd
 ```
+
+## HUD backing
+
+Both manifest versions accept optional `hud.backing`:
+
+```json
+"hud": {"backing": {"color": [24, 48, 56], "padding": 2}}
+```
+
+`color` is exactly three integer RGB channels, each 0–255. `padding` is an
+integer number of art pixels, 0–16, and defaults to 2. Non-numeric, fractional,
+out-of-range and non-finite values invalidate the whole backing; other HUD
+entries still load. Unknown keys have no effect.
+
+Each readout gets one opaque rectangle behind its icon and text, using the
+layout's measured box expanded by padding. Edges use whole HUD-scale pixels;
+there is no blending or antialiasing. Both normal and dense HUD plans leave at
+least twice the padding between readouts and wrapped rows, so backings do not
+overlap. Packs without a valid backing keep their existing layout and drawing.
 
 ## Terrain strips
 

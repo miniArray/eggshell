@@ -11,6 +11,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 class PixelRenderTests(unittest.TestCase):
     def test_art_pixels_have_uniform_integer_screen_widths(self):
+        self.render("pixel_render", "PIXEL_RENDER_RESULT:")
+
+    def test_pack_backings_and_background_compositing(self):
+        self.render("pack_view_render", "PACK_VIEW_RENDER_RESULT:")
+
+    def render(self, script, marker):
         read_fd, write_fd = os.pipe()
         server = subprocess.Popen(
             [
@@ -49,7 +55,7 @@ class PixelRenderTests(unittest.TestCase):
                     "--rendering-method",
                     "gl_compatibility",
                     "--script",
-                    "tests/pixel_render.gd",
+                    f"tests/{script}.gd",
                 ],
                 env=environment,
                 capture_output=True,
@@ -60,7 +66,7 @@ class PixelRenderTests(unittest.TestCase):
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
             self.assertNotIn("SCRIPT ERROR", output)
-            self.assertIn("PIXEL_RENDER_RESULT:", output)
+            self.assertIn(marker, output)
             self.assertIn("0 failures", output)
         finally:
             os.close(read_fd)

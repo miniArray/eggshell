@@ -6,12 +6,44 @@ import argparse
 import importlib.util
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REMOTE = "/tmp/eggshell"
+# Existing --pack= callers depend on this directory, even for version 3 packs.
+PACK_DIRECTORY = "external-v2"
+
+
+def create_pack_archive(pack: pathlib.Path, archive: pathlib.Path) -> None:
+    """Validate the engine's manifest version contract before preparing an upload."""
+    manifest = pack / "manifest.json"
+    if not manifest.is_file():
+        raise RuntimeError("Import the graphics pack first")
+    source = (ROOT / "src/level/asset_pack.gd").read_text()
+    current = re.search(r"^const VERSION := (\d+)$", source, re.MULTILINE)
+    if current is None:
+        raise RuntimeError("Cannot read the engine's asset pack version")
+    versions = {2, int(current[1])}
+    try:
+        metadata = json.loads(manifest.read_text())
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"Invalid graphics pack manifest: {error}") from error
+    version = metadata.get("version") if isinstance(metadata, dict) else None
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, (int, float))
+        or version not in versions
+    ):
+        supported = ", ".join(map(str, sorted(versions)))
+        raise RuntimeError(
+            f"Device play requires a graphics pack version in: {supported}"
+        )
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive, "w:gz") as output:
+        output.add(pack, arcname=PACK_DIRECTORY)
 
 
 def transport():
@@ -47,6 +79,11 @@ def main():
     options = parser.parse_args()
     if options.command in {"pack", "level"} and len(options.args) != 1:
         parser.error(f"{options.command} requires one explicit local path")
+    if options.command == "pack":
+        archive = (
+            pathlib.Path.home() / ".local/share/eggshell-tools/private-pack.tar.gz"
+        )
+        create_pack_archive(pathlib.Path(options.args[0]), archive)
     link = transport()
     link.run("mkdir", "-p", REMOTE + "/tools")
     if options.command == "deploy":
@@ -83,17 +120,6 @@ def main():
         print("Installed level: " + REMOTE + "/level.txt")
         return 0
     elif options.command == "pack":
-        pack = pathlib.Path(options.args[0])
-        if not (pack / "manifest.json").is_file():
-            raise RuntimeError("Import the private pack first")
-        if json.loads((pack / "manifest.json").read_text()).get("version") != 2:
-            raise RuntimeError("Device play requires a version 2 private pack")
-        archive = (
-            pathlib.Path.home() / ".local/share/eggshell-tools/private-pack.tar.gz"
-        )
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(archive, "w:gz") as output:
-            output.add(pack, arcname="external-v2")
         link.send(archive, REMOTE + "/private-pack.tar.gz")
         link.run("mkdir", "-p", REMOTE + "/packs")
         link.run(
@@ -103,7 +129,8 @@ def main():
         print(
             "Uploaded optional graphics; select with --pack="
             + REMOTE
-            + "/packs/external-v2"
+            + "/packs/"
+            + PACK_DIRECTORY
         )
         return 0
     elif options.command == "fetch":

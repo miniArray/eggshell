@@ -30,6 +30,8 @@ def main():
         "move_input",
         "life",
         "life_hud",
+        "hud_backing",
+        "pack_background",
         "foundations",
         "items",
         "platforms",

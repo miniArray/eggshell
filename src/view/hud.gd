@@ -24,6 +24,7 @@ var _items: Array[Dictionary] = []
 var _plan := {}
 var _dense := false
 var _message: Control
+var _backing := {}
 
 
 static func present(
@@ -57,6 +58,13 @@ func present_message(state: Dictionary, world: Dictionary, container: Vector2) -
 func setup(manifest: Dictionary, pack: String) -> void:
 	_manifest = manifest
 	_dense = int(manifest.get("density", 1)) > 1
+	_backing = {}
+	var backing: Variant = manifest.get("hud", {}).get("backing")
+	if Pack.hud_backing_ok(backing):
+		_backing = {
+			"color": Color8(backing.color[0], backing.color[1], backing.color[2]),
+			"padding": int(backing.get("padding", 2))
+		}
 	_pack = pack
 	_font = ThemeDB.fallback_font
 	for key: String in ["hud", "MainFont", "ScoreFont", "LifeCounterFont"]:
@@ -139,10 +147,11 @@ func render(state: Dictionary, container: Vector2, world_root: Node2D) -> void:
 				height = maxf(height, size.y)
 		widths.append(width)
 		heights.append(height)
+	var padding := int(_backing.get("padding", -1))
 	if _dense:
-		_plan = dense_plan(container, widths, heights, art_scale)
+		_plan = dense_plan(container, widths, heights, art_scale, padding)
 	else:
-		_plan = plan(container, widths, _text_height() + GAP)
+		_plan = plan(container, widths, _text_height() + GAP, padding)
 	queue_redraw()
 
 
@@ -198,9 +207,18 @@ static func clock_text(ticks: int) -> String:
 	return "%02d:%02d:%02d.%02d" % [seconds / 3600, seconds / 60 % 60, seconds % 60, fraction]
 
 
-static func plan(container: Vector2, widths: Array[float], row_height: float = 24) -> Dictionary:
+static func plan(
+	container: Vector2, widths: Array[float], row_height: float = 24, padding: int = -1
+) -> Dictionary:
 	if container.x <= 0 or container.y <= 0:
 		return {}
+	var heights: Array[float] = []
+	if padding >= 0:
+		widths = widths.duplicate()
+		for index in widths.size():
+			widths[index] = ceilf(widths[index])
+			heights.append(ceilf(row_height - GAP))
+		row_height = ceilf(row_height - GAP) + maxi(GAP, 2 * padding)
 	# Reflow first, then use integral or reciprocal-integral pixel scaling.
 	var maximum := maxi(1, floori(minf(container.x / 832, container.y / 448)))
 	var choices: Array[float] = []
@@ -226,6 +244,8 @@ static func plan(container: Vector2, widths: Array[float], row_height: float = 2
 	for factor in choices:
 		var available := maxf(1, container.x / factor)
 		var margin := minf(GAP, available / 16)
+		if padding >= 0:
+			margin = ceilf(maxf(margin, padding))
 		var positions: Array[Vector2] = []
 		var x := margin
 		var y := margin
@@ -239,32 +259,60 @@ static func plan(container: Vector2, widths: Array[float], row_height: float = 2
 				fits = false
 			positions.append(Vector2(x, y))
 			right = maxf(right, x + width + margin)
-			x += width + GAP
+			x += width + (maxi(GAP, 2 * padding) if padding >= 0 else GAP)
 		var height := y + row_height + margin
 		result = {"scale": factor, "positions": positions, "size": Vector2(right, height) * factor}
 		if fits and height * factor <= container.y * 0.4:
-			return result
-	return result
+			return _with_backings(result, widths, heights, padding)
+	return _with_backings(result, widths, heights, padding)
 
 
 static func dense_plan(
-	container: Vector2, widths: Array[float], heights: Array[float], art_scale: int
+	container: Vector2,
+	widths: Array[float],
+	heights: Array[float],
+	art_scale: int,
+	padding: int = -1
 ) -> Dictionary:
 	# Keep the first (health/countdown) readout first. Wrap, never shrink art.
 	var available := container.x / art_scale
 	var margin := floorf(minf(GAP, available / 16))
+	if padding >= 0:
+		margin = maxf(margin, padding)
+	var gap := maxi(GAP, 2 * padding) if padding >= 0 else GAP
 	var at := Vector2(margin, margin)
 	var row_height := 0.0
 	var positions: Array[Vector2] = []
 	for index in widths.size():
 		if at.x > margin and at.x + widths[index] + margin > available:
 			at.x = margin
-			at.y += row_height + GAP
+			at.y += row_height + gap
 			row_height = 0
 		positions.append(at)
-		at.x += ceilf(widths[index]) + GAP
+		at.x += ceilf(widths[index]) + gap
 		row_height = maxf(row_height, ceilf(heights[index]))
-	return {"scale": float(art_scale), "positions": positions}
+	return _with_backings(
+		{"scale": float(art_scale), "positions": positions}, widths, heights, padding
+	)
+
+
+static func _with_backings(
+	layout: Dictionary, widths: Array[float], heights: Array[float], padding: int
+) -> Dictionary:
+	if padding >= 0:
+		var boxes: Array[Rect2] = []
+		for index in widths.size():
+			boxes.append(
+				(
+					Rect2(
+						layout.positions[index],
+						Vector2(ceilf(widths[index]), ceilf(heights[index]))
+					)
+					. grow(padding)
+				)
+			)
+		layout["backings"] = boxes
+	return layout
 
 
 func _icon_size(art: Dictionary) -> Vector2:
@@ -279,6 +327,9 @@ func _draw() -> void:
 	if _plan.is_empty():
 		return
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE * _plan.scale)
+	if not _backing.is_empty():
+		for box: Rect2 in _plan.get("backings", []):
+			draw_rect(box, _backing.color, true, -1, false)
 	for index in _items.size():
 		var item: Dictionary = _items[index]
 		var at: Vector2 = _plan.positions[index]
@@ -334,6 +385,8 @@ func _glyph(character: String) -> int:
 
 
 func _text_height() -> float:
+	if not _backing.is_empty() and _sheet == null:
+		return ceilf(_font.get_height(FONT_SIZE))
 	return maxf(FONT_SIZE, float(_bitmap.get("cell_height", FONT_SIZE)))
 
 

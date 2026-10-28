@@ -53,6 +53,10 @@ static func read(path: String) -> Dictionary:
 	for code: Variant in objects.keys():
 		if not visual_ok(objects[code]):
 			objects.erase(code)
+	var hud: Dictionary = manifest.get("hud", {})
+	if hud.has("backing") and not hud_backing_ok(hud.backing):
+		printerr("Invalid HUD backing ignored")
+		hud.erase("backing")
 	var terrain: Dictionary = manifest.get("terrain", {})
 	for name: Variant in terrain.keys():
 		if not terrain[name] is Dictionary:
@@ -156,3 +160,16 @@ static func visual_ok(value: Variant) -> bool:
 		if not animation_ok(animation):
 			return false
 	return true
+
+
+static func hud_backing_ok(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	var color: Variant = value.get("color")
+	if not color is Array or color.size() != 3:
+		return false
+	for channel: Variant in color:
+		if not number_ok(channel) or channel < 0 or channel > 255 or channel != floorf(channel):
+			return false
+	var padding: Variant = value.get("padding", 2)
+	return number_ok(padding) and padding >= 0 and padding <= 16 and padding == floorf(padding)
