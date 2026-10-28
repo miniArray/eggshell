@@ -13,6 +13,7 @@ const Decor = preload("res://src/sim/types/decor.gd")
 const Ledges = preload("res://src/sim/types/decor_platform.gd")
 const SnowTree = preload("res://src/sim/types/snow_tree.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
+const SpanDressing = preload("res://src/view/span_dressing.gd")
 ## Objects the simulation already places and moves; the view draws them from their state.
 const SIMULATED := ["e1", "e2", "e3", "e5", "e20", "o5", "o11", "p1"]
 const BOARD_HEIGHT := 6.0
@@ -334,6 +335,9 @@ static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dict
 			if art.get("anchor", "box") == "position" and node.flip_h:
 				node.flip_h = false
 				node.scale.x *= -1
+			if SpanDressing.dressed(code) and not degraded:
+				var span_width := float(initial.get("width", 0)) / State.SCALE
+				SpanDressing.attach(node, manifest, pack, code, object, span_width)
 		node.set_meta("placed_id", id)
 		node.set_meta("placed_code", code)
 		node.set_meta("placed_source", object)
@@ -809,6 +813,8 @@ static func update_placed(node: Sprite2D, entity: Dictionary, state: Dictionary)
 	node.modulate.a = pose.alpha
 	node.visible = pose.visible and not entity.get("held", 0) and not entity.get("hidden", 0)
 	node.flip_h = pose.flip_h
+	if SpanDressing.dressed(entity.code):
+		SpanDressing.follow(node)
 	if node.get_meta("decor", false):
 		for part: Node in node.get_children():
 			for child: Node in part.get_children():

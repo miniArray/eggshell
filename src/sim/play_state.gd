@@ -83,7 +83,9 @@ static func level_fields() -> Array:
 
 static func compose_level_fields() -> Array:
 	var registry := entity_registry()
-	var result := compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS, Sound.LEVEL_FIELDS])
+	var result := compose(
+		[BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS, Sound.LEVEL_FIELDS]
+	)
 	for pair: Array in registry.level_fields():
 		assert(
 			not result.any(func(core: Array) -> bool: return core[0] == pair[0]),

@@ -12,6 +12,8 @@ const Moves = preload("res://src/sim/moves.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Life = preload("res://src/sim/life.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const SpanDressing = preload("res://src/view/span_dressing.gd")
+const PACK := "res://packs/pantry"
 const S := State.SCALE
 var checks := 0
 var failures := 0
@@ -25,6 +27,8 @@ func _initialize() -> void:
 	_ghost_contact_checks()
 	_restore_checks()
 	_empty_code_checks()
+	_span_part_checks()
+	_span_node_checks()
 	print("LASTCODES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -100,10 +104,7 @@ func _emitter_checks() -> void:
 	var state := State.create(world)
 	Moves.initialize(state)
 	Moves.jump(state)
-	check(
-		state.sound_kind == Sound.PLAYER and state.sound_serial == 1,
-		"A jump is a player sound"
-	)
+	check(state.sound_kind == Sound.PLAYER and state.sound_serial == 1, "A jump is a player sound")
 	check(
 		state.sound_x == state.x and state.sound_y == state.y - Sound.PLAYER_CENTRE * S,
 		"A player sound comes from the body centre"
@@ -163,7 +164,10 @@ func _quiet_ghost_checks() -> void:
 	check(ghost.y != start_y or ghost.wave_phase == 0, "It bobs on a slow wave while wandering")
 	var leg_facing: int = ghost.facing
 	_tick(state, world, 4 * Ghost.FRAME_TICKS + 1)
-	check(ghost.facing == -leg_facing and ghost.leg_ticks == Ghost.LEG_TICKS, "It turns for the next leg")
+	check(
+		ghost.facing == -leg_facing and ghost.leg_ticks == Ghost.LEG_TICKS,
+		"It turns for the next leg"
+	)
 
 
 func _listening_ghost_checks() -> void:
@@ -245,7 +249,9 @@ func _restore_checks() -> void:
 	check(ghost.mode == Ghost.CHASING, "Mid-chase before the snapshot")
 	var bytes := Snapshot.encode(state)
 	var decoded := Snapshot.decode(bytes, world.identity, world)
-	check(decoded.ok and Snapshot.encode(decoded.state) == bytes, "Sound and ghost state round trip")
+	check(
+		decoded.ok and Snapshot.encode(decoded.state) == bytes, "Sound and ghost state round trip"
+	)
 	var restored: Dictionary = decoded.state
 	var serial: int = restored.sound_serial
 	_tick(state, world, 90)
@@ -273,6 +279,61 @@ func _empty_code_checks() -> void:
 	check(blank == before, "It never acts")
 	var bytes := Snapshot.encode(state)
 	check(Snapshot.decode(bytes, world.identity, world).ok, "An empty code round trips")
+
+
+func _span_part_checks() -> void:
+	var stem := SpanDressing.parts("p6", {"E2": "64"}, 96)
+	check(stem.size() == 1 and stem[0].name == "p6_stem", "A ledge with E2 has a stalk")
+	check(stem[0].rect == Rect2(-16, 16, 32, 64), "The stalk hangs E2 px from the bottom edge")
+	check(SpanDressing.parts("p8", {"E2": 96}, 96)[0].rect.size.y == 96, "Numeric E2 works too")
+	check(SpanDressing.parts("p7", {"E2": "0"}, 96).is_empty(), "A zero stalk draws nothing")
+	check(SpanDressing.parts("p7", {"E2": "-5"}, 96).is_empty(), "A negative stalk draws nothing")
+	check(SpanDressing.parts("p7", {}, 96).is_empty(), "No E2, no stalk")
+	check(SpanDressing.parts("p6", {"E2": "48px"}, 96)[0].rect.size.y == 48, "Leading digits count")
+	var spikes := SpanDressing.parts("p11", {"E2": "1"}, 104)
+	check(
+		spikes.size() == 1 and spikes[0].name == "p11_spikes" and spikes[0].variant == 1,
+		"A turning span's E2 picks its spike strip"
+	)
+	check(spikes[0].rect == Rect2(-52, -18, 104, 10), "The strip stands on the span's top edge")
+	check(SpanDressing.parts("p12", {"E2": "0"}, 64)[0].rect.size.x == 64, "It spans the width")
+	check(SpanDressing.parts("p12", {"E2": "2"}, 64).is_empty(), "An unknown strip draws nothing")
+	check(SpanDressing.parts("p9", {"E2": "64"}, 64).is_empty(), "Other spans have no parts")
+
+
+## Parts keep their world size and place while the span node stretches and turns.
+func _span_node_checks() -> void:
+	var node := Sprite2D.new()
+	node.scale = Vector2(2, 0.5)
+	SpanDressing.attach(node, {}, PACK, "p11", {"E2": "0"}, 104)
+	check(node.get_child_count() == 1, "A diagnostic strip is attached without pack art")
+	var part: Node2D = node.get_child(0)
+	var world := node.transform * part.transform
+	check(
+		(
+			world.origin.is_equal_approx(Vector2(-52, -18))
+			and world.get_scale().is_equal_approx(Vector2.ONE)
+		),
+		"The strip keeps world size under a stretched span"
+	)
+	node.scale = Vector2(4, 1)
+	node.rotation_degrees = 180
+	SpanDressing.follow(node)
+	world = node.transform * part.transform
+	check(world.origin.is_equal_approx(Vector2(52, 18)), "The strip turns with the span")
+	node.free()
+	var manifest := {"objects": {"p6_stem": {"file": "objects/e1.png", "origin": [0, 0]}}}
+	var ledge := Sprite2D.new()
+	# A plain directory path reads the PNG directly, without an editor import.
+	var pack := ProjectSettings.globalize_path(PACK)
+	SpanDressing.attach(ledge, manifest, pack, "p6", {"E2": "80"}, 96)
+	var drawn: Node2D = ledge.get_child(0)
+	var image: Sprite2D = drawn.get_child(0) if drawn.get_child_count() else null
+	check(
+		image != null and image.region_enabled and image.region_rect.size == Vector2(32, 80),
+		"Pack stalk art repeats down the stalk's height"
+	)
+	ledge.free()
 
 
 func check(value: bool, message: String) -> void:
