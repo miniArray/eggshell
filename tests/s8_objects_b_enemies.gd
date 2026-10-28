@@ -677,10 +677,8 @@ func _ghost_checks() -> void:
 		type.step(ghost, state, world)
 	check(ghost.phase == type.STALK, "Looked away from, it comes out again")
 	var front := {"code": "o7", "x": ghost.x - 20 * S, "vx": 300 * 60, "fall_on_terrain": 0}
-	check(type.projectile_contact(ghost, front, state, world) == 0, "An egg from the front passes")
 	var behind := {"code": "o7", "x": ghost.x + 20 * S, "vx": -300 * 60, "fall_on_terrain": 0}
-	check(
-		type.projectile_contact(ghost, behind, state, world) == 3, "An egg from behind defeats it"
-	)
+	check(type.projectile_contact(ghost, behind, state, world) == 0, "An egg from behind passes")
+	check(type.projectile_contact(ghost, front, state, world) == 3, "An egg at its face defeats it")
 	check(ghost.status == Registry.DEFEATED, "It leaves a star when defeated")
 	check(_degrades("e26", {"F": 4}), "An unknown ghost form becomes a placeholder")
