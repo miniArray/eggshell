@@ -6,6 +6,11 @@ const Settings = preload("res://src/save/settings.gd")
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
+const World = preload("res://src/sim/world.gd")
+const State = preload("res://src/sim/play_state.gd")
+const Sim = preload("res://src/sim/step.gd")
+const Bits = preload("res://src/sim/move_input.gd")
+const CollisionTable = preload("res://src/level/collision_table.gd")
 var _failures := 0
 var _checks := 0
 
@@ -18,6 +23,7 @@ func _initialize() -> void:
 	track_checks()
 	settings_checks()
 	observer_checks()
+	simulation_checks()
 	print("Audio: %d checks, %d failures" % [_checks, _failures])
 	quit(1 if _failures else 0)
 
@@ -354,6 +360,30 @@ func observer_checks() -> void:
 	restored.coins = 7
 	player.observe(restored)
 	check(player.last_cues.is_empty(), "time going back resynchronizes")
+	player.free()
+
+
+func simulation_checks() -> void:
+	# The real fixed step feeds the observer, as the game does after each step.
+	var code := FileAccess.get_file_as_string("res://tests/fixtures/lagoon.level.json")
+	var built := World.build(code, CollisionTable.read())
+	check(built.ok, "fixture level builds")
+	if not built.ok:
+		return
+	var world: Dictionary = built.world
+	var state := State.create(world)
+	var player: Node = Player.create(AudioMap.new(), world, {}, true)
+	var heard := []
+	var script := [[0, 90], [Bits.JUMP, 40], [0, 60], [Bits.JUMP, 2], [0, 14], [Bits.DOWN, 60]]
+	for part: Array in script:
+		for count in part[1]:
+			Sim.advance(state, part[0], world)
+			player.observe(state)
+			heard.append_array(events(player.last_cues))
+	for event: String in ["jump", "flutter", "pound_start", "pound_land"]:
+		check(event in heard, "real steps derive %s: %s" % [event, heard])
+	check(heard.count("jump") == 2, "each jump sounds once: %s" % [heard])
+	check(not "stomp" in heard and not "hit" in heard, "no false contact sounds: %s" % [heard])
 	player.free()
 
 

@@ -43,7 +43,7 @@ Version 3 adds these optional dictionaries:
 | `gradients` | Name to `strips` of `{height, color: [r,g,b]}`, with optional `scroll` and `reference`. RGB values use 0–255. |
 | `hud` | Named visual entries, reserved for future HUD drawing. |
 | `fonts` | Named font files or bitmap sheets and glyph metadata, reserved for future text drawing. |
-| `audio` | `music` and `effects` dictionaries mapping ids or names to relative Ogg Vorbis files. |
+| `audio` | Music tracks, effects, and maps from game events and music roles to them. See [Audio](#audio). |
 | `terrain` | Tilemap or tileset family name to optional `surface`, `underside` and `side` strips. A strip has `file` and `edge`. See [Terrain strips](#terrain-strips). |
 
 Object entries may use `anchor: "position"` to keep the simulation origin,
@@ -66,14 +66,78 @@ behind the gradient and all three background slots. A gradient setting is
 `name_offset_scale`, or custom `height,r,g,b` groups in place of the name.
 The offset replaces the first strip height; scale multiplies strip heights.
 
-`src/view/pack_audio.gd` holds the audio maps. It can lazily load a requested
-stream, but creates no audio player and plays nothing. HUD and font metadata
-is retained but is not used by the current diagnostic labels.
+HUD and font metadata is retained but is not used by the current diagnostic
+labels.
 
 Fast metadata checks, without starting the game:
 
 ```sh
 nix develop -c godot --headless --path . --script tests/pack_manifest.gd
+```
+
+## Audio
+
+The optional `audio` section supplies sound. Pantry has no audio, so it is
+silent. Every file is a relative Ogg Vorbis path; other entries are ignored.
+
+```json
+"audio": {
+  "music": {
+    "1": {"file": "audio/meadow.ogg", "loop_start": 1.95, "volume_db": 0},
+    "2": "audio/caves.ogg",
+    "fanfare": "audio/fanfare.ogg"
+  },
+  "effects": {"hop": "audio/hop.ogg", "chime": "audio/chime.ogg"},
+  "events": {"jump": "hop", "coin": "chime"},
+  "tracks": {"goal": "fanfare"}
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `music` | Track key to a file, or to `{file, loop_start, volume_db}`. Playback loops back to `loop_start` seconds (default 0). `volume_db` offsets the track volume (default 0, clamped to -60..24). |
+| `effects` | Effect key to a file. |
+| `events` | Game event name to an effect key. An unmapped event uses the effect with its own name. |
+| `tracks` | Music role (`goal`, `death`) to a track key. An unmapped role uses the track with its own name. |
+
+A map's level-code `music` id selects the track with that key. Id 0, an unknown
+id and a remote address play no music; the player never downloads music. A
+custom selection whose source names a pack track uses its own
+`loop_start,volume_db` settings from the level code.
+
+Game events:
+
+| Group | Events |
+| --- | --- |
+| Movement | `jump`, `flutter`, `pound_start`, `pound_land`, `head_bump`, `splash`, `snow_step` |
+| Mouth and eggs | `tongue`, `spit`, `spit_fire`, `spit_ice`, `spit_seed`, `egg_throw`, `aim_tick`, `egg_made`, `egg_pickup` |
+| Damage and companion | `hit`, `stomp`, `companion_cry`, `countdown_high`, `countdown_low`, `countdown_full`, `rescue`, `rejoin`, `quick_death` |
+| Items | `coin`, `red_coin`, `all_red_coins`, `flower`, `all_flowers`, `star`, `checkpoint` |
+| Level objects | `switch_press`, `switch_timer`, `message_hit`, `message_open`, `message_scroll`, `message_close` |
+
+The level track plays during play. Death stops all sound and plays the `death`
+role once. Reaching the goal stops the level track and plays the `goal` role
+once. The level track restarts after a respawn.
+
+`src/view/audio_player.gd` derives these events by comparing the previous and
+current saved state after each simulation step: counters, life phases, action
+changes, request serials and the switch's saved sound triggers. It never
+writes state, so sound cannot change physics or saves. A restored or replaced
+state, a backward frame or a gap of more than four frames resynchronizes
+without events: a restore never replays old sounds. After a restore the level
+track starts again, and a running switch timer resumes at its saved position.
+Effects share eight voices. A new sound for an event restarts that event's
+voice; otherwise the oldest voice is reused. Effects are not positional.
+
+`settings.json` holds `music_volume` and `effects_volume`, whole numbers from 0
+to 100 (default 80). 0 silences that group. An invalid value logs a warning and
+uses 80. Pass `--mute` after `--` to silence all audio, for example in tests.
+Headless runs use the dummy audio driver; event derivation still runs.
+
+Fast derivation checks, without audio output:
+
+```sh
+nix develop -c godot --headless --path . --script tests/audio.gd
 ```
 
 ## Terrain strips

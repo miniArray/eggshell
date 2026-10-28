@@ -348,6 +348,7 @@ func _update_music(current: Dictionary) -> void:
 	_music.stream = stream
 	_music.volume_db = _music_db + track.volume_db
 	_music.play()
+	print("EGGSHELL_MUSIC ", key)
 
 
 func _apply(cue: Dictionary) -> void:
@@ -386,6 +387,7 @@ func _play_role(role: String) -> void:
 	_music.stream = stream
 	_music.volume_db = _music_db + _map.settings_for(key).volume_db
 	_music.play()
+	print("EGGSHELL_MUSIC ", key)
 
 
 func _play_effect(event: String, from_position := 0.0) -> void:
