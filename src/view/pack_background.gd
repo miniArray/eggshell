@@ -9,10 +9,12 @@ var _plan: Dictionary = {}
 var _gradient_scroll := Vector2.ZERO
 var _reference := Vector2.ZERO
 var _tick := 0
+var _density := 1
 
 
 func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 	z_index = -30
+	_density = int(manifest.get("density", 1))
 	var backgrounds: Dictionary = manifest.get("backgrounds", {})
 	for slot: String in ["bg1", "bg2", "bg3"]:
 		var choice := str(map.get(slot, "0")).split(",")
@@ -85,20 +87,26 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 					{
 						"texture": texture,
 						"scroll": Vector2(scroll[0], scroll[1]),
-						"scale": Vector2(scale[0], scale[1]),
-						"offset": Vector2(offset[0], offset[1]) + slot_offset,
+						"scale": Vector2(scale[0], scale[1]) / _density,
+						"offset": (Vector2(offset[0], offset[1]) + slot_offset) / _density,
 						"anchor":
 						(
-							Vector2(layer.anchor[0], layer.anchor[1]) + slot_offset
+							(Vector2(layer.anchor[0], layer.anchor[1]) + slot_offset) / _density
 							if layer.has("anchor")
+							else Vector2.ZERO
+						),
+						"origin":
+						(
+							Vector2(frame_origin[0], frame_origin[1])
+							if Pack.point_ok(frame_origin)
 							else Vector2.ZERO
 						),
 						"art": art,
 						"frame": selected_frame,
 						"anchored": layer.has("anchor"),
-						"period": Vector2(period[0], period[1]),
+						"period": Vector2(period[0], period[1]) / _density,
 						"min_repeat": int(layer.get("min_repeat", -4096)),
-						"reference": Vector2(reference[0], reference[1]),
+						"reference": Vector2(reference[0], reference[1]) / _density,
 						"repeat_x": bool(layer.get("repeat_x", true)),
 						"repeat_y": bool(layer.get("repeat_y", false)),
 					}
@@ -107,6 +115,7 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 	var parts := str(map.get("gradient", "")).split("_")
 	var gradients: Dictionary = manifest.get("gradients", {})
 	var gradient: Variant = gradients.get(parts[0], {})
+	var pack_gradient: bool = gradient is Dictionary and not gradient.is_empty()
 	# Custom strips use height,r,g,b groups, with the same map offset and scale fields.
 	if not gradient is Dictionary or gradient.is_empty():
 		gradient = {"strips": decode_strips(parts[0])}
@@ -118,7 +127,7 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 	if Pack.point_ok(scroll):
 		_gradient_scroll = Vector2(scroll[0], scroll[1])
 	if Pack.point_ok(reference):
-		_reference = Vector2(reference[0], reference[1])
+		_reference = Vector2(reference[0], reference[1]) / _density
 	var scale := float(parts[2]) if parts.size() > 2 and parts[2].is_valid_float() else 1.0
 	var offset := float(parts[1]) if parts.size() > 1 and parts[1].is_valid_float() else 0.0
 	if not is_finite(scale) or scale <= 0 or not is_finite(offset):
@@ -133,7 +142,8 @@ func setup(manifest: Dictionary, pack: String, map: Dictionary) -> void:
 			continue
 		if not Pack.number_ok(rgb[0]) or not Pack.number_ok(rgb[1]) or not Pack.number_ok(rgb[2]):
 			continue
-		var height := maxf(0, offset if index == 0 else float(strip.height)) * scale
+		var strip_height := float(strip.height) / (_density if pack_gradient else 1)
+		var height := maxf(0, offset if index == 0 else strip_height) * scale
 		_strips.append(
 			{
 				"y": y,
@@ -184,18 +194,33 @@ func _draw() -> void:
 
 func draw_layer(layer: Dictionary, visible: Rect2) -> void:
 	var texture: Texture2D = layer.texture
+	var scale: Vector2 = layer.scale
+	if _density > 1:
+		scale = (
+			Vector2(maxf(1, roundf(scale.x * _plan.scale)), maxf(1, roundf(scale.y * _plan.scale)))
+			/ _plan.scale
+		)
 	var offset: Vector2 = layer.offset
+	if _density > 1 and layer.anchored:
+		offset = layer.anchor - layer.origin * scale
 	if not layer.art.is_empty():
 		var frame := Frames.sample(layer.art, _tick, "", layer.frame)
 		texture = frame.texture
 		if layer.anchored:
-			offset = layer.anchor - frame.origin * layer.scale
-	var size: Vector2 = Vector2(texture.get_size()) * layer.scale
+			offset = layer.anchor - frame.origin * scale
+	var size: Vector2 = Vector2(texture.get_size()) * scale
 	var origin: Vector2 = offset + (_plan.center - layer.reference) * (Vector2.ONE - layer.scroll)
+	if _density > 1:
+		origin = (
+			((origin * _plan.scale + _plan.offset.round()).round() - _plan.offset.round())
+			/ _plan.scale
+		)
 	var period := Vector2(
 		layer.period.x if layer.period.x > 0 else size.x,
 		layer.period.y if layer.period.y > 0 else size.y
 	)
+	if _density > 1:
+		period = (period * _plan.scale).round().max(Vector2.ONE) / _plan.scale
 	if period != size:
 		var first_x := (
 			maxi(layer.min_repeat, floori((visible.position.x - origin.x - size.x) / period.x))
@@ -220,6 +245,6 @@ func draw_layer(layer: Dictionary, visible: Rect2) -> void:
 		first.y += floorf((visible.position.y - origin.y) / size.y) * size.y
 		end.y = visible.end.y + size.y
 	# Tile in one draw call. Neither map width nor tiny scales allocate more nodes.
-	draw_set_transform(Vector2.ZERO, 0, layer.scale)
-	draw_texture_rect(texture, Rect2(first / layer.scale, (end - first) / layer.scale), true)
+	draw_set_transform(Vector2.ZERO, 0, scale)
+	draw_texture_rect(texture, Rect2(first / scale, (end - first) / scale), true)
 	draw_set_transform(Vector2.ZERO)

@@ -65,6 +65,11 @@ static func read(path: String) -> Dictionary:
 			if not safe_file(value.get(key)):
 				manifest.erase(section)
 				break
+	var density: Variant = manifest.get("density", 1)
+	if not number_ok(density) or density < 1 or density > 4 or density != floorf(density):
+		printerr("Invalid asset pack density; using 1")
+		density = 1
+	manifest["density"] = int(density)
 	manifest["drawing"] = drawing
 	return manifest
 

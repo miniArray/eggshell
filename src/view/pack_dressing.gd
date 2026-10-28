@@ -31,11 +31,12 @@ static func object_art(
 	var entry: Variant = objects.get(code, {})
 	if entry is Dictionary and entry.get("variants") is Dictionary:
 		entry = entry.variants.get(str(variant), entry)
-	return _frames.visual(pack, entry)
+	return _frames.visual(pack, entry, int(manifest.get("density", 1)))
 
 
 static func sprite(art: Dictionary, z: int) -> Sprite2D:
 	var node := Sprite2D.new()
+	Frames.set_density(node, int(art.get("density", 1)))
 	node.texture = art.texture
 	node.centered = false
 	node.offset = -art.origin
@@ -52,25 +53,45 @@ static func room(root: Node2D, manifest: Dictionary, pack: String, world: Dictio
 	if not manifest.has("background"):
 		return
 	var size := Vector2(world.width, world.height) / State.SCALE
+	var density := int(manifest.get("density", 1))
 	var background: Dictionary = manifest.background
-	strip(root, load_texture(pack.path_join(background.wall)), Rect2(Vector2.ZERO, size), WALL_Z)
+	strip(
+		root,
+		load_texture(pack.path_join(background.wall)),
+		Rect2(Vector2.ZERO, size),
+		WALL_Z,
+		density
+	)
 	var counter := load_texture(pack.path_join(background.counter))
 	if counter != null:
-		var counter_height := float(counter.get_height())
-		strip(root, counter, Rect2(0, size.y - counter_height, size.x, counter_height), WALL_Z + 1)
+		var counter_height := float(counter.get_height()) / density
+		strip(
+			root,
+			counter,
+			Rect2(0, size.y - counter_height, size.x, counter_height),
+			WALL_Z + 1,
+			density
+		)
 	var cabinet := load_texture(pack.path_join(background.cabinet))
 	if cabinet != null:
-		strip(root, cabinet, Rect2(0, 0, size.x, cabinet.get_height()), WALL_Z + 1)
+		strip(
+			root,
+			cabinet,
+			Rect2(0, 0, size.x, float(cabinet.get_height()) / density),
+			WALL_Z + 1,
+			density
+		)
 
 
-static func strip(root: Node2D, texture: Texture2D, rect: Rect2, z: int) -> void:
+static func strip(root: Node2D, texture: Texture2D, rect: Rect2, z: int, density: int = 1) -> void:
 	if texture == null:
 		return
 	var node := Sprite2D.new()
 	node.texture = texture
 	node.centered = false
 	node.region_enabled = true
-	node.region_rect = Rect2(Vector2.ZERO, rect.size)
+	Frames.set_density(node, density)
+	node.region_rect = Rect2(Vector2.ZERO, rect.size * density)
 	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	node.position = rect.position
 	node.z_index = z
@@ -84,6 +105,7 @@ static func supports(root: Node2D, manifest: Dictionary, pack: String, world: Di
 	var bracket := load_texture(pack.path_join(manifest.supports.bracket))
 	if shelf == null or bracket == null:
 		return
+	var density := int(manifest.get("density", 1))
 	var facts: Dictionary = CollisionTable.read().tilemaps
 	var bottom := float(world.height) / State.SCALE
 	for group: String in ["layer2", "layer1"]:
@@ -116,10 +138,10 @@ static func supports(root: Node2D, manifest: Dictionary, pack: String, world: Di
 								runs[key] = []
 							runs[key].append(Vector2(minf(a.x, b.x), maxf(a.x, b.x)))
 						else:
-							brace(root, shelf, a, b, normal, tint, z)
+							brace(root, shelf, a, b, normal, tint, z, density)
 		for y: int in runs:
 			for run: Vector2 in merged(runs[y]):
-				board(root, shelf, bracket, run, y, tint, z)
+				board(root, shelf, bracket, run, y, tint, z, density)
 
 
 static func cell_polygon(
@@ -173,18 +195,28 @@ static func merged(segments: Array) -> Array:
 
 
 static func board(
-	root: Node2D, shelf: Texture2D, bracket: Texture2D, run: Vector2, y: float, tint: Color, z: int
+	root: Node2D,
+	shelf: Texture2D,
+	bracket: Texture2D,
+	run: Vector2,
+	y: float,
+	tint: Color,
+	z: int,
+	density: int = 1
 ) -> void:
 	# The board sits inside the terrain's bottom edge, never in the open space below it.
-	var scale := BOARD_HEIGHT / shelf.get_height()
+	var height := BOARD_HEIGHT if density == 1 else float(shelf.get_height()) / density
+	var scale := height / shelf.get_height()
 	var node := Sprite2D.new()
+	if density > 1:
+		node.set_meta("pack_density", density)
 	node.texture = shelf
 	node.centered = false
 	node.region_enabled = true
 	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	node.region_rect = Rect2(0, 0, (run.y - run.x) / scale, shelf.get_height())
 	node.scale = Vector2(scale, scale)
-	node.position = Vector2(run.x, y - BOARD_HEIGHT)
+	node.position = Vector2(run.x, y - height)
 	node.z_index = z
 	node.modulate = tint
 	root.add_child(node)
@@ -202,6 +234,7 @@ static func board(
 	for spot: float in spots:
 		# Brackets are flat on the wall plane, behind the player and terrain.
 		var piece := Sprite2D.new()
+		Frames.set_density(piece, density)
 		piece.texture = bracket
 		piece.centered = false
 		piece.flip_h = spot > run.x + length / 2.0
@@ -213,18 +246,28 @@ static func board(
 
 
 static func brace(
-	root: Node2D, shelf: Texture2D, a: Vector2, b: Vector2, normal: Vector2, tint: Color, z: int
+	root: Node2D,
+	shelf: Texture2D,
+	a: Vector2,
+	b: Vector2,
+	normal: Vector2,
+	tint: Color,
+	z: int,
+	density: int = 1
 ) -> void:
 	# A sloped underside becomes the diagonal brace of a bracket, drawn inside the terrain.
-	var scale := BOARD_HEIGHT / shelf.get_height()
+	var height := BOARD_HEIGHT if density == 1 else float(shelf.get_height()) / density
+	var scale := height / shelf.get_height()
 	var node := Sprite2D.new()
+	if density > 1:
+		node.set_meta("pack_density", density)
 	node.texture = shelf
 	node.region_enabled = true
 	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	node.region_rect = Rect2(0, 0, a.distance_to(b) / scale, shelf.get_height())
 	node.scale = Vector2(scale, scale)
 	node.rotation = (b - a).angle()
-	node.position = (a + b) / 2.0 - normal * BOARD_HEIGHT / 2.0
+	node.position = (a + b) / 2.0 - normal * height / 2.0
 	node.z_index = z
 	node.modulate = tint
 	root.add_child(node)
@@ -253,7 +296,8 @@ static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dict
 		if code == "o23":
 			var tall := float(object.get("E1", 64))
 			node.scale = Vector2(
-				minf(32.0 / art.texture.get_width(), 2.0), tall / art.texture.get_height()
+				minf(32.0 / art.texture.get_width(), 2.0 / int(art.get("density", 1))),
+				tall / art.texture.get_height()
 			)
 		if art.get("anchor", "box") == "position" and node.flip_h:
 			node.flip_h = false

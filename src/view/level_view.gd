@@ -20,6 +20,7 @@ var audio := AudioMap.new()
 var _world: Dictionary
 var _level_world: Dictionary
 var _pack_path := ""
+var _density := 1
 var _built_map := 0
 var _effects := Effects.new()
 var _root := Node2D.new()
@@ -62,6 +63,8 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	_built_map = int(world.map_index)
 	add_child(_root)
 	var manifest := Pack.read(pack)
+	_density = int(manifest.get("density", 1))
+	_root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_hud_manifest = manifest
 	_hud_pack = pack
 	var map: Dictionary = world.map_source
@@ -89,15 +92,18 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			texture = placeholder(layer.name, layer.size)
 		var atlas := TileSetAtlasSource.new()
 		atlas.texture = texture
-		atlas.texture_region_size = Vector2i(layer.size, layer.size)
-		var columns: int = texture.get_width() / layer.size
+		var tile_density := _density if real_tiles else 1
+		var art_size: int = layer.size * tile_density
+		atlas.texture_region_size = Vector2i(art_size, art_size)
+		var columns: int = texture.get_width() / art_size
 		var tiles := TileSet.new()
-		tiles.tile_size = Vector2i(layer.size, layer.size)
+		tiles.tile_size = Vector2i(art_size, art_size)
 		tiles.add_source(atlas, 0)
 		var node := TileMapLayer.new()
 		node.set_meta("tilemap_name", layer.name)
 		node.set_meta("water", bool(layer.water))
 		node.tile_set = tiles
+		node.scale = Vector2.ONE / tile_density
 		node.z_index = layer.slot[0]
 		_root.add_child(node)
 		for row in layer.height:
@@ -133,11 +139,13 @@ func _build_map(world: Dictionary, pack: String) -> void:
 					"animations": manifest.player,
 					"default_animation": "Idle0",
 					"states": states,
-				}
+				},
+				_density
 			)
 		)
 		if not _animations.is_empty():
 			_player.set_meta("pack_art", _animations)
+			Frames.set_density(_player, _density)
 	Dressing.room(_root, manifest, pack, world)
 	Dressing.supports(_root, manifest, pack, world)
 	Dressing.placed(_root, manifest, pack, world)
@@ -177,6 +185,10 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			node.scale.x = width / 32.0
 		else:
 			node.texture = bridge_art.texture
+			if _density > 1:
+				Frames.set_density(node, _density)
+				node.offset = -bridge_art.origin
+				node.set_meta("pack_art", bridge_art)
 			node.scale.x = width / bridge_art.texture.get_width()
 		_root.add_child(node)
 	var head_art := Dressing.object_art(manifest, pack, "e5_head")
@@ -200,6 +212,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		if not goal_art.is_empty():
 			marker.centered = false
 			marker.set_meta("pack_art", goal_art)
+			Frames.set_density(marker, _density)
 		marker.z_index = 10
 		marker.set_meta("goal", true)
 		marker.position = Vector2(goal[0], goal[1]) / State.SCALE
@@ -218,9 +231,15 @@ func render(state: Dictionary) -> void:
 		if selected.is_empty():
 			return
 		_build_map(selected, _pack_path)
+	if _density > 1:
+		for child: Node in _root.get_children():
+			if child is Sprite2D:
+				Frames.unsnap(child)
 	var viewport := get_viewport_rect().size
 	var focus := Vector2(state.camera_x, state.camera_y) / State.SCALE
-	var plan := Plan.plan(viewport, Vector2(_world.width, _world.height) / State.SCALE, focus)
+	var plan := Plan.plan(
+		viewport, Vector2(_world.width, _world.height) / State.SCALE, focus, _density
+	)
 	_root.scale = Vector2.ONE * plan.scale
 	# Half-pixel translations can put nearest samples on texel boundaries.
 	_root.position = plan.offset.round()
@@ -266,6 +285,7 @@ func render(state: Dictionary) -> void:
 				head.scale = (
 					Vector2(16 + 48 * enemy.head_size / 15.0, 16 + 38 * enemy.head_size / 15.0)
 					/ Vector2(64, 54)
+					/ (_density if head.has_meta("pack_art") else 1)
 				)
 			else:
 				place_actor(head, enemy, Plant.head_box(enemy), false)
@@ -277,9 +297,13 @@ func render(state: Dictionary) -> void:
 		var pose := PlayerPose.select(state)
 		_player.set_meta("pack_variant", pose.frame)
 		Frames.apply(_player, pose.tick, pose.name)
-		_player.scale.x = state.facing
+		_player.scale.x = float(state.facing) / _density
 	Hud.present(self, _root, state, _world, _hud_manifest, _hud_pack)
 	_effects.update(_root, _player, _world, state, plan, viewport)
+	if _density > 1:
+		for child: Node in _root.get_children():
+			if child is Sprite2D:
+				Frames.snap(child, plan.scale)
 
 
 func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:
@@ -309,7 +333,10 @@ static func place_actor(node: Sprite2D, enemy: Dictionary, bounds: Array, relati
 		return
 	if node.get_meta("position_anchor", false):
 		node.position = Vector2(x, y) / State.SCALE
-		node.scale.x = 1 if int(enemy.get("facing", 1)) == node.get_meta("art_facing", 1) else -1
+		node.scale.x = (
+			(1.0 if int(enemy.get("facing", 1)) == node.get_meta("art_facing", 1) else -1.0)
+			/ int(node.get_meta("pack_art").get("density", 1))
+		)
 		return
 	var anchor_y: float = (
 		float(bounds[3]) if node.get_meta("bottom") else (bounds[1] + bounds[3]) / 2.0

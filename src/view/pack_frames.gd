@@ -22,10 +22,10 @@ func texture(pack: String, file: Variant) -> Texture2D:
 	return result
 
 
-func visual(pack: String, entry: Variant) -> Dictionary:
+func visual(pack: String, entry: Variant, density: int = 1) -> Dictionary:
 	if not Pack.visual_ok(entry):
 		return {}
-	var key := pack + JSON.stringify(entry)
+	var key := pack + str(density) + JSON.stringify(entry)
 	if _visuals.has(key):
 		return _visuals[key]
 	var animations: Dictionary = entry.get("animations", {})
@@ -63,6 +63,7 @@ func visual(pack: String, entry: Variant) -> Dictionary:
 		entry.get("states", {}) if entry.get("states", {}) is Dictionary else {}
 	)
 	var result := {
+		"density": density,
 		"animations": loaded,
 		"default_animation": first,
 		"states": states,
@@ -109,3 +110,28 @@ static func sample(art: Dictionary, tick: int, state := "", variant := 0) -> Dic
 				selected = frame
 				break
 	return selected
+
+
+static func snap(node: Sprite2D, world_scale: float) -> void:
+	# Only dense packs opt into this policy. Legacy transforms remain untouched.
+	if not node.has_meta("pack_density"):
+		return
+	node.set_meta("pack_transform", node.transform)
+	# Squash and fit transforms must not shrink or unevenly stretch source pixels.
+	for axis in 2:
+		var value := node.scale[axis] * world_scale
+		node.scale[axis] = signf(value) * maxi(1, roundi(absf(value))) / world_scale
+	var corner := node.position + node.transform.basis_xform(node.get_rect().position)
+	node.position += (corner * world_scale).round() / world_scale - corner
+
+
+static func set_density(node: Sprite2D, density: int) -> void:
+	node.scale = Vector2.ONE / density
+	if density > 1:
+		node.set_meta("pack_density", density)
+
+
+static func unsnap(node: Sprite2D) -> void:
+	if node.has_meta("pack_transform"):
+		node.transform = node.get_meta("pack_transform")
+		node.remove_meta("pack_transform")

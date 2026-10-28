@@ -21,6 +21,7 @@ var _pack := ""
 var _manifest: Dictionary = {}
 var _items: Array[Dictionary] = []
 var _plan := {}
+var _dense := false
 
 
 static func present(
@@ -44,6 +45,7 @@ static func present(
 
 func setup(manifest: Dictionary, pack: String) -> void:
 	_manifest = manifest
+	_dense = int(manifest.get("density", 1)) > 1
 	_pack = pack
 	_font = ThemeDB.fallback_font
 	for key: String in ["hud", "MainFont", "ScoreFont", "LifeCounterFont"]:
@@ -92,7 +94,10 @@ func render(state: Dictionary, container: Vector2, world_root: Node2D) -> void:
 		/ S
 	)
 	_companion.position = anchor
-	_companion.scale.x = int(state.facing) if mode == Life.ATTACHED else 1
+	_companion.scale.x = (
+		(int(state.facing) if mode == Life.ATTACHED else 1)
+		/ float(int(_manifest.get("density", 1)) if _companion.has_meta("pack_art") else 1)
+	)
 	Frames.apply(_companion, int(state.frame), "cry" if mode == Life.BUBBLE else "idle")
 	_bubble.position = anchor
 	_bubble.visible = mode == Life.BUBBLE
@@ -108,13 +113,25 @@ func render(state: Dictionary, container: Vector2, world_root: Node2D) -> void:
 		)
 		Frames.apply(node, int(state.frame))
 	_items = readouts(state)
+	var art_scale := maxi(1, roundi(world_root.scale.x / int(_manifest.get("density", 1))))
 	var widths: Array[float] = []
+	var heights: Array[float] = []
 	for item: Dictionary in _items:
 		var width := _measure(item.text)
+		var height := _text_height()
 		if item.icon >= 0 and not _icons[item.icon].is_empty():
-			width += _text_height() + GAP
+			var size := _icon_size(_icons[item.icon])
+			if _dense and width + size.x + GAP > container.x / art_scale:
+				item.icon = -1  # Text takes priority over decorative art in a narrow window.
+			else:
+				width += size.x + GAP
+				height = maxf(height, size.y)
 		widths.append(width)
-	_plan = plan(container, widths, _text_height() + GAP)
+		heights.append(height)
+	if _dense:
+		_plan = dense_plan(container, widths, heights, art_scale)
+	else:
+		_plan = plan(container, widths, _text_height() + GAP)
 	queue_redraw()
 
 
@@ -219,6 +236,34 @@ static func plan(container: Vector2, widths: Array[float], row_height: float = 2
 	return result
 
 
+static func dense_plan(
+	container: Vector2, widths: Array[float], heights: Array[float], art_scale: int
+) -> Dictionary:
+	# Keep the first (health/countdown) readout first. Wrap, never shrink art.
+	var available := container.x / art_scale
+	var margin := floorf(minf(GAP, available / 16))
+	var at := Vector2(margin, margin)
+	var row_height := 0.0
+	var positions: Array[Vector2] = []
+	for index in widths.size():
+		if at.x > margin and at.x + widths[index] + margin > available:
+			at.x = margin
+			at.y += row_height + GAP
+			row_height = 0
+		positions.append(at)
+		at.x += ceilf(widths[index]) + GAP
+		row_height = maxf(row_height, ceilf(heights[index]))
+	return {"scale": float(art_scale), "positions": positions}
+
+
+func _icon_size(art: Dictionary) -> Vector2:
+	if not _dense:
+		return Vector2.ONE * _text_height()
+	if art.has("animations"):
+		return Frames.sample(art, int(_state.get("frame", 0))).texture.get_size()
+	return art.texture.get_size()
+
+
 func _draw() -> void:
 	if _plan.is_empty():
 		return
@@ -230,8 +275,9 @@ func _draw() -> void:
 			var art: Dictionary = _icons[item.icon]
 			if art.has("animations"):
 				art = Frames.sample(art, int(_state.frame))
-			draw_texture_rect(art.texture, Rect2(at, Vector2.ONE * _text_height()), false)
-			at.x += _text_height() + GAP
+			var size := _icon_size(art)
+			draw_texture_rect(art.texture, Rect2(at, size), false)
+			at.x += size.x + GAP
 		_draw_text(item.text, at)
 
 
@@ -266,9 +312,10 @@ func _advance(character: String) -> float:
 	if _glyph(character) >= 0:
 		for pair: Array in _bitmap.get("widths", []):
 			if character in pair[1]:
-				return float(pair[0])
-		return float(_bitmap.cell_width)
-	return _font.get_string_size(character, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+				return ceilf(float(pair[0])) if _dense else float(pair[0])
+		return ceilf(float(_bitmap.cell_width)) if _dense else float(_bitmap.cell_width)
+	var width := _font.get_string_size(character, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+	return ceilf(width) if _dense else width
 
 
 func _glyph(character: String) -> int:
@@ -334,11 +381,12 @@ func _actor(entry: Variant, fallback: Texture2D, anchor: Vector2, order: int) ->
 	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	node.centered = false
 	node.z_index = order
-	var art := _frames.visual(_pack, entry)
+	var art := _frames.visual(_pack, entry, int(_manifest.get("density", 1)))
 	if art.is_empty():
 		node.texture = fallback
 		node.offset = -anchor
 	else:
+		Frames.set_density(node, int(_manifest.get("density", 1)))
 		node.set_meta("pack_art", art)
 		Frames.apply(node, 0)
 	node.set_meta("stateful", true)

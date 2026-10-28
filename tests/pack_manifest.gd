@@ -17,6 +17,14 @@ func _initialize() -> void:
 		var manifest := base(version)
 		write_json("manifest.json", manifest)
 		check(not Pack.read(_directory).is_empty(), "version %d accepted" % version)
+		check(Pack.read(_directory).density == 1, "Missing density defaults to 1")
+		for density: Variant in [1, 2, 3, 4, 0, -1, 5, 1.5, "2", true, null]:
+			manifest["density"] = density
+			write_json("manifest.json", manifest)
+			var expected: int = (
+				int(density) if density in [1, 2, 3, 4] and not density is bool else 1
+			)
+			check(Pack.read(_directory).density == expected, "Density boundary %s" % str(density))
 	var manifest := base(3)
 	manifest["objects"] = {
 		"o1": {"file": "objects/one.png", "origin": [4, 8]},

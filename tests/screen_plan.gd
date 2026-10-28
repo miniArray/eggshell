@@ -16,8 +16,26 @@ func _initialize() -> void:
 		[Vector2(832, 448), 1.0, Vector2(832, 448)],
 	]:
 		var plan := Plan.plan(case[0], large_level, large_level / 2)
+		check(
+			plan == Plan.plan(case[0], large_level, large_level / 2, 1),
+			"Explicit density 1 is unchanged"
+		)
 		check(plan.scale == case[1], "%s uses scale %s" % [case[0], case[1]])
 		check(plan.visible.is_equal_approx(case[2]), "%s visible world" % case[0])
+	for case: Array in [
+		[Vector2(640, 480), 2.0],
+		[Vector2(1280, 720), 2.0],
+		[Vector2(1920, 1080), 2.0],
+		[Vector2(2560, 1440), 4.0],
+		[Vector2(3840, 2160), 4.0],
+	]:
+		var plan := Plan.plan(case[0], large_level, large_level / 2, 2)
+		check(plan.scale == case[1], "Density 2 world scale at %s" % case[0])
+		check(plan.visible.is_equal_approx(case[0] / case[1]), "Density 2 visible world")
+	for density in range(1, 5):
+		var plan := Plan.plan(Vector2(1280, 720), Vector2(300, 200), Vector2.ZERO, density)
+		check(int(plan.scale) % density == 0, "Bounds raise keeps art scale integral")
+		check(plan.visible.x <= 300 and plan.visible.y <= 200, "Density bounds fit")
 	# Ratio distance changes at the geometric mean, not the arithmetic midpoint.
 	for lower: int in [1, 2, 4]:
 		var boundary := sqrt(float(lower * (lower + 1)))

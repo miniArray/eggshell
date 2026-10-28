@@ -18,6 +18,12 @@ The loader accepts `version: 2` and `version: 3`. Both require `tiles` and
 `player` dictionaries, and `drawing_facts: "drawing_facts.json"`. Drawing
 metadata supplies a `tilemaps` dictionary and per-tileset draw-slot instances.
 An unsupported version or invalid required section uses diagnostic shapes.
+The optional top-level `density` is the number of art pixels per world pixel.
+It accepts integers 1 through 4 and defaults to 1. An invalid value logs a
+warning and uses 1; the pack still loads. Both versions accept it.
+At density 2, a 32-world-pixel tile uses 64 by 64 art pixels. A 24 by 56
+player image uses 48 by 112 art pixels.
+
 Invalid optional sections are ignored. Missing images keep the existing
 placeholder path. Files must be relative pack paths, without parent traversal.
 
@@ -52,7 +58,7 @@ The view reads `bg1`, `bg2`, `bg3`, `gradient` and `bgcolor` from the selected
 map. A background setting is `id,frame`, with frame 0 as the default. Entries
 may supply `slots.bg1`, `slots.bg2` and `slots.bg3` scroll overrides and
 `offset_by_height` maps. Scroll 1 follows terrain; scroll 0 stays fixed relative
-to the reference point. Attached layers may specify a world-pixel `repeat_size`
+to the reference point. Attached layers may specify a pack-pixel `repeat_size`
 to keep their parent's spacing, `min_repeat` to limit repeated copies, and
 `frame` for a fixed animation variant. Backgrounds repeat only across the visible region. The base RGB color remains
 behind the gradient and all three background slots. A gradient setting is
@@ -96,19 +102,34 @@ PNGs load directly. A source checkout needs
 
 ## View policy
 
-The view uses a positive integer scale and nearest-neighbor filtering only.
-There is no smoothing or mipmapping. The reference scale is the square root of
-container area divided by 832 by 448. Choose the integer closest in ratio to
-that scale, never below 1. Raise it to the smallest integer that keeps the
-visible area inside the level, if needed. Clamp the camera inside level bounds.
-The view rounds the root offset to whole screen pixels to avoid sampling on
-texel boundaries. This shifts the drawn center by at most half a screen pixel
-per axis. Each world pixel then covers a whole number of screen pixels. Pack
-background layer scales stay unchanged.
+All pack image sizes and pixel coordinates use art pixels. This includes
+origins, offsets, anchors, repeat sizes and scroll references. Divide them by
+`density` to get world pixels. Layer `scale` and `scroll` remain ratios.
+Simulation positions, level positions and map settings stay in world pixels.
+Missing art keeps its diagnostic world size.
 
-The visible world area varies by container: 640 by 480 at 640 by 480, 960 by 540
-at 1920 by 1080. A wider view does not activate more enemies. Activation belongs
-to the fixed simulation reference area.
+The view uses nearest filtering only, with no smoothing or mipmapping.
+The reference scale is the square root of container area divided by 832 by 448.
+Divide that reference by density. Choose the integer `m` closest in ratio,
+never below 1. Each art pixel covers `m` screen pixels on each axis.
+World scale is `m * density`. Raise `m` to fit level bounds if needed.
+Clamp the camera inside the level. Round the root offset to whole screen pixels.
+
+Density 1 keeps the existing drawing and layer transforms. For denser packs,
+snap each sprite's final corner to screen pixels, including origins and mirrors.
+Round squash, fit and layer scales to whole screen pixels per art pixel, with
+a minimum of 1. This can change the fitted width or squash amount. Restore the
+unsnapped transforms before each draw so resizing cannot cause drift.
+Off-axis rotations use nearest sampling, so their art pixels are not uniform.
+HUD icons and bitmap glyphs use the same `m`; they wrap instead of shrinking.
+Omit an icon if it would push its text out of a narrow window.
+In a window too small for one readout, later HUD items can be clipped; health
+stays first at the top.
+
+At density 1, a 640 by 480 container shows 640 by 480 world pixels. At density 2,
+it shows 320 by 240. At 1920 by 1080, both show 960 by 540. At 3840 by 2160,
+density 2 shows 960 by 540. A wider view does not activate more enemies.
+Activation belongs to the fixed simulation reference area.
 
 Goal and recovery markers are sprites (generated, or the pack's art). This
 keeps their first appearance on the sprite shader path already used at startup.

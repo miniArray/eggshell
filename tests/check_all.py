@@ -21,6 +21,7 @@ def main():
     for name in [
         "collision",
         "pack_manifest",
+        "pack_density",
         "screen_plan",
         "level_format",
         "registry",
