@@ -14,6 +14,7 @@ Verdigris is locked.
 | Style | Style frame round 1 variant A, "pastel painterly" (chosen 2026-10-27): soft pastel colour like a chalk-and-crayon picture book made of pixels, long gentle colour ramps, fine dithered texture on stone and moss, a rich layered background. Reference: `~/.local/share/eggshell/art-direction/style-frames/round-1/A-d1.png` until assets are locked |
 | Art density | One art pixel per world pixel (user, 2026-10-27). One art set serves every screen. Oriel is about 56 art px tall |
 | Crisp pixels | No smoothing of any kind, ever (user, 2026-10-27): no bilinear, sharp-bilinear, box filter or other blending of art pixels on screen. Every art pixel is drawn with nearest-neighbour filtering |
+| Screen scaling | Positive integer scale, closest in ratio to the 832x448 reference scale, raised only to fit level bounds. One art set serves every screen; visible world area varies. See [View policy](graphics.md#view-policy) |
 | Hero | Oriel, a slender young heron courier: pale blue-grey feathers, white chest, long yellow beak, coral-red scarf, leather satchel. She carries the city's last living seed to the central glasshouse |
 | Companion | Pip, a seedling with a face, rides in the satchel. A hit throws Pip out, and Pip drifts away under a dandelion parachute. The countdown shows as Pip wilting. Enemies that chase Pip are seed-eaters |
 | Grab move | The neck strike: Oriel shoots out her neck and beak, grabs an enemy and swallows it |
@@ -32,7 +33,6 @@ Verdigris is locked.
 
 | Topic | Status |
 |---|---|
-| Screen scaling | The view scales by a non-integer factor (`src/view/screen_plan.gd`), so art pixels on screen are uneven sizes: 2 or 3 screen pixels wide at 1080p. Smoothing is ruled out. The proposed fix is integer scaling: each art pixel covers a whole number of screen pixels, and the visible world area varies by screen (640x480 on the handheld, 960x540 at 1080p). Comparison: `style-frames/round-2/` |
 | Mechanics | The simulation has no companion, grab or throwables yet; the view draws a recovery marker in the companion's place. Sheets for these moves wait until the moves exist |
 
 ## Known costs

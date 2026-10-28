@@ -4,8 +4,13 @@ extends RefCounted
 
 
 static func plan(container: Vector2, level_size: Vector2, focus: Vector2) -> Dictionary:
-	var scale := sqrt(container.x * container.y / (832.0 * 448.0))
-	scale = maxf(scale, maxf(container.x / level_size.x, container.y / level_size.y))
+	var reference := sqrt(container.x * container.y / (832.0 * 448.0))
+	var k := maxi(1, floori(reference))
+	# Equal ratio distances meet at the geometric mean of adjacent integers.
+	if reference > sqrt(float(k) * (k + 1)):
+		k += 1
+	k = maxi(k, ceili(maxf(container.x / level_size.x, container.y / level_size.y)))
+	var scale := float(k)
 	var visible := container / scale
 	var half := visible / 2.0
 	var center := Vector2(

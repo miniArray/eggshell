@@ -201,7 +201,8 @@ func render(state: Dictionary) -> void:
 	var focus := Vector2(state.camera_x, state.camera_y) / State.SCALE
 	var plan := Plan.plan(viewport, Vector2(_world.width, _world.height) / State.SCALE, focus)
 	_root.scale = Vector2.ONE * plan.scale
-	_root.position = plan.offset
+	# Half-pixel translations can put nearest samples on texel boundaries.
+	_root.position = plan.offset.round()
 	_background.render(plan, state.frame)
 	for child: Node in _root.get_children():
 		if child is Sprite2D and child != _player and not child.get_meta("stateful", false):

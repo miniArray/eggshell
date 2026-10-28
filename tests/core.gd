@@ -90,6 +90,10 @@ func replay_checks(name: String) -> void:
 				Vector2(first.camera_x, first.camera_y) / State.SCALE
 			)
 			check(
+				pair[0]._root.position == plan.offset.round(),
+				"View snaps the root offset to screen pixels"
+			)
+			check(
 				(
 					(plan.center - plan.visible / 2).x >= -0.001
 					and (

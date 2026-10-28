@@ -96,9 +96,19 @@ PNGs load directly. A source checkout needs
 
 ## View policy
 
-The view fits its container, uses nearest-neighbor filtering and clamps inside
-level bounds. It can show a larger area on a wider screen without activating
-more enemies. Activation belongs to the fixed simulation reference area.
+The view uses a positive integer scale and nearest-neighbor filtering only.
+There is no smoothing or mipmapping. The reference scale is the square root of
+container area divided by 832 by 448. Choose the integer closest in ratio to
+that scale, never below 1. Raise it to the smallest integer that keeps the
+visible area inside the level, if needed. Clamp the camera inside level bounds.
+The view rounds the root offset to whole screen pixels to avoid sampling on
+texel boundaries. This shifts the drawn center by at most half a screen pixel
+per axis. Each world pixel then covers a whole number of screen pixels. Pack
+background layer scales stay unchanged.
+
+The visible world area varies by container: 640 by 480 at 640 by 480, 960 by 540
+at 1920 by 1080. A wider view does not activate more enemies. Activation belongs
+to the fixed simulation reference area.
 
 Goal and recovery markers are sprites (generated, or the pack's art). This
 keeps their first appearance on the sprite shader path already used at startup.
