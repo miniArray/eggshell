@@ -9,12 +9,14 @@ const Snapshot = preload("res://src/save/snapshot.gd")
 const Store = preload("res://src/save/store.gd")
 const Settings = preload("res://src/save/settings.gd")
 const View = preload("res://src/view/level_view.gd")
+const AudioPlayer = preload("res://src/view/audio_player.gd")
 const CollisionTable = preload("res://src/level/collision_table.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
 const FrameLogger = preload("res://src/diag/frame_log.gd")
 var state: Dictionary
 var world: Dictionary
 var _view: Node2D
+var _audio: Node
 var _store := Store.new()
 var _save_dir: String
 var _resume := true
@@ -83,6 +85,8 @@ func _ready() -> void:
 	_view = View.new()
 	add_child(_view)
 	_view.setup(world, pack)
+	_audio = AudioPlayer.create(_view.audio, world, settings, _options.has("mute"))
+	add_child(_audio)
 	if not _setup_diagnostics():
 		return
 	_start_usec = Time.get_ticks_usec()
@@ -150,6 +154,8 @@ func _physics_process(_delta: float) -> void:
 	Sim.advance(state, input, world)
 	if _profile_file != null:
 		_sim_usec += Time.get_ticks_usec() - began
+	# Sound follows each saved step; it reads state and never writes it.
+	_audio.observe(state)
 	if _options.has("trace"):
 		print("EGGSHELL_TICK ", state.frame)
 	if state.frame % 60 == 0 and not state.goal_reached and _resume:
