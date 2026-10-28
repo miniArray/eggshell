@@ -38,6 +38,11 @@ const TYPES := [
 	preload("res://src/sim/types/pound_post.gd"),
 	preload("res://src/sim/types/release_cloud.gd"),
 	preload("res://src/sim/types/timed_switch.gd"),
+	# slice 6: s6-decor
+	preload("res://src/sim/types/decor.gd"),
+	preload("res://src/sim/types/decor_platform.gd"),
+	preload("res://src/sim/types/lamp.gd"),
+	preload("res://src/sim/types/snow_tree.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]

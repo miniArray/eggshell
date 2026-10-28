@@ -253,6 +253,7 @@ func render(state: Dictionary) -> void:
 			var node: Sprite2D = _placed_nodes[entity.id]
 			node.position = Vector2(entity.x, entity.y) / State.SCALE
 			node.visible = not entity.collected
+			Dressing.update_placed(node, entity, state)
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
 		var node := _spring_nodes[index]
@@ -370,7 +371,4 @@ static func load_texture(path: String) -> Texture2D:
 
 
 static func placeholder(name: String, size: int) -> Texture2D:
-	# Stable per-tileset colors. These are diagnostic flat squares, not art.
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	image.fill(Color.from_hsv(float(absi(name.hash()) % 360) / 360.0, 0.55, 0.65))
-	return ImageTexture.create_from_image(image)
+	return Dressing.placeholder(name, size)
