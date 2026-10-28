@@ -20,6 +20,7 @@ func _initialize() -> void:
 	countdown_checks()
 	flower_checks()
 	flyer_checks()
+	thief_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_A_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -242,6 +243,68 @@ func flyer_checks() -> void:
 	check(type.valid(hang), "Flyer state stays valid")
 
 
+func thief_checks() -> void:
+	var world := _floor_world({"thief": _place("e10", 600, 284, {"M": 1})})
+	var state := State.create(world)
+	state.x = 990 * S
+	state.y = 300 * S - S / 16
+	var thief := _by_id(state, "thief")
+	var type: Script = Registry.lookup("e10")
+	var idled := false
+	var turned := false
+	for tick in 400:
+		Sim.advance(state, 0, world)
+		idled = idled or thief.pose == type.IDLE
+		turned = turned or thief.facing < 0
+	check(thief.status == 1 and idled and turned, "It patrols, rests and turns back")
+	check(absi(thief.x - 600 * S) <= 140 * S, "It patrols near its start")
+	state.x = thief.x + 150 * S
+	Sim.advance(state, 0, world)
+	check(thief.plan == type.CHASE and thief.vy < 0, "A near player starts a chase with a hop")
+	state = State.create(world)
+	thief = _by_id(state, "thief")
+	thief.status = 1
+	thief.started = 1
+	state.x = thief.x + 10 * S
+	state.y = thief.y + 16 * S
+	type.contact(thief, state, world, 0)
+	check(
+		state.separated == 1 and state.companion_mode == Life.BUBBLE, "A touch takes the companion"
+	)
+	check(thief.carrying == 1 and thief.plan == type.EVADE, "The thief carries the bubble away")
+	Collision.begin_step(state, world, Registry)
+	type.step(thief, state, world)
+	check(state.recovery_x == thief.x, "The bubble rides on the thief")
+	state = State.create(world)
+	thief = _by_id(state, "thief")
+	thief.status = 1
+	thief.started = 1
+	for round in 3:
+		state.x = thief.x
+		state.y = thief.y - 2 * S
+		state.vy = 3 * S
+		thief.contact = 0
+		thief.vy = 0
+		type.contact(thief, state, world, 0)
+	check(thief.status == Registry.DEFEATED, "Three stomps defeat it")
+	var coins := 0
+	for entity: Dictionary in state.entities:
+		if entity.code == "o1" and entity.source_index == -1:
+			coins += 1
+	check(coins == 3, "A defeated thief drops three coins")
+	state = State.create(world)
+	thief = _by_id(state, "thief")
+	thief.status = 1
+	var egg := {"code": "o7", "x": thief.x - 20 * S, "fall_on_terrain": 0}
+	check(type.projectile_contact(thief, egg, state, world) == 1, "An egg is used up")
+	check(thief.hit_health == 5 and thief.vx > 0, "It takes a hit and is knocked away")
+	check(type.tongue(thief, state, world) == 2, "The tongue bounces off")
+	for hit in 5:
+		type.projectile_contact(thief, egg, state, world)
+	check(thief.status == Registry.DEFEATED, "Six strikes defeat it")
+	check(type.valid(_by_id(State.create(world), "thief")), "Thief state is valid")
+
+
 func _tile_layer(name: String, cells: Array, columns: int, points: Array) -> Dictionary:
 	var polygon := PackedInt64Array()
 	for value: int in points:
@@ -268,7 +331,8 @@ func snapshot_checks() -> void:
 			"b": _place("p5", 200, 100, {"E1": "96", "E2": "128"}),
 			"c": _place("o32", 300, 100, {"F": 8}),
 			"d": _place("o22", 400, 100, {"E1": "8"}),
-			"e": _place("e14", 500, 100, {"F": 1, "M": 2})
+			"e": _place("e14", 500, 100, {"F": 1, "M": 2}),
+			"f": _place("e10", 600, 100, {"M": 2})
 		}
 	)
 	var state := State.create(world)
