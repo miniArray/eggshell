@@ -73,6 +73,11 @@ fully opaque or fully transparent pixels. Partial alpha and intervening differen
 slots keep every draw, to preserve compositing. A gradient setting is
 `name_offset_scale`, or custom `height,r,g,b` groups in place of the name.
 The offset replaces the first strip height; scale multiplies strip heights.
+A map's `customGradientGenerator` value `lines|start|end|r,g,b_r,g,b...` draws a
+generated vertical gradient instead: `lines` bands between reference rows `start`
+and `end` of the 448-pixel reference height, blending through the listed colors in
+steps of 8 per channel. The first color fills above `start`, the last fills below.
+The layer moves at a tenth of the camera's vertical motion. It needs no pack.
 
 HUD icons and font metadata are used by the read-only run display.
 
