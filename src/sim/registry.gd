@@ -94,13 +94,35 @@ const COMMON_FIELDS := [
 ]
 
 static var _ordered_level_fields := compose_level_schema()
+# Dispatch caches. Types and their constants never change at run time, so these
+# answer exactly what a scan of TYPES and get_script_constant_map() would.
+static var _by_code := compose_lookup()
+static var _constants := {}
+static var _enemy_codes := {}
+static var _fields_by_code := {}
 
 
 static func lookup(code: String) -> Script:
+	return _by_code.get(code, Inert)
+
+
+## The first type in TYPES that lists a code wins, as the original linear scan did.
+static func compose_lookup() -> Dictionary:
+	var result := {}
 	for type: Script in TYPES:
-		if code in type.CODES:
-			return type
-	return Inert
+		for code: String in type.CODES:
+			if not result.has(code):
+				result[code] = type
+	return result
+
+
+## A type's script constant, read once per type. Callers must not mutate the value.
+static func constant(type: Script, key: String, fallback: Variant = null) -> Variant:
+	var constants: Variant = _constants.get(type)
+	if constants == null:
+		constants = type.get_script_constant_map()
+		_constants[type] = constants
+	return constants.get(key, fallback)
 
 
 static func implemented(code: String) -> bool:
@@ -108,9 +130,17 @@ static func implemented(code: String) -> bool:
 
 
 static func fields(code: String) -> Array:
-	var result := COMMON_FIELDS.duplicate(true)
-	result.append_array(lookup(code).FIELDS.duplicate(true))
-	return result
+	return schema(code).duplicate(true)
+
+
+## The shared, read-only field schema of a code. Callers must not mutate it.
+static func schema(code: String) -> Array:
+	var cached: Variant = _fields_by_code.get(code)
+	if cached == null:
+		cached = COMMON_FIELDS.duplicate(true)
+		cached.append_array(lookup(code).FIELDS.duplicate(true))
+		_fields_by_code[code] = cached
+	return cached
 
 
 static func level_fields() -> Array:
@@ -333,7 +363,7 @@ static func spawn_dynamic(
 	state: Dictionary, world: Dictionary, code: String, x: int, y: int, options: Dictionary
 ) -> Dictionary:
 	var type := lookup(code)
-	if type == Inert or not type.get_script_constant_map().get("DYNAMIC", false):
+	if type == Inert or not constant(type, "DYNAMIC", false):
 		return spawn_error("Object type does not permit runtime creation: " + code)
 	if not state.get("dynamic_serial") is int or state.dynamic_serial < 1:
 		return spawn_error("Invalid runtime creation serial")
@@ -499,6 +529,35 @@ static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 			type.toggle(entity, state, world)
 
 
+## Entities whose bounds may overlap `box` ([left, top, right, bottom], simulation units),
+## in entity order. Touching edges count, so the result is a superset of strict overlap.
+## It includes every status; callers keep their own status, held and hidden checks.
+## Use it instead of iterating state.entities for an area query.
+static func nearby(state: Dictionary, _world: Dictionary, box: Array) -> Array:
+	var result := []
+	var left: int = box[0]
+	var top: int = box[1]
+	var right: int = box[2]
+	var bottom: int = box[3]
+	for entity: Dictionary in state.entities:
+		var type: Script = _by_code.get(entity.code, Inert)
+		var x: int = entity.x
+		var y: int = entity.y
+		if not type.has_method("bounds"):
+			if x >= left and x <= right and y >= top and y <= bottom:
+				result.append(entity)
+			continue
+		var bounds: Array = type.bounds(entity)
+		if (
+			x + bounds[2] >= left
+			and x + bounds[0] <= right
+			and y + bounds[3] >= top
+			and y + bounds[1] <= bottom
+		):
+			result.append(entity)
+	return result
+
+
 static func overlaps_box(entity: Dictionary, type: Script, box: Array) -> bool:
 	var bounds: Array = type.bounds(entity) if type.has_method("bounds") else [0, 0, 0, 0]
 	return (
@@ -527,7 +586,7 @@ static func numeric_option(value: Variant) -> Dictionary:
 static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 	var type := lookup(source.code)
 	var entity := {"code": source.code, "id": source.id}
-	for pair: Array in fields(source.code):
+	for pair: Array in schema(source.code):
 		assert(pair.size() == 2 and pair[0] is String and pair[1] is int)
 		assert(not entity.has(pair[0]), "Duplicate entity field")
 		entity[pair[0]] = pair[1]
@@ -600,7 +659,11 @@ static func attach_views(state: Dictionary, reindex: bool = true) -> void:
 
 
 static func is_enemy(code: String) -> bool:
-	return code in Actor.CODES or bool(lookup(code).get_script_constant_map().get("ENEMY", false))
+	var cached: Variant = _enemy_codes.get(code)
+	if cached == null:
+		cached = code in Actor.CODES or bool(constant(lookup(code), "ENEMY", false))
+		_enemy_codes[code] = cached
+	return cached
 
 
 static func source_for(entity: Dictionary, world: Dictionary) -> Dictionary:
@@ -616,7 +679,7 @@ static func source_for(entity: Dictionary, world: Dictionary) -> Dictionary:
 
 
 static func phase_for(type: Script, key: String, fallback: int) -> int:
-	return int(type.get_script_constant_map().get(key, fallback))
+	return int(constant(type, key, fallback))
 
 
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
@@ -670,7 +733,7 @@ static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) 
 			var fresh := create(source, world)
 			fresh.collected = entity.collected
 			fresh.checkpoint_collected = entity.checkpoint_collected
-			for pair: Array in fields(entity.code):
+			for pair: Array in schema(entity.code):
 				entity[pair[0]] = fresh[pair[0]]
 	if entity.status == WAITING:
 		box = activation_box(entity, type)
@@ -717,7 +780,7 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 			entity.status != ACTIVE
 			or entity.get("held", 0) == 1
 			or entity.get("hidden", 0) == 1
-			or not type.get_script_constant_map().get("GOAL_COIN", false)
+			or not constant(type, "GOAL_COIN", false)
 		):
 			continue
 		var bounds: Array = type.bounds(entity)
@@ -734,10 +797,10 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 static func valid(entity: Dictionary) -> bool:
 	if not entity.get("code") is String or not entity.get("id") is String:
 		return false
-	var schema := fields(entity.code)
-	if entity.size() != schema.size() + 2:
+	var declared := schema(entity.code)
+	if entity.size() != declared.size() + 2:
 		return false
-	for pair: Array in schema:
+	for pair: Array in declared:
 		if not entity.get(pair[0]) is int:
 			return false
 	for key: String in [
@@ -766,7 +829,7 @@ static func valid(entity: Dictionary) -> bool:
 			serial < 1
 			or entity.token != TOKEN_BASE + serial
 			or not implemented(entity.code)
-			or not lookup(entity.code).get_script_constant_map().get("DYNAMIC", false)
+			or not constant(lookup(entity.code), "DYNAMIC", false)
 			or entity.can_respawn
 			or entity.spawn_mode
 		):

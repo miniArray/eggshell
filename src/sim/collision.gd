@@ -7,13 +7,14 @@ const World = preload("res://src/sim/world.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const DEFAULT_JUMP := 776 * 60
 const POUND_FALL := 2
+static var _solid_modes := {}
 
 
 static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -> void:
 	var rows := []
 	for entity: Dictionary in state.get("entities", []):
 		var type: Script = registry.lookup(entity.code)
-		var mode := int(type.get_script_constant_map().get("SOLID", 0))
+		var mode := _solid_mode(type)
 		if mode not in [1, 2]:
 			continue
 		rows.append(
@@ -35,8 +36,19 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 		"rows": rows,
 		"shapes": [],
 		"carried": false,
-		"bumps": {}
+		"bumps": {},
+		"depth": 0,
+		"cache": null
 	}
+
+
+## Script constants never change, so each type's SOLID mode is read once.
+static func _solid_mode(type: Script) -> int:
+	var mode: Variant = _solid_modes.get(type)
+	if mode == null:
+		mode = int(type.get_script_constant_map().get("SOLID", 0))
+		_solid_modes[type] = mode
+	return mode
 
 
 static func registry_for(world: Dictionary) -> Script:
@@ -44,6 +56,15 @@ static func registry_for(world: Dictionary) -> Script:
 
 
 static func overlaps(
+	body: Dictionary, world: Dictionary, bounds: Array, dx: int = 0, dy: int = 0, bridge: int = 0
+) -> bool:
+	var scope := _enter(world)
+	var result := _overlaps(body, world, bounds, dx, dy, bridge)
+	_leave(scope)
+	return result
+
+
+static func _overlaps(
 	body: Dictionary, world: Dictionary, bounds: Array, dx: int = 0, dy: int = 0, bridge: int = 0
 ) -> bool:
 	if World.overlaps_box(
@@ -85,6 +106,13 @@ static func bridge_overlap(
 
 
 static func bridges_at(body: Dictionary, world: Dictionary, bounds: Array) -> Array[int]:
+	var scope := _enter(world)
+	var result := _bridges_at(body, world, bounds)
+	_leave(scope)
+	return result
+
+
+static func _bridges_at(body: Dictionary, world: Dictionary, bounds: Array) -> Array[int]:
 	var found: Array[int] = []
 	for index in world.bridges.size():
 		if bridge_overlap(body, world.bridges[index], bounds):
@@ -100,6 +128,13 @@ static func bridges_at(body: Dictionary, world: Dictionary, bounds: Array) -> Ar
 
 
 static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
+	var scope := _enter(world)
+	var result := _floor_at(body, world, bounds)
+	_leave(scope)
+	return result
+
+
+static func _floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	# A nearby wall is not a floor if the actor already overlaps it.
 	if overlaps(body, world, bounds):
 		return 0
@@ -134,6 +169,13 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 
 
 static func track_floor(body: Dictionary, world: Dictionary, bounds: Array) -> int:
+	var scope := _enter(world)
+	var result := _track_floor(body, world, bounds)
+	_leave(scope)
+	return result
+
+
+static func _track_floor(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	var support := floor_at(body, world, bounds)
 	var top: int = world.bridges[support - 1].top if support > 0 else 0
 	if support <= -2:
@@ -148,6 +190,13 @@ static func track_floor(body: Dictionary, world: Dictionary, bounds: Array) -> i
 
 
 static func by_wall(body: Dictionary, world: Dictionary, bounds: Array, direction: int) -> bool:
+	var scope := _enter(world)
+	var result := _by_wall(body, world, bounds, direction)
+	_leave(scope)
+	return result
+
+
+static func _by_wall(body: Dictionary, world: Dictionary, bounds: Array, direction: int) -> bool:
 	return (
 		overlaps(body, world, bounds, direction * S, 0)
 		and overlaps(body, world, bounds, direction * S, -S)
@@ -155,6 +204,13 @@ static func by_wall(body: Dictionary, world: Dictionary, bounds: Array, directio
 
 
 static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
+	var scope := _enter(world)
+	var result := _prepare(body, world, bounds)
+	_leave(scope)
+	return result
+
+
+static func _prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 	_carry(body, world, bounds)
 	if not overlaps(body, world, bounds):
 		return true
@@ -171,6 +227,21 @@ static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 
 
 static func horizontal(
+	body: Dictionary,
+	world: Dictionary,
+	bounds: Array,
+	distance: int,
+	support: int,
+	jumping: bool = false,
+	jump_speed: int = DEFAULT_JUMP
+) -> int:
+	var scope := _enter(world)
+	var result := _horizontal(body, world, bounds, distance, support, jumping, jump_speed)
+	_leave(scope)
+	return result
+
+
+static func _horizontal(
 	body: Dictionary,
 	world: Dictionary,
 	bounds: Array,
@@ -250,6 +321,15 @@ static func horizontal(
 static func vertical(
 	body: Dictionary, world: Dictionary, bounds: Array, distance: int, support: int = 0
 ) -> int:
+	var scope := _enter(world)
+	var result := _vertical(body, world, bounds, distance, support)
+	_leave(scope)
+	return result
+
+
+static func _vertical(
+	body: Dictionary, world: Dictionary, bounds: Array, distance: int, support: int = 0
+) -> int:
 	if distance == 0:
 		return 0
 	var start_y: int = body.y
@@ -275,6 +355,24 @@ static func vertical(
 			body.y = start_y
 		body.vy = 0
 	return body.y - start_y
+
+
+## Query scope. Inside one outside call into this module no object code runs except the
+## pure box hooks, so solid shapes are computed once per call and reused by its inner
+## probes. A bump callback is outside code: it gets a fresh scope, and the shapes are
+## recomputed after it returns. Results and handle numbering equal a fresh scan per probe.
+static func _enter(world: Dictionary) -> Dictionary:
+	var context := _context(world)
+	if not context.is_empty():
+		if context.depth == 0:
+			context.cache = null
+		context.depth += 1
+	return context
+
+
+static func _leave(context: Dictionary) -> void:
+	if not context.is_empty():
+		context.depth -= 1
 
 
 static func _context(world: Dictionary) -> Dictionary:
@@ -304,6 +402,8 @@ static func _shapes(world: Dictionary) -> Array:
 	var result := []
 	if context.is_empty():
 		return result
+	if context.depth > 0 and context.cache != null:
+		return context.cache
 	for row: Dictionary in context.rows:
 		if row.entity.status != 1:
 			continue
@@ -315,6 +415,8 @@ static func _shapes(world: Dictionary) -> Array:
 			result.append(
 				{"handle": row.handles[part], "mode": row.mode, "box": boxes[part], "row": row}
 			)
+	if context.depth > 0:
+		context.cache = result
 	return result
 
 
@@ -452,10 +554,24 @@ static func _bump(
 		if context.bumps.has(key) or row.entity.status != 1:
 			continue
 		context.bumps[key] = true
+		var depth: int = context.depth
+		context.depth = 0
+		context.cache = null
 		row.type.bump(row.entity, context.state, world, side)
+		context.depth = depth
+		context.cache = null
 
 
 static func support_in_box(
+	world: Dictionary, left: int, top: int, right: int, bottom: int, ignore: Dictionary = {}
+) -> bool:
+	var scope := _enter(world)
+	var result := _support_in_box(world, left, top, right, bottom, ignore)
+	_leave(scope)
+	return result
+
+
+static func _support_in_box(
 	world: Dictionary, left: int, top: int, right: int, bottom: int, ignore: Dictionary = {}
 ) -> bool:
 	if World.overlaps_box(world, left, top, right, bottom):

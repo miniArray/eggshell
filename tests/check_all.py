@@ -27,6 +27,7 @@ def main():
         "terrain_edges",
         "level_format",
         "registry",
+        "nearby",
         "moves",
         "move_input",
         "life",
