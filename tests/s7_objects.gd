@@ -25,6 +25,7 @@ func _initialize() -> void:
 	spine_checks()
 	flyer_checks()
 	petal_checks()
+	juggler_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -506,6 +507,74 @@ func petal_checks() -> void:
 	check(stem.phase == type.GROW, "Petals regrow three seconds later")
 
 
+func juggler_checks() -> void:
+	var world := ledge_world({"head": place("e42", 500, 284)})
+	var state := State.create(world)
+	rest_player(state)
+	var head := by_id(state, "head")
+	var type: Script = Registry.lookup("e42")
+	var ticks := 0
+	while head.needle_token == 0 and ticks < 5:
+		Sim.advance(state, 0, world)
+		ticks += 1
+	var needle: Dictionary = Registry.find_token(state, head.needle_token)
+	check(not needle.is_empty() and needle.code == "e40", "The head starts holding a spiked hopper")
+	if needle.is_empty():
+		return
+	check(needle.carrier == head.token, "The hopper is carried")
+	check(needle.y == head.y - 58 * S, "A carried hopper sits 10 px above the head top")
+	var tosses := 0
+	var catches := 0
+	var highest: int = needle.y
+	var was_carried := true
+	for tick in 600:
+		Sim.advance(state, 0, world)
+		highest = mini(highest, needle.y)
+		var carried: bool = needle.carrier == head.token
+		if was_carried and not carried:
+			tosses += 1
+		if carried and not was_carried:
+			catches += 1
+		was_carried = carried
+	check(tosses >= 3 and catches >= 3, "The head keeps tossing and catching the hopper")
+	check(
+		highest < head.y - 58 * S - 150 * S and highest > head.y - 58 * S - 200 * S,
+		"Every third toss rises about 176 px"
+	)
+	check(needle.status == 1 and state.life_phase == Life.PLAY, "The juggled hopper survives")
+	check(type.valid(head), "Juggler state stays valid")
+	check(type.tongue(head, state, world) == 0, "The head cannot be eaten")
+	var egg := {"code": "o7", "x": head.x}
+	check(type.projectile_contact(head, egg, state, world) == 0, "Eggs pass the head")
+	state = State.create(world)
+	rest_player(state)
+	head = by_id(state, "head")
+	for tick in 3:
+		Sim.advance(state, 0, world)
+	needle = Registry.find_token(state, head.needle_token)
+	defeat(needle)
+	var frowned := -1
+	var regrown := -1
+	for tick in 700:
+		Sim.advance(state, 0, world)
+		if frowned < 0 and head.frowning:
+			frowned = tick
+		if frowned >= 0 and regrown < 0 and head.needle_token and not head.frowning:
+			regrown = tick
+	check(frowned > 0, "Losing the hopper makes the head frown")
+	check(regrown - frowned >= 380 and regrown - frowned <= 386, "A new hopper rises 6.4 s later")
+	state.x = head.x
+	state.y = head.y
+	state.invulnerable = 0
+	head.frowning = 0
+	type.contact(head, state, world, 0)
+	check(state.invulnerable > 0, "Touching the head hurts")
+
+
+func defeat(entity: Dictionary) -> void:
+	entity.status = Registry.DEFEATED
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -519,7 +588,8 @@ func snapshot_checks() -> void:
 			"h": place("o17", 800, 100, {"E1": "e40"}),
 			"i": place("e25", 900, 100, {"F": 1, "M": 2}),
 			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2}),
-			"k": place("e18", 1100, 100)
+			"k": place("e18", 1100, 100),
+			"l": place("e42", 1200, 100)
 		}
 	)
 	var state := State.create(world)

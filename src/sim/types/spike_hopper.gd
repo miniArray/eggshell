@@ -20,7 +20,15 @@ const MAX_SPEED := 512 * 60
 const SINK_WINDOW := 60
 const FIELDS := (
 	Body.FIELDS
-	+ [["colour", 0], ["sink_window", 0], ["hop_pending", 0], ["sinking", 0], ["thrown", 0]]
+	+ [
+		["colour", 0],
+		["sink_window", 0],
+		["hop_pending", 0],
+		["sinking", 0],
+		["thrown", 0],
+		["carrier", 0],
+		["intangible", 0]
+	]
 )
 const BOX := [-12 * S, -12 * S, 12 * S, 12 * S]
 
@@ -46,6 +54,16 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
 		return
+	if entity.carrier:
+		# A carrier positions the body during its own earlier step.
+		var carrier: Dictionary = Body.registry_for().find_token(state, entity.carrier)
+		if carrier.is_empty() or carrier.status != 1 or entity.held or action == Body.RELEASED:
+			entity.carrier = 0
+			entity.intangible = 0
+		else:
+			entity.vx = 0
+			entity.vy = 0
+			return
 	if action == Body.RELEASED:
 		# Mouth release replaces the generic spit bounce with a plain throw.
 		var upward: bool = entity.vx == 0
@@ -90,11 +108,15 @@ static func land(entity: Dictionary, state: Dictionary) -> void:
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
+	if entity.intangible:
+		return
 	if not entity.thrown and Body.player_overlap(entity, state, BOX):
 		Body.hurt(entity, state)
 
 
 static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) -> int:
+	if entity.intangible:
+		return 0
 	return Body.tongue(entity, state, 1)
 
 
@@ -107,6 +129,8 @@ static func hit(
 static func projectile_contact(
 	entity: Dictionary, projectile: Dictionary, state: Dictionary, world: Dictionary
 ) -> int:
+	if entity.intangible:
+		return 0
 	var kind := Body.projectile_kind(projectile)
 	if kind == Hits.EGG:
 		projectile.fall_on_terrain = 1
@@ -132,6 +156,8 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.hop_pending in [0, 1]
 		and entity.sinking in [0, 1]
 		and entity.thrown in [0, 1]
+		and entity.carrier >= 0
+		and entity.intangible in [0, 1]
 		and entity.vx >= -MAX_SPEED
 		and entity.vx <= MAX_SPEED
 	)
