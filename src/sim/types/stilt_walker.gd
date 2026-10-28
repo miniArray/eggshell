@@ -5,6 +5,8 @@ extends RefCounted
 ## and low thrown bodies only knock it back; an egg at the rider unseats it.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
@@ -14,6 +16,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e35"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const GOAL_COIN := true
 const STEP_PHASE := 0
 const CONTACT_PHASE := 1
@@ -63,6 +66,8 @@ static func top(entity: Dictionary) -> int:
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
+		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	var box := bounds(entity)
 	if Body.hazards(entity, state, world, box):
@@ -132,6 +137,8 @@ static func unseat(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 
 
 static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	var touching := Body.player_overlap(entity, state, bounds(entity))
 	var high: bool = state.y <= top(entity) + 50 * S
 	if touching and not entity.contact and high:
@@ -155,6 +162,8 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 static func hit(
 	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	if kind in [Hits.POUND, Hits.CLEAR]:
 		unseat(entity, state, world)
 	else:

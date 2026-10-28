@@ -7,6 +7,7 @@ const Options = preload("res://src/sim/enemy_options.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const CODES := ["e7", "e9"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Walker.ELEMENT_REACTIONS
 const DYNAMIC := true
 const GOAL_COIN := true
 const HIT_KIND := Hits.SHELL

@@ -8,6 +8,7 @@ const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const CODES := ["e32"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Actor.ELEMENT_REACTIONS
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0

@@ -203,7 +203,7 @@ static func _touch_lamps(entity: Dictionary, state: Dictionary, world: Dictionar
 			int(Constants.read(type, "ELEMENT_REACTIONS", 0)) & Elements.LIGHTS
 			and registry.overlaps_box(other, type, box)
 		):
-			type.hit(other, state, world, Hits.FIRE, entity.x)
+			type.projectile_contact(other, entity, state, world)
 
 
 static func _leap(entity: Dictionary, state: Dictionary) -> void:

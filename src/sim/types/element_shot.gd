@@ -105,6 +105,9 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 
 
 ## Strikes every reacting object the shot overlaps. The shot itself continues.
+## A type with a `hit` hook takes FIRE or ICE there. A type without one (lamps,
+## launchers) reads the shot's code in `projectile_contact`; it has no `hit`
+## hook so that eggs, seeds and spat bodies keep passing it untouched.
 static func strike(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var dispatch := registry()
 	var kind := Hits.FIRE if element(entity) == Elements.FIRE else Hits.ICE
@@ -120,11 +123,13 @@ static func strike(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 		var type: Script = dispatch.lookup(other.code)
 		if (
 			not Constants.read(type, "ELEMENT_REACTIONS", 0)
-			or not type.has_method("hit")
 			or not dispatch.overlaps_box(other, type, box)
 		):
 			continue
-		type.hit(other, state, world, kind, entity.x)
+		if type.has_method("hit"):
+			type.hit(other, state, world, kind, entity.x)
+		elif type.has_method("projectile_contact"):
+			type.projectile_contact(other, entity, state, world)
 
 
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:

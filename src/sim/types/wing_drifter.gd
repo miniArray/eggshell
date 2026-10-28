@@ -2,6 +2,8 @@ extends RefCounted
 ## A bobbing flyer. A stomp or strike knocks it aside; it then charges in a straight line.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
@@ -9,6 +11,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e30"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -81,6 +84,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
 		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
+		return
 	if action == Body.RELEASED:
 		entity.mode = ANGRY
 		entity.timer = 0
@@ -140,6 +145,8 @@ static func knock(entity: Dictionary, distance: int, dx: int, dy: int) -> void:
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	var touching := false
 	if (
 		not entity.hidden
@@ -168,8 +175,10 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, kind: int, from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	if kind in [Hits.POUND, Hits.CLEAR, Hits.BUMP]:
 		Body.remove(entity, state)
 	else:

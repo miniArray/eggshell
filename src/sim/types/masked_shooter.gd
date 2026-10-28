@@ -2,6 +2,8 @@ extends RefCounted
 ## A ledge-aware walker with a saved wind-up, shot and recoil cycle.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
@@ -11,6 +13,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e31"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -38,6 +41,8 @@ static func bounds(_entity: Dictionary) -> Array:
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if Body.process(entity, state) in [Body.HELD, Body.GONE]:
+		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	var box := bounds(entity)
 	if Body.spit_step(entity, state, world, box) or Body.hazards(entity, state, world, box):
@@ -98,6 +103,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	var touching := Body.player_overlap(entity, state, bounds(entity))
 	if touching:
 		if entity.y > state.y - 8 * S and not entity.contact:
@@ -120,8 +127,10 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, _kind: int, _from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, _from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	Body.remove(entity, state)
 
 

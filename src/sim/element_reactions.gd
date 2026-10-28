@@ -60,7 +60,7 @@ static func freeze(entity: Dictionary, world: Dictionary, reactions: int, bounds
 static func frozen_step(
 	entity: Dictionary, state: Dictionary, world: Dictionary, bounds: Array, reactions: int
 ) -> bool:
-	if not entity.get("frozen", 0):
+	if not entity.get("frozen", 0) or entity.status != 1:
 		return false
 	if entity.held or entity.spat:
 		return false

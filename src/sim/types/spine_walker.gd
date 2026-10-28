@@ -2,6 +2,8 @@ extends RefCounted
 ## A fast walker that raises a spiked shell when the player comes near.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
@@ -11,6 +13,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e25"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -72,6 +75,8 @@ static func spine_hull(entity: Dictionary) -> Array:
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
+		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
 		_reset(entity)
@@ -149,7 +154,9 @@ static func _reset(entity: Dictionary) -> void:
 	entity.spine_h = SMALL[1]
 
 
-static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
+static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	if Body.player_overlap(entity, state, BOX):
 		Body.hurt(entity, state)
 		return
@@ -166,8 +173,10 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, _kind: int, _from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, _from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	if entity.mode == WALK:
 		Body.remove(entity, state)
 	else:

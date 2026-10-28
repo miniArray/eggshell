@@ -4,7 +4,6 @@ extends RefCounted
 
 const Decor = preload("res://src/sim/types/decor.gd")
 const Elements = preload("res://src/sim/elements.gd")
-const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["d25", "d26"]
 const FIELDS := [["lamp_style", 0], ["lamp_lit", 1], ["lamp_color", 0]]
@@ -38,15 +37,17 @@ static func element(entity: Dictionary) -> int:
 	return Elements.ICE if entity.lamp_color == 1 else Elements.FIRE
 
 
-static func hit(
-	entity: Dictionary, _state: Dictionary, _world: Dictionary, kind: int, _from_x: int
-) -> void:
-	var striking := (
-		Elements.FIRE if kind == Hits.FIRE else (Elements.ICE if kind == Hits.ICE else Elements.NONE)
+## Fire breath and burning bubbles count as fire, ice breath as ice. Everything
+## else passes the lamp untouched (reaction 0).
+static func projectile_contact(
+	entity: Dictionary, projectile: Dictionary, _state: Dictionary, _world: Dictionary
+) -> int:
+	var striking: int = {"fire_shot": Elements.FIRE, "e16": Elements.FIRE, "ice_shot": Elements.ICE}.get(
+		projectile.get("code", ""), Elements.NONE
 	)
-	if striking == Elements.NONE:
-		return
-	entity.lamp_lit = int(striking == element(entity))
+	if striking != Elements.NONE:
+		entity.lamp_lit = int(striking == element(entity))
+	return 0
 
 
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
