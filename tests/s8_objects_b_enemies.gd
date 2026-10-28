@@ -30,6 +30,7 @@ func _initialize() -> void:
 	_disc_checks()
 	_sack_checks()
 	_bush_checks()
+	_bee_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -815,3 +816,39 @@ func _bush_checks() -> void:
 	check(green.status == Registry.DEFEATED, "An egg destroys a bush")
 	check(type.projectile_contact(red, egg, state, world) == 1, "An egg is spent on spikes")
 	check(_degrades("e36", {"F": 2}), "An unknown bush form becomes a placeholder")
+
+
+func _bee_checks() -> void:
+	var world := _world_for(
+		{
+			"bee": _place("e43", 600, 300, {"E1": "10", "E2": "1", "E3": "192"}),
+			"right": _place("e43", 600, 500, {"E1": "2", "E2": "0.5", "E3": "128", "M": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 100 * S
+	state.y = 900 * S
+	var type: Script = Registry.lookup("e43")
+	var bee := _by_id(state, "bee")
+	var right := _by_id(state, "right")
+	_activate(bee)
+	_activate(right)
+	for _tick in 15:
+		type.step(bee, state, world)
+		type.step(right, state, world)
+	check(bee.x == 600 * S - 15 * 192 * 60, "It flies left at E3 px/s")
+	check(bee.y == 300 * S + 10 * S, "It bobs E1 px on an E2 second period")
+	check(right.x == 600 * S + 15 * 128 * 60, "Mirrored, it flies right")
+	state.x = bee.x
+	state.y = bee.y - 4 * S
+	state.vy = 100 * 60
+	type.contact(bee, state, world, 0)
+	check(bee.status == Registry.DEFEATED and state.vy < 0, "Landing on it defeats it")
+	state = State.create(world)
+	right = _by_id(state, "right")
+	_activate(right)
+	state.x = right.x
+	state.y = right.y + 30 * S
+	type.contact(right, state, world, 0)
+	check(state.invulnerable > 0, "Touching it from below hurts")
+	check(_degrades("e43", {"E3": "5000"}), "An extreme flyer speed becomes a placeholder")
