@@ -17,6 +17,9 @@ const TYPES := [
 	preload("res://src/sim/types/cloud_span.gd"),
 	preload("res://src/sim/types/falling_span.gd"),
 	preload("res://src/sim/types/hard_block.gd"),
+	preload("res://src/sim/types/redirect_cloud.gd"),
+	preload("res://src/sim/types/one_way_gate.gd"),
+	preload("res://src/sim/types/pound_post.gd"),
 ]
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE

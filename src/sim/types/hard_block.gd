@@ -61,6 +61,10 @@ static func projectile_contact(
 	return 3
 
 
+static func tongue(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> int:
+	return 2 if entity.status == 1 else 0
+
+
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 	return {"visible": entity.status == 1, "animation": "Rock", "frame": entity.form}
 

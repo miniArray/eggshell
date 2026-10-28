@@ -23,6 +23,9 @@ func _initialize() -> void:
 	span_type_checks()
 	crumble_type_checks()
 	block_type_checks()
+	redirect_type_checks()
+	gate_type_checks()
+	post_type_checks()
 	print("PLATFORMS_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -178,6 +181,27 @@ func callback_checks() -> void:
 	var moved := Collision.vertical(state, world, BOX, 12 * S)
 	check(entity.bump_count == 2 and entity.last_side == 1, "pound calls the upper bump hook")
 	check(entity.broken == 1 and moved == 12 * S, "broken solid permits the remaining pound motion")
+	var upper := solid("unit-full", 64 * S, 64 * S)
+	var lower := solid("unit-full", 64 * S, 80 * S)
+	lower.id = "lower"
+	upper.shift_player = 16 * S
+	state = player([upper, lower], 64 * S, 50 * S)
+	state.move_action = 2
+	state.vy = 12 * S
+	world = geometry()
+	Collision.begin_step(state, world, Shapes)
+	Collision.vertical(state, world, BOX, 12 * S)
+	check(
+		upper.bump_count == 1 and lower.bump_count == 0,
+		"callback motion cannot add a new contact to the same pound"
+	)
+	state = player([solid("unit-full", 64 * S, 64 * S)], 64 * S, 64 * S)
+	state.move_action = 2
+	state.vy = S
+	world = geometry()
+	Collision.begin_step(state, world, Shapes)
+	Collision.vertical(state, world, BOX, S)
+	check(state.entities[0].bump_count == 0, "pound hook requires entry from above")
 
 
 func span_type_checks() -> void:
@@ -250,6 +274,24 @@ func crumble_type_checks() -> void:
 	entity.y = state.camera_y + 833 * S
 	type.step(entity, state, world)
 	check(entity.status == 3, "ordinary crumble is removed below the reference region")
+	world = typed_world({"ride": {"A": "o20", "X": 160, "Y": 160}})
+	state = State.create(world)
+	state.entities[0].age = 73
+	state.entities[0].vy = 192 * 60
+	state.x = 160 * S
+	state.y = 144 * S - GAP
+	state.on_floor = 1
+	var encoded := Snapshot.encode(state)
+	var decoded := Snapshot.decode(encoded, world.identity, world)
+	check(decoded.ok, "moving support state decodes through the actual codec")
+	if decoded.ok:
+		for tick in 12:
+			Sim.advance(state, 0, world)
+			Sim.advance(decoded.state, 0, world)
+		check(
+			Snapshot.encode(state) == Snapshot.encode(decoded.state),
+			"restored moving support has identical first and later ticks"
+		)
 
 
 func block_type_checks() -> void:
@@ -281,6 +323,228 @@ func block_type_checks() -> void:
 	check(entity.status == 1, "pound does not invent an unsupported block break")
 	type.hit(entity, state, world, 1, 0)
 	check(entity.status == 3, "an initially cracked form needs one projectile strike")
+
+
+func redirect_type_checks() -> void:
+	check(Registry.implemented("o19"), "rotating redirector is registered")
+	if not Registry.implemented("o19"):
+		return
+	var world := typed_world(
+		{
+			"redirect":
+			{"A": "o19", "X": 160, "Y": 160, "R": 90, "E1": "-45", "E2": "0.25", "E3": "1"}
+		}
+	)
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	var projectile := {
+		"x": 140 * S,
+		"y": 160 * S,
+		"vx": 1024 * 60,
+		"vy": 0,
+		"mode": 1,
+		"colour": 1,
+		"bounces": 4,
+		"fall_on_terrain": 0,
+		"camera": 0,
+		"despawn_ticks": 0,
+		"token": 31
+	}
+	check(
+		type.projectile_contact(entity, projectile, state, world) == 2,
+		"redirector continues the projectile"
+	)
+	check(
+		(
+			projectile.x == entity.x
+			and projectile.y == entity.y
+			and projectile.vx == 1024 * 60
+			and projectile.vy == 0
+		),
+		"rightward arrow snaps position and preserves speed"
+	)
+	check(
+		(
+			projectile.colour == 1
+			and projectile.bounces == 4
+			and projectile.fall_on_terrain == 0
+			and projectile.camera == 1
+		),
+		"redirect preserves budget and colour, and enables its camera flag"
+	)
+	check(
+		projectile.despawn_ticks == 600 and entity.status == 1,
+		"reusable redirect starts ten-second expiry"
+	)
+	projectile.despawn_ticks = 400
+	type.projectile_contact(entity, projectile, state, world)
+	check(
+		projectile.despawn_ticks == 400,
+		"same projectile does not refresh the same redirector's expiry"
+	)
+	for tick in 14:
+		type.step(entity, state, world)
+	check(entity.angle == 90000, "rotation waits for the configured interval")
+	type.step(entity, state, world)
+	check(
+		entity.angle == 45000 and entity.colour >= 0,
+		"rotation applies its signed increment at the deadline"
+	)
+	type.projectile_contact(entity, projectile, state, world)
+	check(
+		projectile.vx > 0 and projectile.vy < 0,
+		"diagonal redirect changes both saved velocity axes"
+	)
+	var magnitude: int = preload("res://src/sim/enemy_motion.gd").root(
+		projectile.vx * projectile.vx + projectile.vy * projectile.vy
+	)
+	check(
+		absi(magnitude - 1024 * 60) <= 2,
+		"diagonal redirect retains the speed budget within integer rounding"
+	)
+	entity.infinite = 0
+	type.projectile_contact(entity, projectile, state, world)
+	check(entity.status == 3, "ordinary redirector is single-use")
+	check(
+		not (
+			World
+			. setup_objects(
+				{"objects": {"bad": {"A": "o19", "X": 0, "Y": 0, "R": "left"}}}, geometry()
+			)
+			. ok
+		),
+		"invalid redirect angle is rejected"
+	)
+
+
+func gate_type_checks() -> void:
+	check(Registry.implemented("o31"), "directional gate is registered")
+	if not Registry.implemented("o31"):
+		return
+	var world := typed_world({"gate": {"A": "o31", "X": 200, "Y": 200}})
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	Collision.begin_step(state, world, Registry)
+	state.x = 200 * S
+	state.y = 170 * S
+	type.step(entity, state, world)
+	check(
+		entity.opened == 0 and not type.solid_box(entity).is_empty(),
+		"gate stays solid on its forbidden side"
+	)
+	state.y = 260 * S
+	type.step(entity, state, world)
+	check(
+		entity.opened == 1 and type.solid_box(entity).is_empty(),
+		"entry sensor opens the allowed side before body collision"
+	)
+	state.y = 200 * S
+	type.step(entity, state, world)
+	check(entity.opened == 1, "gate stays open while a body occupies the barrier")
+	state.x = 400 * S
+	type.step(entity, state, world)
+	check(entity.opened == 0, "gate closes after all bodies leave")
+	var egg := {"x": 200 * S, "y": 230 * S, "vx": 0, "vy": -1000, "mode": 1}
+	check(
+		type.projectile_contact(entity, egg, state, world) == 0 and entity.opened == 1,
+		"egg can open the allowed entry without being consumed"
+	)
+	entity.opened = 0
+	entity.angle = 45000
+	var probe := {"x": 250 * S, "y": 150 * S}
+	check(
+		not Collision.overlaps(probe, world, [-S, -S, S, S]),
+		"rotated AABB's empty corner is not solid"
+	)
+	probe.x = 200 * S
+	probe.y = 200 * S
+	check(
+		Collision.overlaps(probe, world, [-S, -S, S, S]),
+		"rotated barrier retains its central volume"
+	)
+	world = typed_world({"fractional": {"A": "o31", "X": 200, "Y": 200, "R": 103.125}})
+	state = State.create(world)
+	entity = state.entities[0]
+	Collision.begin_step(state, world, Registry)
+	probe.x = 229 * S
+	probe.y = 139 * S
+	check(
+		entity.angle == 103125 and not Collision.overlaps(probe, world, [-S, -S, S, S]),
+		"fractional rotation uses saved integer corners and narrow phase"
+	)
+	var encoded := Snapshot.encode(state)
+	var restored := Snapshot.decode(encoded, world.identity, world)
+	check(
+		restored.ok and Snapshot.encode(restored.state) == encoded,
+		"rotated gate saves without transient geometry facts"
+	)
+	world = typed_world(
+		{"gate": {"A": "o31", "X": 200, "Y": 200}, "walker": {"A": "e1", "X": 200, "Y": 230}}
+	)
+	state = State.create(world)
+	state.x = 400 * S
+	state.entities[1].status = 1
+	Collision.begin_step(state, world, Registry)
+	type.step(state.entities[0], state, world)
+	check(state.entities[0].opened == 1, "terrain-aware actor can open the entry sensor")
+	state.entities[1].status = 3
+	type.step(state.entities[0], state, world)
+	check(state.entities[0].opened == 0, "defeated actor no longer holds the gate open")
+
+
+func post_type_checks() -> void:
+	check(Registry.implemented("o23"), "pound-driven post is registered")
+	if not Registry.implemented("o23"):
+		return
+	var world := typed_world({"post": {"A": "o23", "X": 160, "Y": 224, "E1": "96", "E2": "9"}})
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	check(
+		type.solid_box(entity) == [144 * S, 128 * S, 176 * S, 224 * S],
+		"post is bottom anchored with the configured height"
+	)
+	state.x = 160 * S
+	state.y = 124 * S
+	state.vy = 2 * Sim.GRAVITY * 60
+	state.move_action = 2
+	Sim.advance(state, 32, world)
+	check(
+		entity.height == 64 * S and state.y == 160 * S - GAP,
+		"real pound drives the post and rider down by 32 pixels"
+	)
+	check(state.move_action == 3 and state.on_floor == 1, "driving completes one pound landing")
+	Sim.advance(state, 32, world)
+	check(entity.height == 64 * S, "holding down does not drive the post twice")
+	Collision.begin_step(state, world, Registry)
+	type.bump(entity, state, world, 0)
+	check(entity.height == 64 * S, "ordinary underside contact does not drive a post")
+	type.bump(entity, state, world, 1)
+	type.bump(entity, state, world, 1)
+	check(
+		entity.status == 3 and type.solid_box(entity).is_empty(),
+		"last drive removes the collision volume"
+	)
+	check(
+		type.view_state(entity, state).size_y == 16, "last drive retains the non-solid stump view"
+	)
+	world = typed_world(
+		{"spiked": {"A": "o23", "X": 160, "Y": 224, "E1": "96", "E2": "16", "E3": "1"}}
+	)
+	state = State.create(world)
+	entity = state.entities[0]
+	state.x = 160 * S
+	state.y = 128 * S - GAP
+	Collision.begin_step(state, world, Registry)
+	type.contact(entity, state, world, 0)
+	check(
+		state.invulnerable == 120 and state.separated == 1,
+		"spiked form uses the shared damage and companion path"
+	)
+	type.bump(entity, state, world, 1)
+	check(entity.height == 96 * S, "spiked form cannot be driven")
 
 
 func typed_world(objects: Dictionary) -> Dictionary:

@@ -2,6 +2,7 @@ extends RefCounted
 ## A fixed-width, top-only span.
 const CODES := ["p3"]
 const SOLID := 2
+const POST_SUPPORT := true
 const S := preload("res://src/sim/units.gd").SCALE
 const FIELDS := [["width", 128 * S]]
 

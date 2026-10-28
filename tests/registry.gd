@@ -8,6 +8,10 @@ const World = preload("res://src/sim/world.gd")
 const Sim = preload("res://src/sim/step.gd")
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
+const FIXTURE_OPTIONS := {
+	"o23": {"E2": "0"},
+	"o8": {"E1": "1", "E2": "5"},
+}
 var checks := 0
 var failures := 0
 
@@ -335,7 +339,9 @@ func snapshot_checks() -> void:
 	)
 	var objects := {}
 	for code: String in Registry.codes():
-		objects["id_" + code + "_é"] = {"A": code, "X": 1, "Y": 2, "E1": "32", "E2": "64"}
+		var options := {"A": code, "X": 1, "Y": 2, "E1": "32", "E2": "64"}
+		options.merge(FIXTURE_OPTIONS.get(code, {}), true)
+		objects["id_" + code + "_é"] = options
 	var all_world := world_for(objects)
 	var all_state := State.create(all_world)
 	var all_bytes := Snapshot.encode(all_state)
