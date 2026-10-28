@@ -452,13 +452,16 @@ static func _no_solids_near(world: Dictionary, body: Dictionary, bounds: Array) 
 	if context.is_empty():
 		return true
 	var reach: int = maxi(bounds[2] - bounds[0], bounds[3] - bounds[1]) + 4 * S
-	return _candidates(
-		context,
-		body.x + bounds[0] - reach,
-		body.y + bounds[1] - reach,
-		body.x + bounds[2] + reach,
-		body.y + bounds[3] + reach
-	).is_empty()
+	return (
+		_candidates(
+			context,
+			body.x + bounds[0] - reach,
+			body.y + bounds[1] - reach,
+			body.x + bounds[2] + reach,
+			body.y + bounds[3] + reach
+		)
+		. is_empty()
+	)
 
 
 static func horizontal(
