@@ -7,6 +7,7 @@ const Registry = preload("res://src/sim/registry.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Moves = preload("res://src/sim/moves.gd")
 const S := State.SCALE
 var checks := 0
 var failures := 0
@@ -18,6 +19,8 @@ func _initialize() -> void:
 	turning_span_checks()
 	switch_block_checks()
 	wheel_checks()
+	soft_walker_checks()
+	soft_giant_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -73,7 +76,7 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 
 
 func registration_checks() -> void:
-	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21"]:
+	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24"]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
 	for pair: Array in [
@@ -287,6 +290,104 @@ func wheel_checks() -> void:
 	for _tick in 6:
 		type.step(timed, state, world)
 	check(timed.status == Registry.QUEUED, "A vanished wheel waits for camera respawn")
+
+
+func _ledge_world(extra: Dictionary) -> Dictionary:
+	var objects := {"floor": _place("p2", 500, 316, {"E1": "320"})}
+	objects.merge(extra, true)
+	return _world_for(objects)
+
+
+func _activate(entity: Dictionary) -> void:
+	entity.status = Registry.ACTIVE
+	entity.started = 1
+
+
+func soft_walker_checks() -> void:
+	var world := _ledge_world({"milde": _place("e23", 400, 284)})
+	var state := State.create(world)
+	state.x = 900 * S
+	state.y = 100 * S
+	var milde := _by_id(state, "milde")
+	var type: Script = Registry.lookup("e23")
+	_activate(milde)
+	Sim.advance(state, 0, world)
+	check(milde.vx == -48 * 60, "The soft walker walks left at 48 px/s")
+	check(absi(milde.y - 284 * S) < S, "The soft walker stands on the span")
+	for _tick in 120:
+		Sim.advance(state, 0, world)
+	check(milde.facing == 1 and milde.x > 340 * S, "The soft walker turns at the ledge")
+	state.x = milde.x
+	state.y = milde.y - 10 * S
+	type.contact(milde, state, world, 0)
+	check(milde.mode == type.SQUASH, "Landing on the soft walker squashes it")
+	check(state.y == milde.y and state.vy == 0, "The squashed walker holds the player on top")
+	for _tick in 15:
+		type.step(milde, state, world)
+	check(milde.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
+	state = State.create(world)
+	milde = _by_id(state, "milde")
+	_activate(milde)
+	state.x = milde.x - 10 * S
+	state.y = milde.y + 16 * S
+	type.contact(milde, state, world, 0)
+	check(state.invulnerable > 0 and milde.status == Registry.ACTIVE, "Side contact hurts")
+	var egg := {"code": "o7", "x": milde.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(milde, egg, state, world) == 3, "An egg passes through")
+	check(milde.status == Registry.DEFEATED, "An egg defeats the soft walker")
+
+
+func soft_giant_checks() -> void:
+	var world := _ledge_world({"big": _place("e24", 500, 268)})
+	var state := State.create(world)
+	var big := _by_id(state, "big")
+	var type: Script = Registry.lookup("e24")
+	check(big.y == 300 * S, "The large walker stands on its placement's lower edge")
+	_activate(big)
+	for _tick in 6:
+		type.step(big, state, world)
+	check(big.mode == type.WALK and big.vx == -48 * 60, "It starts walking after a short wait")
+	state.x = big.x
+	state.y = big.y - 50 * S
+	state.vy = 300 * 60
+	type.contact(big, state, world, 0)
+	check(state.vy < 0 and big.mode == type.PAUSE, "A plain landing bounces and stalls it")
+	for _tick in 31:
+		type.step(big, state, world)
+	check(big.mode == type.WAIT, "The stall ends in the short wait")
+	big.contact = 0
+	state.y = big.y - 50 * S
+	state.move_action = Moves.POUND_FALL
+	type.contact(big, state, world, 0)
+	check(big.mode == type.SQUASH, "A ground pound squashes it")
+	for _tick in 15:
+		type.step(big, state, world)
+	check(big.status == Registry.DEFEATED, "The squashed walker bursts")
+	var copies: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "e23"
+	)
+	check(copies.size() == 4, "The burst throws out four small walkers")
+	if copies.size() == 4:
+		check(
+			copies[0].mode == 2 and copies[0].facing == -1 and copies[3].facing == 1,
+			"The copies tumble outward"
+		)
+		check(copies[1].vy == -480 * 60, "The inner copies launch at 480 px/s")
+	state = State.create(world)
+	big = _by_id(state, "big")
+	_activate(big)
+	var egg := {"code": "o7", "x": big.x - 20 * S, "vx": 300 * 60, "fall_on_terrain": 0}
+	check(type.projectile_contact(big, egg, state, world) == 1, "An egg is consumed")
+	check(
+		big.slide_ticks == 48 and big.slide_from == 512 * 60 and big.status == Registry.ACTIVE,
+		"An egg shoves it along the egg's travel instead of defeating it"
+	)
+	state.x = big.x + 20 * S
+	state.y = big.y
+	state.move_action = 0
+	big.contact = 0
+	type.contact(big, state, world, 0)
+	check(state.invulnerable > 0, "Side contact with the large walker hurts")
 
 
 func snapshot_checks() -> void:
