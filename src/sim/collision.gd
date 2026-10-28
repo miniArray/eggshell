@@ -19,18 +19,34 @@ static var verify_failures := 0
 
 
 static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -> void:
-	var solids := []
-	for entity: Dictionary in state.get("entities", []):
-		var type: Script = registry.lookup(entity.code)
-		var mode := _solid_mode(type)
-		if mode in [1, 2]:
-			solids.append([entity, type, mode])
+	var entities: Array = state.get("entities", [])
 	var previous: Dictionary = world.get("solids_step", {})
+	# A table changes only by replacement or by appending, so the same array with the same
+	# size holds the same solid rows as last step. Verify runs check that with a scan.
+	var same_table: bool = (
+		not previous.is_empty()
+		and is_same(previous.state, state)
+		and previous.registry == registry
+		and is_same(previous.entities, entities)
+		and previous.count == entities.size()
+	)
+	var solids := []
+	if not same_table or verify_index:
+		for entity: Dictionary in entities:
+			var type: Script = registry.lookup(entity.code)
+			var mode := _solid_mode(type)
+			if mode in [1, 2]:
+				solids.append([entity, type, mode])
+	if same_table and verify_index and not _same_rows(previous, state, registry, solids):
+		verify_failures += 1
+		push_error("Solid rows changed in a table that kept its identity and size")
 	# The same table keeps its index: rows were refiled after every dispatch last step.
-	var reuse := _same_rows(previous, state, registry, solids)
+	var reuse := same_table or _same_rows(previous, state, registry, solids)
 	var context := {
 		"state": state,
 		"registry": registry,
+		"entities": entities,
+		"count": entities.size(),
 		"frame": int(state.get("frame", 0)),
 		"rows": previous.rows if reuse else [],
 		"shapes": [],
@@ -41,20 +57,24 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 		"dispatching": []
 	}
 	var rows: Array = context.rows
-	for index in solids.size():
-		var entity: Dictionary = solids[index][0]
-		var boxes := _boxes(solids[index][1], entity)
-		if reuse:
-			var row: Dictionary = rows[index]
+	if reuse:
+		for row: Dictionary in rows:
+			var entity: Dictionary = row.entity
+			# Types build their box arrays fresh and nothing writes into them, so the old
+			# boxes can share the arrays.
+			var boxes := _boxes(row.type, entity)
 			var moved: bool = row.x != entity.x or row.y != entity.y or row.status != entity.status
 			row.x = entity.x
 			row.y = entity.y
 			row.status = entity.status
-			row.old_boxes = boxes.duplicate(true)
+			row.old_boxes = boxes
 			row.handles = []
 			if moved or not _inside(row.region, boxes):
 				_place(context, row, boxes)
-			continue
+		solids = []
+	for index in solids.size():
+		var entity: Dictionary = solids[index][0]
+		var boxes := _boxes(solids[index][1], entity)
 		var fresh := {
 			"index": index,
 			"entity": entity,
@@ -63,7 +83,7 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 			"x": entity.x,
 			"y": entity.y,
 			"status": entity.status,
-			"old_boxes": boxes.duplicate(true),
+			"old_boxes": boxes,
 			"handles": [],
 			"cells": [],
 			"region": []

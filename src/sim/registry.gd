@@ -101,6 +101,7 @@ const TYPES := [
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const EntityGrid = preload("res://src/sim/entity_grid.gd")
+const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
@@ -144,6 +145,9 @@ static var _enemy_codes := {}
 # Each code's ordered schema is composed once and shared read-only.
 static var _fields_by_code := {}
 static var _facts_by_code := {}
+static var _level_consumers := TYPES.filter(
+	func(type: Script) -> bool: return type.has_method("consume_level_requests")
+)
 
 
 static func lookup(code: String) -> Script:
@@ -262,13 +266,14 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 
 
 static func consume_requests(state: Dictionary, world: Dictionary) -> void:
-	for type: Script in TYPES:
-		if type.has_method("consume_level_requests"):
-			type.consume_level_requests(state, world)
+	for type: Script in _level_consumers:
+		type.consume_level_requests(state, world)
 	var solids := Collision.solid_rows(world)
 	var grid: Variant = EntityGrid.current(world)
 	for entity: Dictionary in state.entities:
-		var known: Dictionary = facts(entity.code)
+		var known: Variant = _facts_by_code.get(entity.code)
+		if known == null:
+			known = facts(entity.code)
 		if known.consume:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
@@ -535,14 +540,13 @@ static func compact(state: Dictionary) -> void:
 		captor_token = state.enemies[state.captured_by - 1].token
 	var remaining := []
 	for entity: Dictionary in state.entities:
-		var known: Dictionary = facts(entity.code)
 		if (
 			entity.source_index == -1
 			and entity.status == DEFEATED
 			and entity.token != state.get("move_held_id", 0)
 			and entity.token != captor_token
 			and entity.get("held", 0) != 1
-			and (not known.finished or known.type.finished(entity))
+			and (not facts(entity.code).finished or lookup(entity.code).finished(entity))
 		):
 			continue
 		remaining.append(entity)
@@ -733,17 +737,22 @@ static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = f
 
 static func attach_views(state: Dictionary, reindex: bool = true) -> void:
 	# Transitional read views share dictionaries; they are not separate saved state.
-	state.enemies = []
-	state.springs = []
+	var enemies := []
+	var springs := []
+	state.enemies = enemies
+	state.springs = springs
 	for entity: Dictionary in state.entities:
-		if is_enemy(entity.code):
+		var enemy: Variant = _enemy_codes.get(entity.code)
+		if enemy == null:
+			enemy = is_enemy(entity.code)
+		if enemy:
 			if reindex:
-				entity.family_index = state.enemies.size()
-			state.enemies.append(entity)
+				entity.family_index = enemies.size()
+			enemies.append(entity)
 		elif entity.code == "o11":
 			if reindex:
-				entity.family_index = state.springs.size()
-			state.springs.append(entity)
+				entity.family_index = springs.size()
+			springs.append(entity)
 
 
 static func is_enemy(code: String) -> bool:
@@ -781,18 +790,24 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 		if phase == 1 and state.captured_by:
 			break
 		var solids := Collision.solid_rows(world)
+		# Cache reads and checks are inlined here: this loop visits every entity every step.
 		for entity: Dictionary in state.entities:
-			var known: Dictionary = facts(entity.code)
+			var known: Variant = _facts_by_code.get(entity.code)
+			if known == null:
+				known = facts(entity.code)
 			if known.step_phase != phase:
 				continue
-			var type: Script = known.type
-			var row: Variant = _solid_row(solids, entity)
-			if row != null:
+			var row: Variant = solids.get(entity.token)
+			if row != null and is_same(row.entity, entity):
 				Collision.dispatch_begin(world, row)
+			else:
+				row = null
 			dispatching.append(entity)
-			lifecycle(entity, state, world)
+			# The lifecycle returns at once for an active entity that cannot despawn.
+			if entity.status != ACTIVE or entity.can_despawn:
+				EntityLifecycle.run(entity, state, world)
 			if entity.status == ACTIVE:
-				type.step(entity, state, world)
+				known.type.step(entity, state, world)
 			dispatching.pop_back()
 			dirty.append(entity)
 			if row != null:
@@ -800,82 +815,31 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	if entity.status == DEFEATED or entity.get("held", 0) == 1:
-		return
-	# An active entity that cannot despawn has no transition below; skip the box work.
-	if entity.status == ACTIVE and not entity.can_despawn:
-		return
-	var type := lookup(entity.code)
-	var box := activation_box(entity, type)
-	var far: bool = (
-		box[0] > state.camera_x + entity.despawn_radius
-		or box[2] < state.camera_x - entity.despawn_radius
-		or box[1] > state.camera_y + entity.despawn_radius
-		or box[3] < state.camera_y - entity.despawn_radius
-	)
-	if entity.source_index == -1:
-		# A runtime entity has no immutable camera-respawn anchor.
-		if entity.status == ACTIVE and entity.can_despawn and far:
-			if type.has_method("deactivate"):
-				type.deactivate(entity, state, world)
-			entity.status = DEFEATED
-		return
-	var source := source_for(entity, world)
-	if entity.status == ACTIVE and entity.can_despawn and far:
-		entity.status = QUEUED
-		entity.offscreen = 0
-	if entity.status == QUEUED and entity.can_respawn:
-		if (
-			absi(source.x - state.camera_x) > entity.activation_x
-			or absi(source.y - state.camera_y) > entity.activation_y
-		):
-			entity.offscreen = 1
-		if (
-			entity.offscreen
-			and absi(source.x - state.camera_x) < entity.respawn_radius
-			and absi(source.y - state.camera_y) < entity.respawn_radius
-		):
-			var fresh := create(source, world)
-			fresh.collected = entity.collected
-			fresh.checkpoint_collected = entity.checkpoint_collected
-			for pair: Array in fields(entity.code):
-				entity[pair[0]] = fresh[pair[0]]
-	if entity.status == WAITING:
-		box = activation_box(entity, type)
-		if (
-			box[2] > state.camera_x - entity.activation_x
-			and box[0] < state.camera_x + entity.activation_x
-			and box[3] > state.camera_y - entity.activation_y
-			and box[1] < state.camera_y + entity.activation_y
-		):
-			entity.status = ACTIVE
-			if source.mirror == 2:
-				entity.facing = -1 if state.x < entity.x else 1
-			if type.has_method("activate"):
-				type.activate(entity, state, world)
+	EntityLifecycle.run(entity, state, world)
 
 
 static func activation_box(entity: Dictionary, type: Script) -> Array:
-	if type.has_method("activation_bounds"):
-		return type.activation_bounds(entity)
-	var box: Array = type.bounds(entity) if type.has_method("bounds") else [0, 0, 0, 0]
-	return [entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
+	return EntityLifecycle.activation_box(entity, type)
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 	var grid: Variant = EntityGrid.current(world)
 	var dispatching: Array = grid.dispatching if grid != null else []
 	var dirty: Array = grid.dirty if grid != null else []
+	# The step's solid rows only change at the next Collision.begin_step.
+	var solids := Collision.solid_rows(world)
 	for phase in [0, 1, 2]:
 		for entity: Dictionary in state.entities:
-			var known: Dictionary = facts(entity.code)
+			var known: Variant = _facts_by_code.get(entity.code)
+			if known == null:
+				known = facts(entity.code)
 			if (
 				known.contact_phase == phase
 				and entity.status == ACTIVE
 				and entity.get("held", 0) != 1
 				and entity.get("hidden", 0) != 1
 			):
-				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
+				var row: Variant = _solid_row(solids, entity)
 				if row != null:
 					Collision.dispatch_begin(world, row)
 				dispatching.append(entity)
