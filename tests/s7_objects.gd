@@ -26,6 +26,7 @@ func _initialize() -> void:
 	flyer_checks()
 	petal_checks()
 	juggler_checks()
+	egg_terrain_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -573,6 +574,99 @@ func juggler_checks() -> void:
 
 func defeat(entity: Dictionary) -> void:
 	entity.status = Registry.DEFEATED
+
+
+func tile_layer(name: String, cells: Array, columns: int, points: Array, water: bool) -> Dictionary:
+	var polygon := PackedInt64Array()
+	for value: int in points:
+		polygon.append(value * S)
+	return {
+		"name": name,
+		"layer": "layer1",
+		"slot": [1, 0],
+		"size": 32,
+		"width": columns,
+		"height": cells.size() / columns,
+		"cells": cells,
+		"bounds": {0: [0, 0, 32 * S, 32 * S]},
+		"polygons": {0: polygon},
+		"solid": not water,
+		"water": water
+	}
+
+
+func thrown_egg(state: Dictionary, world: Dictionary, x: int, y: int, vx: int, vy: int) -> Dictionary:
+	var egg := Registry.spawn_dynamic(
+		state, world, "o7", x, y, {"mode": 1, "vx": vx, "vy": vy, "bounces": 4}
+	)
+	egg.status = Registry.ACTIVE
+	return egg
+
+
+func egg_terrain_checks() -> void:
+	var type: Script = Registry.lookup("o7")
+	var world := world_for({})
+	# One rising slope cell at column 4, row 4 (x 128..160, y 128..160).
+	var cells := []
+	for index in 64:
+		cells.append(-1)
+	cells[4 * 8 + 4] = 0
+	world.layers = [tile_layer("slope", cells, 8, [0, 32, 32, 0, 32, 32], false)]
+	var state := State.create(world)
+	state.x = 2000 * S
+	var egg := thrown_egg(state, world, 100 * S, 140 * S, 1024 * 60, 0)
+	for tick in 2:
+		Collision.begin_step(state, world, Registry)
+		type.travel(egg, state, world)
+	check(egg.bounces == 3 and egg.colour == 1, "A slope ricochet spends one hit")
+	check(egg.vy < -900 * 60 and absi(egg.vx) < 200 * 60, "A 45 degree slope turns a level egg upward")
+	var speed: int = egg.vx * egg.vx + egg.vy * egg.vy
+	check(absi(speed - 61440 * 61440) < 61440 * 1200, "A ricochet keeps the egg speed")
+	var wall_world := world_for({})
+	var wall := []
+	for index in 64:
+		wall.append(0 if index % 8 == 4 else -1)
+	wall_world.layers = [tile_layer("wall", wall, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
+	state = State.create(wall_world)
+	state.x = 2000 * S
+	egg = thrown_egg(state, wall_world, 100 * S, 100 * S, 1024 * 60, 0)
+	for tick in 2:
+		Collision.begin_step(state, wall_world, Registry)
+		type.travel(egg, state, wall_world)
+	check(egg.vx == -1024 * 60 and egg.vy == 0, "A flat wall reverses a level egg exactly")
+	var pool := world_for({})
+	var water := []
+	for index in 64:
+		water.append(0 if index >= 32 else -1)
+	pool.layers = [tile_layer("pool", water, 8, [0, 0, 32, 0, 32, 32, 0, 32], true)]
+	state = State.create(pool)
+	state.x = 2000 * S
+	egg = thrown_egg(state, pool, 40 * S, 120 * S, 1000 * 60, 200 * 60)
+	for tick in 3:
+		Collision.begin_step(state, pool, Registry)
+		type.step(egg, state, pool)
+	check(egg.mode == type.SKIP, "A shallow water entry skips")
+	check(egg.skip_vx > 450 * 60 and egg.skip_vx < 520 * 60, "The skip starts at half speed")
+	check(egg.skip_total > 120 and egg.skip_total < 150, "The skip lasts two seconds plus angle/24")
+	var total: int = egg.skip_total
+	var rose := false
+	for tick in total:
+		Collision.begin_step(state, pool, Registry)
+		type.step(egg, state, pool)
+		rose = rose or egg.vy == -256 * 60
+	check(rose, "A skipping egg is pushed up while it touches water")
+	check(egg.mode == type.STATIONARY and egg.vx == 0, "The skip ends as a resting egg")
+	check(type.valid(egg), "Skip fields stay valid")
+	state = State.create(pool)
+	state.x = 2000 * S
+	egg = thrown_egg(state, pool, 100 * S, 100 * S, 200 * 60, 1000 * 60)
+	for tick in 3:
+		Collision.begin_step(state, pool, Registry)
+		type.step(egg, state, pool)
+	check(
+		egg.mode == type.STATIONARY and egg.despawn_ticks > 470,
+		"A steep water entry sinks and starts the 8 s removal"
+	)
 
 
 func snapshot_checks() -> void:
