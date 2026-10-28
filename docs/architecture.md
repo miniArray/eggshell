@@ -193,6 +193,20 @@ a non-enemy solid's normal bounce, including its last pre-destruction geometry.
 Enemy reactions are pierced, including a flattened rideable enemy. Pickup `origin_token` links collection back to
 a retained producer row before checkpoint flags are captured.
 
+Fire and ice use the same hooks. `src/sim/elements.gd` names the elements, the
+player's element ammunition and the reaction flags a type declares in
+`ELEMENT_REACTIONS`. Heat and cold movement requests become `fire_shot` and
+`ice_shot` runtime rows that pass through what they strike. A shot strikes only
+types that declare reactions: through `hit` with `Hits.FIRE` or `Hits.ICE`, or,
+for a type without `hit`, through `projectile_contact`. Lamps and launchers
+keep `hit` absent on purpose, because eggs, seeds and spat bodies treat a
+`hit`-only target as one that consumes them. `src/sim/element_reactions.gd`
+holds the shared burn and freeze rules: a reacting enemy's `hit` passes element
+strikes there first, and its `step` and `contact` call `frozen_step` and
+`frozen_contact` before their own logic. Frozen bodies stop, fall unless
+anchored, can still be eaten, and shatter on the player's touch. They never
+become solid; freezing a launcher only removes its solid box.
+
 `runtime_objects.gd` draws the runtime suffix using pack frames or the existing
 diagnostic textures. `view_state` can select visibility, a literal animation,
 a held frame, pixel offsets/sizes, degree rotation, horizontal flip and alpha.

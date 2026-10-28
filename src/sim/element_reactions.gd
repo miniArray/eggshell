@@ -62,14 +62,19 @@ static func frozen_step(
 ) -> bool:
 	if not entity.get("frozen", 0) or entity.status != 1:
 		return false
-	if entity.held or entity.spat:
+	# The thaw count pauses in the mouth and runs on while the body is spat.
+	if entity.held:
 		return false
 	if entity.thaw_ticks > 0:
 		entity.thaw_ticks -= 1
 		if entity.thaw_ticks == 0:
 			entity.frozen = 0
+			if entity.spat:
+				return false
 			entity.vy = HOP
 			return true
+	if entity.spat:
+		return false
 	entity.vx = 0
 	if not reactions & Elements.ANCHORED:
 		Motion.gravity_box(entity, world, bounds)
