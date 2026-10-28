@@ -10,6 +10,8 @@ const Reader = preload("res://src/level/level_code.gd")
 const EXTENSIONS := ["json", "txt"]
 ## More files than this in one folder are not listed.
 const MAX_FILES := 4096
+## Bytes read first from a large file to find its name and author.
+const HEAD_BYTES := 4096
 
 
 ## Read every level-code file directly in `directory`, sorted by file name.
@@ -29,7 +31,11 @@ static func scan(directory: String) -> Dictionary:
 		if size > Reader.MAX_CODE_BYTES:
 			levels.append(_failed(path, "Larger than 16 MiB"))
 			continue
-		levels.append(entry(path, FileAccess.get_file_as_string(path)))
+		# Most files name the level before their maps: read only the start first.
+		var found := entry(path, _head(path))
+		if not found.ok and size > HEAD_BYTES:
+			found = entry(path, FileAccess.get_file_as_string(path))
+		levels.append(found)
 	return {"ok": true, "levels": levels, "truncated": names.size() > MAX_FILES}
 
 
@@ -37,11 +43,11 @@ static func scan(directory: String) -> Dictionary:
 static func entry(path: String, code: String) -> Dictionary:
 	if code.is_empty():
 		return _failed(path, "Empty or unreadable")
-	# A JSON instance reports a bad file through its result, not the error log.
-	var json := JSON.new()
-	var parsed: Variant = json.data if json.parse(code) == OK else null
-	if not parsed is Dictionary or not parsed.get("maps") is Dictionary:
-		return _failed(path, "Not a level code")
+	var parsed: Variant = header(code)
+	if parsed == null:
+		parsed = _json(code)
+		if not parsed is Dictionary or not parsed.get("maps") is Dictionary:
+			return _failed(path, "Not a level code")
 	var result := _failed(path, "")
 	result.ok = true
 	result.name = _text(parsed.get("name"))
@@ -70,6 +76,40 @@ static func find(levels: Array, path: String) -> int:
 		if ProjectSettings.globalize_path(levels[index].path).simplify_path() == wanted:
 			return index
 	return -1
+
+
+## The top-level fields before `"maps"` as a Dictionary, or null. It parses only
+## that prefix, so a large level is not read in full to list its name. Any doubt
+## (no such key, no name before it, other JSON errors) returns null.
+static func header(code: String) -> Variant:
+	var start := code.find("{")
+	var cut := code.find("\"maps\"")
+	if start < 0 or cut <= start:
+		return null
+	var prefix := code.substr(start, cut - start).strip_edges()
+	if prefix.ends_with(","):
+		prefix = prefix.left(-1)
+	var parsed: Variant = _json(prefix + "}")
+	if (
+		not parsed is Dictionary
+		or not parsed.has("name")
+		or not code.substr(cut + 6, 64).strip_edges().begins_with(":")
+	):
+		return null
+	return parsed
+
+
+static func _json(text: String) -> Variant:
+	# A JSON instance reports a bad file through its result, not the error log.
+	var json := JSON.new()
+	return json.data if json.parse(text) == OK else null
+
+
+static func _head(path: String) -> String:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	return file.get_buffer(HEAD_BYTES).get_string_from_utf8()
 
 
 static func _failed(path: String, error: String) -> Dictionary:

@@ -12,8 +12,12 @@ const GAP := 8
 ## The window size at which the menu draws at scale 1; it scales in whole steps above.
 const REFERENCE := Vector2(832, 448)
 const MAX_SCALE := 4
-## The largest panel, in unscaled pixels. Smaller windows get a smaller panel.
-const MAX_PANEL := Vector2(480, 416)
+## The widest panel, in unscaled pixels, for a readable line length. Its height
+## follows the content up to the window height; longer lists scroll.
+const MAX_WIDTH := 480.0
+## Below this many rows of list area, the folder line and the key hint move into
+## the scrolling list, so a short window keeps more rows on the surface.
+const MIN_LIST_ROWS := 4
 const DIM := Color(0, 0, 0, 0.6)
 const MUTED := Color(0.65, 0.65, 0.65)
 
@@ -22,13 +26,17 @@ var _panel := PanelContainer.new()
 var _title := Label.new()
 var _info := Label.new()
 var _status := Label.new()
+var _column := VBoxContainer.new()
 var _scroll := ScrollContainer.new()
+var _content := VBoxContainer.new()
 var _rows := VBoxContainer.new()
 var _hint := Label.new()
 var _model: Model
 var _built_page := ""
 var _built_count := -1
 var _plan := {}
+var _scroll_pending := false
+var _compact := false
 
 
 func _init() -> void:
@@ -44,9 +52,8 @@ func _init() -> void:
 	_root.add_child(dim)
 	_panel.add_theme_stylebox_override("panel", _box(Color.BLACK, Color.WHITE, GAP))
 	_root.add_child(_panel)
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", GAP / 2)
-	_panel.add_child(column)
+	_column.add_theme_constant_override("separation", GAP / 2)
+	_panel.add_child(_column)
 	for label: Label in [_title, _info, _status, _hint]:
 		_style(label, Color.WHITE)
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -56,9 +63,12 @@ func _init() -> void:
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rows.add_theme_constant_override("separation", 0)
-	_scroll.add_child(_rows)
+	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content.add_theme_constant_override("separation", GAP / 2)
+	_content.add_child(_rows)
+	_scroll.add_child(_content)
 	for node: Control in [_title, _info, _status, _scroll, _hint]:
-		column.add_child(node)
+		_column.add_child(node)
 
 
 func _ready() -> void:
@@ -97,11 +107,15 @@ static func plan(container: Vector2) -> Dictionary:
 	)
 	var space := container / factor
 	var margin := floorf(minf(2 * GAP, minf(space.x, space.y) / 16))
-	var size := Vector2(
-		minf(MAX_PANEL.x, space.x - 2 * margin), minf(MAX_PANEL.y, space.y - 2 * margin)
-	)
+	var size := Vector2(minf(MAX_WIDTH, space.x - 2 * margin), space.y - 2 * margin)
 	size = size.max(Vector2.ONE)
 	return {"scale": factor, "size": size, "space": space}
+
+
+## True when a panel of `height` keeps fewer than MIN_LIST_ROWS rows of `row`
+## height after a header of `header` height.
+static func compact(height: float, header: float, row: float) -> bool:
+	return height - header < MIN_LIST_ROWS * row
 
 
 func _build(list: Array[Dictionary]) -> void:
@@ -165,7 +179,7 @@ func _refresh(list: Array[Dictionary]) -> void:
 		value.visible = not value.text.is_empty()
 		for node: Label in [label, detail, value]:
 			node.add_theme_color_override("font_color", color)
-	_keep_focus_visible.call_deferred()
+	_scroll_pending = true
 
 
 func _layout() -> void:
@@ -176,31 +190,88 @@ func _layout() -> void:
 		return
 	_panel.scale = Vector2.ONE * _plan.scale
 	# Fit the panel to its content height, up to the planned size; the list scrolls past it.
-	var needed := _panel.get_combined_minimum_size().y + _rows.get_combined_minimum_size().y
-	var size := Vector2(_plan.size.x, minf(_plan.size.y, maxf(needed, 1)))
+	var size := Vector2(_plan.size.x, minf(_plan.size.y, maxf(_needed(), 1)))
 	_panel.size = size
 	_panel.position = ((_plan.space - size) / 2).floor() * _plan.scale
 	_fit.call_deferred()
 
 
-## After the containers sort, wrapped rows know their height; refit once.
+## After the containers sort, wrapped rows know their height; refit.
 func _fit() -> void:
 	if not visible or _plan.is_empty():
 		return
-	var needed := _panel.get_combined_minimum_size().y + _rows.get_combined_minimum_size().y
-	var height := minf(_plan.size.y, needed)
+	var row := 2 * GAP + ceilf(ThemeDB.fallback_font.get_height(FONT_SIZE))
+	if _rows.get_child_count() > 0 and _rows.get_child(0).size.y > 0:
+		row = _rows.get_child(0).size.y
+	var wanted := compact(_plan.size.y, _header(), row)
+	if wanted != _compact:
+		_set_compact(wanted)
+		_fit.call_deferred()
+		return
+	var height := minf(_plan.size.y, _needed())
 	if absf(height - _panel.size.y) >= 1:
 		_panel.size.y = height
 		_panel.position.y = floorf((_plan.space.y - height) / 2) * _plan.scale
-	_keep_focus_visible()
 
 
-func _keep_focus_visible() -> void:
-	if _model == null or not visible:
+## The panel height that shows every row without scrolling.
+func _needed() -> float:
+	return _panel.get_combined_minimum_size().y + _content.get_combined_minimum_size().y
+
+
+## The height of the title, folder line, status and hint with the panel padding, as
+## if none of them were in the list.
+func _header() -> float:
+	var height := 2.0 * GAP + 2
+	for label: Label in [_title, _info, _status, _hint]:
+		if label.visible:
+			height += label.get_combined_minimum_size().y + GAP / 2.0
+	return height
+
+
+func _set_compact(on: bool) -> void:
+	_compact = on
+	for label: Label in [_info, _hint]:
+		label.get_parent().remove_child(label)
+	if on:
+		_content.add_child(_info)
+		_content.move_child(_info, 0)
+		_content.add_child(_hint)
+	else:
+		_column.add_child(_info)
+		_column.move_child(_info, 1)
+		_column.add_child(_hint)
+	_scroll_pending = true
+
+
+## Bring the focused row into the list area once the rows have their sizes. Runs
+## after a focus change only, so a mouse wheel can still scroll freely.
+func _process(_delta: float) -> void:
+	if not _scroll_pending or _model == null or not visible:
 		return
 	var index := _model.focused()
-	if index < _rows.get_child_count():
-		_scroll.ensure_control_visible(_rows.get_child(index))
+	if index >= _rows.get_child_count():
+		return
+	var row: Control = _rows.get_child(index)
+	if row.size.y <= 0 or _scroll.size.y <= 0:
+		return
+	_scroll_pending = false
+	var bottom := _rows.position.y + row.position.y + row.size.y
+	# The first row also shows the folder line above it when that line is in the list.
+	var top := 0.0 if index == 0 else bottom - row.size.y
+	_scroll.scroll_vertical = int(
+		scroll_for(top, bottom - top, float(_scroll.scroll_vertical), _scroll.size.y)
+	)
+
+
+## The scroll offset that shows a row from `top` to `top + height` in a list area
+## of `area` height, moving as little as possible from `current`.
+static func scroll_for(top: float, height: float, current: float, area: float) -> float:
+	if top < current or height >= area:
+		return top
+	if top + height > current + area:
+		return top + height - area
+	return current
 
 
 func _row_input(event: InputEvent, index: int, row: Control) -> void:

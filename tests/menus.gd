@@ -175,6 +175,14 @@ func level_list_checks() -> void:
 	check(entry.name == "A B" and entry.author == "12", "Line breaks and numeric authors")
 	entry = LevelList.entry("/x/e.json", JSON.stringify({"name": 5, "maps": {}}))
 	check(entry.name == "5" and entry.author.is_empty(), "A numeric name and absent author")
+	var cut := "{\"name\":\"Cut\",\"author\":\"Ed\",\"maps\":{\"map1\":{\"wid"
+	entry = LevelList.entry("/x/g.json", cut)
+	check(entry.ok and entry.name == "Cut" and entry.author == "Ed", "The start of a file is enough")
+	var late := JSON.stringify({"maps": {}, "name": "Late", "author": "Fy"})
+	check(LevelList.header(late) == null, "Maps before the name needs the whole file")
+	check(LevelList.entry("/x/h.json", late).name == "Late", "A late name is still found")
+	var quoted := JSON.stringify({"name": "Q", "desc": "see \"maps\": here", "maps": {}})
+	check(LevelList.entry("/x/i.json", quoted).name == "Q", "A quoted key in text is not a key")
 	for bad: String in ["", "{", "[]", "{\"name\": \"x\"}"]:
 		entry = LevelList.entry("/x/f.json", bad)
 		check(not entry.ok and entry.name == "f.json" and not entry.error.is_empty(), "Bad: " + bad)
@@ -333,7 +341,12 @@ func layout_checks() -> void:
 	check(MenuView.plan(Vector2(1663, 896)).scale == 1, "Scale 2 needs twice the reference width")
 	check(MenuView.plan(Vector2(1664, 896)).scale == 2, "Scale 2 at twice the reference")
 	check(MenuView.plan(Vector2(3840, 2160)).scale == 4, "Scale is at most 4")
-	check(MenuView.plan(Vector2(832, 448)).size == MenuView.MAX_PANEL, "Full panel at reference")
+	check(MenuView.plan(Vector2(832, 448)).size == Vector2(480, 416), "Full panel at reference")
+	check(MenuView.plan(Vector2(360, 640)).size == Vector2(328, 608), "A tall window gives height")
+	check(MenuView.compact(150, 120, 31) and not MenuView.compact(416, 120, 31), "Compact header")
+	check(MenuView.scroll_for(0, 30, 50, 100) == 0, "Scroll up to a row above the area")
+	check(MenuView.scroll_for(140, 30, 50, 100) == 70, "Scroll down to a row below the area")
+	check(MenuView.scroll_for(60, 30, 50, 100) == 50, "A visible row does not scroll")
 	check(MenuView.plan(Vector2(160, 120)).size.x == 146, "A tiny window keeps a small margin")
 	check(MenuView.plan(Vector2.ZERO).is_empty(), "No plan for an empty container")
 	# Play timer: three rows when height allows, one row when short, smaller only last.

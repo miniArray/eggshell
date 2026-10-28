@@ -86,6 +86,8 @@ func hint() -> String:
 		LEVELS:
 			return "Enter or A: play. PgUp/PgDn or shoulders: page. Esc or B: back."
 		MAIN:
+			if context.get("goal", false):
+				return "Enter or A: select. Esc or B: close."
 			return "Enter or A: select. Esc or B: resume."
 	return "Enter or A: select."
 
