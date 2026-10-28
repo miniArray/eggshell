@@ -341,9 +341,7 @@ func snapshot_checks() -> void:
 		)
 	var old := bytes.duplicate()
 	old.encode_u32(8, 6)
-	check(
-		not Snapshot.decode(old, world.identity).ok, "Version six rejected before layout parsing"
-	)
+	check(not Snapshot.decode(old, world.identity).ok, "Version six rejected before layout parsing")
 	var corrupt := bytes.duplicate()
 	corrupt[Snapshot.HEADER] ^= 1
 	check(not Snapshot.decode(corrupt, world.identity).ok, "Checksum corruption rejected")
