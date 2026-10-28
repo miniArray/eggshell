@@ -73,6 +73,7 @@ const TYPES := [
 	preload("res://src/sim/types/shot_launcher.gd"),
 	preload("res://src/sim/types/seed_melon.gd"),
 	preload("res://src/sim/types/seed_shot.gd"),
+	preload("res://src/sim/types/leap_bulk.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]

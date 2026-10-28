@@ -28,6 +28,7 @@ func _initialize() -> void:
 	launcher_checks()
 	shot_checks()
 	melon_checks()
+	leaper_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -725,6 +726,60 @@ func melon_checks() -> void:
 	check(target.status == Registry.DEFEATED, "A seed defeats the walker in its path")
 	check(_degrades("o25", {"F": 3}), "A fire melon is not built yet and becomes a placeholder")
 	check(_degrades("o25", {"F": 6}), "An ice melon is not built yet and becomes a placeholder")
+
+
+func leaper_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
+			"plain": _place("e17", 500, 284),
+			"coins": _place("e17", 1200, 284, {"F": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 850 * S
+	state.y = 300 * S - S / 16
+	var type: Script = Registry.lookup("e17")
+	var plain := _by_id(state, "plain")
+	_activate(plain)
+	for _tick in 50:
+		Sim.advance(state, 0, world)
+	check(plain.phase == type.WAIT and plain.vx == 0, "The leaper waits on the ground")
+	var left: bool = false
+	for _tick in 40:
+		Sim.advance(state, 0, world)
+		left = left or plain.vy < 0
+	check(left and plain.x < 500 * S, "After a second and a crouch it leaps forward")
+	check(
+		type.solid_box(plain)[3] - type.solid_box(plain)[1] == 2 * S,
+		"Its deck is top-only and thin"
+	)
+	var coins := _by_id(state, "coins")
+	_activate(coins)
+	var deck: Array = type.solid_box(coins)
+	state.x = coins.x
+	state.y = deck[1]
+	state.on_floor = 1
+	type.contact(coins, state, world, 0)
+	check(coins.squashed == 1 and coins.status == Registry.ACTIVE, "Standing on the deck holds it")
+	state.move_action = Moves.POUND_LAND
+	type.contact(coins, state, world, 0)
+	check(coins.status == Registry.DEFEATED, "A ground pound on its deck defeats it")
+	var dropped: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "o1" and entity.source_index == -1
+	)
+	check(dropped.size() == 3, "F 1 releases three coins")
+	state.move_action = 0
+	state.x = plain.x + 10 * S
+	state.y = plain.y + 30 * S
+	state.invulnerable = 0
+	plain.status = Registry.ACTIVE
+	type.contact(plain, state, world, 0)
+	check(state.invulnerable > 0, "Touching it from the side hurts")
+	var egg := {"code": "o7", "x": plain.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(plain, egg, state, world) == 1, "A thrown egg is spent on it")
+	check(plain.status == Registry.DEFEATED, "A thrown egg defeats it")
+	check(_degrades("e17", {"F": 3}), "An unknown leaper colour becomes a placeholder")
 
 
 func snapshot_checks() -> void:
