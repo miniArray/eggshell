@@ -46,6 +46,8 @@ def main():
         "placeholders",
         "enemy_variants",
         "s7_objects",
+        "s8_objects_b",
+        "s8_objects_b_enemies",
         "audio",
         "core",
         "objects",
