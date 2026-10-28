@@ -24,6 +24,7 @@ func _initialize() -> void:
 	gust_checks()
 	dice_checks()
 	egg_block_checks()
+	spore_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -540,6 +541,60 @@ func egg_block_checks() -> void:
 	)
 	check(reds.size() == 1, "F 1 leaves a red egg")
 	check(_degrades("o27", {"F": 2}), "An unknown egg block colour becomes a placeholder")
+
+
+func spore_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
+			"spore": _place("e13", 500, 100),
+			"sprout": _place("e12", 800, 284)
+		}
+	)
+	var state := State.create(world)
+	state.x = 1100 * S
+	state.y = 300 * S - S / 16
+	var spore := _by_id(state, "spore")
+	var type: Script = Registry.lookup("e13")
+	_activate(spore)
+	for _tick in 48:
+		Sim.advance(state, 0, world)
+	check(spore.vx < 0 and spore.facing == 1, "The spore sways left, then turns after 0.8 s")
+	check(spore.vy == 64 * 60, "The spore falls at no more than 64 px/s")
+	check(type.sway_period(140) == 36 and type.sway_period(240) == 24, "The sway quickens")
+	var landed := false
+	for _tick in 400:
+		Sim.advance(state, 0, world)
+		if spore.status == Registry.DEFEATED:
+			landed = true
+			break
+	check(landed, "The spore lands")
+	var grown: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "e12" and entity.source_index == -1
+	)
+	check(grown.size() == 1 and grown[0].mode == 1, "A landed spore grows into a waking sprout")
+	var sprout := _by_id(state, "sprout")
+	var sprout_type: Script = Registry.lookup("e12")
+	_activate(sprout)
+	var hopped := false
+	for _tick in 30:
+		Sim.advance(state, 0, world)
+		hopped = hopped or sprout.vy < 0
+	check(hopped and sprout.x < 800 * S, "The sprout hops along its facing")
+	state.x = sprout.x
+	state.y = sprout.y - 10 * S
+	state.vy = 200 * 60
+	sprout.contact = 0
+	sprout_type.contact(sprout, state, world, 0)
+	check(sprout.status == Registry.DEFEATED and state.vy < 0, "Landing on a sprout defeats it")
+	var hurt_world := _world_for({"spore": _place("e13", 500, 100)})
+	var hurt := State.create(hurt_world)
+	var touch := _by_id(hurt, "spore")
+	_activate(touch)
+	hurt.x = touch.x
+	hurt.y = touch.y + 30 * S
+	type.contact(touch, hurt, hurt_world, 0)
+	check(hurt.invulnerable > 0, "Touching a spore hurts")
 
 
 func snapshot_checks() -> void:
