@@ -126,8 +126,9 @@ changes, request serials, the switch's saved sound triggers and a few saved
 fields of object rows, matched by their stable tokens. It never
 writes state, so sound cannot change physics or saves. A restored or replaced
 state, a backward frame or a gap of more than four frames resynchronizes
-without events: a restore never replays old sounds. After a restore the level
-track starts again, and a running switch timer resumes at its saved position.
+without events: a restore never replays old sounds. It stops effects and a
+one-shot role. The level track keeps playing when the restored map uses the same
+track and starts otherwise. A running switch timer resumes at its saved position.
 Effects share eight voices. A new sound for an event restarts that event's
 voice; otherwise the oldest voice is reused. Effects are not positional.
 

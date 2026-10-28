@@ -384,9 +384,11 @@ func _resync(current: Dictionary) -> void:
 	for index in _voices.size():
 		_voices[index].stop()
 		_voice_events[index] = ""
-	_music.stop()
-	_music_role = ""
-	_music_track = ""
+	# A one-shot role belongs to the old timeline. The same level track keeps playing.
+	if not _music_role.is_empty():
+		_music.stop()
+		_music_role = ""
+		_music_track = ""
 	_update_music(current)
 	if current.switch_ticks > 0 and current.life_phase not in QUIET_PHASES:
 		_play_effect("switch_timer", (SWITCH_TICKS - current.switch_ticks) / 60.0)
