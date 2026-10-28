@@ -2,6 +2,8 @@ extends RefCounted
 ## Neighbour queries for object types. Uses the registry index when it exists;
 ## otherwise it scans every entity in table order, with the same result order.
 
+const Collision = preload("res://src/sim/collision.gd")
+
 
 static func registry() -> Script:
 	return load("res://src/sim/registry.gd")
@@ -35,3 +37,12 @@ static func strike(
 			continue
 		if dispatch.overlaps_box(other, type, box):
 			type.hit(other, state, world, kind, from_x)
+
+
+## Refile another entity's solid boxes after this code moved or enlarged them.
+## The solid index refiles the dispatched entity itself; without an index this
+## does nothing.
+static func refresh_solid(world: Dictionary, entity: Dictionary) -> void:
+	var collision: Script = Collision
+	if collision.has_method("refresh"):
+		collision.call("refresh", world, entity)

@@ -14,6 +14,7 @@ var failures := 0
 
 
 func _initialize() -> void:
+	_check_solid_index()
 	_soft_walker_checks()
 	_soft_giant_checks()
 	_gust_checks()
@@ -31,6 +32,13 @@ func _initialize() -> void:
 	_bush_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+## With the solid index present, every query is checked against a full scan.
+func _check_solid_index() -> void:
+	var collision: Script = Collision
+	if "verify_index" in collision:
+		collision.set("verify_index", true)
 
 
 func _level(objects: Dictionary) -> Dictionary:

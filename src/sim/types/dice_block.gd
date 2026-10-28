@@ -100,6 +100,8 @@ static func trigger(entity: Dictionary, state: Dictionary, world: Dictionary) ->
 			other.on = 1 - other.on
 			if other.code == "o34":
 				other.solid_ready = int(not other.on and not overlaps_player(other, state))
+				# An outline that turns solid grows another entity's box.
+				Near.refresh_solid(world, other)
 	entity.busy = BUMP_TICKS
 	var probe := [entity.x - 16 * S, entity.y - 24 * S, entity.x + 16 * S, entity.y + 8 * S]
 	Near.strike(state, world, probe, Hits.BUMP, entity.x, entity.token)
