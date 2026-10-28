@@ -32,12 +32,16 @@ bash tools/play --path . -- --level-code=tests/fixtures/stride.level.json
 | Aim, then throw | C | Left shoulder |
 | Toggle aim lock | V | Right shoulder |
 | Save / restore slot | F5 / F9 | Back + left / right shoulder |
+| Zoom in / out | `=` / `-` (or keypad `+` / `-`) | Right stick up / down |
+| Reset zoom | `0` (or keypad `0`) | Right stick press |
 
 Movement reaches running speed without a modifier. Hold jump to flutter.
 Up directs tongue and spit actions upward. Down in the air starts a ground
 pound; in water it selects the submerged posture. Press throw twice to aim
 and throw. Up selects vertical aim; tongue cancels aim.
 The game automatically resumes the last session by default.
+Zoom changes only the picture, in whole steps that keep art pixels square. It
+stops before the view shows space outside the level, and the last zoom is saved.
 
 Use `--pack=/absolute/path` after the argument separator to select an external
 version 2 or 3 graphics pack. A pack never supplies the level. A pack may also
@@ -60,6 +64,7 @@ after the separator to silence all audio.
 - A type registry and composed version 6 snapshots with autosave and automatic resume.
 - Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
+- Player zoom in whole steps, and blended pictures on high-refresh displays.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
 Player colliders follow the action and posture. Companion rescue uses the full
@@ -76,8 +81,10 @@ counter. A level editor is not implemented.
 ## Physics and screens
 
 Physics advances exactly 60 times per second on every device. Screen shape,
-zoom and graphics packs do not change the simulation. A future high-refresh
-view can interpolate pictures without changing physics or snapshot bytes.
+zoom, refresh rate and graphics packs do not change the simulation. On displays
+faster than 60 Hz, pictures blend positions between fixed steps; snapshot bytes
+stay the same. Pass `--smooth=on` or `--smooth=off` after the separator to
+override the automatic choice.
 
 ## Tests
 
@@ -86,6 +93,8 @@ Fast synthetic player checks (no game scene or graphics pack):
 ```sh
 nix develop -c godot --headless --path . --script tests/moves.gd
 nix develop -c godot --headless --path . --script tests/move_input.gd
+nix develop -c godot --headless --path . --script tests/view_motion.gd
+nix develop -c godot --headless --path . --script tests/view_invariance.gd
 ```
 
 The full suite is reserved for hardening. Its recorded routes need updates after

@@ -279,8 +279,69 @@ stays first at the top.
 At density 1, a 640 by 480 container shows 640 by 480 world pixels. At density 2,
 it shows 320 by 240. At 1920 by 1080, both show 960 by 540. At 3840 by 2160,
 density 2 shows 960 by 540. A wider view does not activate more enemies.
-Activation belongs to the fixed simulation reference area.
+Activation belongs to the fixed simulation reference area; see
+[Inactive enemies](#inactive-enemies).
 
 Goal and recovery markers are sprites (generated, or the pack's art). This
 keeps their first appearance on the sprite shader path already used at startup.
 Creating a new drawing primitive mid-level can trigger shader compilation.
+
+## Zoom
+
+Zoom is a whole-number step added to the fitted multiple `m`. Each step keeps
+art pixels square and whole: world scale stays `m * density`. Zoom never
+changes the simulation, its activation area or saved states.
+
+| Limit | Rule |
+| --- | --- |
+| Zoom out | `m` stays at least 1 and at least the multiple that fits the level bounds. The camera never shows space outside the level. |
+| Zoom in | `m` stops before fewer than 208 by 112 world pixels are visible, but never below the unzoomed multiple. |
+
+The range depends only on the container, the level size and density, so a
+resized window keeps a valid zoom. At density 1, a 1920 by 1080 container fits
+`m = 2`; its range is `m = 1` (1920 by 1080 world pixels) to `m = 9`. A window
+at 832 by 448 cannot zoom out, because `m = 1` already. HUD art keeps the
+unzoomed multiple.
+
+Zoom keys are `=` and `-` (or keypad `+` and `-`), and `0` to reset. A
+controller uses a firm right-stick push up or down, and a right-stick press to
+reset. `settings.json` keeps the last step as `zoom` (whole numbers from -16 to
+16, default 0). The view clamps a saved step into the current range; a press
+moves from the step actually shown.
+
+## Inactive enemies
+
+The simulation activates a placed enemy only inside the fixed 832 by 448
+reference area around the saved follow point. A wider or zoomed-out view can
+show enemies outside that area. The view draws them still and dimmed: the
+default pose at its first frame, at the enemy's placement, with a grey tint at
+55% opacity. This applies to enemies that wait for their first activation and to
+enemies queued to return to their placement. Defeated enemies, and queued
+enemies that cannot return, stay hidden.
+
+Reason: hiding them makes enemies appear from nothing in plain view when the
+player approaches, which reads as a spawn. Drawing them normally suggests they
+move and threaten when they do not. A still, dimmed figure shows the level's
+real layout and tells the player the enemy is not yet active. The rule reads
+saved state only; it never activates an enemy.
+
+## Smooth drawing
+
+Physics stays at 60 steps per second. On displays faster than 60 Hz, each picture
+blends drawn positions between the state before the last step and the current
+state, by the elapsed part of the current step. This covers the player, camera,
+companion and every entity position. Values that object types derive for drawing,
+such as animation frames, use the current state. The blended picture is a
+separate copy; the view never writes state.
+
+Pictures snap to the current state, without blending, after a restore, a frame
+gap, a map change, a respawn, and for any position that moves more than 64
+pixels in one step. While steps are paused, for example after the goal, the
+view draws the current state. At 60 Hz the view draws saved states as before.
+Pass `--smooth=on` or `--smooth=off` after the separator to override the
+automatic choice, which uses the display's reported refresh rate.
+
+Fast checks: `tests/screen_plan.gd` covers zoom ranges, `tests/view_motion.gd`
+covers blending and settings, and `tests/view_invariance.gd` drives one input
+sequence at 60, 120 and 144 Hz and three zoom steps, and proves that the state
+matches a view-free run at every step.
