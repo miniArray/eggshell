@@ -1,6 +1,11 @@
 extends SceneTree
 ## Pure synthetic solids, carry and callback checks. No game scene or rendering.
 const Collision = preload("res://src/sim/collision.gd")
+const Registry = preload("res://src/sim/registry.gd")
+const State = preload("res://src/sim/play_state.gd")
+const Snapshot = preload("res://src/save/snapshot.gd")
+const Sim = preload("res://src/sim/step.gd")
+const World = preload("res://src/sim/world.gd")
 const Shapes = preload("res://tests/platform_shapes.gd")
 const S := 3600
 const BOX := [-4 * S, -8 * S, 4 * S, 0]
@@ -15,6 +20,9 @@ func _initialize() -> void:
 	strip_checks()
 	carry_checks()
 	callback_checks()
+	span_type_checks()
+	crumble_type_checks()
+	block_type_checks()
 	print("PLATFORMS_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -170,6 +178,125 @@ func callback_checks() -> void:
 	var moved := Collision.vertical(state, world, BOX, 12 * S)
 	check(entity.bump_count == 2 and entity.last_side == 1, "pound calls the upper bump hook")
 	check(entity.broken == 1 and moved == 12 * S, "broken solid permits the remaining pound motion")
+
+
+func span_type_checks() -> void:
+	check(Registry.implemented("p3"), "cloud span is registered")
+	if not Registry.implemented("p3"):
+		return
+	var world := typed_world({"span": {"A": "p3", "X": 200, "Y": 160, "E1": "96.9"}})
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	check(
+		type.solid_box(entity) == [152 * S, 144 * S, 248 * S, 146 * S],
+		"span width uses truncated input and raised support line"
+	)
+	state.x = 200 * S
+	state.y = 144 * S - GAP
+	state.on_floor = 1
+	Sim.advance(state, 0, world)
+	check(state.on_floor == 1 and state.y < 144 * S, "real step stands on the typed span")
+	var data := Snapshot.encode(state)
+	var restored := Snapshot.decode(data, world.identity, world)
+	check(restored.ok and Snapshot.encode(restored.state) == data, "typed span snapshot round trip")
+	check(
+		not (
+			World
+			. setup_objects(
+				{"objects": {"bad": {"A": "p3", "X": 0, "Y": 0, "E1": "wide"}}}, geometry()
+			)
+			. ok
+		),
+		"invalid span input is rejected"
+	)
+
+
+func crumble_type_checks() -> void:
+	check(Registry.implemented("o20"), "crumbling span is registered")
+	if not Registry.implemented("o20"):
+		return
+	var world := typed_world({"fall": {"A": "o20", "X": 160, "Y": 160, "F": 1}})
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	state.x = 160 * S
+	state.y = 144 * S - GAP
+	state.on_floor = 1
+	Collision.begin_step(state, world, Registry)
+	type.contact(entity, state, world, 0)
+	check(entity.age == 1, "standing starts a 1.2 second countdown")
+	state.x = 220 * S
+	type.contact(entity, state, world, 0)
+	check(entity.age == 0, "leaving before the fall cancels the countdown")
+	state.x = 160 * S
+	type.contact(entity, state, world, 0)
+	for tick in 72:
+		type.step(entity, state, world)
+	check(
+		entity.age == 73 and entity.y == 160 * S and entity.vy == 256,
+		"countdown enables falling with post-motion gravity"
+	)
+	type.step(entity, state, world)
+	check(entity.y == 160 * S + 256, "falling uses fixed-step velocity")
+	entity.y = state.camera_y + 833 * S
+	type.step(entity, state, world)
+	check(
+		entity.y == 160 * S and entity.age == 0 and entity.vy == 0,
+		"repeat form resets after falling below the reference region"
+	)
+	entity.respawns = 0
+	entity.age = 73
+	entity.y = state.camera_y + 833 * S
+	type.step(entity, state, world)
+	check(entity.status == 3, "ordinary crumble is removed below the reference region")
+
+
+func block_type_checks() -> void:
+	check(Registry.implemented("o28"), "hard block is registered")
+	if not Registry.implemented("o28"):
+		return
+	var world := typed_world({"block": {"A": "o28", "X": 160, "Y": 160, "F": 4}})
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	check(
+		type.solid_box(entity) == [128 * S, 128 * S, 192 * S, 192 * S],
+		"hard block has full fixed-size volume"
+	)
+	var projectile := {"bounces": 4}
+	check(
+		(
+			type.projectile_contact(entity, projectile, state, world) == 3
+			and entity.form == 5
+			and projectile.bounces == 5
+		),
+		"first strike cracks the selected block form and continues"
+	)
+	type.projectile_contact(entity, projectile, state, world)
+	check(entity.status == 3 and type.solid_box(entity).is_empty(), "second strike removes volume")
+	entity.status = 1
+	entity.form = 9
+	type.hit(entity, state, world, 2, 0)
+	check(entity.status == 1, "pound does not invent an unsupported block break")
+	type.hit(entity, state, world, 1, 0)
+	check(entity.status == 3, "an initially cracked form needs one projectile strike")
+
+
+func typed_world(objects: Dictionary) -> Dictionary:
+	var world := geometry()
+	world.identity = "synthetic platform state".sha256_text()
+	world.spawn_x = 64 * S
+	world.spawn_y = 100 * S
+	world.spawn_facing = 1
+	world.map_index = 1
+	world.initial_map = 1
+	world.map_count = 1
+	world.flowers_target = 0
+	world.redcoins_target = 0
+	check(World.setup_objects({"objects": objects}, world).ok, "typed synthetic placements compile")
+	world.maps = {1: world.duplicate()}
+	return world
 
 
 static func geometry() -> Dictionary:

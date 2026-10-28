@@ -76,7 +76,13 @@ func mixed_world() -> Dictionary:
 
 
 func registry_checks() -> void:
-	check(Registry.codes().size() == 9, "Eight existing codes plus checkpoint hook registered")
+	var codes := Registry.codes()
+	for code: String in ["o5", "o6", "o11", "p1", "e1", "e2", "e3", "e5", "e20"]:
+		check(code in codes, "Baseline code remains registered: " + code)
+	var unique := {}
+	for code: String in codes:
+		unique[code] = true
+	check(unique.size() == codes.size(), "Registered codes have no duplicates")
 	for code: String in Registry.codes():
 		var type: Script = Registry.lookup(code)
 		check(code in type.CODES, "Lookup selects declaring module " + code)

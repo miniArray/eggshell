@@ -7,7 +7,17 @@ const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
 const Checkpoint = preload("res://src/sim/types/checkpoint.gd")
 const Inert = preload("res://src/sim/types/inert.gd")
-const TYPES := [Actor, Pad, Bridge, Goal, Checkpoint]
+const TYPES := [
+	Actor,
+	Pad,
+	Bridge,
+	Goal,
+	Checkpoint,
+	# slice 6: s6-platforms
+	preload("res://src/sim/types/cloud_span.gd"),
+	preload("res://src/sim/types/falling_span.gd"),
+	preload("res://src/sim/types/hard_block.gd"),
+]
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
 const MAX_OPTION_PIXELS := 0x7fffffffffffffff / S - 1
