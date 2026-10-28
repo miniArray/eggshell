@@ -234,10 +234,9 @@ static func hazards(
 	entity: Dictionary, state: Dictionary, world: Dictionary, bounds: Array
 ) -> bool:
 	var box := world_box(entity, bounds)
-	for name: String in ["lava", "lava_3"]:
-		if World.named_overlaps(world, name, box[0], box[1], box[2], box[3]):
-			remove(entity, state)
-			return true
+	if World.lava_overlaps(world, box[0], box[1], box[2], box[3]):
+		remove(entity, state)
+		return true
 	return false
 
 

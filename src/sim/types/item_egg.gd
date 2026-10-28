@@ -459,9 +459,8 @@ static func blocked_at(world: Dictionary, box: Array, x: int, y: int, shapes: Ar
 static func liquid_at(world: Dictionary, entity: Dictionary) -> int:
 	var box := bounds(entity)
 	var area := [entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
-	for name: String in ["lava", "lava_3"]:
-		if World.named_overlaps(world, name, area[0], area[1], area[2], area[3]):
-			return 2
+	if World.lava_overlaps(world, area[0], area[1], area[2], area[3]):
+		return 2
 	return int(World.water_overlaps(world, area[0], area[1], area[2], area[3]))
 
 

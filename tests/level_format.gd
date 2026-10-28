@@ -274,7 +274,7 @@ func effect_binding_checks() -> void:
 
 
 func hazard_checks() -> void:
-	for name: String in ["lava", "lava_3", "ySSpikes"]:
+	for name: String in World.LAVA_LAYERS + [World.SPIKE_LAYER]:
 		var code := level()
 		var table := facts()
 		var entry: Dictionary = table.tilemaps.blocks.duplicate(true)

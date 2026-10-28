@@ -36,7 +36,6 @@ const BUBBLE_BOX := [-30 * S, -60 * S, 30 * S, 0]
 const BUBBLE_POINTS := [-22, -52, 0, -60, 22, -52, 30, -30, 22, -8, 0, 0, -22, -8, -30, -30]
 const RESCUE_OFFSETS := [[-32, -22], [-16, -14], [32, -22], [16, -14]]
 const RESCUER_POINTS := [-4, -12, 0, -24, 3, -12, 13, 0, 11, 19, 0, 23, -10, 17, -12, 0]
-const HAZARD_LAYERS := ["lava", "lava_3", "ySSpikes"]
 const PLAYER_FIELDS := [
 	["hurt", 0],
 	["invulnerable", 0],
@@ -155,17 +154,16 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 	if state.y > world.height + 62 * S:
 		kill(state, PIT)
 		return
-	for name: String in HAZARD_LAYERS:
-		if World.named_overlaps(
-			world,
-			name,
-			state.x + PLAYER_BOX[0],
-			state.y + PLAYER_BOX[1],
-			state.x + PLAYER_BOX[2],
-			state.y + PLAYER_BOX[3]
-		):
-			kill(state, HAZARD)
-			return
+	var left: int = state.x + PLAYER_BOX[0]
+	var top: int = state.y + PLAYER_BOX[1]
+	var right: int = state.x + PLAYER_BOX[2]
+	var bottom: int = state.y + PLAYER_BOX[3]
+	if (
+		World.lava_overlaps(world, left, top, right, bottom)
+		or World.named_overlaps(world, World.SPIKE_LAYER, left, top, right, bottom)
+	):
+		kill(state, HAZARD)
+		return
 	if state.companion_mode == BUBBLE and not state.get("captured_by", 0):
 		catch_companion(
 			state,

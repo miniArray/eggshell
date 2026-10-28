@@ -79,12 +79,11 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		if entity.wait_for_land:
 			entity.wait_for_land = 0
 			entity.facing = -1 if state.x < entity.x else 1
-	for name: String in ["lava", "lava_3"]:
-		if World.named_overlaps(
-			world, name, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-		):
-			entity.status = 3
-			return
+	if World.lava_overlaps(
+		world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
+	):
+		entity.status = 3
+		return
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:

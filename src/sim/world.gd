@@ -5,6 +5,9 @@ const Reader = preload("res://src/level/level_code.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
 const Maps = preload("res://src/sim/maps.gd")
 const S := preload("res://src/sim/units.gd").SCALE
+# Every tilemap of the deadly lava family. Players, enemies and items share this list.
+const LAVA_LAYERS := ["lava", "lava_1", "lava_2", "lava_3", "lava_4"]
+const SPIKE_LAYER := "ySSpikes"
 
 
 static func build(code: String, facts: Dictionary) -> Dictionary:
@@ -108,7 +111,7 @@ static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) 
 				slot = [0 if layer_name == "layer2" else 1, world.layers.size()]
 			var bounds := {}
 			var polygons := {}
-			if tile.solid_family or tile.water_family or name in ["lava", "lava_3", "ySSpikes"]:
+			if tile.solid_family or tile.water_family or name in LAVA_LAYERS or name == SPIKE_LAYER:
 				for cell: int in grid.cells:
 					if cell != -1 and not bounds.has(cell):
 						var points := tile_polygon(cell, tile)
@@ -269,6 +272,13 @@ static func named_overlaps(
 		if layer.name == tilemap_name and layer.layer != "layer3":
 			if layer_overlaps(layer, left, top, right, bottom):
 				return true
+	return false
+
+
+static func lava_overlaps(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
+	for name: String in LAVA_LAYERS:
+		if named_overlaps(world, name, left, top, right, bottom):
+			return true
 	return false
 
 
