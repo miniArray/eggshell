@@ -54,8 +54,20 @@ static func player_fields() -> Array:
 	return compose([BASE_PLAYER_FIELDS, Moves.PLAYER_FIELDS, Life.PLAYER_FIELDS])
 
 
+static func entity_registry() -> Script:
+	return load("res://src/sim/registry.gd")
+
+
 static func level_fields() -> Array:
-	return compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS])
+	var registry := entity_registry()
+	var result := compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS])
+	for pair: Array in registry.level_fields():
+		assert(
+			not result.any(func(core: Array) -> bool: return core[0] == pair[0]),
+			"Entity level field overlaps core state: " + pair[0]
+		)
+		result.append(pair)
+	return result
 
 
 static func fields() -> Array:
@@ -82,7 +94,7 @@ static func create(world: Dictionary) -> Dictionary:
 	state.camera_y = state.y - 28 * SCALE
 	Maps.initialize(state, world)
 	Life.initialize(state, world)
-	var registry: Script = load("res://src/sim/registry.gd")
+	var registry := entity_registry()
 	registry.spawn_map(state, world)
 	return state
 
@@ -134,4 +146,4 @@ static func valid(state: Dictionary) -> bool:
 	for module: Script in [Moves, Life, Maps]:
 		if module.has_method("valid_state") and not module.valid_state(state):
 			return false
-	return true
+	return entity_registry().valid_state(state)

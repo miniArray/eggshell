@@ -134,7 +134,7 @@ static func decode(bytes: PackedByteArray, identity: String, world: Dictionary =
 		state.entities.append(entity)
 	if cursor != end:
 		return error("Snapshot trailing bytes/count")
-	Registry.attach_views(state)
+	Registry.attach_views(state, false)
 	if not valid_state(state):
 		return error("Snapshot invalid state")
 	if not world.is_empty():
@@ -176,6 +176,7 @@ static func valid_state(state: Dictionary) -> bool:
 		not State.valid(state)
 		or not state.get("entities") is Array
 		or state.entities.size() > MAX_ENTITIES
+		or not Registry.valid_table(state)
 	):
 		return false
 	var actors := []
@@ -183,14 +184,14 @@ static func valid_state(state: Dictionary) -> bool:
 	var pads := 0
 	for index in state.entities.size():
 		var entity: Variant = state.entities[index]
-		if not entity is Dictionary or not Registry.valid(entity) or entity.source_index != index:
+		if not entity is Dictionary or not Registry.valid(entity):
 			return false
 		if ids.has(entity.id):
 			return false
 		ids[entity.id] = true
 		if entity.map_index != state.get("map_index", 0):
 			return false
-		if entity.code in Registry.Actor.CODES:
+		if Registry.is_enemy(entity.code):
 			if entity.family_index != actors.size():
 				return false
 			actors.append(entity)
