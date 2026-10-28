@@ -29,6 +29,7 @@ func _initialize() -> void:
 	shot_checks()
 	melon_checks()
 	leaper_checks()
+	bumper_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -780,6 +781,57 @@ func leaper_checks() -> void:
 	check(type.projectile_contact(plain, egg, state, world) == 1, "A thrown egg is spent on it")
 	check(plain.status == Registry.DEFEATED, "A thrown egg defeats it")
 	check(_degrades("e17", {"F": 3}), "An unknown leaper colour becomes a placeholder")
+
+
+func bumper_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
+			"walker": _place("e19", 500, 284),
+			"slider": _place("e19", 900, 284, {"F": 1}),
+			"flyer": _place("e19", 1300, 150, {"F": 2})
+		}
+	)
+	var state := State.create(world)
+	state.x = 700 * S
+	state.y = 300 * S - S / 16
+	var type: Script = Registry.lookup("e19")
+	var walker := _by_id(state, "walker")
+	var slider := _by_id(state, "slider")
+	var flyer := _by_id(state, "flyer")
+	for entity: Dictionary in [walker, slider, flyer]:
+		_activate(entity)
+	var stepped := false
+	var slid := false
+	for _tick in 240:
+		Sim.advance(state, 0, world)
+		stepped = stepped or walker.phase == type.STEP
+		slid = slid or slider.phase == type.SLIDE
+	check(stepped, "The plain bumper idles, then waddles")
+	check(slid, "The sliding bumper hops and belly-slides")
+	check(slider.x < 900 * S, "It slides toward the player")
+	check(flyer.phase == type.FLY and flyer.y < 200 * S, "The flying bumper stays aloft")
+	check(type.sweep_speed(0, 150, -144, 144) == -144, "A sweep starts at its first speed")
+	check(type.sweep_speed(150, 150, -144, 144) == 144, "A sweep reaches the other speed")
+	state = State.create(world)
+	walker = _by_id(state, "walker")
+	_activate(walker)
+	state.x = walker.x - 20 * S
+	state.y = walker.y + 16 * S
+	state.on_floor = 1
+	state.invulnerable = 0
+	type.contact(walker, state, world, 0)
+	check(state.vx == -224 * 60 and state.invulnerable == 0, "Touching it shoves without hurting")
+	state.x = walker.x
+	state.y = walker.y - 6 * S
+	state.on_floor = 0
+	state.vy = 200 * 60
+	type.contact(walker, state, world, 0)
+	check(state.vy < 0, "Landing on it bounces the player")
+	var egg := {"code": "o7", "x": walker.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(walker, egg, state, world) == 3, "An egg passes on")
+	check(walker.status == Registry.DEFEATED, "An egg defeats it")
+	check(_degrades("e19", {"F": 3}), "An unknown bumper form becomes a placeholder")
 
 
 func snapshot_checks() -> void:
