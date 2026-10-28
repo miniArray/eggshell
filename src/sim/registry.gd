@@ -57,6 +57,16 @@ const TYPES := [
 	preload("res://src/sim/types/stem_petal.gd"),
 	preload("res://src/sim/types/needle_juggler.gd"),
 	preload("res://src/sim/types/ride_hound.gd"),
+	# slice 8: objects A
+	preload("res://src/sim/types/ledge_span.gd"),
+	preload("res://src/sim/types/count_ledge.gd"),
+	preload("res://src/sim/types/star_flower.gd"),
+	preload("res://src/sim/types/hang_flyer.gd"),
+	preload("res://src/sim/types/sneak_thief.gd"),
+	preload("res://src/sim/types/mace_walker.gd"),
+	preload("res://src/sim/types/mace_ball.gd"),
+	preload("res://src/sim/types/lantern_walker.gd"),
+	preload("res://src/sim/types/spear_guard.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")
