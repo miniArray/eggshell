@@ -7,7 +7,23 @@ const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
 const Checkpoint = preload("res://src/sim/types/checkpoint.gd")
 const Inert = preload("res://src/sim/types/inert.gd")
-const TYPES := [Actor, Pad, Bridge, Goal, Checkpoint]
+const TYPES := [
+	Actor,
+	Pad,
+	Bridge,
+	Goal,
+	Checkpoint,
+	# slice 6: s6-enemies
+	preload("res://src/sim/types/flat_walker.gd"),
+	preload("res://src/sim/types/shell_walker.gd"),
+	preload("res://src/sim/types/armored_walker.gd"),
+	preload("res://src/sim/types/hanging_roller.gd"),
+	preload("res://src/sim/types/masked_shooter.gd"),
+	preload("res://src/sim/types/spitting_stem.gd"),
+	preload("res://src/sim/types/enemy_spike.gd"),
+	preload("res://src/sim/types/enemy_pellet.gd"),
+	preload("res://src/sim/types/enemy_overlap.gd")
+]
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
 const MAX_OPTION_PIXELS := 0x7fffffffffffffff / S - 1
@@ -17,6 +33,8 @@ const QUEUED := 2
 const DEFEATED := 3
 const COMMON_FIELDS := [
 	["source_index", 0],
+	# temporary, track-a owns: stable interaction tokens.
+	["token", 0],
 	["map_index", 0],
 	["family_index", 0],
 	["collected", 0],
@@ -106,25 +124,8 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 				and value <= MAX_OPTION_PIXELS
 			):
 				source[option[1]] = int(value)
-		if code in Actor.CODES:
-			for key: String in ["F", "M", "R"]:
-				var value: Variant = raw.get(key, 0)
-				if (
-					not finite_number(value)
-					or value != floor(value)
-					or value < 0
-					or value > MAX_OPTION_PIXELS
-				):
-					return {"ok": false, "error": "Invalid actor field: " + key}
-			source.variant = int(raw.get("F", 0))
-			source.mirror = int(raw.get("M", 0))
-			source.rotation = int(raw.get("R", 0))
-			if source.rotation != 0 or source.mirror > 2 or source.variant > 4:
-				return {"ok": false, "error": "Unsupported actor variant, mirror or rotation"}
-			if code in ["e3", "e5"] and source.variant != 0:
-				return {"ok": false, "error": "Unsupported rooted or tumbler variant"}
-			if code == "e20" and source.variant not in [0, 1]:
-				return {"ok": false, "error": "Unsupported fish mode"}
+		# temporary, track-a owns: type preparation validates actor options.
+		if is_enemy(code):
 			source.family_index = world.enemies.size()
 			world.enemies.append(source)
 		elif code == "o11":
@@ -194,6 +195,7 @@ static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 		entity[pair[0]] = pair[1]
 	for key: String in ["source_index", "x", "y", "layer", "family_index"]:
 		entity[key] = int(source.get(key, entity[key]))
+	entity.token = int(source.source_index) + 1
 	entity.map_index = int(world.get("map_index", 0))
 	entity.facing = 1 if source.get("mirror", 0) == 1 else -1
 	entity.status = ACTIVE
@@ -227,14 +229,42 @@ static func attach_views(state: Dictionary) -> void:
 	state.enemies = []
 	state.springs = []
 	for entity: Dictionary in state.entities:
-		if entity.code in Actor.CODES:
+		if is_enemy(entity.code):
+			entity.family_index = state.enemies.size()
 			state.enemies.append(entity)
 		elif entity.code == "o11":
 			state.springs.append(entity)
 
 
 static func source_for(entity: Dictionary, world: Dictionary) -> Dictionary:
+	# temporary, track-a owns: dynamic actors have saved anchors, not placements.
+	if entity.source_index == -1:
+		return {
+			"x": entity.get("spawn_x", entity.x),
+			"y": entity.get("spawn_y", entity.y),
+			"mirror": entity.get("mirror", 0)
+		}
 	return world.entities[entity.source_index]
+
+
+# temporary, track-a owns: replaced by its runtime lifecycle implementation.
+static func spawn_dynamic(
+	_state: Dictionary, _world: Dictionary, _code: String, _x: int, _y: int, _options: Dictionary
+) -> Dictionary:
+	return {}
+
+
+# temporary, track-a owns.
+static func find_token(state: Dictionary, token: int) -> Dictionary:
+	for entity: Dictionary in state.entities:
+		if entity.token == token:
+			return entity
+	return {}
+
+
+# temporary, track-a owns.
+static func is_enemy(code: String) -> bool:
+	return bool(lookup(code).get_script_constant_map().get("ENEMY", false))
 
 
 static func phase_for(type: Script, key: String, fallback: int) -> int:
@@ -257,7 +287,7 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	if entity.status == DEFEATED:
+	if entity.status == DEFEATED or entity.get("held", 0):
 		return
 	var source := source_for(entity, world)
 	if entity.status == ACTIVE and entity.can_despawn:
@@ -307,6 +337,8 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				type.has_method("contact")
 				and phase_for(type, "CONTACT_PHASE", 1) == phase
 				and entity.status == ACTIVE
+				and entity.get("held", 0) == 0
+				and entity.get("hidden", 0) == 0
 			):
 				type.contact(entity, state, world, input)
 
@@ -316,7 +348,12 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 		return
 	for entity: Dictionary in state.entities:
 		var type := lookup(entity.code)
-		if entity.status != ACTIVE or not type.get_script_constant_map().get("GOAL_COIN", false):
+		if (
+			entity.status != ACTIVE
+			or entity.get("held", 0)
+			or entity.get("hidden", 0)
+			or not type.get_script_constant_map().get("GOAL_COIN", false)
+		):
 			continue
 		var bounds: Array = type.bounds(entity)
 		if (

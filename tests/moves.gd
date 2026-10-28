@@ -363,6 +363,7 @@ func food_checks() -> void:
 		(
 			request.kind == Moves.REQUEST_SPIT
 			and request.item == 43
+			and request.vx == 0
 			and request.vy == -768 * 60
 			and state.move_held_id == 0
 		),

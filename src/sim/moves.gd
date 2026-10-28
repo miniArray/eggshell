@@ -699,7 +699,7 @@ static func _actions(state: Dictionary, input: int, pressed: int, world: Diction
 					mouth[0],
 					mouth[1],
 					-90000 if state.move_tongue_axis else (0 if state.facing > 0 else 180000),
-					state.facing * state.move_held_speed,
+					0 if state.move_tongue_axis else state.facing * state.move_held_speed,
 					(-768 if state.move_tongue_axis else -256) * 60
 				)
 				_clear_food(state)
