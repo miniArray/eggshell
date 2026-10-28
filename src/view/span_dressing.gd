@@ -29,7 +29,7 @@ static func dressed(code: String) -> bool:
 	return code in STEM_CODES or code in SPIKE_CODES
 
 
-## The parts of one placement: {"name", "variant", "rect", "stretch"} with `rect` in
+## The parts of one placement: {"name", "variant", "box", "stretch"} with `box` in
 ## world pixels relative to the placement, before its rotation. Pure.
 static func parts(code: String, properties: Dictionary, span_width: float) -> Array:
 	if not properties.has("E2"):
@@ -41,7 +41,7 @@ static func parts(code: String, properties: Dictionary, span_width: float) -> Ar
 			{
 				"name": code + "_stem",
 				"variant": 0,
-				"rect": Rect2(-STEM_WIDTH / 2, STEM_TOP, STEM_WIDTH, height),
+				"box": Rect2(-STEM_WIDTH / 2, STEM_TOP, STEM_WIDTH, height),
 				"stretch": "tile"
 			}
 		]
@@ -50,7 +50,7 @@ static func parts(code: String, properties: Dictionary, span_width: float) -> Ar
 			{
 				"name": code + "_spikes",
 				"variant": value,
-				"rect":
+				"box":
 				Rect2(-span_width / 2, SPIKE_BOTTOM - SPIKE_HEIGHT, span_width, SPIKE_HEIGHT),
 				"stretch": "patch"
 			}
@@ -86,11 +86,11 @@ static func attach(
 	for part: Dictionary in parts(code, properties, span_width):
 		var art := _art(manifest, pack, part.name, part.variant)
 		var child := (
-			_diagnostic(part.name, part.rect)
+			_diagnostic(part.name, part.box)
 			if art.is_empty()
-			else _drawn(art, part.rect, part.stretch)
+			else _drawn(art, part.box, part.stretch)
 		)
-		child.set_meta("span_part", part.rect)
+		child.set_meta("span_part", part.box)
 		child.z_as_relative = true
 		node.add_child(child)
 	follow(node)

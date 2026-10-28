@@ -284,19 +284,19 @@ func _empty_code_checks() -> void:
 func _span_part_checks() -> void:
 	var stem := SpanDressing.parts("p6", {"E2": "64"}, 96)
 	check(stem.size() == 1 and stem[0].name == "p6_stem", "A ledge with E2 has a stalk")
-	check(stem[0].rect == Rect2(-16, 16, 32, 64), "The stalk hangs E2 px from the bottom edge")
-	check(SpanDressing.parts("p8", {"E2": 96}, 96)[0].rect.size.y == 96, "Numeric E2 works too")
+	check(stem[0].box == Rect2(-16, 16, 32, 64), "The stalk hangs E2 px from the bottom edge")
+	check(SpanDressing.parts("p8", {"E2": 96}, 96)[0].box.size.y == 96, "Numeric E2 works too")
 	check(SpanDressing.parts("p7", {"E2": "0"}, 96).is_empty(), "A zero stalk draws nothing")
 	check(SpanDressing.parts("p7", {"E2": "-5"}, 96).is_empty(), "A negative stalk draws nothing")
 	check(SpanDressing.parts("p7", {}, 96).is_empty(), "No E2, no stalk")
-	check(SpanDressing.parts("p6", {"E2": "48px"}, 96)[0].rect.size.y == 48, "Leading digits count")
+	check(SpanDressing.parts("p6", {"E2": "48px"}, 96)[0].box.size.y == 48, "Leading digits count")
 	var spikes := SpanDressing.parts("p11", {"E2": "1"}, 104)
 	check(
 		spikes.size() == 1 and spikes[0].name == "p11_spikes" and spikes[0].variant == 1,
 		"A turning span's E2 picks its spike strip"
 	)
-	check(spikes[0].rect == Rect2(-52, -18, 104, 10), "The strip stands on the span's top edge")
-	check(SpanDressing.parts("p12", {"E2": "0"}, 64)[0].rect.size.x == 64, "It spans the width")
+	check(spikes[0].box == Rect2(-52, -18, 104, 10), "The strip stands on the span's top edge")
+	check(SpanDressing.parts("p12", {"E2": "0"}, 64)[0].box.size.x == 64, "It spans the width")
 	check(SpanDressing.parts("p12", {"E2": "2"}, 64).is_empty(), "An unknown strip draws nothing")
 	check(SpanDressing.parts("p9", {"E2": "64"}, 64).is_empty(), "Other spans have no parts")
 
