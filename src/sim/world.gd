@@ -56,6 +56,7 @@ static func build(code: String, facts: Dictionary) -> Dictionary:
 		# Transient lookup caches for this map's static terrain; never saved.
 		compiled.world.terrain_chunks = {}
 		compiled.world.terrain_hits = {}
+		compiled.world.terrain_escapes = {}
 		world.maps[index + 1] = compiled.world
 	Maps.select_map(world, world.initial_map)
 	return {"ok": true, "world": world}
