@@ -205,6 +205,33 @@ The transient `world.solids_step` cache is rebuilt each normal step. It carries
 support history and deduplicates bump callbacks, but never enters snapshots.
 The legacy saved bridge index never refers to a transient support handle.
 
+## Query indexes
+
+Indexes change how queries are answered, never their results or the order of
+side effects. None of them enters snapshots.
+
+- `Registry.lookup`, script constants (`script_constants.gd`), field schemas and
+  per-code dispatch facts are read once per code or type.
+- Each compiled map caches, per 256 px chunk, which terrain layers have contact
+  cells there. Terrain queries read only those layers. Terrain never changes
+  after loading.
+- The solid index files each solid row in a 128 px grid under its region: its
+  live boxes plus its `bounds` around its position. The registry refiles a row
+  after every dispatch on its entity (lifecycle and step, contact, tongue,
+  request consumption, switch toggle), and collision refiles it after a bump
+  callback. While a dispatch on a solid runs, that solid is always a candidate.
+  Queries evaluate candidate boxes live, in entity order.
+- **Contract for types:** between dispatches on an entity, other code may only
+  shrink or remove that entity's solid boxes, or enable boxes inside its
+  `bounds`. Code that moves or enlarges another entity's solid boxes must call
+  `Collision.refresh(world, entity)`. `Collision.verify_index = true` compares
+  every indexed query with a full scan and counts differences in
+  `Collision.verify_failures`; tests and identity runs use it.
+- `Registry.nearby(state, world, box)` returns the entities whose bounds may
+  overlap a box, in entity order, including every status. Area queries in new
+  types use it instead of iterating `state.entities`. It scans the table today;
+  an index can replace the scan without changing callers.
+
 ## Limits
 
 Enemy collision boxes stay fixed. The player collider follows actions and
