@@ -1,5 +1,6 @@
 extends RefCounted
-## Unknown placements retain identity, position and all immutable placement options.
+## Placeholder for an unregistered code or a form a type does not build yet.
+## It keeps identity, position and all immutable placement options, and never acts.
 
 const CODES := []
 const FIELDS := []

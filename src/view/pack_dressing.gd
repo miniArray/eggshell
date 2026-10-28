@@ -303,18 +303,20 @@ static func placed(root: Node2D, manifest: Dictionary, pack: String, world: Dict
 	for id: String in map.objects:
 		var object: Dictionary = map.objects[id]
 		var code: String = object.A
-		if code in SIMULATED or enemy_ids.has(id):
+		# A known code whose form is not built yet draws as the diagnostic square.
+		var degraded := sources.has(id) and Registry.degraded(sources[id])
+		if (code in SIMULATED or enemy_ids.has(id)) and not degraded:
 			continue
 		var initial := Registry.create(sources[id], world) if sources.has(id) else {"code": code}
 		var node: Sprite2D
 		if sources.has(id) and sources[id].has("decor"):
 			node = _decoration(manifest, pack, sources[id], world)
 		else:
-			var art := object_art(manifest, pack, code, int(object.get("F", 0)))
-			if art.is_empty() and not Registry.implemented(code):
+			var art := {} if degraded else object_art(manifest, pack, code, int(object.get("F", 0)))
+			if art.is_empty() and not Registry.implemented(code) and not degraded:
 				continue
 			node = (
-				_diagnostic_body(Registry.lookup(code), initial)
+				_diagnostic_body(Registry.lookup(initial.code), initial)
 				if art.is_empty()
 				else sprite(art, 8)
 			)

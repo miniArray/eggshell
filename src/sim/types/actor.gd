@@ -53,8 +53,16 @@ const S := Units.SCALE
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
-	var maximum := 4 if source.code in ["e1", "e2"] else (3 if source.code in ["e20", "e21"] else 0)
-	return Options.prepare(source, maximum)
+	return Options.prepare(source, last_variant(source.code))
+
+
+static func last_variant(code: String) -> int:
+	# e1/e2/e3 forms select appearance only; fish forms select the swim pattern.
+	if code in ["e1", "e2"]:
+		return 4
+	if code in ["e20", "e21"]:
+		return 3
+	return 1 if code == "e3" else 0
 
 
 static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -154,11 +162,7 @@ static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, in
 static func valid(entity: Dictionary) -> bool:
 	return (
 		Body.valid(entity)
-		and (
-			entity.variant <= 3
-			if entity.code in ["e20", "e21"]
-			else (entity.variant <= 4 if entity.code in ["e1", "e2"] else entity.variant == 0)
-		)
+		and entity.variant <= last_variant(entity.code)
 		and not (
 			entity.phase < 0
 			or entity.phase > 360

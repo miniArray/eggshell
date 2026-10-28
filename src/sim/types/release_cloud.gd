@@ -27,13 +27,14 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 		if not parsed.ok:
 			return {"ok": false, "error": "Invalid cache option: " + key}
 		values.append(int(parsed.value))
-	if (
-		values[0] < 0
-		or values[0] > 4
-		or values[1] > MAX_RELEASE
-		or not source.properties.get("E3", "") is String
-	):
-		return {"ok": false, "error": "Unsupported cache contents, count or hidden flag"}
+	if values[0] < 0 or not source.properties.get("E3", "") is String:
+		return {"ok": false, "error": "Invalid cache contents or hidden flag"}
+	if values[0] > 4 or values[1] > MAX_RELEASE:
+		return {
+			"ok": false,
+			"degrade": true,
+			"error": "cache contents E1=%d or count E2=%d" % [values[0], values[1]]
+		}
 	source.cache_content = values[0]
 	source.cache_count = maxi(0, values[1])
 	source.cache_phase = HIDDEN if source.properties.get("E3", "") == "1" else VISIBLE

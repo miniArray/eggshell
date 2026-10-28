@@ -67,10 +67,20 @@ func numeric_option_checks() -> void:
 		code.maps.map1.objects["object"] = object
 		var built := World.build(JSON.stringify(code), {"tilemaps": {}})
 		check(built.ok, "JSON numeric option is accepted: " + pair[0])
-		for invalid: Variant in [-1, 0.5, pair[2] + 1, true]:
+		for invalid: Variant in [-1, 0.5, true]:
 			object[pair[1]] = invalid
 			built = World.build(JSON.stringify(code), {"tilemaps": {}})
 			check(not built.ok, "Invalid numeric option is rejected: " + pair[0])
+		object[pair[1]] = pair[2] + 1
+		built = World.build(JSON.stringify(code), {"tilemaps": {}})
+		if pair[0] == "o7":
+			# The inventory item still refuses its next form until its owner converts it.
+			check(not built.ok, "Invalid numeric option is rejected: " + pair[0])
+			continue
+		check(
+			built.ok and built.world.entities[0].code == "?" + pair[0],
+			"Unbuilt numeric option becomes a placeholder: " + pair[0]
+		)
 
 
 func egg_enemy_checks() -> void:

@@ -93,7 +93,10 @@ func registration_checks() -> void:
 		var result := Registry.compile_map(
 			{"invalid": {"A": code, "X": 0, "Y": 0, "F": maximum + 1}}, invalid
 		)
-		_check(not result.ok, code + " rejects an unsupported variant at the boundary")
+		_check(
+			result.ok and invalid.entities[0].code == "?" + code and invalid.enemies.is_empty(),
+			code + " degrades an unbuilt variant to a placeholder outside the enemy view"
+		)
 		result = Registry.compile_map({"invalid": {"A": code, "X": 0, "Y": 0, "M": "1"}}, invalid)
 		_check(not result.ok, code + " rejects a nonnumeric mirror")
 	var unit := _fixture("e1", {"E1": "Static", "F": 4})

@@ -40,6 +40,18 @@ compiled placement; runtime rows use -1. The placement retains all property keys
 Unknown codes have no simulation effects. Adding a type does not require new
 snapshot layout code or a new per-kind state list.
 
+No unbuilt object stops a level from loading. `Registry.compile_map` turns an
+unregistered code, or a placement whose form a type does not build yet, into an
+inert placeholder and logs one line, `Unsupported object <code> (<reason>)`. A
+type signals an unbuilt form by returning `{"ok": false, "degrade": true,
+"error": reason}` from `prepare` or `create`; a plain `{"ok": false}` is malformed
+data and still fails the level. A placeholder keeps its id, token, position and
+raw properties, and its compiled placement records the reason in `placeholder`.
+An unregistered code keeps its code. A known code gets the `?` prefix (`?e1`), so
+lookup, the family read views and the saved schema all select the inert type and
+nothing treats the placeholder as the real object. It never steps or contacts,
+and it draws as the diagnostic square.
+
 Actors activate by collision bounds in the fixed 832 by 448 reference area.
 The shared lifecycle can queue distant actors and recreate them after their
 placement anchor leaves and returns. The distances and flags are common saved

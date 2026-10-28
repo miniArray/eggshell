@@ -29,10 +29,11 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 		not (mirror is int or mirror is float)
 		or not is_finite(mirror)
 		or mirror < 0
-		or mirror > 2
 		or mirror != floor(mirror)
 	):
-		return {"ok": false, "error": "Unsupported health drop direction"}
+		return {"ok": false, "error": "Invalid health drop direction"}
+	if mirror > 2:
+		return {"ok": false, "degrade": true, "error": "health drop direction M=%d" % mirror}
 	return {"ok": true}
 
 

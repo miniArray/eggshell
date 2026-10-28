@@ -24,7 +24,8 @@ conversion or an array position. Placed rows form a fixed prefix. Their
 unique id `+n` and token `1_000_000 + n`, allocated from saved `dynamic_serial`.
 Only types that opt into runtime creation may occupy this suffix. Dynamic rows
 cannot camera-respawn. Unknown placed codes use the common schema and stay inert;
-their ids and state round trip like known types. Placement properties stay in the immutable world,
+their ids and state round trip like known types. A known code with an unbuilt
+form saves as its `?`-prefixed placeholder code with the same common schema. Placement properties stay in the immutable world,
 which the level identity binds to the snapshot.
 
 The schema digest covers ordered level/player declarations, common entity

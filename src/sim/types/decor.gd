@@ -94,8 +94,14 @@ static func prepare_options(source: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "Scenery frame and mirror must be integers"}
 	var variant := int(raw.get("F", 0))
 	var mirror := int(raw.get("M", 0))
-	if variant < 0 or variant >= frame_count(code) or mirror not in [0, 1]:
-		return {"ok": false, "error": "Unsupported scenery frame or mirror"}
+	if variant < 0 or mirror < 0:
+		return {"ok": false, "error": "Invalid scenery frame or mirror"}
+	if variant >= frame_count(code) or mirror > 1:
+		return {
+			"ok": false,
+			"degrade": true,
+			"error": "scenery frame F=%d or mirror M=%d" % [variant, mirror]
+		}
 	if (
 		source.x < -MAX_POSITION
 		or source.x > MAX_POSITION
@@ -105,7 +111,7 @@ static func prepare_options(source: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "Scenery position exceeds integer headroom"}
 	var rotation := fposmod(float(raw.get("R", 0)), 360.0)
 	if resized(code) and (mirror != 0 or rotation != 0):
-		return {"ok": false, "error": "Transformed extendable scenery is not supported"}
+		return {"ok": false, "degrade": true, "error": "transformed extendable scenery"}
 	var height := 0.0
 	if resized(code):
 		var parsed := size_option(raw.get("E1", 0))

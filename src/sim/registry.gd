@@ -7,6 +7,7 @@ const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
 const Checkpoint = preload("res://src/sim/types/checkpoint.gd")
 const Inert = preload("res://src/sim/types/inert.gd")
+const PLACEHOLDER_PREFIX := "?"
 const TYPES := [
 	Actor,
 	Pad,
@@ -182,96 +183,137 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 	world.bridges = []
 	world.goals = []
 	for source_id: Variant in objects:
-		var raw_value: Variant = objects[source_id]
-		if (
-			not source_id is String
-			or not raw_value is Dictionary
-			or not raw_value.get("A") is String
-		):
-			return {"ok": false, "error": "Invalid object record or code"}
-		var raw: Dictionary = raw_value
-		for key: String in ["X", "Y"]:
-			if not finite_number(raw.get(key)) or not numeric_option(raw[key]).ok:
-				return {"ok": false, "error": "Invalid object position: " + key}
-		var code: String = raw.A
-		var source := {
-			"source_index": world.entities.size(),
-			"id": source_id,
-			"code": code,
-			"properties": raw.duplicate(true),
-			"x": roundi(raw.X * S),
-			"y": roundi(raw.Y * S),
-			"variant": 0,
-			"mirror": 0,
-			"rotation": 0,
-			"layer": 8 if is_enemy(code) else 7,
-			"family_index": 0
-		}
-		for option: Array in [["F", "variant"], ["M", "mirror"], ["R", "rotation"]]:
-			var value: Variant = raw.get(option[0], 0)
-			if (
-				finite_number(value)
-				and value == floor(value)
-				and value >= -MAX_OPTION_PIXELS
-				and value <= MAX_OPTION_PIXELS
-			):
-				source[option[1]] = int(value)
-		if is_enemy(code):
-			for key: String in ["F", "M", "R"]:
-				var value: Variant = raw.get(key, 0)
-				if (
-					not finite_number(value)
-					or value != floor(value)
-					or value < 0
-					or value > MAX_OPTION_PIXELS
-				):
-					return {"ok": false, "error": "Invalid actor field: " + key}
-			source.variant = int(raw.get("F", 0))
-			source.mirror = int(raw.get("M", 0))
-			source.rotation = int(raw.get("R", 0))
+		var compiled := compile_object(source_id, objects[source_id], world)
+		if not compiled.ok:
+			return {"ok": false, "error": compiled.error}
+		var source: Dictionary = compiled.source
+		if source.has("placeholder"):
+			print("Unsupported object %s (%s)" % [source.properties.A, source.placeholder])
+		elif is_enemy(source.code):
 			source.family_index = world.enemies.size()
 			world.enemies.append(source)
-		elif code == "o11":
-			var value: Variant = raw.get("F", 0)
+		elif source.code == "o11":
+			source.family_index = world.springs.size()
+			world.springs.append(source)
+		elif source.code == "p1":
+			world.bridges.append(source)
+		elif source.code == "o5":
+			world.goals.append([source.x, source.y])
+		world.entities.append(source)
+	return {"ok": true}
+
+
+## Malformed data fails the level. An unregistered code, or a variant a type does not
+## build yet, compiles to an inert placeholder that keeps its id, position and properties.
+static func compile_object(source_id: Variant, raw_value: Variant, world: Dictionary) -> Dictionary:
+	if not source_id is String or not raw_value is Dictionary or not raw_value.get("A") is String:
+		return {"ok": false, "error": "Invalid object record or code"}
+	var raw: Dictionary = raw_value
+	for key: String in ["X", "Y"]:
+		if not finite_number(raw.get(key)) or not numeric_option(raw[key]).ok:
+			return {"ok": false, "error": "Invalid object position: " + key}
+	var code: String = raw.A
+	var source := {
+		"source_index": world.entities.size(),
+		"id": source_id,
+		"code": code,
+		"properties": raw.duplicate(true),
+		"x": roundi(raw.X * S),
+		"y": roundi(raw.Y * S),
+		"variant": 0,
+		"mirror": 0,
+		"rotation": 0,
+		"layer": 8 if is_enemy(code) else 7,
+		"family_index": 0
+	}
+	for option: Array in [["F", "variant"], ["M", "mirror"], ["R", "rotation"]]:
+		var value: Variant = raw.get(option[0], 0)
+		if (
+			finite_number(value)
+			and value == floor(value)
+			and value >= -MAX_OPTION_PIXELS
+			and value <= MAX_OPTION_PIXELS
+		):
+			source[option[1]] = int(value)
+	var base := source.duplicate(true)
+	var type := lookup(code)
+	if type == Inert:
+		return {"ok": true, "source": placeholder(base, "unregistered code", false)}
+	if is_enemy(code):
+		for key: String in ["F", "M", "R"]:
+			var value: Variant = raw.get(key, 0)
 			if (
 				not finite_number(value)
 				or value != floor(value)
 				or value < 0
 				or value > MAX_OPTION_PIXELS
 			):
-				return {"ok": false, "error": "Invalid pad variant"}
-			source.variant = int(value)
-			source.y += 16 * S
-			source.large = source.variant % 2
-			source.single_use = int(source.variant >= 2)
-			source.family_index = world.springs.size()
-			world.springs.append(source)
-		elif code == "p1":
-			var width := numeric_option(raw.get("E1"))
-			if not width.ok or width.value < 0:
-				return {"ok": false, "error": "Invalid bridge width"}
-			var size := roundi(width.value * S)
-			source.left = source.x - size / 2
-			source.right = source.x + size / 2
-			source.top = source.y - 16 * S
-			world.bridges.append(source)
-		elif code == "o5":
-			world.goals.append([source.x, source.y])
-		elif code == "o6":
-			for key: String in ["E1", "E2"]:
-				var parsed := numeric_option(raw.get(key))
-				if not parsed.ok:
-					return {"ok": false, "error": "Invalid checkpoint position: " + key}
-				source["respawn_x" if key == "E1" else "respawn_y"] = roundi(parsed.value * S)
-		var type := lookup(code)
-		if type.has_method("prepare"):
-			var prepared: Dictionary = type.prepare(source, world)
-			if not prepared.get("ok", false):
-				return {
-					"ok": false, "error": str(prepared.get("error", "Invalid placement options"))
-				}
-		world.entities.append(source)
-	return {"ok": true}
+				return {"ok": false, "error": "Invalid actor field: " + key}
+		source.variant = int(raw.get("F", 0))
+		source.mirror = int(raw.get("M", 0))
+		source.rotation = int(raw.get("R", 0))
+	elif code == "o11":
+		var value: Variant = raw.get("F", 0)
+		if (
+			not finite_number(value)
+			or value != floor(value)
+			or value < 0
+			or value > MAX_OPTION_PIXELS
+		):
+			return {"ok": false, "error": "Invalid pad variant"}
+		if value > 3:
+			return {"ok": true, "source": placeholder(base, "pad variant F=%d" % int(value))}
+		source.variant = int(value)
+		source.y += 16 * S
+		source.large = source.variant % 2
+		source.single_use = int(source.variant >= 2)
+	elif code == "p1":
+		var width := numeric_option(raw.get("E1"))
+		if not width.ok or width.value < 0:
+			return {"ok": false, "error": "Invalid bridge width"}
+		var size := roundi(width.value * S)
+		source.left = source.x - size / 2
+		source.right = source.x + size / 2
+		source.top = source.y - 16 * S
+	elif code == "o6":
+		for key: String in ["E1", "E2"]:
+			var parsed := numeric_option(raw.get(key))
+			if not parsed.ok:
+				return {"ok": false, "error": "Invalid checkpoint position: " + key}
+			source["respawn_x" if key == "E1" else "respawn_y"] = roundi(parsed.value * S)
+	var checked: Dictionary = (
+		type.prepare(source, world) if type.has_method("prepare") else {"ok": true}
+	)
+	if checked.get("ok", false):
+		# A type may also refuse an unbuilt form when it creates state.
+		var created: Variant = type.create(source, world)
+		if created is Dictionary and created.has("ok") and not created.ok:
+			checked = created
+	if checked.get("ok", false):
+		return {"ok": true, "source": source}
+	var reason := str(checked.get("error", "Invalid placement options"))
+	if checked.get("degrade", false):
+		return {"ok": true, "source": placeholder(base, reason)}
+	return {"ok": false, "error": reason}
+
+
+## A placeholder keeps the placement's id, token, position and raw properties. A known code
+## gets the marker prefix so dispatch, family views and saved schema select the inert type.
+static func placeholder(base: Dictionary, reason: String, known: bool = true) -> Dictionary:
+	var source := base.duplicate(true)
+	if known:
+		source.code = PLACEHOLDER_PREFIX + base.code
+	source.family_index = 0
+	source.placeholder = reason
+	return source
+
+
+static func placeholder_reason(source: Dictionary) -> String:
+	return str(source.get("placeholder", ""))
+
+
+static func degraded(source: Dictionary) -> bool:
+	return str(source.get("code", "")).begins_with(PLACEHOLDER_PREFIX)
 
 
 static func spawn_dynamic(
