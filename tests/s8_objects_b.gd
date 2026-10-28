@@ -88,20 +88,38 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 
 func _registration_checks() -> void:
 	for code: String in [
-		"p6",
-		"p9",
-		"p10",
-		"p13",
-		"p11",
-		"p12",
 		"o30",
 		"o21",
+		"p6",
+		"p7",
+		"p8",
+		"p9",
+		"p10",
+		"p11",
+		"p12",
+		"p13",
+		"p14",
+		"p15",
+		"p16",
+		"p17",
+		"p18",
+		"p19",
+		"p20",
+		"p21",
+		"e12",
+		"e13",
+		"e17",
+		"e19",
 		"e23",
 		"e24",
+		"e29",
 		"e33",
+		"e35",
+		"e37",
+		"o25",
+		"o27",
 		"o33",
-		"o34",
-		"e29"
+		"o34"
 	]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
