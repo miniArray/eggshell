@@ -3,6 +3,7 @@ extends RefCounted
 
 const Moves = preload("res://src/sim/moves.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o10"]
 const SOLID := 1
@@ -111,6 +112,7 @@ static func knock_above(
 		var type: Script = registry.lookup(other.code)
 		if type.has_method("hit") and registry.overlaps_box(other, type, probe):
 			type.hit(other, state, world, Hits.BUMP, entity.x)
+			Collision.refresh(world, other)
 
 
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:

@@ -9,6 +9,7 @@ const Moves = preload("res://src/sim/moves.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const FIELDS := [
 	["home_x", 0],
 	["home_y", 0],
@@ -214,6 +215,7 @@ static func bump_above(entity: Dictionary, state: Dictionary, world: Dictionary)
 			continue
 		if type.has_method("hit") and dispatch.overlaps_box(other, type, probe):
 			type.hit(other, state, world, Hits.BUMP, entity.x)
+			Collision.refresh(world, other)
 
 
 static func clear_area(state: Dictionary, world: Dictionary) -> void:
@@ -230,6 +232,7 @@ static func clear_area(state: Dictionary, world: Dictionary) -> void:
 			continue
 		if type.has_method("hit") and dispatch.overlaps_box(entity, type, probe):
 			type.hit(entity, state, world, Hits.CLEAR, state.x)
+			Collision.refresh(world, entity)
 
 
 static func reset_map(state: Dictionary, _world: Dictionary) -> void:

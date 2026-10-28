@@ -67,6 +67,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 					other.vy = 0
 				else:
 					other.status = 3
+				Collision.refresh(world, other)
 	if entity.phase != READY or entity.status != 1:
 		return
 	if Collision.prepare(entity, world, BOX):

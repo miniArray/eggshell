@@ -6,6 +6,7 @@ const Body = preload("res://src/sim/enemy_body.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e42"]
 const ENEMY := true
@@ -85,11 +86,15 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.needle_token = 0
 	_timers(entity, state, world)
 	_animate(entity, state)
+	if not needle.is_empty():
+		# A toss during the animation lifts the hopper.
+		Collision.refresh(world, needle)
 	needle = carried(entity, state)
 	if not needle.is_empty():
 		needle.x = entity.x
 		needle.y = top(entity) - 10 * S + entity.offset * S / 60
 		needle.facing = entity.facing
+		Collision.refresh(world, needle)
 
 
 static func carried(entity: Dictionary, state: Dictionary) -> Dictionary:

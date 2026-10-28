@@ -100,6 +100,7 @@ const TYPES := [
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
@@ -254,6 +255,7 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 	var paused: bool = (
 		type.has_method("modal_step") and type.modal_step(holder, state, world, input)
 	)
+	EntityGrid.touch(world, holder)
 	if not paused:
 		state.modal_token = 0
 	return paused
@@ -264,13 +266,16 @@ static func consume_requests(state: Dictionary, world: Dictionary) -> void:
 		if type.has_method("consume_level_requests"):
 			type.consume_level_requests(state, world)
 	var solids := Collision.solid_rows(world)
+	var grid: Variant = EntityGrid.current(world)
 	for entity: Dictionary in state.entities:
 		var known: Dictionary = facts(entity.code)
 		if known.consume:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			EntityGrid.begin(grid, entity)
 			known.type.consume_requests(entity, state, world)
+			EntityGrid.end(grid, entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -541,7 +546,9 @@ static func compact(state: Dictionary) -> void:
 		):
 			continue
 		remaining.append(entity)
-	state.entities = remaining
+	# Keep the table when nothing left it, so the entity grid needs no walk next step.
+	if remaining.size() != state.entities.size():
+		state.entities = remaining
 	attach_views(state)
 	if state.captured_by:
 		var captor := find_token(state, captor_token)
@@ -562,7 +569,10 @@ static func tongue_contact(state: Dictionary, world: Dictionary, box: Array) -> 
 			var row: Variant = _solid_row(Collision.solid_rows(world), entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			var grid: Variant = EntityGrid.current(world)
+			EntityGrid.begin(grid, entity)
 			result = type.tongue(entity, state, world)
+			EntityGrid.end(grid, entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 		elif phase_for(type, "SOLID", 0) == 1:
@@ -594,13 +604,16 @@ static func solid_boxes(entity: Dictionary, type: Script) -> Array:
 static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 	# Switch links are map-wide, not limited to the camera or active entities.
 	var solids := Collision.solid_rows(world)
+	var grid: Variant = EntityGrid.current(world)
 	for entity: Dictionary in state.entities:
 		var known: Dictionary = facts(entity.code)
 		if known.toggle:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			EntityGrid.begin(grid, entity)
 			known.type.toggle(entity, state, world)
+			EntityGrid.end(grid, entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -616,30 +629,21 @@ static func _solid_row(solids: Dictionary, entity: Dictionary) -> Variant:
 ## Entities whose bounds may overlap `box` ([left, top, right, bottom], simulation units),
 ## in entity order. Touching edges count, so the result is a superset of strict overlap.
 ## It includes every status; callers keep their own status, held and hidden checks.
-## Use it instead of iterating state.entities for an area query.
-static func nearby(state: Dictionary, _world: Dictionary, box: Array) -> Array:
-	var result := []
-	var left: int = box[0]
-	var top: int = box[1]
-	var right: int = box[2]
-	var bottom: int = box[3]
-	for entity: Dictionary in state.entities:
-		var type: Script = _by_code.get(entity.code, Inert)
-		var x: int = entity.x
-		var y: int = entity.y
-		if not type.has_method("bounds"):
-			if x >= left and x <= right and y >= top and y <= bottom:
-				result.append(entity)
-			continue
-		var bounds: Array = type.bounds(entity)
-		if (
-			x + bounds[2] >= left
-			and x + bounds[0] <= right
-			and y + bounds[3] >= top
-			and y + bounds[1] <= bottom
-		):
-			result.append(entity)
-	return result
+## Use it instead of iterating state.entities for an area query. The entity grid answers
+## it during steps (see entity_grid.gd); the result always equals scan_nearby().
+static func nearby(state: Dictionary, world: Dictionary, box: Array) -> Array:
+	var indexed: Variant = EntityGrid.query(state, world, box, _by_code, Inert)
+	if indexed == null:
+		return scan_nearby(state, box)
+	if Collision.verify_index and not EntityGrid.same(indexed, scan_nearby(state, box)):
+		Collision.verify_failures += 1
+		push_error("Entity grid differs from a full scan at %s" % [box])
+	return indexed
+
+
+## The reference answer of nearby(): a scan of every entity.
+static func scan_nearby(state: Dictionary, box: Array) -> Array:
+	return EntityGrid.scan(state.entities, box, _by_code, Inert)
 
 
 static func overlaps_box(entity: Dictionary, type: Script, box: Array) -> bool:
@@ -769,6 +773,10 @@ static func phase_for(type: Script, key: String, fallback: int) -> int:
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 	state.pressed_input = pressed
 	# Preserve actor movement before pad gravity, including capture's early exit.
+	var grid := EntityGrid.attach(state, world)
+	# The grid keeps these two arrays; appending inline keeps dispatch overhead low.
+	var dispatching: Array = grid.dispatching
+	var dirty: Array = grid.dirty
 	for phase in [0, 1]:
 		if phase == 1 and state.captured_by:
 			break
@@ -781,9 +789,12 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			dispatching.append(entity)
 			lifecycle(entity, state, world)
 			if entity.status == ACTIVE:
 				type.step(entity, state, world)
+			dispatching.pop_back()
+			dirty.append(entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -852,6 +863,9 @@ static func activation_box(entity: Dictionary, type: Script) -> Array:
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
+	var grid: Variant = EntityGrid.current(world)
+	var dispatching: Array = grid.dispatching if grid != null else []
+	var dirty: Array = grid.dirty if grid != null else []
 	for phase in [0, 1, 2]:
 		for entity: Dictionary in state.entities:
 			var known: Dictionary = facts(entity.code)
@@ -864,7 +878,10 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
 				if row != null:
 					Collision.dispatch_begin(world, row)
+				dispatching.append(entity)
 				known.type.contact(entity, state, world, input)
+				dispatching.pop_back()
+				dirty.append(entity)
 				if row != null:
 					Collision.dispatch_end(world, row)
 

@@ -4,6 +4,7 @@ extends RefCounted
 ## Per-step bindings are rebuilt before object motion, never saved as play facts.
 
 const World = preload("res://src/sim/world.gd")
+const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const DEFAULT_JUMP := 776 * 60
@@ -116,7 +117,10 @@ static func _solid_mode(type: Script) -> int:
 ## registry also refiles). Code that moves or enlarges another entity's solid boxes must
 ## call refresh(). Every query evaluates candidate boxes live, so results, their order and
 ## side effects equal a scan of every row.
+## It also marks the entity for the entity grid behind Registry.nearby, so code that moves
+## another entity or changes a field its bounds read calls it too.
 static func refresh(world: Dictionary, entity: Dictionary) -> void:
+	EntityGrid.touch(world, entity)
 	var context := _context(world)
 	if context.is_empty():
 		return
@@ -692,8 +696,11 @@ static func _bump(
 		if context.bumps.has(key) or row.entity.status != 1:
 			continue
 		context.bumps[key] = true
+		var grid: Variant = EntityGrid.current(world)
 		dispatch_begin(world, row)
+		EntityGrid.begin(grid, row.entity)
 		row.type.bump(row.entity, context.state, world, side)
+		EntityGrid.end(grid, row.entity)
 		dispatch_end(world, row)
 
 

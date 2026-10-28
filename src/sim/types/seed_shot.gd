@@ -92,6 +92,7 @@ static func strike(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 		elif type.has_method("hit"):
 			type.hit(other, state, world, HIT_KIND, entity.x)
 			reaction = 3
+		Collision.refresh(world, other)
 		if reaction:
 			entity.status = 3
 			return

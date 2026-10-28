@@ -373,6 +373,7 @@ static func object_collisions(
 		elif type.has_method("hit"):
 			type.hit(other, state, world, Hits.EGG, entity.x)
 			response = 1
+		Collision.refresh(world, other)
 		if response == 1:
 			remove(entity, state, world, true)
 			result.alive = false
