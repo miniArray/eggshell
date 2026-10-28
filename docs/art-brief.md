@@ -56,7 +56,7 @@ Verdigris is locked.
 
 1. Concept: chosen (Verdigris).
 2. Style frame: one mock game screen at real size, three variants; A chosen.
-3. Reference drawing of Oriel: approved (round 3, 91x110 art px). Next, Pip.
+3. Reference drawing of Oriel: approved (round 3, 91x110 art px). Key poses idle, walk-a, walk-b, run, jump, fall and flutter approved as generated (2026-10-27, `approved/oriel-poses-1/`). Next, Pip.
 4. Asset sheets built on the approved frame and drawings, each approved on the page.
 5. In-game check on the handheld and a 1080p screen with the test courses.
 6. Lock: approved files move into the repository with a list of what the user
