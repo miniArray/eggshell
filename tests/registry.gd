@@ -8,6 +8,9 @@ const World = preload("res://src/sim/world.gd")
 const Sim = preload("res://src/sim/step.gd")
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
+const FIXTURE_OPTIONS := {
+	"o17": {"E1": "o7"},
+}
 var checks := 0
 var failures := 0
 
@@ -76,7 +79,12 @@ func mixed_world() -> Dictionary:
 
 
 func registry_checks() -> void:
-	check(Registry.codes().size() == 9, "Eight existing codes plus checkpoint hook registered")
+	for code: String in ["o5", "o6", "o11", "p1", "e1", "e2", "e3", "e5", "e20"]:
+		check(Registry.implemented(code), "Baseline code stays registered: " + code)
+	var registered := {}
+	for code: String in Registry.codes():
+		check(not registered.has(code), "Object codes are unique: " + code)
+		registered[code] = true
 	for code: String in Registry.codes():
 		var type: Script = Registry.lookup(code)
 		check(code in type.CODES, "Lookup selects declaring module " + code)
@@ -329,7 +337,9 @@ func snapshot_checks() -> void:
 	)
 	var objects := {}
 	for code: String in Registry.codes():
-		objects["id_" + code + "_é"] = {"A": code, "X": 1, "Y": 2, "E1": "32", "E2": "64"}
+		var options := {"A": code, "X": 1, "Y": 2, "E1": "32", "E2": "64"}
+		options.merge(FIXTURE_OPTIONS.get(code, {}), true)
+		objects["id_" + code + "_é"] = options
 	var all_world := world_for(objects)
 	var all_state := State.create(all_world)
 	var all_bytes := Snapshot.encode(all_state)

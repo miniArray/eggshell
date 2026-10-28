@@ -35,6 +35,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	var pressed: int = input & ~state.previous_input
 	var released: int = state.previous_input & ~input
 	state.previous_input = input
+	Collision.begin_step(state, world, Registry)
 	Registry.advance(state, world, pressed)
 	if state.captured_by:
 		state.camera_x = state.x
