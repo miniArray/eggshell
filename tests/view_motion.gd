@@ -91,7 +91,27 @@ func snap_checks() -> void:
 		## No level, rendering or audio output is used.
 		## Advance a sample by one frame, moving the player and the walker.
 		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
 		func(state: Dictionary) -> Dictionary:
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
 ## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
 ## No level, rendering or audio output is used.
 
@@ -114,7 +134,50 @@ func snap_checks() -> void:
 		## No level, rendering or audio output is used.
 		## Advance a sample by one frame, moving the player and the walker.
 		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
 		func(state: Dictionary) -> Dictionary:
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
 ## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
 ## No level, rendering or audio output is used.
 
@@ -144,7 +207,80 @@ func snap_checks() -> void:
 		## No level, rendering or audio output is used.
 		## Advance a sample by one frame, moving the player and the walker.
 		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
 		func(state: Dictionary) -> Dictionary:
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
 ## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
 ## No level, rendering or audio output is used.
 
@@ -181,7 +317,117 @@ func snap_checks() -> void:
 		## No level, rendering or audio output is used.
 		## Advance a sample by one frame, moving the player and the walker.
 		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
+		## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+		## No level, rendering or audio output is used.
+		## Advance a sample by one frame, moving the player and the walker.
+		# Rows matched by token, even after reordering or a new runtime row.
 		func(state: Dictionary) -> Dictionary:
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+## No level, rendering or audio output is used.
+
+## Advance a sample by one frame, moving the player and the walker.
+
+			# Rows matched by token, even after reordering or a new runtime row.
+
+			## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
+			## No level, rendering or audio output is used.
+			## Advance a sample by one frame, moving the player and the walker.
+			# Rows matched by token, even after reordering or a new runtime row.
+
 ## Picture blending, zoom settings and the inactive-enemy rule on synthetic states.
 ## No level, rendering or audio output is used.
 
@@ -303,6 +549,10 @@ func inactive_checks() -> void:
 	check(
 		not View.inactive_shown({"source_index": 0, "status": Registry.WAITING, "held": 1}),
 		"Held rows are not drawn"
+	)
+	check(
+		not View.inactive_shown({"source_index": 0, "status": Registry.WAITING, "hidden": 1}),
+		"Hidden rows are not drawn"
 	)
 
 

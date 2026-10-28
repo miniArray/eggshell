@@ -296,11 +296,14 @@ func render(state: Dictionary) -> void:
 		var node := _enemy_nodes[index]
 		var art: Dictionary = node.get_meta("entity_art", {})
 		var head := _head_nodes[index]
+		# Keep any tint another view helper gave the node while it is active.
+		if not node.has_meta("active_tint"):
+			node.set_meta("active_tint", node.self_modulate)
 		if inactive_shown(enemy):
 			present_inactive(node, enemy, type, art)
 			head.visible = false
 			continue
-		node.self_modulate = Color.WHITE
+		node.self_modulate = node.get_meta("active_tint")
 		var look: Dictionary = (
 			type.view_state(enemy, state)
 			if type.has_method("view_state")
@@ -357,6 +360,7 @@ static func inactive_shown(enemy: Dictionary) -> bool:
 	return (
 		int(enemy.get("source_index", -1)) >= 0
 		and not enemy.get("held", 0)
+		and not enemy.get("hidden", 0)
 		and (
 			enemy.status == Registry.WAITING
 			or (enemy.status == Registry.QUEUED and enemy.get("can_respawn", 0))
