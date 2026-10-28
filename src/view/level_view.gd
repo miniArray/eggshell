@@ -10,6 +10,7 @@ const Dressing = preload("res://src/view/pack_dressing.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
 const Background = preload("res://src/view/pack_background.gd")
 const AudioMap = preload("res://src/view/pack_audio.gd")
+const Hud = preload("res://src/view/hud.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
 var audio := AudioMap.new()
@@ -19,17 +20,19 @@ var _player := Sprite2D.new()
 var _animations := {}
 var _frames := Frames.new()
 var _background := Background.new()
-var _goal_label := Label.new()
+var _hud_manifest: Dictionary = {}
+var _hud_pack := ""
 var _spring_nodes: Array[Sprite2D] = []
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
-var _recovery_marker := Sprite2D.new()
 
 
 func setup(world: Dictionary, pack: String) -> void:
 	_world = world
 	add_child(_root)
 	var manifest := Pack.read(pack)
+	_hud_manifest = manifest
+	_hud_pack = pack
 	var source: Dictionary = world.source
 	var map: Dictionary = source.maps["map%d" % int(source.startpoint.map)]
 	audio.setup(manifest, pack)
@@ -167,15 +170,6 @@ func setup(world: Dictionary, pack: String) -> void:
 		marker.set_meta("goal", true)
 		marker.position = Vector2(goal[0], goal[1]) / State.SCALE
 		_root.add_child(marker)
-	# Recovery first appears mid-run; share the same generated texture and warmed shader.
-	var recovery_art := Dressing.object_art(manifest, pack, "recovery")
-	_recovery_marker.texture = (goal_texture if recovery_art.is_empty() else recovery_art.texture)
-	if not recovery_art.is_empty():
-		_recovery_marker.centered = false
-		_recovery_marker.set_meta("pack_art", recovery_art)
-	_recovery_marker.z_index = 12
-	_recovery_marker.set_meta("recovery", true)
-	_root.add_child(_recovery_marker)
 	var background := str(world.bgcolor).split(",")
 	if background.size() == 3:
 		var channels := []
@@ -186,9 +180,6 @@ func setup(world: Dictionary, pack: String) -> void:
 			channels.append(clampf(float(channel) / 255.0, 0, 1))
 		if channels.size() == 3:
 			RenderingServer.set_default_clear_color(Color(channels[0], channels[1], channels[2]))
-	_goal_label.text = "Goal"
-	_goal_label.visible = false
-	add_child(_goal_label)
 	if _animations.is_empty():
 		var image := Image.create(24, 56, false, Image.FORMAT_RGBA8)
 		image.fill(PLAYER_COLOR)
@@ -246,8 +237,6 @@ func render(state: Dictionary) -> void:
 		not state.captured_by and (not state.invulnerable or (120 - state.invulnerable) % 6 < 3)
 	)
 	_player.modulate.a = 0.5 if state.invulnerable else 1.0
-	_recovery_marker.position = Vector2(state.recovery_x, state.recovery_y) / State.SCALE
-	_recovery_marker.visible = state.separated and not state.recovery_delay
 	if not _animations.is_empty():
 		var name: String = ["Idle0", "Walk0", "Sprint0", "Jump0", "Fall0", "Idle0", "Flutter0"][
 			state.movement
@@ -256,9 +245,7 @@ func render(state: Dictionary) -> void:
 			name = "Swim0" if state.water_deep else "Float0"
 		Frames.apply(_player, state.frame, name)
 		_player.scale.x = state.facing
-	_goal_label.visible = bool(state.goal_reached or state.separated)
-	_goal_label.text = "Goal" if state.goal_reached else "Recover: %d" % state.health
-	_goal_label.position = Vector2(8, 8)
+	Hud.present(self, _root, state, _world, _hud_manifest, _hud_pack)
 
 
 func actor_node(art: Dictionary, fallback: Texture2D) -> Sprite2D:

@@ -2,9 +2,8 @@ class_name SimWorld
 extends RefCounted
 
 const Reader = preload("res://src/level/level_code.gd")
-const State = preload("res://src/sim/play_state.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
-const S := State.SCALE
+const S := preload("res://src/sim/units.gd").SCALE
 
 
 static func build(code: String, facts: Dictionary) -> Dictionary:

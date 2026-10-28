@@ -8,6 +8,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const Springs = preload("res://src/sim/bounce_pad.gd")
 const Enemies = preload("res://src/sim/enemies.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Life = preload("res://src/sim/life.gd")
 const Water = preload("res://src/sim/water.gd")
 const S := State.SCALE
 const LEFT := 1
@@ -31,8 +32,9 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	var released: int = state.previous_input & ~input
 	state.previous_input = input
 	state.frame += 1
-	if Damage.prepare(state):
-		Damage.respawn(state, world)
+	Life.before_step(state, world)
+	if Life.blocks_step(state):
+		return
 	Enemies.advance(state, world, pressed)
 	if state.captured_by:
 		state.camera_x = state.x
@@ -129,12 +131,10 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if can_move and (state.on_floor or moved != vertical_distance):
 		state.vy = 0
 	state.x = clampi(state.x, 12 * S, world.width - 12 * S)
-	if state.y > world.height + 96 * S:
-		Damage.respawn(state, world)
 	Water.finish(state, world)
 	Springs.contact(state, action, world)
 	Enemies.contact(state, action, world)
-	Damage.recover(state)
+	Life.after_step(state, world)
 	# Store the desired focus only. View-size-dependent clamping belongs to the view.
 	state.camera_x = state.x
 	state.camera_y = state.y - 28 * S
@@ -150,8 +150,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 			and state.y > goal[1] - 8 * S
 			and state.y - 56 * S < goal[1] + 8 * S
 		):
-			state.goal_reached = 1
-			state.movement = 5
+			Life.touch_goal(state, {"x": goal[0], "y": goal[1]})
 
 
 static func approach(value: int, target: int, amount: int) -> int:
