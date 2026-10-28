@@ -53,3 +53,9 @@ and pack later the same day (58.3 fps). The rest of that gap is likely device lo
 not code: korrid used 50-190% of one core across later runs and probes. Its load
 during the original runs was not measured. Sim cost per tick also rose about
 3x since ad88b03 (0.9 to 3.7 ms per tick on the device); it still fits a 16.7 ms frame.
+
+After landing, main 0eabc35 on the device: 59.9 fps, p99 20.7-20.8 ms in two runs.
+A third run fell to 53.9 fps, p99 44.9 ms. Its slow frames were all between 40 s and
+80 s, the autosave frame stayed at 25 ms, and korrid used 103% of one core during it.
+That matches the original 52-54 fps reports: background load on the device, not
+engine code.
