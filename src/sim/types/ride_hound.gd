@@ -7,6 +7,7 @@ const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const World = preload("res://src/sim/world.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o16"]
 const SOLID := 2
@@ -29,6 +30,8 @@ const JUMP_SPEED := 768 * 60
 const NEAR := 48 * S
 const FAR := 128 * S
 const QUEUE_TICKS := 20
+const STROKE_TICKS := 24
+const SWIM_SPEED := 200 * 60
 # Body facing left, in pixels around the origin. The back is a 60 x 16 top-only strip.
 const BODY := [-34, -6, 20, 16]
 const FIELDS := (
@@ -41,7 +44,10 @@ const FIELDS := (
 		["playing", 0],
 		["egg_token", 0],
 		["queue_turn", 0],
-		["grounded", 0]
+		["grounded", 0],
+		["swimming", 0],
+		["stroke", 0],
+		["stroke_dir", 1]
 	]
 )
 
@@ -163,6 +169,8 @@ static func _decide(
 					_pose(entity, LOOK if _player_behind(entity, state) else IDLE)
 				PREPARE:
 					_pose(entity, JUMP)
+					if entity.swimming:
+						entity.vy = -JUMP_SPEED
 				WAGGLE:
 					if not egg.is_empty() and _egg_adjacent(entity, egg, 12):
 						_pose(entity, PLAY)
@@ -190,7 +198,7 @@ static func _decide(
 				return 0
 			return entity.facing if entity.ridden else 0
 	# Standing or walking.
-	if entity.grounded and _wall_ahead(entity, world):
+	if (entity.grounded or entity.swimming) and _wall_ahead(entity, world):
 		_pose(entity, PREPARE)
 		return 0
 	if entity.ridden:
@@ -227,7 +235,22 @@ static func _decide(
 	return 0
 
 
+static func _wet(world: Dictionary, area: Array) -> bool:
+	return World.water_overlaps(world, area[0], area[1], area[2], area[3])
+
+
 static func _move(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
+	var body := Body.world_box(entity, box)
+	if not entity.swimming and _wet(world, body):
+		entity.swimming = 1
+		entity.playing = 0
+		entity.egg_token = 0
+	elif entity.swimming and not _wet(world, body):
+		entity.swimming = 0
+		entity.stroke = 0
+	if entity.swimming:
+		_swim(entity, world, box, body, control)
+		return
 	if control != 0:
 		entity.vx = clampi(entity.vx + control * ACCELERATION, -MAX_SPEED, MAX_SPEED)
 	elif entity.vx > 0:
@@ -238,6 +261,43 @@ static func _move(entity: Dictionary, world: Dictionary, box: Array, control: in
 	if distance and Motion.move(entity, world, box, distance, true) != distance:
 		entity.vx = 0
 	entity.grounded = int(Motion.gravity_box(entity, world, box, 2048, 704 * 60))
+
+
+static func _swim(
+	entity: Dictionary, world: Dictionary, box: Array, body: Array, control: int
+) -> void:
+	# In liquid a pressed direction becomes a 0.4 s paddle stroke instead of control.
+	if control != 0 and entity.stroke == 0:
+		entity.stroke = STROKE_TICKS
+		entity.stroke_dir = control
+	if entity.stroke:
+		entity.stroke -= 1
+		var done: int = STROKE_TICKS - entity.stroke
+		var span := STROKE_TICKS * STROKE_TICKS
+		var left: int = STROKE_TICKS - done
+		var part := 2 * done * done if 2 * done < STROKE_TICKS else span - 2 * left * left
+		entity.vx = entity.stroke_dir * 400 * 60 * (span - part) / span
+	elif entity.vx > 0:
+		entity.vx = maxi(0, entity.vx - entity.decel)
+	elif entity.vx < 0:
+		entity.vx = mini(0, entity.vx + entity.decel)
+	entity.vx = clampi(entity.vx, -SWIM_SPEED, SWIM_SPEED)
+	var back := solid_box(entity)
+	if _wet(world, back):
+		entity.vy -= 256
+	elif entity.vy > 0:
+		entity.vy -= 384
+	elif entity.mode not in [PREPARE, JUMP]:
+		entity.vy = 0
+	if not _wet(world, [back[0], back[1] + 6 * S, back[2], back[3] + 6 * S]):
+		entity.y += 16 * 60
+	var distance: int = entity.vx
+	if distance and Motion.move(entity, world, box, distance, true) != distance:
+		entity.vx = 0
+	distance = entity.vy
+	if distance and Motion.move(entity, world, box, distance, false) != distance:
+		entity.vy = 0
+	entity.grounded = int(Collision.floor_at(entity, world, box) != 0)
 
 
 static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, box: Array) -> void:
@@ -305,7 +365,7 @@ static func projectile_contact(
 	entity: Dictionary, projectile: Dictionary, _state: Dictionary, _world: Dictionary
 ) -> int:
 	# A thrown egg drops beside a free runner, which starts playing with it.
-	if projectile.get("code", "") != "o7" or entity.ridden or entity.playing:
+	if projectile.get("code", "") != "o7" or entity.ridden or entity.playing or entity.swimming:
 		return 0
 	projectile.mode = 0
 	projectile.floating = 0
@@ -336,5 +396,9 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.queue_turn >= 0
 		and entity.queue_turn <= QUEUE_TICKS
 		and entity.grounded in [0, 1]
+		and entity.swimming in [0, 1]
+		and entity.stroke >= 0
+		and entity.stroke <= STROKE_TICKS
+		and entity.stroke_dir in [-1, 1]
 		and absi(entity.vx) <= MAX_SPEED
 	)

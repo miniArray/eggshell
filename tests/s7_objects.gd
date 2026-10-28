@@ -647,6 +647,19 @@ func egg_terrain_checks() -> void:
 		Collision.begin_step(state, wall_world, Registry)
 		type.travel(egg, state, wall_world)
 	check(egg.vx == -1024 * 60 and egg.vy == 0, "A flat wall reverses a level egg exactly")
+	var ground_world := _world_for({})
+	var ground := []
+	for index in 64:
+		ground.append(0 if index >= 48 else -1)
+	ground_world.layers = [_tile_layer("ground", ground, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
+	state = State.create(ground_world)
+	state.x = 2000 * S
+	egg = _thrown_egg(state, ground_world, 60 * S, 160 * S, 724 * 60, 724 * 60)
+	for tick in 3:
+		Collision.begin_step(state, ground_world, Registry)
+		type.travel(egg, state, ground_world)
+	check(egg.bounces == 3, "A floor ricochet spends one hit")
+	check(egg.vx > 600 * 60 and egg.vy < -600 * 60, "A diagonal floor hit keeps its run and turns up")
 	var pool := _world_for({})
 	var water := []
 	for index in 64:
@@ -746,6 +759,26 @@ func hound_checks() -> void:
 		"It drops as a resting egg the runner plays with"
 	)
 	check(type.valid(dog), "Runner state stays valid")
+	var pond := _world_for({"dog": _place("o16", 400, 200)})
+	var wet := []
+	for index in 32 * 16:
+		wet.append(0 if index >= 32 * 5 else -1)
+	pond.layers = [_tile_layer("pond", wet, 32, [0, 0, 32, 0, 32, 32, 0, 32], true)]
+	state = State.create(pond)
+	dog = _by_id(state, "dog")
+	dog.status = 1
+	dog.started = 1
+	state.x = 900 * S
+	state.y = 100 * S
+	var lowest: int = dog.y
+	for tick in 240:
+		Collision.begin_step(state, pond, Registry)
+		type.step(dog, state, pond)
+		lowest = maxi(lowest, dog.y)
+	check(dog.swimming == 1, "The runner swims in water")
+	check(lowest < 260 * S and dog.y < 200 * S, "It floats with its back at the surface")
+	check(dog.x > 400 * S, "Paddle strokes carry it toward the player")
+	check(type.valid(dog), "Swimming state stays valid")
 
 
 func snapshot_checks() -> void:
