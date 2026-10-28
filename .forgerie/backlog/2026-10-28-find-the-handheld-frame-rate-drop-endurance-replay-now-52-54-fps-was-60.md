@@ -59,9 +59,3 @@ A third run fell to 53.9 fps, p99 44.9 ms. Its slow frames were all between 40 s
 80 s, the autosave frame stayed at 25 ms, and korrid used 103% of one core during it.
 That matches the original 52-54 fps reports: background load on the device, not
 engine code.
-
-After landing, main 0eabc35 on the device: 59.9 fps, p99 20.7-20.8 ms in two runs.
-A third run fell to 53.9 fps, p99 44.9 ms. Its slow frames were all between 40 s and
-80 s, the autosave frame stayed at 25 ms, and korrid used 103% of one core during it.
-That is the same signature as the original 52-54 fps reports: background load on the
-device, not engine code.
