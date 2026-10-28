@@ -344,11 +344,12 @@ static func object_collisions(
 		):
 			continue
 		var type: Script = dispatch.lookup(other.code)
-		if not dispatch.overlaps_box(other, type, probe):
+		var old_shapes := solid_shapes(type, other)
+		# Terrain-style blocking stops the egg at an edge, so a full solid's edge counts.
+		if not dispatch.overlaps_box(other, type, probe) and not touches_full(old_shapes, probe):
 			continue
 		if type.has_method("touches") and not type.touches(other, probe):
 			continue
-		var old_shapes := solid_shapes(type, other)
 		var response := 0
 		if type.has_method("projectile_contact"):
 			response = type.projectile_contact(other, entity, state, world)
@@ -369,6 +370,20 @@ static func object_collisions(
 		if response in [2, 3]:
 			entity.last_target = other.token
 	return result
+
+
+static func touches_full(shapes: Array, probe: Array) -> bool:
+	for shape: Dictionary in shapes:
+		var box: Array = shape.box
+		if (
+			shape.mode == 1
+			and probe[2] >= box[0]
+			and probe[0] <= box[2]
+			and probe[3] >= box[1]
+			and probe[1] <= box[3]
+		):
+			return true
+	return false
 
 
 static func solid_shapes(type: Script, entity: Dictionary) -> Array:
