@@ -163,7 +163,9 @@ func _prepare(root: Node2D, player: Sprite2D, world: Dictionary) -> void:
 	_gradient_nodes.clear()
 	var map_source: Variant = world.get("map_source", {})
 	_gradient = (
-		custom_gradient(map_source.get("customGradientGenerator")) if map_source is Dictionary else {}
+		custom_gradient(map_source.get("customGradientGenerator"))
+		if map_source is Dictionary
+		else {}
 	)
 	for band: Dictionary in _gradient.get("bands", []):
 		var node := ColorRect.new()
