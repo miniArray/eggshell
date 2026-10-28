@@ -35,6 +35,10 @@ Verdigris is locked.
 | Topic | Status |
 |---|---|
 | Mechanics | The simulation has no companion, grab or throwables yet; the view draws a recovery marker in the companion's place. Sheets for these moves wait until the moves exist |
+| Animation | The user wants more animation frames for every character (2026-10-28). Today Oriel's run, jump and fall are single frames and the walk has two, so she looks still while running |
+| HUD | The final HUD should be ultra-minimal or hidden, shown only when it is relevant (user, 2026-10-28). Research on HUDs that appear when needed comes first; postponed. Until then, pack 3 draws an opaque dark-teal backing behind each readout (`hud.backing`) |
+| Background layers | Separate generated far, mid and near layers wait for the image gateway's monthly paid cap. Pack 3 still cuts both layers from style frame A. Prompts and commands: `art-direction/pack-3/work/GENERATE-LATER.md` |
+| Stone repeat | The 64 px stone period stays visible on the handheld (user, 2026-10-28). A 64 px tile cannot hide it; per-cell tile variants or a larger fill period need an engine change |
 
 ## Known costs
 
@@ -59,5 +63,8 @@ Verdigris is locked.
 3. Reference drawing of Oriel: approved (round 3, 91x110 art px). Key poses idle, walk-a, walk-b, run, jump, fall and flutter approved as generated (2026-10-27, `approved/oriel-poses-1/`). Pip: design C, cleaned calm, drifting and wilting sprites approved (2026-10-27, `approved/pip-cleaned/`). Next, terrain tiles.
 4. Asset sheets built on the approved frame and drawings, each approved on the page.
 5. In-game check on the handheld and a 1080p screen with the test courses.
+   Pack 3 (`packs/verdigris-wip-3/`) approved on the RG35XX Pro on 2026-10-28,
+   as a recorded Endurance replay (Korri's controller capture was failing).
+   The 1080p check is still to do.
 6. Lock: approved files move into the repository with a list of what the user
    approved. Work-in-progress images stay in `~/.local/share/eggshell/art-direction/`.
