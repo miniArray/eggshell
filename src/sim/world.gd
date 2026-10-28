@@ -72,56 +72,14 @@ static func _build_map(map: Dictionary, facts: Dictionary) -> Dictionary:
 	return _load_layers(map, world, facts)
 
 
-static func _build_objects(map: Dictionary, world: Dictionary) -> Dictionary:
-	for object: Dictionary in map.objects.values():
-		if object.A in ["e1", "e2", "e3", "e5", "e20"]:
-			for field: String in ["F", "M", "R"]:
-				var value: Variant = object.get(field, 0)
-				if (
-					not (value is int or value is float)
-					or not is_finite(value)
-					or value != floor(value)
-					or value < 0
-				):
-					return {"ok": false, "error": "Invalid enemy field: " + field}
-			var variant := int(object.get("F", 0))
-			if int(object.get("R", 0)) != 0 or int(object.get("M", 0)) > 2 or variant > 4:
-				return {"ok": false, "error": "Unsupported enemy variant, mirror or rotation"}
-			if object.A in ["e3", "e5"] and variant != 0:
-				return {"ok": false, "error": "Unsupported flower or plant variant"}
-			if object.A == "e20" and variant not in [0, 1]:
-				return {"ok": false, "error": "Unsupported fish mode"}
-			world.enemies.append(
-				{
-					"code": object.A,
-					"x": roundi(object.X * S),
-					"y": roundi(object.Y * S),
-					"variant": variant,
-					"mirror": int(object.get("M", 0))
-				}
-			)
-		if object.A == "o5":
-			world.goals.append([roundi(object.X * S), roundi(object.Y * S)])
-		elif object.A == "o11":
-			var variant := int(object.get("F", 0))
-			world.springs.append(
-				{
-					"x": roundi(object.X * S),
-					"y": roundi((object.Y + 16) * S),
-					"large": variant % 2,
-					"single_use": int(variant >= 2)
-				}
-			)
-		elif object.A == "p1":
-			var width := roundi(float(object.E1) * S)
-			world.bridges.append(
-				{
-					"left": roundi(object.X * S) - width / 2,
-					"right": roundi(object.X * S) + width / 2,
-					"top": roundi((object.Y - 16) * S)
-				}
-			)
-	return {"ok": true}
+static func _build_objects(_map: Dictionary, world: Dictionary) -> Dictionary:
+	return setup_objects(world.map_source, world)
+
+
+static func setup_objects(map: Dictionary, world: Dictionary) -> Dictionary:
+	# Late binding keeps the level compiler independent of type behavior imports.
+	var registry: Script = load("res://src/sim/registry.gd")
+	return registry.compile_map(map.get("objects", {}), world)
 
 
 static func _load_layers(map: Dictionary, world: Dictionary, facts: Dictionary) -> Dictionary:

@@ -1,72 +1,13 @@
 extends RefCounted
+## Integer behavior shared by the registered actor family.
 
-const State = preload("res://src/sim/play_state.gd")
 const World = preload("res://src/sim/world.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
-const Fish = preload("res://src/sim/enemy_fish.gd")
 const Plant = preload("res://src/sim/enemy_plant.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const S := 3600
-const WAITING := 0
 const ACTIVE := 1
-const QUEUED := 2
 const DEFEATED := 3
-
-
-static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
-	for index in state.enemies.size():
-		var enemy: Dictionary = state.enemies[index]
-		var source: Dictionary = world.enemies[index]
-		lifecycle(enemy, source, state)
-		if enemy.status != ACTIVE:
-			continue
-		match source.code:
-			"e1":
-				walker(enemy, state, world)
-			"e2":
-				flyer(enemy, source, world)
-			"e3":
-				flower(enemy, world)
-			"e5":
-				Plant.advance(enemy, state, world, pressed)
-			"e20":
-				Fish.advance(enemy, source, state, world)
-
-
-static func lifecycle(enemy: Dictionary, source: Dictionary, state: Dictionary) -> void:
-	if enemy.status == DEFEATED:
-		return
-	if enemy.status == ACTIVE:
-		if absi(enemy.x - state.camera_x) > 832 * S or absi(enemy.y - state.camera_y) > 832 * S:
-			enemy.status = QUEUED
-			enemy.offscreen = 0
-	if enemy.status == QUEUED:
-		if absi(source.x - state.camera_x) > 416 * S or absi(source.y - state.camera_y) > 224 * S:
-			enemy.offscreen = 1
-		if (
-			enemy.offscreen
-			and absi(source.x - state.camera_x) < 624 * S
-			and absi(source.y - state.camera_y) < 624 * S
-		):
-			var fresh := State.enemy_create(source)
-			for field: String in State.ENEMY_FIELDS:
-				enemy[field] = fresh[field]
-	if enemy.status == WAITING:
-		var bounds := Motion.box(enemy, source.code)
-		if (
-			enemy.x + bounds[2] > state.camera_x - 416 * S
-			and enemy.x + bounds[0] < state.camera_x + 416 * S
-			and enemy.y + bounds[3] > state.camera_y - 224 * S
-			and enemy.y + bounds[1] < state.camera_y + 224 * S
-		):
-			enemy.status = ACTIVE
-			if source.mirror == 2:
-				enemy.facing = -1 if state.x < enemy.x else 1
-			if source.code == "e2":
-				enemy.cycles = 1 if enemy.facing < 0 else -1
-			if source.code == "e1":
-				enemy.timer = Motion.random_ticks(state, 60, 150)
-				enemy.cycles = Motion.random_cycles(state)
 
 
 static func walker(enemy: Dictionary, state: Dictionary, world: Dictionary) -> void:
@@ -137,37 +78,33 @@ static func flower(enemy: Dictionary, world: Dictionary) -> void:
 		enemy.vx = 0
 
 
-static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
-	if state.captured_by:
+static func contact_entity(enemy: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if state.captured_by or enemy.status != ACTIVE:
 		return
-	for index in state.enemies.size():
-		var enemy: Dictionary = state.enemies[index]
-		var code: String = world.enemies[index].code
-		if enemy.status != ACTIVE:
-			continue
-		if code == "e5":
-			Plant.capture(enemy, index, state)
-			if state.captured_by:
-				return
-			continue
-		var bounds := Motion.box(enemy, code)
-		var overlap: bool = (
-			state.x + 12 * S > enemy.x + bounds[0]
-			and state.x - 12 * S < enemy.x + bounds[2]
-			and state.y > enemy.y + bounds[1]
-			and state.y - 56 * S < enemy.y + bounds[3]
-		)
-		if overlap:
-			if enemy.y > state.y - 8 * S and not enemy.contact:
-				state.vy = -absi(enemy.vy / 2) - (704 if input & 4 else 320) * 60
-				state.on_floor = 0
-				state.jump_buffer = 0
-				state.flutter_remaining = 0
-				state.boosted_flutter = 1
-				state.flutter_ready = 1
-				enemy.status = DEFEATED
-			elif enemy.y < state.y - 8 * S:
-				Damage.hurt(state, enemy.x)
-			enemy.contact = 1
-		else:
-			enemy.contact = 0
+	var code: String = enemy.code
+	if code == "e5":
+		Plant.capture(enemy, enemy.family_index, state)
+		if state.captured_by:
+			return
+		return
+	var bounds := Motion.box(enemy, code)
+	var overlap: bool = (
+		state.x + 12 * S > enemy.x + bounds[0]
+		and state.x - 12 * S < enemy.x + bounds[2]
+		and state.y > enemy.y + bounds[1]
+		and state.y - 56 * S < enemy.y + bounds[3]
+	)
+	if overlap:
+		if enemy.y > state.y - 8 * S and not enemy.contact:
+			state.vy = -absi(enemy.vy / 2) - (704 if input & 4 else 320) * 60
+			state.on_floor = 0
+			state.jump_buffer = 0
+			state.flutter_remaining = 0
+			state.boosted_flutter = 1
+			state.flutter_ready = 1
+			enemy.status = DEFEATED
+		elif enemy.y < state.y - 8 * S:
+			Damage.hurt(state, enemy.x)
+		enemy.contact = 1
+	else:
+		enemy.contact = 0
