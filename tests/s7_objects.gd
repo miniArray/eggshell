@@ -23,6 +23,7 @@ func _initialize() -> void:
 	hopper_checks()
 	producer_checks()
 	spine_checks()
+	flyer_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -374,6 +375,61 @@ func spine_checks() -> void:
 	check(fast.mode == type.SHRINK, "Spines fold one second after rising")
 
 
+func flyer_checks() -> void:
+	var world := world_for(
+		{
+			"calm": place("e30", 400, 200),
+			"low": place("e30", 600, 200, {"F": 1, "E1": "1", "M": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 3000 * S
+	state.y = 900 * S
+	var calm := by_id(state, "calm")
+	var low := by_id(state, "low")
+	var type: Script = Registry.lookup("e30")
+	check(calm.drifts == 1 and low.drifts == 0, "E1 1 keeps the flyer in place horizontally")
+	for entity: Dictionary in [calm, low]:
+		entity.status = Registry.ACTIVE
+		entity.started = 1
+	for tick in 45:
+		type.step(calm, state, world)
+		type.step(low, state, world)
+	check(calm.x == 400 * S - 45 * 64 * 60, "The flyer drifts left at 64 px/s")
+	check(low.x == 600 * S, "A fixed flyer does not drift")
+	check(calm.y == 136 * S and low.y == 264 * S, "Bobbing peaks 64 px from home after 0.75 s")
+	for tick in 135:
+		type.step(calm, state, world)
+	check(calm.y == 200 * S and calm.bob == 0, "The bob repeats every three seconds")
+	state.x = calm.x
+	state.y = calm.y - 10 * S
+	state.vy = 4 * S
+	type.contact(calm, state, world, 0)
+	check(calm.mode == type.STOMPED and state.vy < 0, "A stomp bounces the player and knocks the flyer")
+	for tick in 6:
+		type.step(calm, state, world)
+	check(calm.y == 212 * S, "A stomp knocks the flyer 12 px down in 0.1 s")
+	for tick in 7:
+		type.step(calm, state, world)
+	check(calm.mode == type.ANGRY, "After the stomp pose it turns angry")
+	state.x = calm.x + 300 * S
+	state.y = calm.y + 32 * S
+	for tick in 60:
+		type.step(calm, state, world)
+	check(calm.mode == type.CHARGE and calm.facing == 1, "After one second it charges at the player")
+	check(calm.vx == 256 * 60 and calm.vy == 0, "The charge aims 32 px above the feet at 256 px/s")
+	var egg := {"code": "o7", "x": low.x - 30 * S, "vx": 16 * S, "vy": 0, "fall_on_terrain": 0}
+	check(type.projectile_contact(low, egg, state, world) == 1, "An egg is absorbed")
+	check(low.mode == type.STOMPED and low.knock_dx == 48 * S, "An egg knocks the flyer along its path")
+	state.x = low.x
+	state.y = low.y + 40 * S
+	state.invulnerable = 0
+	low.contact = 0
+	type.contact(low, state, world, 0)
+	check(state.invulnerable > 0, "Touching it from below hurts")
+	check(type.valid(calm) and type.valid(low), "Flyer state stays valid")
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -385,7 +441,8 @@ func snapshot_checks() -> void:
 			"f": place("e9", 600, 100, {"M": 2}),
 			"g": place("e40", 700, 100, {"F": 1}),
 			"h": place("o17", 800, 100, {"E1": "e40"}),
-			"i": place("e25", 900, 100, {"F": 1, "M": 2})
+			"i": place("e25", 900, 100, {"F": 1, "M": 2}),
+			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2})
 		}
 	)
 	var state := State.create(world)
