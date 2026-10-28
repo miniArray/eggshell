@@ -54,8 +54,14 @@ static func player_fields() -> Array:
 	return compose([BASE_PLAYER_FIELDS, Moves.PLAYER_FIELDS, Life.PLAYER_FIELDS])
 
 
+static func entity_registry() -> Script:
+	return load("res://src/sim/registry.gd")
+
+
 static func level_fields() -> Array:
-	return compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS])
+	return compose(
+		[BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS, entity_registry().level_fields()]
+	)
 
 
 static func fields() -> Array:
@@ -82,8 +88,7 @@ static func create(world: Dictionary) -> Dictionary:
 	state.camera_y = state.y - 28 * SCALE
 	Maps.initialize(state, world)
 	Life.initialize(state, world)
-	var registry: Script = load("res://src/sim/registry.gd")
-	registry.spawn_map(state, world)
+	entity_registry().spawn_map(state, world)
 	return state
 
 
@@ -134,4 +139,4 @@ static func valid(state: Dictionary) -> bool:
 	for module: Script in [Moves, Life, Maps]:
 		if module.has_method("valid_state") and not module.valid_state(state):
 			return false
-	return true
+	return entity_registry().valid_state(state)

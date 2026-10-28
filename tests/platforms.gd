@@ -26,6 +26,9 @@ func _initialize() -> void:
 	redirect_type_checks()
 	gate_type_checks()
 	post_type_checks()
+	cache_type_checks()
+	switch_type_checks()
+	shared_interaction_checks()
 	print("PLATFORMS_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -545,6 +548,337 @@ func post_type_checks() -> void:
 	)
 	type.bump(entity, state, world, 1)
 	check(entity.height == 96 * S, "spiked form cannot be driven")
+
+
+func cache_type_checks() -> void:
+	check(Registry.implemented("o8"), "floating release cache is registered")
+	if not Registry.implemented("o8"):
+		return
+	var world := typed_world(
+		{"cache": {"A": "o8", "X": 200, "Y": 160, "E1": "1", "E2": "5", "E3": "1", "F": 9}}
+	)
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	Collision.begin_step(state, world, Registry)
+	check(
+		not type.view_state(entity, state).visible,
+		"hidden cache starts invisible independently of preview frame"
+	)
+	var projectile := {"mode": 1}
+	check(
+		type.projectile_contact(entity, projectile, state, world) == 1 and entity.phase == 2,
+		"first egg is consumed to reveal a hidden cache"
+	)
+	check(type.view_state(entity, state).modulate_alpha == 0.5, "temporary reveal has half opacity")
+	state.camera_x = 1000 * S
+	type.step(entity, state, world)
+	check(entity.phase == 0, "temporary reveal ends when the cache leaves the fixed reference area")
+	state.camera_x = 200 * S
+	state.x = entity.x
+	state.y = entity.y
+	type.contact(entity, state, world, 0)
+	check(entity.phase == 2, "body overlap reveals but does not open")
+	check(
+		type.tongue(entity, state, world) == 0 and entity.phase == 2,
+		"tongue cannot swallow or open a cache"
+	)
+	type.hit(entity, state, world, 2, 0)
+	check(entity.phase == 2, "ordinary pound is not a release strike")
+	type.projectile_contact(entity, projectile, state, world)
+	check(entity.phase == 3 and entity.age == 0, "next egg begins opening a revealed cache")
+	for tick in 18:
+		type.step(entity, state, world)
+	check(
+		type.view_state(entity, state).size_x == 48.0 and entity.status == 1,
+		"growth ends at 0.30 seconds before the release animation"
+	)
+	var encoded := Snapshot.encode(state)
+	var decoded := Snapshot.decode(encoded, world.identity, world)
+	check(decoded.ok, "opening cache snapshot uses only declared fields")
+	for tick in 12:
+		type.step(entity, state, world)
+	check(entity.status == 3, "release waits for the half-second animation")
+	if Registry.implemented("o1"):
+		check(
+			entity.release_failures == 0 and entity.collected == 1 and state.entities.size() == 6,
+			"shared spawner releases every configured coin"
+		)
+		for drop: Dictionary in state.entities.slice(1):
+			check(
+				(
+					drop.code == "o1"
+					and drop.moving == 1
+					and drop.despawn_ticks == 480
+					and drop.vy >= -768 * 60
+					and drop.vy <= -512 * 60
+				),
+				"released coin has the configured motion and eight-second lifetime"
+			)
+		var released := Snapshot.encode(state)
+		var release_restore := Snapshot.decode(released, world.identity, world)
+		check(
+			release_restore.ok and Snapshot.encode(release_restore.state) == released,
+			"released dynamic contents round trip with the originating cache"
+		)
+	else:
+		check(
+			entity.release_failures == 5 and entity.collected == 0 and state.entities.size() == 1,
+			"missing shared spawner is explicit and cannot award phantom pickups"
+		)
+	world = typed_world({"bob": {"A": "o8", "X": 200, "Y": 160}})
+	state = State.create(world)
+	entity = state.entities[0]
+	Collision.begin_step(state, world, Registry)
+	for tick in 45:
+		type.step(entity, state, world)
+	check(entity.y == 176 * S, "floating cache follows its saved three-second 16-pixel wave")
+	var first: Dictionary = type.view_state(entity, state)
+	var second: Dictionary = type.view_state(entity, state)
+	check(first == second, "cache drawing policy is pure")
+	for content in [2, 3, 4]:
+		world = typed_world(
+			{"release": {"A": "o8", "X": 200, "Y": 160, "E1": str(content), "E2": "3"}}
+		)
+		state = State.create(world)
+		entity = state.entities[0]
+		entity.phase = 3
+		entity.age = 29
+		state.health = 29
+		Collision.begin_step(state, world, Registry)
+		type.step(entity, state, world)
+		if not Registry.implemented("o1"):
+			check(
+				entity.release_failures == (3 if content == 2 else 1),
+				"unavailable release providers remain explicit"
+			)
+			continue
+		check(entity.release_failures == 0, "all release families use declared runtime options")
+		if content == 2:
+			check(
+				(
+					state.entities.size() == 4
+					and state.entities[1].code == "o4"
+					and state.entities[2].code == "o1"
+					and state.entities[3].code == "o1"
+				),
+				"health drops stop at thirty and excess contents become coins"
+			)
+		elif content == 3:
+			var flower: Dictionary = state.entities[1]
+			check(
+				(
+					flower.code == "o3"
+					and flower.origin_token == entity.token
+					and entity.collected == 0
+				),
+				"released flower retains its originating cache token"
+			)
+			Registry.lookup("o3").collect(flower, state)
+			check(entity.collected == 1, "collecting the flower marks its original cache")
+		else:
+			check(
+				(
+					state.entities.size() == 2
+					and state.entities[1].code == "o14"
+					and state.entities[1].source_index == -1
+				),
+				"switch contents use the dynamic switch type"
+			)
+
+
+func switch_type_checks() -> void:
+	check(Registry.implemented("o14"), "timed switch is registered")
+	if not Registry.implemented("o14"):
+		return
+	var world := typed_world(
+		{
+			"switch": {"A": "o14", "X": 200, "Y": 200, "F": 1},
+			"fall": {"A": "o20", "X": 500, "Y": 500}
+		}
+	)
+	var state := State.create(world)
+	var entity: Dictionary = state.entities[0]
+	var type := Registry.lookup(entity.code)
+	entity.status = 1
+	state.entities[1].age = 1
+	state.x = 200 * S
+	state.y = 180 * S
+	state.vy = 10 * S
+	state.invulnerable = 60
+	Collision.begin_step(state, world, Registry)
+	type.contact(entity, state, world, 0)
+	check(
+		state.modal_token == entity.token and entity.phase == 1,
+		"falling contact starts the switch-owned modal"
+	)
+	for tick in 9:
+		Sim.advance(state, 0, world)
+	check(
+		state.y > 196 * S and state.y < 198 * S,
+		"flatten follows the outward sine curve rather than a linear offset"
+	)
+	for tick in 9:
+		Sim.advance(state, 0, world)
+	check(
+		state.y == 204 * S and entity.phase == 2,
+		"flatten lasts 18 ticks and offsets the player by 24 pixels"
+	)
+	check(
+		state.entities[1].age == 1 and state.invulnerable == 60,
+		"modal freezes other objects and lifetime counters"
+	)
+	check(
+		state.switch_sound_serial == 1 and state.switch_sound_kind == 1,
+		"flatten completion emits the activation sound marker"
+	)
+	var encoded := Snapshot.encode(state)
+	var decoded := Snapshot.decode(encoded, world.identity, world)
+	check(decoded.ok, "switch modal snapshot is fully declared")
+	for tick in 9:
+		Sim.advance(state, 4, world)
+		if tick == 2:
+			check(
+				state.y > 200 * S and state.y < 202 * S,
+				"unflatten begins with the inward sine curve"
+			)
+		if decoded.ok:
+			Sim.advance(decoded.state, 4, world)
+	check(
+		state.modal_token == 0 and state.y == 180 * S and state.vy == -1008 * 60,
+		"unflatten takes nine ticks and held jump selects the high launch"
+	)
+	check(
+		state.switch_ticks == 630 and entity.phase == 3,
+		"completion starts a shared ten-and-a-half-second timer"
+	)
+	if decoded.ok:
+		check(
+			Snapshot.encode(state) == Snapshot.encode(decoded.state),
+			"resuming the modal produces identical launch and timer state"
+		)
+	for tick in 630:
+		state.frame += 1
+		Collision.begin_step(state, world, Registry)
+		type.step(entity, state, world)
+	check(
+		state.switch_ticks == 0 and entity.phase == 0 and entity.y == 200 * S,
+		"repeat switch returns at shared timer expiry"
+	)
+	state.switch_ticks = 300
+	state.y = 180 * S
+	state.vy = 10 * S
+	type.contact(entity, state, world, 0)
+	for tick in 27:
+		Sim.advance(state, 0, world)
+	check(
+		state.switch_ticks == 630 and state.vy == -448 * 60,
+		"another press resets the running timer and uses the ordinary launch"
+	)
+	world = typed_world(
+		{"first": {"A": "o14", "X": 200, "Y": 200}, "second": {"A": "o14", "X": 300, "Y": 200}}
+	)
+	state = State.create(world)
+	state.switch_ticks = 100
+	for trigger: Dictionary in state.entities:
+		trigger.status = 1
+	Collision.begin_step(state, world, Registry)
+	for trigger: Dictionary in state.entities:
+		type.step(trigger, state, world)
+	check(state.switch_ticks == 99, "multiple switches advance one shared timer only once")
+	state.entities[0].phase = 3
+	state.entities[0].y += 16 * S
+	state.switch_ticks = 1
+	type.step(state.entities[0], state, world)
+	check(
+		state.entities[0].status == 3, "ordinary hidden switch is retired after carrying the timer"
+	)
+
+
+func shared_interaction_checks() -> void:
+	if Registry.implemented("o15"):
+		var world := typed_world(
+			{
+				"trigger": {"A": "o14", "X": 200, "Y": 200, "F": 1},
+				"linked": {"A": "o15", "X": 400, "Y": 200},
+				"coin": {"A": "o1", "X": 300, "Y": 200, "F": 1}
+			}
+		)
+		var state := State.create(world)
+		var trigger: Dictionary = state.entities[0]
+		trigger.status = 1
+		state.x = 200 * S
+		state.y = 180 * S
+		state.vy = 10 * S
+		Registry.lookup("o14").contact(trigger, state, world, 0)
+		for tick in 27:
+			Sim.advance(state, 0, world)
+		check(
+			state.entities[1].enabled == 1 and state.entities[2].enabled == 1,
+			"switch activation reaches linked blocks and dotted coins"
+		)
+		state.switch_ticks = 1
+		Sim.advance(state, 0, world)
+		check(
+			state.entities[1].enabled == 0 and state.entities[2].enabled == 0,
+			"shared timer expiry flips linked objects back"
+		)
+	if not Registry.implemented("o7"):
+		return
+	var world := typed_world({"rock": {"A": "o28", "X": 200, "Y": 200}})
+	var state := State.create(world)
+	state.x = 20 * S
+	state.y = 20 * S
+	var egg := Registry.spawn_dynamic(
+		state,
+		world,
+		"o7",
+		145 * S,
+		200 * S,
+		{"mode": 1, "vx": 1024 * 60, "vy": 0, "bounces": 4, "colour": 0}
+	)
+	check(not egg.is_empty(), "shared projectile type permits runtime creation")
+	if egg.is_empty():
+		return
+	Sim.advance(state, 0, world)
+	check(
+		state.entities[0].form == 1 and egg.bounces == 4 and egg.colour == 1 and egg.vx < 0,
+		"first real projectile strike cracks and bounces without spending its budget"
+	)
+	egg = Registry.spawn_dynamic(
+		state,
+		world,
+		"o7",
+		145 * S,
+		200 * S,
+		{"mode": 1, "vx": 1024 * 60, "vy": 0, "bounces": 4, "colour": 0}
+	)
+	Sim.advance(state, 0, world)
+	check(
+		state.entities[0].status == 3 and egg.bounces == 4 and egg.colour == 1 and egg.vx < 0,
+		"final real projectile strike retains its pre-destruction bounce and colour change"
+	)
+	world = typed_world({"arrow": {"A": "o19", "X": 200, "Y": 200, "R": 0, "E3": "1"}})
+	state = State.create(world)
+	state.x = 20 * S
+	state.y = 20 * S
+	egg = Registry.spawn_dynamic(
+		state,
+		world,
+		"o7",
+		170 * S,
+		200 * S,
+		{"mode": 1, "vx": 1024 * 60, "vy": 0, "bounces": 4, "colour": 0}
+	)
+	Sim.advance(state, 0, world)
+	check(
+		egg.vx == 0 and egg.vy < 0 and egg.colour == 0 and egg.bounces == 4 and egg.camera == 1,
+		"real projectile dispatch retains redirect velocity, budget, colour and camera"
+	)
+	check(
+		egg.x == 200 * S and egg.y == 200 * S,
+		"redirect ends its hit tick snapped to the cloud before next-tick motion"
+	)
 
 
 func typed_world(objects: Dictionary) -> Dictionary:

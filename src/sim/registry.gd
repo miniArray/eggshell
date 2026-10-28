@@ -20,7 +20,10 @@ const TYPES := [
 	preload("res://src/sim/types/redirect_cloud.gd"),
 	preload("res://src/sim/types/one_way_gate.gd"),
 	preload("res://src/sim/types/pound_post.gd"),
+	preload("res://src/sim/types/release_cloud.gd"),
+	preload("res://src/sim/types/timed_switch.gd"),
 ]
+const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
 const MAX_OPTION_PIXELS := 0x7fffffffffffffff / S - 1
@@ -30,6 +33,7 @@ const QUEUED := 2
 const DEFEATED := 3
 const COMMON_FIELDS := [
 	["source_index", 0],
+	["token", 0],
 	["map_index", 0],
 	["family_index", 0],
 	["collected", 0],
@@ -67,6 +71,77 @@ static func fields(code: String) -> Array:
 	var result := COMMON_FIELDS.duplicate(true)
 	result.append_array(lookup(code).FIELDS.duplicate(true))
 	return result
+
+
+static func level_fields() -> Array:
+	var result := LEVEL_FIELDS.duplicate(true)
+	var names := {}
+	for pair: Array in LEVEL_FIELDS:
+		names[pair[0]] = true
+	for type: Script in TYPES:
+		for pair: Array in type.get_script_constant_map().get("LEVEL_FIELDS", []):
+			assert(not names.has(pair[0]), "Duplicate level field: " + pair[0])
+			names[pair[0]] = true
+			result.append(pair.duplicate())
+	return result
+
+
+static func valid_state(state: Dictionary) -> bool:
+	if (
+		not state.get("dynamic_serial") is int
+		or state.dynamic_serial < 1
+		or not state.get("modal_token") is int
+		or state.modal_token < 0
+	):
+		return false
+	if state.modal_token:
+		var holder := find_token(state, state.modal_token)
+		if (
+			holder.is_empty()
+			or holder.status != ACTIVE
+			or not lookup(holder.code).has_method("modal_step")
+		):
+			return false
+	for type: Script in TYPES:
+		if type.has_method("valid_state") and not type.valid_state(state):
+			return false
+	return true
+
+
+static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool:
+	if not state.modal_token:
+		return false
+	var holder := find_token(state, state.modal_token)
+	if holder.is_empty():
+		state.modal_token = 0
+		return false
+	var type := lookup(holder.code)
+	var paused: bool = (
+		type.has_method("modal_step") and type.modal_step(holder, state, world, input)
+	)
+	if not paused:
+		state.modal_token = 0
+	return paused
+
+
+static func find_token(state: Dictionary, token: int) -> Dictionary:
+	if token > 0 and state.get("entities") is Array:
+		for entity: Variant in state.entities:
+			if entity is Dictionary and entity.get("token") == token:
+				return entity
+	return {}
+
+
+static func spawn_dynamic(
+	_state: Dictionary, _world: Dictionary, _code: String, _x: int, _y: int, _options: Dictionary
+) -> Dictionary:
+	# Replaced by the shared runtime-creation implementation during integration.
+	return {}
+
+
+static func toggle_switch(_state: Dictionary, _world: Dictionary) -> void:
+	# Replaced by the shared link dispatcher during integration.
+	pass
 
 
 static func codes() -> Array[String]:
@@ -207,6 +282,7 @@ static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 		entity[pair[0]] = pair[1]
 	for key: String in ["source_index", "x", "y", "layer", "family_index"]:
 		entity[key] = int(source.get(key, entity[key]))
+	entity.token = entity.source_index + 1
 	entity.map_index = int(world.get("map_index", 0))
 	entity.facing = 1 if source.get("mirror", 0) == 1 else -1
 	entity.status = ACTIVE
@@ -232,6 +308,10 @@ static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = f
 			entity.collected = previous[entity.id]
 			entity.checkpoint_collected = previous[entity.id]
 		state.entities.append(entity)
+	state.modal_token = 0
+	for type: Script in TYPES:
+		if type.has_method("reset_map"):
+			type.reset_map(state, world)
 	attach_views(state)
 
 

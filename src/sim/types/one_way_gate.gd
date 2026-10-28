@@ -101,6 +101,8 @@ static func _body_boxes(state: Dictionary, world: Dictionary) -> Array:
 		if not actor or not type.has_method("bounds"):
 			continue
 		var box: Array = type.bounds(entity)
+		if box[0] >= box[2] or box[1] >= box[3]:
+			continue
 		result.append([entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]])
 	return result
 
