@@ -95,7 +95,9 @@ static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, _i
 		knock_above(entity, state, world, block)
 
 
-static func knock_above(entity: Dictionary, state: Dictionary, world: Dictionary, block: Array) -> void:
+static func knock_above(
+	entity: Dictionary, state: Dictionary, world: Dictionary, block: Array
+) -> void:
 	var probe := [block[0], block[1] - 8 * S, block[2], block[3] - 8 * S]
 	var registry: Script = load("res://src/sim/registry.gd")
 	for other: Dictionary in state.entities:

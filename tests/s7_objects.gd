@@ -33,7 +33,7 @@ func _initialize() -> void:
 	quit(1 if failures else 0)
 
 
-func level(objects: Dictionary) -> Dictionary:
+func _level(objects: Dictionary) -> Dictionary:
 	return {
 		"version": "s3.8.0",
 		"name": "Invented objects",
@@ -44,17 +44,17 @@ func level(objects: Dictionary) -> Dictionary:
 	}
 
 
-func build(objects: Dictionary) -> Dictionary:
-	return World.build(JSON.stringify(level(objects)), {"tilemaps": {}})
+func _build(objects: Dictionary) -> Dictionary:
+	return World.build(JSON.stringify(_level(objects)), {"tilemaps": {}})
 
 
-func world_for(objects: Dictionary) -> Dictionary:
-	var built := build(objects)
+func _world_for(objects: Dictionary) -> Dictionary:
+	var built := _build(objects)
 	check(built.ok, "Invented placements compile: " + str(built.get("error", "")))
 	return built.get("world", {})
 
 
-func by_id(state: Dictionary, id: String) -> Dictionary:
+func _by_id(state: Dictionary, id: String) -> Dictionary:
 	for entity: Dictionary in state.entities:
 		if entity.id == id:
 			return entity
@@ -62,13 +62,13 @@ func by_id(state: Dictionary, id: String) -> Dictionary:
 	return {}
 
 
-func place(code: String, x: int, y: int, options: Dictionary = {}) -> Dictionary:
+func _place(code: String, x: int, y: int, options: Dictionary = {}) -> Dictionary:
 	var result := {"A": code, "X": x, "Y": y}
 	result.merge(options, true)
 	return result
 
 
-func stand_on(state: Dictionary, top: int, x: int) -> void:
+func _stand_on(state: Dictionary, top: int, x: int) -> void:
 	state.x = x
 	state.y = top - S / 16
 	state.vx = 0
@@ -85,19 +85,19 @@ func registration_checks() -> void:
 		check(not seen.has(code), "Code appears once: " + code)
 		seen[code] = true
 	for pair: Array in [["o12", {"F": 2}], ["o29", {"F": 3}]]:
-		var built := build({"one": place(pair[0], 200, 200, pair[1])})
+		var built := _build({"one": _place(pair[0], 200, 200, pair[1])})
 		check(not built.ok, "Out-of-range form is not silently accepted: " + pair[0])
 	for pair: Array in [["o12", {"F": 0.5}], ["o29", {"F": "x"}], ["p2", {"E1": "wide"}]]:
-		var built := build({"one": place(pair[0], 200, 200, pair[1])})
+		var built := _build({"one": _place(pair[0], 200, 200, pair[1])})
 		check(not built.ok, "Malformed option is rejected: " + pair[0])
 
 
 func thorn_checks() -> void:
-	var world := world_for({"thorn": place("o12", 200, 200, {"F": 1})})
+	var world := _world_for({"thorn": _place("o12", 200, 200, {"F": 1})})
 	var state := State.create(world)
-	var thorn := by_id(state, "thorn")
+	var thorn := _by_id(state, "thorn")
 	check(thorn.form == 1, "Thorn keeps its second form")
-	stand_on(state, 184 * S, 200 * S)
+	_stand_on(state, 184 * S, 200 * S)
 	Sim.advance(state, 0, world)
 	check(state.life_phase == Life.DEAD, "Touching a thorn from above is fatal")
 	state = State.create(world)
@@ -106,7 +106,7 @@ func thorn_checks() -> void:
 	state.vy = 0
 	Sim.advance(state, 0, world)
 	check(state.life_phase == Life.PLAY, "A thorn far below the player is harmless")
-	thorn = by_id(state, "thorn")
+	thorn = _by_id(state, "thorn")
 	var egg := Registry.spawn_dynamic(
 		state, world, "o7", 170 * S, 200 * S, {"mode": 1, "vx": 16 * S, "vy": 0, "bounces": 4}
 	)
@@ -119,9 +119,9 @@ func thorn_checks() -> void:
 
 
 func colour_block_checks() -> void:
-	var world := world_for({"block": place("o29", 300, 200, {"F": 1})})
+	var world := _world_for({"block": _place("o29", 300, 200, {"F": 1})})
 	var state := State.create(world)
-	var block := by_id(state, "block")
+	var block := _by_id(state, "block")
 	var type: Script = Registry.lookup("o29")
 	check(type.solid_box(block) == [268 * S, 184 * S, 332 * S, 216 * S], "Colour block is 64x32")
 	var egg := {"code": "o7", "x": 300 * S, "bounces": 3}
@@ -141,9 +141,9 @@ func colour_block_checks() -> void:
 	Registry.lookup("o7").travel(flying, state, world)
 	check(block.form == 1, "A travelling egg that reaches the block edge hits it")
 	check(flying.vx < 0 and flying.bounces == 4, "The egg still bounces; the block refunds the hit")
-	var rock_world := world_for({"rock": place("o28", 300, 200)})
+	var rock_world := _world_for({"rock": _place("o28", 300, 200)})
 	var rock_state := State.create(rock_world)
-	var rock := by_id(rock_state, "rock")
+	var rock := _by_id(rock_state, "rock")
 	var thrown := Registry.spawn_dynamic(
 		rock_state, rock_world, "o7", 250 * S, 200 * S, {"mode": 1, "vx": 16 * S, "bounces": 4}
 	)
@@ -154,9 +154,9 @@ func colour_block_checks() -> void:
 
 
 func grow_block_checks() -> void:
-	var world := world_for({"grow": place("o10", 400, 200)})
+	var world := _world_for({"grow": _place("o10", 400, 200)})
 	var state := State.create(world)
-	var block := by_id(state, "grow")
+	var block := _by_id(state, "grow")
 	var type: Script = Registry.lookup("o10")
 	check(type.solid_box(block) == [384 * S, 184 * S, 416 * S, 216 * S], "Small block is 32x32")
 	state.x = 400 * S
@@ -193,18 +193,18 @@ func grow_block_checks() -> void:
 
 
 func bridge_checks() -> void:
-	var world := world_for(
-		{"bridge": place("p2", 600, 300, {"E1": "160"}), "plain": place("p2", 900, 300)}
+	var world := _world_for(
+		{"bridge": _place("p2", 600, 300, {"E1": "160"}), "plain": _place("p2", 900, 300)}
 	)
 	var state := State.create(world)
-	var bridge := by_id(state, "bridge")
+	var bridge := _by_id(state, "bridge")
 	var type: Script = Registry.lookup("p2")
 	check(type.SOLID == 2, "Bridge is top-only")
 	check(
 		type.solid_box(bridge) == [520 * S, 284 * S, 680 * S, 286 * S],
 		"Bridge strip uses E1 width at the body's top edge"
 	)
-	check(by_id(state, "plain").width == 96 * S, "Missing width keeps the 96 px default")
+	check(_by_id(state, "plain").width == 96 * S, "Missing width keeps the 96 px default")
 	state.x = 600 * S
 	state.y = 270 * S
 	state.vy = 0
@@ -222,12 +222,12 @@ func bridge_checks() -> void:
 
 
 func runner_checks() -> void:
-	var world := world_for(
-		{"plain": place("e7", 200, 200), "careful": place("e9", 400, 200, {"M": 1})}
+	var world := _world_for(
+		{"plain": _place("e7", 200, 200), "careful": _place("e9", 400, 200, {"M": 1})}
 	)
 	var state := State.create(world)
-	var plain := by_id(state, "plain")
-	var careful := by_id(state, "careful")
+	var plain := _by_id(state, "plain")
+	var careful := _by_id(state, "careful")
 	var walker: Script = Registry.lookup("e6")
 	check(plain.mode == walker.BARE and plain.inside == 0, "Placed runner walks without a shell")
 	check(plain.colour == 0 and careful.colour == 1, "The second code selects the careful colour")
@@ -242,16 +242,16 @@ func runner_checks() -> void:
 	check(plain.status == Registry.DEFEATED, "An egg defeats a placed runner")
 
 
-func ledge_world(extra: Dictionary) -> Dictionary:
+func _ledge_world(extra: Dictionary) -> Dictionary:
 	var objects := {
-		"floor": place("p2", 500, 316, {"E1": "320"}),
-		"rest": place("p2", 900, 316, {"E1": "200"})
+		"floor": _place("p2", 500, 316, {"E1": "320"}),
+		"rest": _place("p2", 900, 316, {"E1": "200"})
 	}
 	objects.merge(extra, true)
-	return world_for(objects)
+	return _world_for(objects)
 
 
-func rest_player(state: Dictionary) -> void:
+func _rest_player(state: Dictionary) -> void:
 	state.x = 900 * S
 	state.y = 300 * S - S / 16
 	state.vx = 0
@@ -259,10 +259,10 @@ func rest_player(state: Dictionary) -> void:
 
 
 func hopper_checks() -> void:
-	var world := ledge_world({"spike": place("e40", 500, 200)})
+	var world := _ledge_world({"spike": _place("e40", 500, 200)})
 	var state := State.create(world)
-	rest_player(state)
-	var spike := by_id(state, "spike")
+	_rest_player(state)
+	var spike := _by_id(state, "spike")
 	var landed := -1
 	var hopped := false
 	for tick in 240:
@@ -281,16 +281,16 @@ func hopper_checks() -> void:
 		Sim.advance(state, 0, world)
 	check(spike.y > 316 * S or spike.status != 1, "A sinking body falls through the support")
 	check(state.life_phase == Life.PLAY and before < spike.y, "Player was never touched")
-	var yellow_world := ledge_world({"spike": place("e40", 500, 200, {"F": 1})})
+	var yellow_world := _ledge_world({"spike": _place("e40", 500, 200, {"F": 1})})
 	state = State.create(yellow_world)
-	rest_player(state)
-	spike = by_id(state, "spike")
+	_rest_player(state)
+	spike = _by_id(state, "spike")
 	for tick in 120:
 		Sim.advance(state, 0, yellow_world)
 	check(spike.status == Registry.DEFEATED, "The second form breaks on landing")
-	check(not build({"one": place("e40", 1, 1, {"F": 2})}).ok, "Unknown form is refused")
+	check(not _build({"one": _place("e40", 1, 1, {"F": 2})}).ok, "Unknown form is refused")
 	state = State.create(world)
-	spike = by_id(state, "spike")
+	spike = _by_id(state, "spike")
 	spike.status = Registry.ACTIVE
 	state.x = spike.x
 	state.y = spike.y + 20 * S
@@ -306,36 +306,34 @@ func hopper_checks() -> void:
 
 
 func producer_checks() -> void:
-	var world := ledge_world({"plant": place("o17", 500, 284, {"E1": "e40"})})
+	var world := _ledge_world({"plant": _place("o17", 500, 284, {"E1": "e40"})})
 	var state := State.create(world)
-	rest_player(state)
+	_rest_player(state)
 	var released := {}
 	for tick in 80:
 		Sim.advance(state, 0, world)
 		for entity: Dictionary in state.entities:
 			if entity.code == "e40" and released.is_empty():
 				released = entity.duplicate()
-	var plant := by_id(state, "plant")
+	var plant := _by_id(state, "plant")
 	check(plant.unavailable == 0, "Producer can release its spiked payload")
 	check(not released.is_empty(), "Producer releases a spiked body")
 	if released.is_empty():
 		return
 	check(released.source_index == -1 and released.can_respawn == 0, "Released body is runtime")
-	check(
-		released.vx >= -176 * 60 and released.vx <= 176 * 60, "Release speed is within 176 px/s"
-	)
+	check(released.vx >= -176 * 60 and released.vx <= 176 * 60, "Release speed is within 176 px/s")
 	check(released.colour == 0, "Released body uses the first form")
 
 
 func spine_checks() -> void:
-	var world := ledge_world(
-		{"fast": place("e25", 450, 284), "slow": place("e25", 560, 284, {"F": 1, "M": 1})}
+	var world := _ledge_world(
+		{"fast": _place("e25", 450, 284), "slow": _place("e25", 560, 284, {"F": 1, "M": 1})}
 	)
 	var state := State.create(world)
-	rest_player(state)
+	_rest_player(state)
 	state.x = 2000 * S
-	var fast := by_id(state, "fast")
-	var slow := by_id(state, "slow")
+	var fast := _by_id(state, "fast")
+	var slow := _by_id(state, "slow")
 	var type: Script = Registry.lookup("e25")
 	for entity: Dictionary in [fast, slow]:
 		entity.status = Registry.ACTIVE
@@ -380,17 +378,17 @@ func spine_checks() -> void:
 
 
 func flyer_checks() -> void:
-	var world := world_for(
+	var world := _world_for(
 		{
-			"calm": place("e30", 400, 200),
-			"low": place("e30", 600, 200, {"F": 1, "E1": "1", "M": 1})
+			"calm": _place("e30", 400, 200),
+			"low": _place("e30", 600, 200, {"F": 1, "E1": "1", "M": 1})
 		}
 	)
 	var state := State.create(world)
 	state.x = 3000 * S
 	state.y = 900 * S
-	var calm := by_id(state, "calm")
-	var low := by_id(state, "low")
+	var calm := _by_id(state, "calm")
+	var low := _by_id(state, "low")
 	var type: Script = Registry.lookup("e30")
 	check(calm.drifts == 1 and low.drifts == 0, "E1 1 keeps the flyer in place horizontally")
 	for entity: Dictionary in [calm, low]:
@@ -409,7 +407,10 @@ func flyer_checks() -> void:
 	state.y = calm.y - 10 * S
 	state.vy = 4 * S
 	type.contact(calm, state, world, 0)
-	check(calm.mode == type.STOMPED and state.vy < 0, "A stomp bounces the player and knocks the flyer")
+	check(
+		calm.mode == type.STOMPED and state.vy < 0,
+		"A stomp bounces the player and knocks the flyer"
+	)
 	for tick in 6:
 		type.step(calm, state, world)
 	check(calm.y == 212 * S, "A stomp knocks the flyer 12 px down in 0.1 s")
@@ -420,11 +421,16 @@ func flyer_checks() -> void:
 	state.y = calm.y + 32 * S
 	for tick in 60:
 		type.step(calm, state, world)
-	check(calm.mode == type.CHARGE and calm.facing == 1, "After one second it charges at the player")
+	check(
+		calm.mode == type.CHARGE and calm.facing == 1, "After one second it charges at the player"
+	)
 	check(calm.vx == 256 * 60 and calm.vy == 0, "The charge aims 32 px above the feet at 256 px/s")
 	var egg := {"code": "o7", "x": low.x - 30 * S, "vx": 16 * S, "vy": 0, "fall_on_terrain": 0}
 	check(type.projectile_contact(low, egg, state, world) == 1, "An egg is absorbed")
-	check(low.mode == type.STOMPED and low.knock_dx == 48 * S, "An egg knocks the flyer along its path")
+	check(
+		low.mode == type.STOMPED and low.knock_dx == 48 * S,
+		"An egg knocks the flyer along its path"
+	)
 	state.x = low.x
 	state.y = low.y + 40 * S
 	state.invulnerable = 0
@@ -434,7 +440,7 @@ func flyer_checks() -> void:
 	check(type.valid(calm) and type.valid(low), "Flyer state stays valid")
 
 
-func petals_of(state: Dictionary, stem: Dictionary) -> Array:
+func _petals_of(state: Dictionary, stem: Dictionary) -> Array:
 	var result := []
 	for entity: Dictionary in state.entities:
 		if entity.code == "enemy_petal" and entity.stem_token == stem.token and entity.status == 1:
@@ -443,10 +449,10 @@ func petals_of(state: Dictionary, stem: Dictionary) -> Array:
 
 
 func petal_checks() -> void:
-	var world := ledge_world({"stem": place("e18", 500, 284)})
+	var world := _ledge_world({"stem": _place("e18", 500, 284)})
 	var state := State.create(world)
-	rest_player(state)
-	var stem := by_id(state, "stem")
+	_rest_player(state)
+	var stem := _by_id(state, "stem")
 	var type: Script = Registry.lookup("e18")
 	var ticks := 0
 	while stem.status != 1 and ticks < 5:
@@ -456,11 +462,11 @@ func petal_checks() -> void:
 	while stem.timer < type.PETAL_TICK and ticks < 60:
 		Sim.advance(state, 0, world)
 		ticks += 1
-	var petals := petals_of(state, stem)
+	var petals := _petals_of(state, stem)
 	check(petals.size() == 5, "Face grows five petals after 0.3 s")
 	for tick in 18:
 		Sim.advance(state, 0, world)
-	petals = petals_of(state, stem)
+	petals = _petals_of(state, stem)
 	var center: Array = type.face_center(stem)
 	check(center[1] == stem.y - 32 * S, "Face rests 32 px above the stem centre")
 	if petals.size() == 5:
@@ -485,11 +491,11 @@ func petal_checks() -> void:
 			check(absi(speed - 15360 * 15360) < 15360 * 400, "Petals fly at 256 px/s")
 	check(flying == 5 and stem.phase == type.REGAIN, "All petals fly out and the face is gone")
 	state = State.create(world)
-	rest_player(state)
-	stem = by_id(state, "stem")
+	_rest_player(state)
+	stem = _by_id(state, "stem")
 	for tick in 40:
 		Sim.advance(state, 0, world)
-	check(petals_of(state, stem).size() == 5, "New stem has petals")
+	check(_petals_of(state, stem).size() == 5, "New stem has petals")
 	state.move_impact += 1
 	Sim.advance(state, 0, world)
 	var dropped := 0
@@ -499,7 +505,7 @@ func petal_checks() -> void:
 	check(dropped == 5 and stem.phase == type.FADE, "A ground pound drops every attached petal")
 	check(type.tongue(stem, state, world) == 0, "The stem cannot be eaten")
 	var petal_type: Script = Registry.lookup("enemy_petal")
-	var loose := petals_of(state, stem)[0] as Dictionary
+	var loose := _petals_of(state, stem)[0] as Dictionary
 	check(petal_type.tongue(loose, state, world) == 0, "A dropped petal cannot be eaten")
 	for tick in 78:
 		Sim.advance(state, 0, world)
@@ -510,10 +516,10 @@ func petal_checks() -> void:
 
 
 func juggler_checks() -> void:
-	var world := ledge_world({"head": place("e42", 500, 284)})
+	var world := _ledge_world({"head": _place("e42", 500, 284)})
 	var state := State.create(world)
-	rest_player(state)
-	var head := by_id(state, "head")
+	_rest_player(state)
+	var head := _by_id(state, "head")
 	var type: Script = Registry.lookup("e42")
 	var ticks := 0
 	while head.needle_token == 0 and ticks < 5:
@@ -549,12 +555,12 @@ func juggler_checks() -> void:
 	var egg := {"code": "o7", "x": head.x}
 	check(type.projectile_contact(head, egg, state, world) == 0, "Eggs pass the head")
 	state = State.create(world)
-	rest_player(state)
-	head = by_id(state, "head")
+	_rest_player(state)
+	head = _by_id(state, "head")
 	for tick in 3:
 		Sim.advance(state, 0, world)
 	needle = Registry.find_token(state, head.needle_token)
-	defeat(needle)
+	_defeat(needle)
 	var frowned := -1
 	var regrown := -1
 	for tick in 700:
@@ -573,11 +579,13 @@ func juggler_checks() -> void:
 	check(state.invulnerable > 0, "Touching the head hurts")
 
 
-func defeat(entity: Dictionary) -> void:
+func _defeat(entity: Dictionary) -> void:
 	entity.status = Registry.DEFEATED
 
 
-func tile_layer(name: String, cells: Array, columns: int, points: Array, water: bool) -> Dictionary:
+func _tile_layer(
+	name: String, cells: Array, columns: int, points: Array, water: bool
+) -> Dictionary:
 	var polygon := PackedInt64Array()
 	for value: int in points:
 		polygon.append(value * S)
@@ -596,7 +604,9 @@ func tile_layer(name: String, cells: Array, columns: int, points: Array, water: 
 	}
 
 
-func thrown_egg(state: Dictionary, world: Dictionary, x: int, y: int, vx: int, vy: int) -> Dictionary:
+func _thrown_egg(
+	state: Dictionary, world: Dictionary, x: int, y: int, vx: int, vy: int
+) -> Dictionary:
 	var egg := Registry.spawn_dynamic(
 		state, world, "o7", x, y, {"mode": 1, "vx": vx, "vy": vy, "bounces": 4}
 	)
@@ -606,43 +616,45 @@ func thrown_egg(state: Dictionary, world: Dictionary, x: int, y: int, vx: int, v
 
 func egg_terrain_checks() -> void:
 	var type: Script = Registry.lookup("o7")
-	var world := world_for({})
+	var world := _world_for({})
 	# One rising slope cell at column 4, row 4 (x 128..160, y 128..160).
 	var cells := []
 	for index in 64:
 		cells.append(-1)
 	cells[4 * 8 + 4] = 0
-	world.layers = [tile_layer("slope", cells, 8, [0, 32, 32, 0, 32, 32], false)]
+	world.layers = [_tile_layer("slope", cells, 8, [0, 32, 32, 0, 32, 32], false)]
 	var state := State.create(world)
 	state.x = 2000 * S
-	var egg := thrown_egg(state, world, 100 * S, 140 * S, 1024 * 60, 0)
+	var egg := _thrown_egg(state, world, 100 * S, 140 * S, 1024 * 60, 0)
 	for tick in 2:
 		Collision.begin_step(state, world, Registry)
 		type.travel(egg, state, world)
 	check(egg.bounces == 3 and egg.colour == 1, "A slope ricochet spends one hit")
-	check(egg.vy < -900 * 60 and absi(egg.vx) < 200 * 60, "A 45 degree slope turns a level egg upward")
+	check(
+		egg.vy < -900 * 60 and absi(egg.vx) < 200 * 60, "A 45 degree slope turns a level egg upward"
+	)
 	var speed: int = egg.vx * egg.vx + egg.vy * egg.vy
 	check(absi(speed - 61440 * 61440) < 61440 * 1200, "A ricochet keeps the egg speed")
-	var wall_world := world_for({})
+	var wall_world := _world_for({})
 	var wall := []
 	for index in 64:
 		wall.append(0 if index % 8 == 4 else -1)
-	wall_world.layers = [tile_layer("wall", wall, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
+	wall_world.layers = [_tile_layer("wall", wall, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
 	state = State.create(wall_world)
 	state.x = 2000 * S
-	egg = thrown_egg(state, wall_world, 100 * S, 100 * S, 1024 * 60, 0)
+	egg = _thrown_egg(state, wall_world, 100 * S, 100 * S, 1024 * 60, 0)
 	for tick in 2:
 		Collision.begin_step(state, wall_world, Registry)
 		type.travel(egg, state, wall_world)
 	check(egg.vx == -1024 * 60 and egg.vy == 0, "A flat wall reverses a level egg exactly")
-	var pool := world_for({})
+	var pool := _world_for({})
 	var water := []
 	for index in 64:
 		water.append(0 if index >= 32 else -1)
-	pool.layers = [tile_layer("pool", water, 8, [0, 0, 32, 0, 32, 32, 0, 32], true)]
+	pool.layers = [_tile_layer("pool", water, 8, [0, 0, 32, 0, 32, 32, 0, 32], true)]
 	state = State.create(pool)
 	state.x = 2000 * S
-	egg = thrown_egg(state, pool, 40 * S, 120 * S, 1000 * 60, 200 * 60)
+	egg = _thrown_egg(state, pool, 40 * S, 120 * S, 1000 * 60, 200 * 60)
 	for tick in 3:
 		Collision.begin_step(state, pool, Registry)
 		type.step(egg, state, pool)
@@ -660,7 +672,7 @@ func egg_terrain_checks() -> void:
 	check(type.valid(egg), "Skip fields stay valid")
 	state = State.create(pool)
 	state.x = 2000 * S
-	egg = thrown_egg(state, pool, 100 * S, 100 * S, 200 * 60, 1000 * 60)
+	egg = _thrown_egg(state, pool, 100 * S, 100 * S, 200 * 60, 1000 * 60)
 	for tick in 3:
 		Collision.begin_step(state, pool, Registry)
 		type.step(egg, state, pool)
@@ -670,20 +682,25 @@ func egg_terrain_checks() -> void:
 	)
 
 
-func hound_world(extra: Dictionary) -> Dictionary:
-	var objects := {"floor": place("p2", 1000, 316, {"E1": "1600"})}
+func _hound_world(extra: Dictionary) -> Dictionary:
+	var objects := {"floor": _place("p2", 1000, 316, {"E1": "1600"})}
 	objects.merge(extra, true)
-	return world_for(objects)
+	return _world_for(objects)
 
 
 func hound_checks() -> void:
-	var world := hound_world({"dog": place("o16", 1000, 284), "stay": place("o16", 1400, 284, {"E1": "1"})})
+	var world := _hound_world(
+		{"dog": _place("o16", 1000, 284), "stay": _place("o16", 1400, 284, {"E1": "1"})}
+	)
 	var state := State.create(world)
-	var dog := by_id(state, "dog")
+	var dog := _by_id(state, "dog")
 	var type: Script = Registry.lookup("o16")
 	check(type.SOLID == 2, "The runner's back is top-only")
-	check(dog.can_despawn == 1 and by_id(state, "stay").can_despawn == 0, "E1 1 keeps the runner")
-	check(dog.decel == 512 and by_id(state, "stay").decel == 448, "Each runner lowers the deceleration")
+	check(dog.can_despawn == 1 and _by_id(state, "stay").can_despawn == 0, "E1 1 keeps the runner")
+	check(
+		dog.decel == 512 and _by_id(state, "stay").decel == 448,
+		"Each runner lowers the deceleration"
+	)
 	check(not Registry.is_enemy("o16"), "The runner is not an enemy")
 	state.x = 700 * S
 	state.y = 300 * S - S / 16
@@ -708,12 +725,12 @@ func hound_checks() -> void:
 	check(dog.ridden == 1, "Standing on its back rides it")
 	check((dog.x - start) * dog.facing > 20 * S, "A rider makes it run the way the rider faces")
 	check(absi(state.x - dog.x) < 30 * S and state.y < dog.y - 30 * S, "The rider is carried")
-	var enemy_world := hound_world(
-		{"dog": place("o16", 1000, 284), "walker": place("e7", 960, 284)}
+	var enemy_world := _hound_world(
+		{"dog": _place("o16", 1000, 284), "walker": _place("e7", 960, 284)}
 	)
 	state = State.create(enemy_world)
-	dog = by_id(state, "dog")
-	var walker := by_id(state, "walker")
+	dog = _by_id(state, "dog")
+	var walker := _by_id(state, "walker")
 	dog.status = 1
 	walker.status = 1
 	dog.vx = -100 * 60
@@ -732,21 +749,21 @@ func hound_checks() -> void:
 
 
 func snapshot_checks() -> void:
-	var world := world_for(
+	var world := _world_for(
 		{
-			"a": place("o12", 100, 100),
-			"b": place("o29", 200, 100, {"F": 2}),
-			"c": place("o10", 300, 100),
-			"d": place("p2", 400, 100, {"E1": "64.00000000000728"}),
-			"e": place("e7", 500, 100),
-			"f": place("e9", 600, 100, {"M": 2}),
-			"g": place("e40", 700, 100, {"F": 1}),
-			"h": place("o17", 800, 100, {"E1": "e40"}),
-			"i": place("e25", 900, 100, {"F": 1, "M": 2}),
-			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2}),
-			"k": place("e18", 1100, 100),
-			"l": place("e42", 1200, 100),
-			"m": place("o16", 1300, 100, {"E1": "1"})
+			"a": _place("o12", 100, 100),
+			"b": _place("o29", 200, 100, {"F": 2}),
+			"c": _place("o10", 300, 100),
+			"d": _place("p2", 400, 100, {"E1": "64.00000000000728"}),
+			"e": _place("e7", 500, 100),
+			"f": _place("e9", 600, 100, {"M": 2}),
+			"g": _place("e40", 700, 100, {"F": 1}),
+			"h": _place("o17", 800, 100, {"E1": "e40"}),
+			"i": _place("e25", 900, 100, {"F": 1, "M": 2}),
+			"j": _place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2}),
+			"k": _place("e18", 1100, 100),
+			"l": _place("e42", 1200, 100),
+			"m": _place("o16", 1300, 100, {"E1": "1"})
 		}
 	)
 	var state := State.create(world)

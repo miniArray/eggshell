@@ -66,12 +66,7 @@ static func registry() -> Script:
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if (
-		not (form is int or form is float)
-		or not is_finite(form)
-		or form < 0
-		or form != floor(form)
-	):
+	if not (form is int or form is float) or not is_finite(form) or form < 0 or form != floor(form):
 		return {"ok": false, "error": "Invalid inventory item form"}
 	if form > 3:
 		return {"ok": false, "degrade": true, "error": "Unsupported inventory item form"}

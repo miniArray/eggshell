@@ -148,7 +148,9 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 		and entity.status == 1
 		and not state.get("captured_by", 0)
 	):
-		touching = Body.polygon_overlap(hull(entity), Body.world_box(state, Moves.player_box(state)))
+		touching = Body.polygon_overlap(
+			hull(entity), Body.world_box(state, Moves.player_box(state))
+		)
 	if touching and entity.y > state.y - 16 * S:
 		if not entity.contact:
 			if Body.pounding(state):
