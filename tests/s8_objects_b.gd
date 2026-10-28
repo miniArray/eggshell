@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_dice_checks()
 	_egg_block_checks()
 	_melon_checks()
+	_balloon_checks()
 	_snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -480,6 +481,50 @@ func _melon_checks() -> void:
 	check(target.status == Registry.DEFEATED, "A seed defeats the walker in its path")
 	check(_degrades("o25", {"F": 3}), "A fire melon is not built yet and becomes a placeholder")
 	check(_degrades("o25", {"F": 6}), "An ice melon is not built yet and becomes a placeholder")
+
+
+func _balloon_checks() -> void:
+	var world := _world_for(
+		{
+			"riser": _place("o26", 300, 500, {"E1": "96", "E2": "0", "E3": "0", "E4": "4", "F": 1}),
+			"drifter": _place("o26", 700, 500, {"E1": "0", "E2": "128", "E3": "0", "E4": "1"}),
+			"bobber": _place("o26", 1100, 500, {"E1": "0", "E2": "0", "E3": "1", "E4": "1"})
+		}
+	)
+	var state := State.create(world)
+	state.x = 2000 * S
+	state.y = 100 * S
+	var type: Script = Registry.lookup("o26")
+	var riser := _by_id(state, "riser")
+	var drifter := _by_id(state, "drifter")
+	var bobber := _by_id(state, "bobber")
+	for entity: Dictionary in [riser, drifter, bobber]:
+		entity.status = Registry.ACTIVE
+	check(
+		type.solid_box(riser) == [270 * S, 480 * S, 330 * S, 482 * S],
+		"The deck is 60 px wide, 20 px up"
+	)
+	type.step(riser, state, world)
+	type.step(drifter, state, world)
+	check(riser.y == 500 * S - 96 * 60, "E1 is the rise speed")
+	check(drifter.x == 700 * S + 128 * 60, "E2 is the drift speed")
+	for _tick in 15:
+		type.step(bobber, state, world)
+	check(bobber.y == 500 * S + 32 * S, "E3 bobs 32 px per unit over an E4 second period")
+	state.x = riser.x
+	state.y = riser.y - 20 * S
+	state.on_floor = 1
+	type.contact(riser, state, world, 0)
+	check(riser.stepped == 1 and riser.land_delay == 6, "Landing pauses it")
+	var before: int = riser.y
+	for _tick in 6:
+		type.step(riser, state, world)
+	check(riser.y == before, "It holds still for the landing pause")
+	type.step(riser, state, world)
+	check(riser.y == before - 96 * 60 / 5, "Ridden, it rises at a fifth of its speed")
+	state.y = 900 * S
+	type.contact(riser, state, world, 0)
+	check(riser.stepped == 0, "Leaving the deck restores its speed")
 
 
 func _snapshot_checks() -> void:
