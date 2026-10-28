@@ -15,6 +15,9 @@ var failures := 0
 
 
 func _initialize() -> void:
+	# With the solid grid index present, also check it against a full scan after every step.
+	var collision: Script = Collision
+	collision.set("verify_index", true)
 	gradient_checks()
 	ledge_checks()
 	countdown_checks()
