@@ -482,7 +482,12 @@ func _message_checks() -> void:
 
 
 func _clear_checks() -> void:
-	var world := _world_for({"clear": {"A": "o24", "X": 100, "Y": 80}})
+	var world := _world_for(
+		{
+			"clear": {"A": "o24", "X": 100, "Y": 80},
+			"station": {"A": "o6", "X": 200, "Y": 80, "E1": "200", "E2": "100"},
+		}
+	)
 	var state := State.create(world)
 	var block: Dictionary = state.entities[0]
 	var type := Registry.lookup("o24")
@@ -499,6 +504,13 @@ func _clear_checks() -> void:
 	_check(
 		block.status == Registry.DEFEATED and type.solid_box(block).is_empty(),
 		"The last clear charge removes the solid"
+	)
+	state.x = 200 * S
+	Registry.contact(state, 0, world)
+	Registry.spawn_map(state, world, true)
+	_check(
+		state.entities[0].collected == 0 and state.entities[0].charges == 3,
+		"A checkpoint reload restores spent clear charges instead of saving a pickup flag"
 	)
 
 

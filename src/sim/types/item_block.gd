@@ -109,7 +109,6 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		var target: int = [0, 22, 34, 56][entity.charges] * S
 		entity.height = entity.height_from + (target - entity.height_from) * (6 - entity.busy) / 6
 		if not entity.busy and not entity.charges:
-			entity.collected = 1
 			entity.status = 3
 
 
