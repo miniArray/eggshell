@@ -66,6 +66,20 @@ var _goal_menu_shown := false
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
 	_shutdown_request = OS.get_environment("EGGSHELL_SHUTDOWN_REQUEST")
+	_read_options()
+	var first := _first_level()
+	if not first.ok or not _start_session():
+		return
+	_initialized = true
+	if first.world.is_empty():
+		open_menu()
+		return
+	_start_level(first.world, _options["level-code"])
+	if _setup_probe():
+		print("EGGSHELL_START ", state.frame)
+
+
+func _read_options() -> void:
 	if launch_options.is_empty():
 		for argument: String in OS.get_cmdline_user_args():
 			if argument.begins_with("--"):
@@ -79,31 +93,37 @@ func _ready() -> void:
 	if _options.has("placeholder") or Pack.read(_pack).is_empty():
 		_pack = ""
 	print("EGGSHELL_PACK ", _pack if not _pack.is_empty() else "placeholders")
+
+
+## The level folder and the first level's world. Returns {"ok", "world"}; the
+## world is empty when only a folder is given. On failure the game quits.
+func _first_level() -> Dictionary:
+	var result := {"ok": false, "world": {}}
 	if _options.has("levels"):
 		_level_folder = ProjectSettings.globalize_path(_options.levels)
 		var listed := LevelList.scan(_level_folder)
 		if not listed.ok:
 			fail(listed.error)
-			return
+			return result
 		_levels = listed.levels
 		print("EGGSHELL_LEVELS ", _levels.size())
-	var code := ""
-	if _options.has("level-code"):
-		var read := _read_level(_options["level-code"])
-		if not read.error.is_empty():
-			fail(read.error)
-			return
-		code = read.code
-	elif _levels.is_empty():
-		fail("Pass --level-code=PATH or --levels=DIR to select a level")
-		return
 	_facts = CollisionTable.read()
-	var built := {}
-	if not code.is_empty():
-		built = World.build(code, _facts)
-		if not built.ok:
-			fail(built.error)
-			return
+	if not _options.has("level-code"):
+		if _levels.is_empty():
+			fail("Pass --level-code=PATH or --levels=DIR to select a level")
+		result.ok = not _levels.is_empty()
+		return result
+	var read := _read_level(_options["level-code"])
+	var built := World.build(read.code, _facts) if read.error.is_empty() else {}
+	if not read.error.is_empty() or not built.ok:
+		fail(read.error if not read.error.is_empty() else built.error)
+		return result
+	return {"ok": true, "world": built.world}
+
+
+## Settings, the save worker, replay input, input actions and the menu nodes.
+## Returns false after a failure; the game then quits.
+func _start_session() -> bool:
 	_save_dir = ProjectSettings.globalize_path(_options.get("save-dir", "user://"))
 	_settings = Settings.read_or_create(_save_dir)
 	_resume = _settings.resume
@@ -111,16 +131,16 @@ func _ready() -> void:
 		printerr(_settings.error)
 	if _store.start() != OK:
 		fail("Cannot start save worker")
-		return
+		return false
 	if _options.has("replay"):
 		var replay: Variant = JSON.parse_string(FileAccess.get_file_as_string(_options.replay))
 		if not replay is Array:
 			fail("Replay must be an action-mask array")
-			return
+			return false
 		for mask: Variant in replay:
 			if not valid_replay_mask(mask):
 				fail("Replay masks must be integers 0..%d" % InputBits.MASK)
-				return
+				return false
 		_replay = replay
 	setup_input()
 	var joypads := Input.get_connected_joypads()
@@ -140,16 +160,9 @@ func _ready() -> void:
 	_timer.visible = bool(_settings.play_timer)
 	add_child(_timer)
 	if not _setup_profile():
-		return
+		return false
 	_start_usec = Time.get_ticks_usec()
-	_initialized = true
-	if built.is_empty():
-		open_menu()
-		return
-	_start_level(built.world, _options["level-code"])
-	if not _setup_probe():
-		return
-	print("EGGSHELL_START ", state.frame)
+	return true
 
 
 func _setup_profile() -> bool:
@@ -294,7 +307,9 @@ func _process(_delta: float) -> void:
 		get_tree().quit()
 	var began := Time.get_ticks_usec() if _profile_file != null else 0
 	if _playing:
-		_zoom_input()
+		# The menu has its own zoom row; the zoom keys wait until it closes.
+		if not menu.is_open():
+			_zoom_input()
 		# Pictures blend saved states between fixed steps; the view never writes state.
 		_view.render(
 			_loop.picture(
@@ -566,12 +581,15 @@ func _menu_context() -> Dictionary:
 
 
 func _summary() -> String:
-	return "Score %d. Time %s. Hurt %d, deaths %d." % [
-		Life.score(state),
-		Hud.clock_text(int(state.get("total_play_ticks", 0))),
-		int(state.get("hits", 0)),
-		int(state.get("deaths", 0))
-	]
+	return (
+		"Score %d. Time %s. Hurt %d, deaths %d."
+		% [
+			Life.score(state),
+			Hud.clock_text(int(state.get("total_play_ticks", 0))),
+			int(state.get("hits", 0)),
+			int(state.get("deaths", 0))
+		]
+	)
 
 
 func _menu_values() -> Dictionary:

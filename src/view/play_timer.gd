@@ -9,7 +9,9 @@ const PADDING := 2
 ## The timer may use at most this share of the container height.
 const HEIGHT_SHARE := 0.25
 ## [label, state field]: attempt time, checkpoint-adjusted level time, total time.
-const CLOCKS := [["Attempt", "attempt_ticks"], ["Level", "play_ticks"], ["Total", "total_play_ticks"]]
+const CLOCKS := [
+	["Attempt", "attempt_ticks"], ["Level", "play_ticks"], ["Total", "total_play_ticks"]
+]
 
 var _font: Font = ThemeDB.fallback_font
 var _lines: Array[String] = []
@@ -77,7 +79,9 @@ func render(state: Dictionary, container: Vector2) -> void:
 	_lines = lines(state)
 	var widths: Array[float] = []
 	for line in _lines:
-		widths.append(ceilf(_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x))
+		widths.append(
+			ceilf(_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x)
+		)
 	_plan = plan(container, widths, ceilf(_font.get_height(FONT_SIZE)))
 	queue_redraw()
 
@@ -88,7 +92,9 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE * _plan.scale)
 	for index in _lines.size():
 		var at: Vector2 = _plan.positions[index]
-		var width := _font.get_string_size(_lines[index], HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+		var width := (
+			_font.get_string_size(_lines[index], HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+		)
 		draw_rect(Rect2(at, Vector2(ceilf(width) + 2 * PADDING, _plan.row)), Color.BLACK)
 		draw_string(
 			_font,

@@ -22,8 +22,12 @@ func _run() -> void:
 	var folder := _base.path_join("levels")
 	DirAccess.make_dir_recursive_absolute(folder)
 	for index in COURSES.size():
-		var code := FileAccess.get_file_as_string("res://tests/fixtures/%s.level.json" % COURSES[index])
-		var file := FileAccess.open(folder.path_join("%d-%s.json" % [index + 1, COURSES[index]]), FileAccess.WRITE)
+		var code := FileAccess.get_file_as_string(
+			"res://tests/fixtures/%s.level.json" % COURSES[index]
+		)
+		var file := FileAccess.open(
+			folder.path_join("%d-%s.json" % [index + 1, COURSES[index]]), FileAccess.WRITE
+		)
 		file.store_string(code)
 		file.close()
 	# The reference window, so the zoom setting has room to change.
@@ -41,11 +45,14 @@ func _run() -> void:
 	await frames(10)
 	check(_game.state.frame > 0, "The level steps before the menu opens")
 	await pause_checks()
-	await action_checks(folder)
+	await action_checks()
 	_game.queue_free()
 	await frames(2)
 	for path: String in [
-		"levels/1-stride.json", "levels/2-actors.json", "save/settings.json", "save/settings.json.tmp"
+		"levels/1-stride.json",
+		"levels/2-actors.json",
+		"save/settings.json",
+		"save/settings.json.tmp"
 	]:
 		DirAccess.remove_absolute(_base.path_join(path))
 	print("MENU_PAUSE_RESULT: %d assertions, %d failures" % [_checks, _failures])
@@ -59,13 +66,32 @@ func pause_checks() -> void:
 	var frame: int = _game.state.frame
 	var bytes := Snapshot.encode(_game.state)
 	var keys := [
-		KEY_DOWN, KEY_DOWN, KEY_UP,  # Move through the main page.
-		KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_ENTER,  # Open Settings.
-		KEY_LEFT, KEY_RIGHT, KEY_RIGHT,  # Zoom.
-		KEY_DOWN, KEY_LEFT, KEY_DOWN, KEY_RIGHT,  # Music and effects volume.
-		KEY_DOWN, KEY_ENTER, KEY_DOWN, KEY_ENTER,  # Quick death and play timer on.
+		KEY_DOWN,
+		KEY_DOWN,
+		KEY_UP,  # Move through the main page.
+		KEY_DOWN,
+		KEY_DOWN,
+		KEY_DOWN,
+		KEY_DOWN,
+		KEY_ENTER,  # Open Settings.
+		KEY_LEFT,
+		KEY_RIGHT,
+		KEY_RIGHT,  # Zoom.
+		KEY_DOWN,
+		KEY_LEFT,
+		KEY_DOWN,
+		KEY_RIGHT,  # Music and effects volume.
+		KEY_DOWN,
+		KEY_ENTER,
+		KEY_DOWN,
+		KEY_ENTER,  # Quick death and play timer on.
 		KEY_ESCAPE,  # Back to the main page.
-		KEY_UP, KEY_ENTER, KEY_PAGEDOWN, KEY_PAGEUP, KEY_DOWN, KEY_BACKSPACE  # The level list.
+		KEY_UP,
+		KEY_ENTER,
+		KEY_PAGEDOWN,
+		KEY_PAGEUP,
+		KEY_DOWN,
+		KEY_BACKSPACE  # The level list.
 	]
 	var pages := {}
 	for code: int in keys:
@@ -82,7 +108,9 @@ func pause_checks() -> void:
 	check(_game.get("_settings").zoom == 2, "Zoom changed in the menu: %s" % _game.menu.values)
 	press(KEY_P)
 	check(not _game.menu.is_open(), "P closes the menu")
-	check(Snapshot.encode(_game.state) == bytes, "Closing the menu leaves the state bytes unchanged")
+	check(
+		Snapshot.encode(_game.state) == bytes, "Closing the menu leaves the state bytes unchanged"
+	)
 	await frames(5)
 	check(_game.state.frame > frame, "Steps resume after the menu closes")
 	check(_game.state.quick_death == 1, "Quick death reaches play at the next step")
@@ -100,7 +128,7 @@ func pause_checks() -> void:
 	check(Snapshot.encode(_game.state) == bytes, "Controller navigation leaves bytes unchanged")
 
 
-func action_checks(folder: String) -> void:
+func action_checks() -> void:
 	# Save, then load, from the menu: the slot belongs to this level.
 	_game.open_menu()
 	select("save")
@@ -119,7 +147,9 @@ func action_checks(folder: String) -> void:
 	var first: String = _game.world.identity
 	_game.open_menu()
 	select("levels")
-	check(_game.menu.page() == Menu.LEVELS and _game.menu.focused() == 0, "The list shows the level")
+	check(
+		_game.menu.page() == Menu.LEVELS and _game.menu.focused() == 0, "The list shows the level"
+	)
 	check(_game.menu.items()[1].label == "Actors", "Rows use the level name")
 	_game.menu.move(1)
 	_game.menu_command("confirm")

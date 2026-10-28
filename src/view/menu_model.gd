@@ -70,9 +70,10 @@ func info() -> String:
 			return str(context.get("summary", "")) if context.get("goal", false) else ""
 		LEVELS:
 			var count: int = context.get("levels", []).size()
-			return "%s, %d %s" % [
-				str(context.get("folder", "")), count, "level" if count == 1 else "levels"
-			]
+			return (
+				"%s, %d %s"
+				% [str(context.get("folder", "")), count, "level" if count == 1 else "levels"]
+			)
 		START:
 			return "No level is open."
 	return ""
@@ -187,21 +188,20 @@ func confirm() -> Dictionary:
 	if list.is_empty():
 		return {}
 	var item: Dictionary = list[focused()]
+	var request := {}
 	match item.kind:
 		"page":
 			_push(item.id)
 		"toggle":
-			return _change(item.id, not bool(item.value))
+			request = _change(item.id, not bool(item.value))
 		"level":
-			if not item.enabled:
+			if item.enabled:
+				request = {"action": "open_level", "index": item.index}
+			else:
 				status = "Cannot open %s: %s" % [item.file, item.detail]
-				return {}
-			return {"action": "open_level", "index": item.index}
 		"action":
-			if item.id == "back":
-				return back()
-			return {"action": item.id}
-	return {}
+			request = back() if item.id == "back" else {"action": item.id}
+	return request
 
 
 ## Go back one page. At the main page this asks to resume.
@@ -224,10 +224,17 @@ static func value_text(item: Dictionary) -> String:
 		"toggle":
 			return "On" if item.value else "Off"
 		"range":
-			var number := "%+d" % item.value if item.id == "zoom" and item.value != 0 else str(item.value)
-			return "%s %s %s" % [
-				"<" if item.value > item.min else " ", number, ">" if item.value < item.max else " "
-			]
+			var number := (
+				"%+d" % item.value if item.id == "zoom" and item.value != 0 else str(item.value)
+			)
+			return (
+				"%s %s %s"
+				% [
+					"<" if item.value > item.min else " ",
+					number,
+					">" if item.value < item.max else " "
+				]
+			)
 	return ""
 
 

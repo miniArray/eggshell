@@ -49,8 +49,12 @@ static func ids(model: Menu) -> Array:
 
 static func level(name: String, ok := true) -> Dictionary:
 	return {
-		"path": "/levels/%s.json" % name, "file": name + ".json", "name": name,
-		"author": "Ann" if ok else "", "ok": ok, "error": "" if ok else "Not a level code"
+		"path": "/levels/%s.json" % name,
+		"file": name + ".json",
+		"name": name,
+		"author": "Ann" if ok else "",
+		"ok": ok,
+		"error": "" if ok else "Not a level code"
 	}
 
 
@@ -79,7 +83,13 @@ func model_checks() -> void:
 	check(not model.is_open(), "Close empties the pages")
 	var levels := [level("a"), level("b")]
 	model.open(
-		{"level_open": true, "goal": true, "has_next": true, "levels": levels, "summary": "Score 3."},
+		{
+			"level_open": true,
+			"goal": true,
+			"has_next": true,
+			"levels": levels,
+			"summary": "Score 3."
+		},
 		values()
 	)
 	check(model.title() == "Level complete" and model.info() == "Score 3.", "Goal title and score")
@@ -94,7 +104,9 @@ func model_checks() -> void:
 	check(model.pages == [Menu.START, Menu.LEVELS], "Without a level the list opens over the start")
 	check(model.close_request().is_empty(), "Without a level the menu cannot close")
 	model.back()
-	check(ids(model) == ["levels", "settings", "quit"], "The start page offers list, settings, quit")
+	check(
+		ids(model) == ["levels", "settings", "quit"], "The start page offers list, settings, quit"
+	)
 	check(model.back().is_empty() and model.is_open(), "Back at the start page stays open")
 	model.open({"level_open": false}, values())
 	check(ids(model) == ["settings", "quit"], "No folder and no level: settings and quit")
@@ -107,10 +119,18 @@ func settings_page_checks() -> void:
 	check(model.confirm().is_empty() and model.page() == Menu.SETTINGS, "Settings opens a page")
 	check(model.status.is_empty(), "Opening a page clears the status")
 	check(
-		ids(model)
-		== [
-			"zoom", "music_volume", "effects_volume", "quick_death", "play_timer", "resume", "back"
-		],
+		(
+			ids(model)
+			== [
+				"zoom",
+				"music_volume",
+				"effects_volume",
+				"quick_death",
+				"play_timer",
+				"resume",
+				"back"
+			]
+		),
 		"Settings page items"
 	)
 	check(model.adjust(-1) == {"setting": "zoom", "value": -1}, "Zoom steps down")
@@ -141,10 +161,14 @@ func level_page_checks() -> void:
 	for index in 30:
 		levels.append(level("level %02d" % index, index != 4))
 	var model := Menu.new()
-	model.open({"level_open": true, "levels": levels, "current_level": 7, "folder": "pack"}, values())
+	model.open(
+		{"level_open": true, "levels": levels, "current_level": 7, "folder": "pack"}, values()
+	)
 	model.focus[Menu.MAIN] = ids(model).find("levels")
 	model.confirm()
-	check(model.page() == Menu.LEVELS and model.focused() == 7, "The list opens at the playing level")
+	check(
+		model.page() == Menu.LEVELS and model.focused() == 7, "The list opens at the playing level"
+	)
 	check(model.info() == "pack, 30 levels", "The list names the folder and count")
 	check(model.items()[7].current and not model.items()[6].current, "The playing level is marked")
 	check(model.items()[0].detail == "by Ann", "A level row shows its author")
@@ -170,20 +194,24 @@ func level_list_checks() -> void:
 	check(entry.ok and entry.name == "Hill run" and entry.author == "Bo", "Name and author")
 	check(entry.file == "b.json" and entry.path == "/x/b.json", "File name and path")
 	entry = LevelList.entry("/x/c.json", JSON.stringify({"name": "", "author": 0, "maps": {}}))
-	check(entry.ok and entry.name == "c.json" and entry.author.is_empty(), "Name falls back to file")
+	check(
+		entry.ok and entry.name == "c.json" and entry.author.is_empty(), "Name falls back to file"
+	)
 	entry = LevelList.entry("/x/d.json", JSON.stringify({"name": "A\nB", "author": 12, "maps": {}}))
 	check(entry.name == "A B" and entry.author == "12", "Line breaks and numeric authors")
 	entry = LevelList.entry("/x/e.json", JSON.stringify({"name": 5, "maps": {}}))
 	check(entry.name == "5" and entry.author.is_empty(), "A numeric name and absent author")
-	var cut := "{\"name\":\"Cut\",\"author\":\"Ed\",\"maps\":{\"map1\":{\"wid"
+	var cut := '{"name":"Cut","author":"Ed","maps":{"map1":{"wid'
 	entry = LevelList.entry("/x/g.json", cut)
-	check(entry.ok and entry.name == "Cut" and entry.author == "Ed", "The start of a file is enough")
+	check(
+		entry.ok and entry.name == "Cut" and entry.author == "Ed", "The start of a file is enough"
+	)
 	var late := JSON.stringify({"maps": {}, "name": "Late", "author": "Fy"})
 	check(LevelList.header(late) == null, "Maps before the name needs the whole file")
 	check(LevelList.entry("/x/h.json", late).name == "Late", "A late name is still found")
-	var quoted := JSON.stringify({"name": "Q", "desc": "see \"maps\": here", "maps": {}})
+	var quoted := JSON.stringify({"name": "Q", "desc": 'see "maps": here', "maps": {}})
 	check(LevelList.entry("/x/i.json", quoted).name == "Q", "A quoted key in text is not a key")
-	for bad: String in ["", "{", "[]", "{\"name\": \"x\"}"]:
+	for bad: String in ["", "{", "[]", '{"name": "x"}']:
 		entry = LevelList.entry("/x/f.json", bad)
 		check(not entry.ok and entry.name == "f.json" and not entry.error.is_empty(), "Bad: " + bad)
 	var levels := [level("a"), level("b", false), level("c"), level("d", false)]
@@ -229,7 +257,9 @@ func settings_checks() -> void:
 		"New settings keep quick death and the play timer off"
 	)
 	check(Settings.save_values(directory, {"quick_death": true}).is_empty(), "Quick death saves")
-	check(Settings.save_values(directory, {"play_timer": true, "music_volume": 30}).is_empty(), "Two")
+	check(
+		Settings.save_values(directory, {"play_timer": true, "music_volume": 30}).is_empty(), "Two"
+	)
 	check(Settings.save_values(directory, {"resume": false}).is_empty(), "Resume saves")
 	var saved := Settings.read_or_create(directory)
 	check(

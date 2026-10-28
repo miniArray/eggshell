@@ -83,7 +83,7 @@ static func find(levels: Array, path: String) -> int:
 ## (no such key, no name before it, other JSON errors) returns null.
 static func header(code: String) -> Variant:
 	var start := code.find("{")
-	var cut := code.find("\"maps\"")
+	var cut := code.find('"maps"')
 	if start < 0 or cut <= start:
 		return null
 	var prefix := code.substr(start, cut - start).strip_edges()
@@ -114,8 +114,12 @@ static func _head(path: String) -> String:
 
 static func _failed(path: String, error: String) -> Dictionary:
 	return {
-		"path": path, "file": path.get_file(), "name": path.get_file(), "author": "",
-		"ok": false, "error": error
+		"path": path,
+		"file": path.get_file(),
+		"name": path.get_file(),
+		"author": "",
+		"ok": false,
+		"error": error
 	}
 
 
