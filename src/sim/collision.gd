@@ -58,7 +58,7 @@ static func overlaps(
 		if (
 			shape.mode == 1
 			and not is_same(body, shape.row.entity)
-			and _box_overlap(body, bounds, shape.box, dx, dy)
+			and _shape_overlap(body, bounds, shape, dx, dy)
 		):
 			return true
 	if bridge > 0:
@@ -68,7 +68,7 @@ static func overlaps(
 		return (
 			not selected.is_empty()
 			and not is_same(body, selected.row.entity)
-			and _box_overlap(body, bounds, selected.box, dx, dy)
+			and _shape_overlap(body, bounds, selected, dx, dy)
 		)
 	return false
 
@@ -93,7 +93,7 @@ static func bridges_at(body: Dictionary, world: Dictionary, bounds: Array) -> Ar
 		if (
 			shape.mode == 2
 			and not is_same(body, shape.row.entity)
-			and _box_overlap(body, bounds, shape.box)
+			and _shape_overlap(body, bounds, shape)
 		):
 			found.append(shape.handle)
 	return found
@@ -115,7 +115,7 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 		if (
 			shape.mode == 1
 			and not is_same(body, shape.row.entity)
-			and _box_overlap(body, bounds, shape.box, 0, S)
+			and _shape_overlap(body, bounds, shape, 0, S)
 		):
 			return shape.handle
 	for index in world.bridges.size():
@@ -127,7 +127,7 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 			shape.mode == 2
 			and not is_same(body, shape.row.entity)
 			and body.y + bounds[3] <= shape.box[1]
-			and _box_overlap(body, bounds, shape.box, 0, S)
+			and _shape_overlap(body, bounds, shape, 0, S)
 		):
 			return shape.handle
 	return 0
@@ -263,9 +263,9 @@ static func vertical(
 				bridge = index
 				break
 	if distance < 0:
-		_bump(body, world, bounds, 0)
+		_bump(body, world, bounds, 0, 0, start_y + bounds[1])
 	elif body.get("move_action", 0) == POUND_FALL:
-		_bump(body, world, bounds, 1, bridge)
+		_bump(body, world, bounds, 1, bridge, start_y + bounds[3])
 	obstacle = overlaps(body, world, bounds)
 	if bridge and _selected(world, bridge).is_empty() and bridge < 0:
 		bridge = 0
@@ -337,6 +337,25 @@ static func _one_way(world: Dictionary, support: int) -> bool:
 		return true
 	var shape := _selected(world, support)
 	return not shape.is_empty() and shape.mode == 2
+
+
+static func _shape_overlap(
+	body: Dictionary, bounds: Array, shape: Dictionary, dx := 0, dy := 0
+) -> bool:
+	if not _box_overlap(body, bounds, shape.box, dx, dy):
+		return false
+	var row: Dictionary = shape.row
+	if not row.type.has_method("solid_touches"):
+		return true
+	return row.type.solid_touches(
+		row.entity,
+		[
+			body.x + bounds[0] + dx,
+			body.y + bounds[1] + dy,
+			body.x + bounds[2] + dx,
+			body.y + bounds[3] + dy
+		]
+	)
 
 
 static func _box_overlap(body: Dictionary, bounds: Array, box: Array, dx := 0, dy := 0) -> bool:
@@ -413,19 +432,24 @@ static func _root(value: int) -> int:
 
 
 static func _bump(
-	body: Dictionary, world: Dictionary, bounds: Array, side: int, one_way := 0
+	body: Dictionary, world: Dictionary, bounds: Array, side: int, one_way := 0, previous_edge := 0
 ) -> void:
 	var context := _context(world)
 	if context.is_empty() or not is_same(body, context.state):
 		return
+	var targets := []
 	for shape: Dictionary in _shapes(world):
 		if shape.mode == 2 and shape.handle != one_way:
 			continue
-		var row: Dictionary = shape.row
-		if not _box_overlap(body, bounds, shape.box) or not row.type.has_method("bump"):
+		if side == 0 and previous_edge < shape.box[3] or side == 1 and previous_edge > shape.box[1]:
 			continue
+		var row: Dictionary = shape.row
+		if _shape_overlap(body, bounds, shape) and row.type.has_method("bump"):
+			targets.append(row)
+	# Fix the contact set before a callback can move the player or another solid.
+	for row: Dictionary in targets:
 		var key := "%s:%d" % [row.entity.id, side]
-		if context.bumps.has(key):
+		if context.bumps.has(key) or row.entity.status != 1:
 			continue
 		context.bumps[key] = true
 		row.type.bump(row.entity, context.state, world, side)
@@ -451,7 +475,7 @@ static func support_in_box(
 			continue
 		if shape.mode == 2 and top > shape.box[1]:
 			continue
-		if _box_overlap(probe, bounds, shape.box):
+		if _shape_overlap(probe, bounds, shape):
 			return true
 	return false
 

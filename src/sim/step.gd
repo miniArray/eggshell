@@ -28,6 +28,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if not Maps.sync(state, world) or state.goal_reached:
 		return
 	state.frame += 1
+	if Registry.modal_step(state, world, input):
+		return
 	if Life.before_step(state, world, Registry.spawn_map, Maps.change.bind(Registry.spawn_map)):
 		Moves.reset(state)
 	if Life.blocks_step(state):

@@ -29,6 +29,15 @@ const TYPES := [
 	preload("res://src/sim/types/enemy_spike.gd"),
 	preload("res://src/sim/types/enemy_pellet.gd"),
 	preload("res://src/sim/types/enemy_overlap.gd"),
+	# slice 6: s6-platforms
+	preload("res://src/sim/types/cloud_span.gd"),
+	preload("res://src/sim/types/falling_span.gd"),
+	preload("res://src/sim/types/hard_block.gd"),
+	preload("res://src/sim/types/redirect_cloud.gd"),
+	preload("res://src/sim/types/one_way_gate.gd"),
+	preload("res://src/sim/types/pound_post.gd"),
+	preload("res://src/sim/types/release_cloud.gd"),
+	preload("res://src/sim/types/timed_switch.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]

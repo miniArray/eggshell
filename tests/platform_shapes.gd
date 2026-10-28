@@ -14,9 +14,10 @@ class FullBox:
 			entity.x - 16 * 3600, entity.y - 8 * 3600, entity.x + 16 * 3600, entity.y + 8 * 3600
 		]
 
-	static func bump(entity: Dictionary, _state: Dictionary, _world: Dictionary, side: int) -> void:
+	static func bump(entity: Dictionary, state: Dictionary, _world: Dictionary, side: int) -> void:
 		entity.bump_count += 1
 		entity.last_side = side
+		state.y += int(entity.get("shift_player", 0))
 		if side == 1 and entity.get("break_on_pound", 0):
 			entity.broken = 1
 

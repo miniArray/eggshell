@@ -11,6 +11,8 @@ const S := Units.SCALE
 const FIXTURE_OPTIONS := {
 	"enemy_overlap": {"a": 1, "b": 2},
 	"o17": {"E1": "o7"},
+	"o23": {"E2": "0"},
+	"o8": {"E1": "1", "E2": "5"},
 }
 var checks := 0
 var failures := 0
