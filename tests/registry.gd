@@ -43,6 +43,7 @@ const FIXTURE_OPTIONS := {
 	"e38": {"E1": "2", "E2": "96", "E3": "96"},
 	"o13": {"R": 180},
 	"e34": {"F": 1, "R": 90},
+	"e36": {"F": 1},
 }
 var checks := 0
 var failures := 0

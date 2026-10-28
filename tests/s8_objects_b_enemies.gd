@@ -28,6 +28,7 @@ func _initialize() -> void:
 	_ghost_checks()
 	_disc_checks()
 	_sack_checks()
+	_bush_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -767,3 +768,42 @@ func _sack_checks() -> void:
 	type.contact(sack, state, world, 0)
 	check(state.invulnerable > 0, "Touching it hurts")
 	check(_degrades("e34", {"F": 2}), "An unknown sack form becomes a placeholder")
+
+
+func _bush_checks() -> void:
+	var world := _ledge_world(
+		{"green": _place("e36", 450, 250), "red": _place("e36", 550, 288, {"F": 1})}
+	)
+	var state := State.create(world)
+	state.x = 900 * S
+	state.y = 300 * S - S / 16
+	var type: Script = Registry.lookup("e36")
+	var green := _by_id(state, "green")
+	var red := _by_id(state, "red")
+	_activate(green)
+	_activate(red)
+	for _tick in 40:
+		Sim.advance(state, 0, world)
+	check(absi(green.y - 288 * S) < S, "The bush settles on the ground")
+	state.frame = 30
+	check(
+		not type.spikes_out(green, state) and type.spikes_out(red, state), "The forms beat in turn"
+	)
+	state.frame = 90
+	check(
+		type.spikes_out(green, state) and not type.spikes_out(red, state), "Every second they swap"
+	)
+	var touch := State.create(world)
+	touch.x = green.x
+	touch.y = green.y + 20 * S
+	type.contact(green, touch, world, 0)
+	check(touch.invulnerable > 0, "Touching a bush always hurts")
+	state.frame = 30
+	var egg := {"code": "o7", "x": green.x, "fall_on_terrain": 0}
+	check(
+		type.projectile_contact(green, egg, state, world) == 3,
+		"An egg passes a bush with spikes in"
+	)
+	check(green.status == Registry.DEFEATED, "An egg destroys a bush")
+	check(type.projectile_contact(red, egg, state, world) == 1, "An egg is spent on spikes")
+	check(_degrades("e36", {"F": 2}), "An unknown bush form becomes a placeholder")
