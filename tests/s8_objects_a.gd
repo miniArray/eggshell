@@ -21,6 +21,7 @@ func _initialize() -> void:
 	flower_checks()
 	flyer_checks()
 	thief_checks()
+	mace_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_A_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -305,6 +306,61 @@ func thief_checks() -> void:
 	check(type.valid(_by_id(State.create(world), "thief")), "Thief state is valid")
 
 
+func _balls(state: Dictionary) -> Array:
+	var result := []
+	for entity: Dictionary in state.entities:
+		if entity.code == "enemy_mace" and entity.status == 1:
+			result.append(entity)
+	return result
+
+
+func mace_checks() -> void:
+	var world := _floor_world({"mace": _place("e27", 600, 284)})
+	var state := State.create(world)
+	var mace := _by_id(state, "mace")
+	var type: Script = Registry.lookup("e27")
+	state.x = 400 * S
+	state.y = 300 * S - S / 16
+	var conjured := false
+	for tick in 10:
+		Sim.advance(state, 0, world)
+		conjured = conjured or mace.mode == type.CONJURE
+	check(conjured and _balls(state).size() == 1, "Facing a level player it conjures a ball")
+	var ball: Dictionary = _balls(state)[0] if not _balls(state).is_empty() else {}
+	if ball.is_empty():
+		return
+	check(ball.mode == 0 and ball.owner_token == mace.token, "The ball is held while it grows")
+	while mace.mode in [type.CONJURE, type.AIM]:
+		Sim.advance(state, 0, world)
+	check(mace.mode == type.THROW and mace.vy < 0, "The thrower hops back as it throws")
+	check(ball.mode == 1 and ball.growth == type.CONJURE_TICKS, "The full-size ball is thrown")
+	var x0: int = ball.x
+	state.x = 2000 * S
+	Sim.advance(state, 0, world)
+	check(x0 - ball.x == 256 * 60, "The ball flies toward the player at 256 px/s")
+	state = State.create(world)
+	mace = _by_id(state, "mace")
+	mace.status = 1
+	mace.started = 1
+	var egg := {"code": "o7", "x": mace.x - 20 * S, "fall_on_terrain": 0}
+	check(type.projectile_contact(mace, egg, state, world) == 1, "An egg is used up")
+	check(mace.mode == type.ROLL and mace.facing == 1, "It rolls away from the egg")
+	state.x = mace.x
+	state.y = mace.y + 10 * S
+	mace.grace = 0
+	type.contact(mace, state, world, 0)
+	check(mace.status == Registry.DEFEATED, "A rolling walker breaks on the player")
+	state = State.create(world)
+	mace = _by_id(state, "mace")
+	mace.status = 1
+	state.x = mace.x
+	state.y = mace.y + 30 * S
+	state.invulnerable = 0
+	type.contact(mace, state, world, 0)
+	check(state.invulnerable > 0, "Walking into it hurts")
+	check(type.valid(mace), "Walker state stays valid")
+
+
 func _tile_layer(name: String, cells: Array, columns: int, points: Array) -> Dictionary:
 	var polygon := PackedInt64Array()
 	for value: int in points:
@@ -332,7 +388,8 @@ func snapshot_checks() -> void:
 			"c": _place("o32", 300, 100, {"F": 8}),
 			"d": _place("o22", 400, 100, {"E1": "8"}),
 			"e": _place("e14", 500, 100, {"F": 1, "M": 2}),
-			"f": _place("e10", 600, 100, {"M": 2})
+			"f": _place("e10", 600, 100, {"M": 2}),
+			"g": _place("e27", 700, 100, {"M": 1})
 		}
 	)
 	var state := State.create(world)
