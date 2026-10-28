@@ -249,7 +249,7 @@ static func _move(entity: Dictionary, world: Dictionary, box: Array, control: in
 		entity.swimming = 0
 		entity.stroke = 0
 	if entity.swimming:
-		_swim(entity, world, box, body, control)
+		_swim(entity, world, box, control)
 		return
 	if control != 0:
 		entity.vx = clampi(entity.vx + control * ACCELERATION, -MAX_SPEED, MAX_SPEED)
@@ -263,9 +263,7 @@ static func _move(entity: Dictionary, world: Dictionary, box: Array, control: in
 	entity.grounded = int(Motion.gravity_box(entity, world, box, 2048, 704 * 60))
 
 
-static func _swim(
-	entity: Dictionary, world: Dictionary, box: Array, body: Array, control: int
-) -> void:
+static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
 	# In liquid a pressed direction becomes a 0.4 s paddle stroke instead of control.
 	if control != 0 and entity.stroke == 0:
 		entity.stroke = STROKE_TICKS
