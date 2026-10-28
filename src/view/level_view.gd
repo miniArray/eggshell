@@ -8,6 +8,7 @@ const Reader = preload("res://src/level/level_code.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
 const Dressing = preload("res://src/view/pack_dressing.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
+const PlayerPose = preload("res://src/view/player_pose.gd")
 const Background = preload("res://src/view/pack_background.gd")
 const AudioMap = preload("res://src/view/pack_audio.gd")
 const Maps = preload("res://src/sim/maps.gd")
@@ -279,12 +280,9 @@ func render(state: Dictionary) -> void:
 	_recovery_marker.position = Vector2(state.recovery_x, state.recovery_y) / State.SCALE
 	_recovery_marker.visible = state.separated and not state.recovery_delay
 	if not _animations.is_empty():
-		var name: String = ["Idle0", "Walk0", "Sprint0", "Jump0", "Fall0", "Idle0", "Flutter0"][
-			state.movement
-		]
-		if state.swimming:
-			name = "Swim0" if state.water_deep else "Float0"
-		Frames.apply(_player, state.frame, name)
+		var pose := PlayerPose.select(state)
+		_player.set_meta("pack_variant", pose.frame)
+		Frames.apply(_player, pose.tick, pose.name)
 		_player.scale.x = state.facing
 	_goal_label.visible = bool(state.goal_reached or state.separated)
 	_goal_label.text = "Goal" if state.goal_reached else "Recover: %d" % state.health
