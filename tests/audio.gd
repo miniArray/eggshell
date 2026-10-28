@@ -17,6 +17,7 @@ var _checks := 0
 
 func _initialize() -> void:
 	derivation_checks()
+	object_checks()
 	life_checks()
 	level_checks()
 	map_checks()
@@ -154,6 +155,62 @@ func derivation_checks() -> void:
 	)
 
 
+func object_checks() -> void:
+	var rows := [
+		{"code": "o7", "token": 1000001, "mode": 1, "bounces": 4},
+		{"code": "o8", "token": 2, "phase": 0, "status": 1, "content": 2},
+		{"code": "o8", "token": 3, "phase": 1, "status": 1, "content": 1},
+		{"code": "o9", "token": 4, "busy": 7},
+		{"code": "o11", "token": 5, "squash": 0},
+		{"code": "o31", "token": 6, "opened": 0},
+		{"code": "e4", "token": 7, "status": 1}
+	]
+	var state := {"frame": 50, "entities": rows}
+	var before := Player.summarize(state)
+	check(before.objects.size() == 6 and before.eggs == 1, "watched object rows summarized")
+	state = state.duplicate(true)
+	state.frame = 51
+	state.entities[0].bounces = 3
+	state.entities[1].phase = 2
+	state.entities[2].phase = 3
+	state.entities[3].busy = 6
+	state.entities.append({"code": "o7", "token": 1000002, "mode": 1, "bounces": 4})
+	state.entities[4].squash = 12
+	state.entities[5].opened = 1
+	var heard := events(Player.derive(before, Player.summarize(state)))
+	check(
+		(
+			heard
+			== [
+				"egg_bounce",
+				"egg_ricochet",
+				"cloud_reveal",
+				"cloud_hit",
+				"egg_block",
+				"spring",
+				"gate_open"
+			]
+		),
+		"object changes: %s" % [heard]
+	)
+	before = Player.summarize(state)
+	state.frame = 52
+	state.entities[2].status = 3
+	state.entities[4].squash = 11
+	check(
+		events(Player.derive(before, Player.summarize(state))) == ["cloud_release"],
+		"a cache release with stars or coins"
+	)
+	var replaced := state.duplicate(true)
+	replaced.frame = 53
+	replaced.entities[0].code = "o9"
+	replaced.entities[0].busy = 0
+	check(
+		Player.derive(Player.summarize(state), Player.summarize(replaced)).is_empty(),
+		"a reused token with another code is silent"
+	)
+
+
 func life_checks() -> void:
 	expect({"life_phase": Life.DEAD}, ["stop_all", "death"], "death stops all and plays a role")
 	expect({"life_phase": Life.FADE_OUT}, ["stop_all", "quick_death"], "quick death")
@@ -271,7 +328,14 @@ func map_checks() -> void:
 					"4": {"loop_start": 3}
 				},
 				"effects": {"hop": "audio/hop.ogg", "bad": 7},
-				"events": {"jump": "hop", "empty": "", "number": 3},
+				"events":
+				{
+					"jump": "hop",
+					"turns": ["a", "b", "c"],
+					"empty": "",
+					"number": 3,
+					"mixed": ["a", 4]
+				},
 				"tracks": {"goal": "4"}
 			}
 		},
@@ -287,6 +351,14 @@ func map_checks() -> void:
 	check(audio.effect_key("jump") == "hop", "mapped event")
 	check(audio.effect_key("coin") == "coin", "unmapped event falls back to its own name")
 	check(audio.effect_key("empty") == "empty", "empty mapping ignored")
+	check(audio.effect_key("mixed") == "mixed", "a list with a non-key is ignored")
+	check(
+		(
+			[0, 1, 2, 3, -1].map(func(pick: int) -> String: return audio.effect_key("turns", pick))
+			== ["a", "b", "c", "a", "c"]
+		),
+		"a key list takes turns by pick"
+	)
 	check(audio.track_key("goal") == "4" and audio.track_key("death") == "death", "music roles")
 	check(audio.stream("music", "missing") == null, "missing key has no stream")
 	check(audio.stream("other", "1") == null, "unknown section has no stream")

@@ -24,6 +24,21 @@ const REQUEST_EVENTS := {
 	Requests.COLD: "spit_ice",
 	Requests.STORED_EGG: "egg_made",
 }
+## Object fields that derivation reads, by placement code.
+const ENTITY_FIELDS := {
+	"o7": ["mode", "bounces"],
+	"o8": ["phase", "status", "content"],
+	"o9": ["busy"],
+	"o11": ["squash"],
+	"o31": ["opened"],
+}
+const OBJECT_EVENTS := [
+	"egg_bounce", "cloud_reveal", "cloud_hit", "cloud_release", "egg_block", "spring", "gate_open"
+]
+const EGG_THROWN := 1
+const CACHE_HIDDEN := 0
+const CACHE_REVEALED := 2
+const CACHE_OPENING := 3
 ## Saved scalar fields that derivation reads. Missing fields read as their defaults.
 const WATCHED := {
 	"frame": 0,
@@ -145,6 +160,21 @@ static func summarize(state: Dictionary) -> Dictionary:
 	for name: String in WATCHED:
 		var value: Variant = state.get(name, WATCHED[name])
 		result[name] = int(value) if value is int or value is float else int(WATCHED[name])
+	# Object rows by stable token: [code, field values in ENTITY_FIELDS order].
+	var objects := {}
+	var eggs := 0
+	var rows: Variant = state.get("entities", [])
+	for entity: Variant in rows if rows is Array else []:
+		if not entity is Dictionary or not ENTITY_FIELDS.has(entity.get("code")):
+			continue
+		var row := [entity.code]
+		for field: String in ENTITY_FIELDS[entity.code]:
+			var value: Variant = entity.get(field, 0)
+			row.append(int(value) if value is int or value is float else 0)
+		objects[int(entity.get("token", 0))] = row
+		eggs += int(entity.code == "o7")
+	result.objects = objects
+	result.eggs = eggs
 	return result
 
 
@@ -184,6 +214,7 @@ static func derive(previous: Dictionary, current: Dictionary, targets: Dictionar
 	_health_cues(p, c, cues)
 	_move_cues(p, c, cues)
 	_level_cues(p, c, cues)
+	_object_cues(p, c, cues)
 	return cues
 
 
@@ -277,6 +308,42 @@ static func _level_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
 				cues.append(_effect("message_close"))
 	elif c.message_stage == 2 and c.message_section != p.message_section:
 		cues.append(_effect("message_scroll"))
+
+
+static func _object_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
+	var before: Dictionary = p.get("objects", {})
+	var after: Dictionary = c.get("objects", {})
+	var found := {}
+	for token: int in after:
+		var now: Array = after[token]
+		var was: Array = before.get(token, [])
+		if was.is_empty() or was[0] != now[0]:
+			continue
+		match now[0]:
+			"o7":
+				if now[1] == EGG_THROWN and now[2] < was[2]:
+					found.egg_bounce = true
+			"o8":
+				if was[1] == CACHE_HIDDEN and now[1] == CACHE_REVEALED:
+					found.cloud_reveal = true
+				elif was[1] != CACHE_OPENING and now[1] == CACHE_OPENING:
+					found.cloud_hit = true
+				elif was[1] == CACHE_OPENING and was[2] != 3 and now[2] == 3 and now[3] in [1, 2]:
+					found.cloud_release = true
+			"o9":
+				if was[1] == 7 and now[1] == 6 and c.get("eggs", 0) > p.get("eggs", 0):
+					found.egg_block = true
+			"o11":
+				if now[1] > was[1]:
+					found.spring = true
+			"o31":
+				if now[1] and not was[1]:
+					found.gate_open = true
+	for event: String in OBJECT_EVENTS:
+		if found.has(event):
+			cues.append(_effect(event))
+			if event == "egg_bounce":
+				cues.append(_effect("egg_ricochet"))
 
 
 ## The looping level track for the selected map: {"key", "loop_start", "volume_db"},
@@ -393,7 +460,7 @@ func _play_role(role: String) -> void:
 func _play_effect(event: String, from_position := 0.0) -> void:
 	if _effects_db == -INF:
 		return
-	var stream := _map.stream("effects", _map.effect_key(event))
+	var stream := _map.stream("effects", _map.effect_key(event, int(_previous.get("frame", 0))))
 	if stream == null:
 		return
 	var chosen := _voice_events.find(event)

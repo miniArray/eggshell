@@ -9,7 +9,7 @@ var music: Dictionary = {}
 var effects: Dictionary = {}
 ## Track key -> {"loop_start": seconds, "volume_db": decibels}.
 var music_settings: Dictionary = {}
-## Neutral event name -> effect key.
+## Neutral event name -> effect key, or a list of keys that take turns by frame.
 var events: Dictionary = {}
 ## Neutral music role ("goal", "death") -> track key.
 var tracks: Dictionary = {}
@@ -40,14 +40,17 @@ func setup(manifest: Dictionary, pack: String) -> void:
 		for key: Variant in entries:
 			if _ogg(entries[key]):
 				effects[str(key)] = pack.path_join(entries[key])
-	for section: String in ["events", "tracks"]:
-		entries = audio.get(section, {})
-		if not entries is Dictionary:
-			continue
-		var target: Dictionary = events if section == "events" else tracks
+	entries = audio.get("events", {})
+	if entries is Dictionary:
+		for key: Variant in entries:
+			var keys := _key_list(entries[key])
+			if not keys.is_empty():
+				events[str(key)] = keys
+	entries = audio.get("tracks", {})
+	if entries is Dictionary:
 		for key: Variant in entries:
 			if entries[key] is String and not entries[key].is_empty():
-				target[str(key)] = entries[key]
+				tracks[str(key)] = entries[key]
 
 
 func is_empty() -> bool:
@@ -55,8 +58,10 @@ func is_empty() -> bool:
 
 
 ## The effect key for a neutral event. Without a mapping, the event name is the key.
-func effect_key(event: String) -> String:
-	return events.get(event, event)
+## A list mapping selects one key by the pick value, for example the saved frame.
+func effect_key(event: String, pick := 0) -> String:
+	var keys: Array = events.get(event, [event])
+	return keys[posmod(pick, keys.size())]
 
 
 ## The track key for a music role. Without a mapping, the role name is the key.
@@ -89,6 +94,16 @@ func stream(section: String, key: String) -> AudioStream:
 
 static func _ogg(file: Variant) -> bool:
 	return Pack.safe_file(file) and file.get_extension().to_lower() == "ogg"
+
+
+static func _key_list(value: Variant) -> Array:
+	var values: Array = value if value is Array else [value]
+	var keys := []
+	for item: Variant in values:
+		if not item is String or item.is_empty():
+			return []
+		keys.append(item)
+	return keys
 
 
 static func _track_settings(entry: Variant) -> Dictionary:

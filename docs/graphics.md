@@ -88,7 +88,7 @@ silent. Every file is a relative Ogg Vorbis path; other entries are ignored.
     "fanfare": "audio/fanfare.ogg"
   },
   "effects": {"hop": "audio/hop.ogg", "chime": "audio/chime.ogg"},
-  "events": {"jump": "hop", "coin": "chime"},
+  "events": {"jump": "hop", "coin": "chime", "egg_bounce": ["tap1", "tap2"]},
   "tracks": {"goal": "fanfare"}
 }
 ```
@@ -97,7 +97,7 @@ silent. Every file is a relative Ogg Vorbis path; other entries are ignored.
 | --- | --- |
 | `music` | Track key to a file, or to `{file, loop_start, volume_db}`. Playback loops back to `loop_start` seconds (default 0). `volume_db` offsets the track volume (default 0, clamped to -60..24). |
 | `effects` | Effect key to a file. |
-| `events` | Game event name to an effect key. An unmapped event uses the effect with its own name. |
+| `events` | Game event name to an effect key, or to a list of keys that take turns by saved frame. An unmapped event uses the effect with its own name. |
 | `tracks` | Music role (`goal`, `death`) to a track key. An unmapped role uses the track with its own name. |
 
 A map's level-code `music` id selects the track with that key. Id 0, an unknown
@@ -113,7 +113,8 @@ Game events:
 | Mouth and eggs | `tongue`, `spit`, `spit_fire`, `spit_ice`, `spit_seed`, `egg_throw`, `aim_tick`, `egg_made`, `egg_pickup` |
 | Damage and companion | `hit`, `stomp`, `companion_cry`, `countdown_high`, `countdown_low`, `countdown_full`, `rescue`, `rejoin`, `quick_death` |
 | Items | `coin`, `red_coin`, `all_red_coins`, `flower`, `all_flowers`, `star`, `checkpoint` |
-| Level objects | `switch_press`, `switch_timer`, `message_hit`, `message_open`, `message_scroll`, `message_close` |
+| Level objects | `switch_press`, `switch_timer`, `message_hit`, `message_open`, `message_scroll`, `message_close`, `egg_block`, `spring`, `gate_open` |
+| Thrown eggs and caches | `egg_bounce`, `egg_ricochet`, `cloud_reveal`, `cloud_hit`, `cloud_release` |
 
 The level track plays during play. Death stops all sound and plays the `death`
 role once. Reaching the goal stops the level track and plays the `goal` role
@@ -121,7 +122,8 @@ once. The level track restarts after a respawn.
 
 `src/view/audio_player.gd` derives these events by comparing the previous and
 current saved state after each simulation step: counters, life phases, action
-changes, request serials and the switch's saved sound triggers. It never
+changes, request serials, the switch's saved sound triggers and a few saved
+fields of object rows, matched by their stable tokens. It never
 writes state, so sound cannot change physics or saves. A restored or replaced
 state, a backward frame or a gap of more than four frames resynchronizes
 without events: a restore never replays old sounds. After a restore the level
