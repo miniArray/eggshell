@@ -122,6 +122,29 @@ owns action transitions. Rendering rebuilds the active map's nodes and uses the
 existing integer camera scale and rounded root offset. HUD and companion nodes
 read saved state; they do not write it.
 
+## View
+
+The game node runs the fixed step and drawing through `src/view/frame_loop.gd`.
+Each physics callback calls `tick`; an advancing callback calls `step`, which
+records the drawn positions, advances the simulation once and lets sound observe
+the new state once. Each rendered frame draws `picture`, then the view reads it.
+The view and sound never write state. Snapshots, saves and activation never read
+zoom, refresh rate, container size or the drawn picture.
+
+On displays faster than 60 Hz, `picture` blends positions between the state
+before the last step and the current state (`src/view/view_motion.gd`). The
+blend is a shallow copy: moved entity rows are copied, still rows are shared and
+the `enemies` and `springs` read views follow the copies. It covers the player,
+camera, companion and rescue positions and every entity `x` and `y`, matched by
+token. Values that types derive inside `view_state` are not blended. A restored
+or replaced state, a frame gap, a map change, a respawn, a tick without a step
+and a move longer than 64 pixels in one step draw the current state instead.
+At 60 Hz, or with `--smooth=off`, the view draws saved states directly.
+
+`src/view/screen_plan.gd` is a pure function of the container, level size,
+follow point, pack density and zoom step. See [graphics](graphics.md#zoom) for
+the zoom range and the look of enemies that the simulation has not activated.
+
 ## Runtime entity hooks
 
 `Registry.spawn_dynamic(state, world, code, x, y, options)` accepts registered

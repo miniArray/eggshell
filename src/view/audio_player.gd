@@ -81,6 +81,8 @@ const WATCHED := {
 
 ## Cues derived by the last `observe` call; empty after a resynchronization.
 var last_cues: Array = []
+## How many states this player has observed; one per simulation step in the game.
+var observations := 0
 var _map := AudioMap.new()
 var _world: Dictionary = {}
 var _targets := {}
@@ -135,6 +137,7 @@ func setup(audio_map: AudioMap, world: Dictionary, settings: Dictionary, muted: 
 
 ## Feed the current state once per simulation step. Muted players still derive cues.
 func observe(state: Dictionary) -> void:
+	observations += 1
 	var current := summarize(state)
 	var continuous: bool = (
 		not _previous.is_empty()
