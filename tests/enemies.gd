@@ -45,6 +45,7 @@ func fixture(world: Dictionary, code: String) -> Dictionary:
 			"height": 12,
 			"cells": cells,
 			"bounds": {0: [0, 0, 32 * S, 32 * S]},
+			"polygons": {0: PackedInt64Array([0, 0, 32 * S, 0, 32 * S, 32 * S, 0, 32 * S])},
 			"solid": true,
 			"water": false
 		}
