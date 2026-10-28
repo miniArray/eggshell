@@ -11,6 +11,8 @@ const CHECKSUM_SIZE := 32
 const MAX_ENTITIES := 100_000
 const MAX_CODE_BYTES := 4096
 const MAX_BYTES := 67_108_864
+# The schema is constant for a run; every autosave and load reads its hash.
+static var _schema_hash := PackedByteArray()
 
 
 static func count_offset() -> int:
@@ -22,12 +24,14 @@ static func minimum_size() -> int:
 
 
 static func schema_hash() -> PackedByteArray:
-	var schema := [
-		"code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS
-	]
-	for code: String in Registry.codes():
-		schema.append([code, Registry.fields(code)])
-	return checksum(JSON.stringify(schema).to_utf8_buffer())
+	if _schema_hash.is_empty():
+		var schema := [
+			"code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS
+		]
+		for code: String in Registry.codes():
+			schema.append([code, Registry.fields(code)])
+		_schema_hash = checksum(JSON.stringify(schema).to_utf8_buffer())
+	return _schema_hash
 
 
 static func encode(state: Dictionary) -> PackedByteArray:

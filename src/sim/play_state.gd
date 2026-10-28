@@ -32,6 +32,11 @@ const BASE_PLAYER_FIELDS := [
 	["boosted_flutter", 0],
 	["captured_by", 0]
 ]
+# Schemas are constant for a run. Snapshots read them on every autosave, so each one is
+# composed once and shared read-only. Copy a schema before changing it.
+static var _player_fields: Array = []
+static var _level_fields: Array = []
+static var _fields: Array = []
 
 
 static func compose(lists: Array) -> Array:
@@ -50,8 +55,19 @@ static func compose(lists: Array) -> Array:
 	return result
 
 
+static func freeze(schema: Array) -> Array:
+	for pair: Array in schema:
+		pair.make_read_only()
+	schema.make_read_only()
+	return schema
+
+
 static func player_fields() -> Array:
-	return compose([BASE_PLAYER_FIELDS, Moves.PLAYER_FIELDS, Life.PLAYER_FIELDS])
+	if _player_fields.is_empty():
+		_player_fields = freeze(
+			compose([BASE_PLAYER_FIELDS, Moves.PLAYER_FIELDS, Life.PLAYER_FIELDS])
+		)
+	return _player_fields
 
 
 static func entity_registry() -> Script:
@@ -59,6 +75,12 @@ static func entity_registry() -> Script:
 
 
 static func level_fields() -> Array:
+	if _level_fields.is_empty():
+		_level_fields = freeze(compose_level_fields())
+	return _level_fields
+
+
+static func compose_level_fields() -> Array:
 	var registry := entity_registry()
 	var result := compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS])
 	for pair: Array in registry.level_fields():
@@ -71,13 +93,17 @@ static func level_fields() -> Array:
 
 
 static func fields() -> Array:
-	var level := level_fields()
-	var player := player_fields()
-	for pair: Array in player:
-		for other: Array in level:
-			assert(pair[0] != other[0], "Field belongs to both player and level")
-	level.append_array(player)
-	return level
+	if _fields.is_empty():
+		var level := level_fields()
+		var player := player_fields()
+		for pair: Array in player:
+			for other: Array in level:
+				assert(pair[0] != other[0], "Field belongs to both player and level")
+		var result := []
+		for pair: Array in level + player:
+			result.append(pair.duplicate())
+		_fields = freeze(result)
+	return _fields
 
 
 static func create(world: Dictionary) -> Dictionary:

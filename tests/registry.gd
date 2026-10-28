@@ -147,6 +147,21 @@ func schema_checks() -> void:
 		Snapshot.count_offset() == Snapshot.HEADER + State.fields().size() * 8,
 		"Layout follows composed schema"
 	)
+	# Every autosave reads these. Rebuilding them per save cost about 70 ms on the handheld.
+	check(
+		(
+			is_same(State.fields(), State.fields())
+			and is_same(State.level_fields(), State.level_fields())
+			and is_same(Registry.fields("o5"), Registry.fields("o5"))
+			and State.fields().is_read_only()
+			and State.fields()[0].is_read_only()
+			and Registry.fields("o5").is_read_only()
+		),
+		"Snapshot schemas are composed once and shared read-only"
+	)
+	var first_hash := Snapshot.schema_hash()
+	var second_hash := Snapshot.schema_hash()
+	check(first_hash == second_hash and first_hash.size() == 32, "Schema hash is stable")
 	var mirrored := world_for()
 	mirrored.spawn_facing = -1
 	check(State.create(mirrored).facing == -1, "Compiled spawn facing initializes player")

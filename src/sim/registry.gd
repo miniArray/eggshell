@@ -94,6 +94,8 @@ const COMMON_FIELDS := [
 ]
 
 static var _ordered_level_fields := compose_level_schema()
+# Each code's ordered schema is composed once and shared read-only.
+static var _fields_by_code := {}
 
 
 static func lookup(code: String) -> Script:
@@ -108,8 +110,15 @@ static func implemented(code: String) -> bool:
 
 
 static func fields(code: String) -> Array:
+	var cached: Variant = _fields_by_code.get(code)
+	if cached != null:
+		return cached
 	var result := COMMON_FIELDS.duplicate(true)
 	result.append_array(lookup(code).FIELDS.duplicate(true))
+	for pair: Array in result:
+		pair.make_read_only()
+	result.make_read_only()
+	_fields_by_code[code] = result
 	return result
 
 
