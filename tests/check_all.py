@@ -23,6 +23,7 @@ def main():
         "pack_manifest",
         "pack_density",
         "screen_plan",
+        "terrain_edges",
         "level_format",
         "registry",
         "moves",

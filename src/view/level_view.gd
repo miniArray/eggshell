@@ -16,6 +16,7 @@ const AudioMap = preload("res://src/view/pack_audio.gd")
 const Maps = preload("res://src/sim/maps.gd")
 const Effects = preload("res://src/view/map_effects.gd")
 const Hud = preload("res://src/view/hud.gd")
+const TerrainStrips = preload("res://src/view/terrain_strips.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
 var audio := AudioMap.new()
@@ -150,6 +151,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		if not _animations.is_empty():
 			_player.set_meta("pack_art", _animations)
 			Frames.set_density(_player, _density)
+	TerrainStrips.dress(_root, manifest, pack, world, layers)
 	Dressing.room(_root, manifest, pack, world)
 	Dressing.supports(_root, manifest, pack, world)
 	Dressing.placed(_root, manifest, pack, world)

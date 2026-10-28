@@ -44,6 +44,7 @@ Version 3 adds these optional dictionaries:
 | `hud` | Named visual entries, reserved for future HUD drawing. |
 | `fonts` | Named font files or bitmap sheets and glyph metadata, reserved for future text drawing. |
 | `audio` | `music` and `effects` dictionaries mapping ids or names to relative Ogg Vorbis files. |
+| `terrain` | Tilemap or tileset family name to optional `surface`, `underside` and `side` strips. A strip has `file` and `edge`. See [Terrain strips](#terrain-strips). |
 
 Object entries may use `anchor: "position"` to keep the simulation origin,
 rather than fit the art to its diagnostic box. `facing: -1` describes art that
@@ -74,6 +75,62 @@ Fast metadata checks, without starting the game:
 ```sh
 nix develop -c godot --headless --path . --script tests/pack_manifest.gd
 ```
+
+## Terrain strips
+
+The optional `terrain` dictionary lets fill tiles hold only interior material.
+The view draws edge material from collision, so moss appears only where the
+terrain's top is open to air. Each key is a tilemap name, such as `garden32_1`,
+or a tileset family, such as `garden32`. The family is the name without a final
+`_` and number. A tilemap's own entry wins over its family's entry.
+
+```json
+"terrain": {
+  "castle32": {
+    "surface": {"file": "terrain/moss.png", "edge": 6},
+    "underside": {"file": "terrain/drip.png", "edge": 0},
+    "side": {"file": "terrain/wall.png", "edge": 1}
+  }
+}
+```
+
+| Strip | Drawn along | Repeats | `edge` |
+| --- | --- | --- | --- |
+| `surface` | Every upward-facing open edge | Along x, with the image width | Image rows above the edge line, in the open air. Rows below it are inside the terrain. |
+| `underside` | Every downward-facing open edge | Along x | Image rows above the edge line, inside the terrain. Rows below it hang into the open air. |
+| `side` | Every sideways open edge | Along y, with the image height | Image columns left of the edge line. Draw the strip for a wall whose open side faces left. The view mirrors it for walls that face right. |
+
+`edge` is a whole number of art pixels from 0 to the strip's height (width for
+`side`). It defaults to 0. An invalid strip logs a warning and is ignored.
+The strip pattern is fixed to the world: art column `x` uses image column
+`x mod width`, so a run continues across tiles without a seam.
+
+`src/view/terrain_edges.gd` finds the open edges. It takes every edge of every
+cell's collision polygon, with the cell's flips. An edge faces up or down when its
+normal is at least as vertical as it is horizontal; otherwise it is a side.
+For each art pixel along the edge, it probes half an art pixel outside the
+edge. The edge is open there when no terrain of the same kind covers the probe.
+Solid terrain counts only solid layers; water counts only water layers. Only
+layers in the same drawing group (`layer1` or `layer2`) count. The map border
+counts as closed, so the ground along the map bottom and sides gets no strip.
+Placed objects, such as one-way bridges, neither receive nor hide strips.
+The finder first probes the middle of every 8-world-pixel interval and both
+ends; an edge with no open probe is skipped. A gap narrower than 8 world
+pixels between two other cells can therefore be missed.
+
+Slopes are stepped, never rotated: each art column (each row, for a side) is
+one whole slice of the strip, moved by whole art pixels. The edge line in a
+column follows the same pixel-centre rule that masks partial fill tiles.
+No strip pixel is scaled, blended or dropped. `src/view/terrain_strips.gd`
+draws one node per dressed tile layer at the layer's own z index, after all
+tile layers, in the order sides, undersides, surfaces. A surface covers the top
+corner of a wall. Strips have no collision and change no saved state.
+
+Packs without `terrain` add no node and draw exactly as before.
+
+Checks: `tests/terrain_edges.gd` finds edges on small generated levels
+(headless). `tests/test_terrain_render.py` reads back GPU frames under Xvfb and
+checks each strip pixel on open tops, mirrored walls and unchanged internal joins.
 
 ## Pantry scenery and objects (provisional)
 

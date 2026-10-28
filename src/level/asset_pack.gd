@@ -43,7 +43,9 @@ static func read(path: String) -> Dictionary:
 	for name: Variant in manifest.player.keys():
 		if not animation_ok(manifest.player[name]):
 			manifest.player.erase(name)
-	for section: String in ["objects", "backgrounds", "gradients", "hud", "fonts", "audio"]:
+	for section: String in [
+		"objects", "backgrounds", "gradients", "hud", "fonts", "audio", "terrain"
+	]:
 		if not manifest.get(section, {}) is Dictionary:
 			printerr("Invalid optional pack section: " + section)
 			manifest[section] = {}
@@ -51,6 +53,17 @@ static func read(path: String) -> Dictionary:
 	for code: Variant in objects.keys():
 		if not visual_ok(objects[code]):
 			objects.erase(code)
+	var terrain: Dictionary = manifest.get("terrain", {})
+	for name: Variant in terrain.keys():
+		if not terrain[name] is Dictionary:
+			terrain.erase(name)
+			continue
+		for part: Variant in terrain[name].keys():
+			if not part in ["surface", "underside", "side"] or not strip_ok(terrain[name][part]):
+				printerr("Invalid terrain strip ignored: %s %s" % [name, part])
+				terrain[name].erase(part)
+		if terrain[name].is_empty():
+			terrain.erase(name)
 	for section: String in ["background", "supports"]:
 		if not manifest.has(section):
 			continue
@@ -123,6 +136,13 @@ static func animation_ok(value: Variant) -> bool:
 		):
 			return false
 	return true
+
+
+static func strip_ok(value: Variant) -> bool:
+	if not value is Dictionary or not safe_file(value.get("file")):
+		return false
+	var edge: Variant = value.get("edge", 0)
+	return number_ok(edge) and edge >= 0 and edge == floorf(edge)
 
 
 static func visual_ok(value: Variant) -> bool:

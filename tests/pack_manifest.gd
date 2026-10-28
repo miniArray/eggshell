@@ -85,6 +85,32 @@ func _initialize() -> void:
 	]:
 		check(not Pack.safe_file(file), "unsafe file rejected: " + file)
 	check(Pack.safe_file("objects/frame.png"), "relative file accepted")
+	manifest = base(3)
+	manifest["terrain"] = {
+		"castle32":
+		{
+			"surface": {"file": "terrain/moss.png", "edge": 4},
+			"underside": {"file": "terrain/drip.png"},
+			"side": {"file": "../outside.png"},
+			"corner": {"file": "terrain/corner.png"},
+		},
+		"garden32": {"surface": {"file": "terrain/moss.png", "edge": -1}},
+		"water3": {"surface": {"file": "terrain/water.png", "edge": 1.5}},
+		"lava": false,
+	}
+	write_json("manifest.json", manifest)
+	loaded = Pack.read(_directory)
+	check(loaded.terrain.keys() == ["castle32"], "Terrain entries without a valid strip removed")
+	check(
+		loaded.terrain.castle32.keys() == ["surface", "underside"],
+		"Unsafe files and unknown strip kinds removed"
+	)
+	manifest.terrain = ["wrong shape"]
+	write_json("manifest.json", manifest)
+	check(Pack.read(_directory).terrain == {}, "Bad terrain section falls back")
+	manifest.erase("terrain")
+	write_json("manifest.json", manifest)
+	check(not Pack.read(_directory).has("terrain"), "Packs without terrain gain no section")
 	check(
 		not Pack.visual_ok({"file": "frame.png", "animations": [false]}),
 		"mixed invalid animation shape rejected"
