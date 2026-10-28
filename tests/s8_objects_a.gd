@@ -175,7 +175,7 @@ func flower_checks() -> void:
 	spat.spat = 1
 	Sim.advance(state, 0, world)
 	check(spat.status == Registry.DEFEATED and flower.phase == type.FED, "A spat body is swallowed")
-	check(flower.collected == 1 and flower.can_despawn == 0, "A fed flower stays and is recorded")
+	check(flower.collected == 0 and flower.can_despawn == 0, "A fed flower stays visible")
 	var seen := {}
 	state.x = 900 * S
 	for tick in 200:
@@ -187,7 +187,7 @@ func flower_checks() -> void:
 	check(released == 2, "It releases one pickup per star")
 	for tick in 140:
 		Sim.advance(state, 0, world)
-	check(flower.status == Registry.DEFEATED, "It wilts after the last star")
+	check(flower.status == Registry.DEFEATED and flower.collected == 1, "It wilts and is recorded")
 	state = State.create(world)
 	flower = _by_id(state, "flower")
 	flower.status = 1

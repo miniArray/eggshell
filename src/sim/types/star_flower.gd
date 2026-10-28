@@ -93,6 +93,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			entity.phase = RELEASED
 			entity.timer = RELEASE_TICKS
 		WILTING:
+			# Recorded only now: a collected placement is hidden by the drawing layer.
+			entity.collected = 1
 			entity.status = 3
 
 
@@ -125,7 +127,6 @@ static func _swallow(entity: Dictionary, state: Dictionary, world: Dictionary) -
 		entity.phase = FED
 		entity.timer = FED_TICKS
 		entity.can_despawn = 0
-		entity.collected = 1
 		return
 
 
