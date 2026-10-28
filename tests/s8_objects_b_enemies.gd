@@ -229,6 +229,11 @@ func _gust_checks() -> void:
 	type.contact(up, state, world, 0)
 	check(state.invulnerable > 0, "Touching it from below hurts")
 	check(_degrades("e33", {"M": 3}), "An unknown mirror becomes a placeholder")
+	var tilted := _world_for({"tilt": _place("e33", 300, 300, {"R": 240.0220428328622})})
+	check(
+		_by_id(State.create(tilted), "tilt").heading == 150022,
+		"A fractional placement angle loads and keeps its millidegrees"
+	)
 
 
 func _spore_checks() -> void:

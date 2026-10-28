@@ -8,7 +8,8 @@ const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e33"]
-const ENEMY := true
+# Not in the enemy family view: placements use free-form angles, which the shared
+# enemy option check (whole, non-negative F/M/R) would refuse.
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
