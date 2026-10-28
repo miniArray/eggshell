@@ -348,7 +348,7 @@ func _launcher_checks() -> void:
 	var aimed_shot: Dictionary = _shots(state).back()
 	check(aimed_shot.vx > 0 and aimed_shot.form == 1, "An aiming launcher fires at the player")
 	check(_degrades("e37", {"E1": "Spin"}), "An unknown launcher mode becomes a placeholder")
-	check(_degrades("e37", {"E1": "Static", "F": 2}), "The homing shot form degrades")
+	check(_degrades("e37", {"E1": "Static", "F": 3}), "An unknown shot form degrades")
 
 
 func _shot_checks() -> void:
@@ -369,6 +369,21 @@ func _shot_checks() -> void:
 		state, world, "enemy_shot", 500 * S, 400 * S, {"vx": -296 * 60, "facing": -1}
 	)
 	var type: Script = Registry.lookup("enemy_shot")
+	var homing := Registry.spawn_dynamic(
+		state,
+		world,
+		"enemy_shot",
+		500 * S,
+		600 * S,
+		{"vx": -296 * 60, "form": 2, "facing": -1, "heading": 180000}
+	)
+	state.x = 300 * S
+	state.y = 432 * S
+	type.step(homing, state, world)
+	check(
+		homing.heading > 180000 and homing.heading < 270000, "A homing shot turns toward the player"
+	)
+	check(absi(homing.vx) < 296 * 60, "Turning slows a homing shot")
 	type.step(plain, state, world)
 	check(plain.x == 500 * S - 296 * 60, "A straight shot flies at 296 px/s")
 	state.x = plain.x

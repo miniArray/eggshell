@@ -1,6 +1,6 @@
 extends RefCounted
-## A solid launcher that fires one shot at a time. Fixed launchers fire level
-## toward the player's side; aiming launchers fire straight at the player. It
+## A solid launcher that fires one shot at a time: straight, bouncing or homing.
+## Fixed launchers fire level toward the player's side; aiming launchers fire straight at the player. It
 ## fires again five seconds after a shot, once that shot is gone.
 
 const S := preload("res://src/sim/units.gd").SCALE
@@ -37,7 +37,7 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "Invalid launcher form"}
 	if mode not in ["Static", "Aim"]:
 		return {"ok": false, "degrade": true, "error": "launcher mode E1=" + mode}
-	if form > 1:
+	if form > 2:
 		return {"ok": false, "degrade": true, "error": "launcher shot form F=%d" % form}
 	source.aim = int(mode == "Aim")
 	source.form = int(form)
@@ -117,7 +117,7 @@ static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 static func valid(entity: Dictionary) -> bool:
 	return (
 		entity.aim in [0, 1]
-		and entity.form in [0, 1]
+		and entity.form in [0, 1, 2]
 		and entity.ready in [0, 1]
 		and entity.delay >= 0
 		and entity.delay <= DELAY_TICKS

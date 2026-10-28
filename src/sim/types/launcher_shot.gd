@@ -1,6 +1,7 @@
 extends RefCounted
 ## A launcher's shot. It flies through terrain in a straight line; the bouncing
-## form instead pauses on touching a solid and then reflects off it. Landing on a
+## form instead pauses on touching a solid and then reflects off it; the homing
+## form turns toward the player, slowing while it turns. Landing on a
 ## shot stops it and it drops away. It can be eaten.
 
 const Body = preload("res://src/sim/enemy_body.gd")
@@ -16,6 +17,7 @@ const STEP_PHASE := 0
 const CONTACT_PHASE := 1
 const STRAIGHT := 0
 const BOUNCE := 1
+const HOMING := 2
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -75,8 +77,29 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			entity.pause = PAUSE_TICKS
 			return
 	entity.fresh = 0
+	if entity.form == HOMING:
+		home(entity, state)
 	entity.x += entity.vx
 	entity.y += entity.vy
+
+
+## Turn toward a point 32 px above the player by up to 0.1° + distance/140 px per
+## tick; speed drops by 40 px/s per unit of turn (the turn's diagonal distance).
+static func home(entity: Dictionary, state: Dictionary) -> void:
+	var dx: int = state.x - entity.x
+	var dy: int = state.y - 32 * S - entity.y
+	var distance: int = Motion.root(dx / S * (dx / S) + dy / S * (dy / S))
+	var limit: int = 100 + distance * 1000 / 140
+	var turn: int = clampi(
+		Motion.angle_delta(entity.heading, Motion.angle_to(dx, dy)), -limit, limit
+	)
+	entity.heading = posmod(entity.heading + turn, 360000)
+	var throttle: int = absi(turn) * 1414 / 1000  # Millidegrees of diagonal turn.
+	var speed: int = 296 * 60
+	if throttle <= 45000:
+		speed = (296000 - 40 * throttle) * 60 / 1000
+	entity.vx = speed * Motion.turn_cosine(entity.heading) / S
+	entity.vy = speed * Motion.turn_sine(entity.heading) / S
 
 
 static func touching(entity: Dictionary, world: Dictionary) -> bool:
@@ -142,7 +165,7 @@ static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 static func valid(entity: Dictionary) -> bool:
 	return (
 		Body.valid(entity)
-		and entity.form in [STRAIGHT, BOUNCE]
+		and entity.form in [STRAIGHT, BOUNCE, HOMING]
 		and entity.heading >= 0
 		and entity.heading < 360000
 		and entity.pause >= 0
