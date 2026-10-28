@@ -5,6 +5,7 @@ extends RefCounted
 const Moves = preload("res://src/sim/moves.gd")
 const Life = preload("res://src/sim/life.gd")
 const Maps = preload("res://src/sim/maps.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const Units = preload("res://src/sim/units.gd")
 const SCALE := Units.SCALE
 const BASE_LEVEL_FIELDS := [
@@ -82,7 +83,7 @@ static func level_fields() -> Array:
 
 static func compose_level_fields() -> Array:
 	var registry := entity_registry()
-	var result := compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS])
+	var result := compose([BASE_LEVEL_FIELDS, Life.LEVEL_FIELDS, Maps.LEVEL_FIELDS, Sound.LEVEL_FIELDS])
 	for pair: Array in registry.level_fields():
 		assert(
 			not result.any(func(core: Array) -> bool: return core[0] == pair[0]),
@@ -169,7 +170,7 @@ static func valid(state: Dictionary) -> bool:
 			return false
 	if state.support_bridge < 0:
 		return false
-	for module: Script in [Moves, Life, Maps]:
+	for module: Script in [Moves, Life, Maps, Sound]:
 		if module.has_method("valid_state") and not module.valid_state(state):
 			return false
 	return entity_registry().valid_state(state)

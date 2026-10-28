@@ -97,6 +97,8 @@ const TYPES := [
 	preload("res://src/sim/types/spike_sack.gd"),
 	preload("res://src/sim/types/thorn_bush.gd"),
 	preload("res://src/sim/types/bee_flyer.gd"),
+	# finish: lastcodes
+	preload("res://src/sim/types/blind_ghost.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")

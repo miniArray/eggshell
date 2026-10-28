@@ -4,6 +4,7 @@ const CODES := ["o14"]
 const DYNAMIC := true
 const S := preload("res://src/sim/units.gd").SCALE
 const Collision = preload("res://src/sim/collision.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Life = preload("res://src/sim/life.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
@@ -127,6 +128,7 @@ static func modal_step(
 			entity.phase = UNFLATTEN
 			entity.ticks = 0
 			_sound(state, 1, entity.x, entity.y)
+			Sound.emit(state, Sound.SWITCH, entity.x, entity.y)
 		return true
 	if entity.phase == UNFLATTEN:
 		entity.ticks = mini(9, entity.ticks + 1)

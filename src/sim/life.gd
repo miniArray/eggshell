@@ -5,6 +5,7 @@ const S := preload("res://src/sim/units.gd").SCALE
 const Collision = preload("res://src/sim/collision.gd")
 const World = preload("res://src/sim/world.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const PLAY := 0
 const REJOIN := 1
 const DEAD := 2
@@ -254,6 +255,9 @@ static func kill(state: Dictionary, cause: int = HAZARD, fast: bool = false) -> 
 	state.hurt = 0
 	state.invulnerable = 0
 	state.captured_by = 0
+	if state.life_phase == DEAD:
+		# Only the slow death voices the player; a quick restart is silent to listeners.
+		Sound.player(state)
 	return true
 
 
@@ -276,6 +280,7 @@ static func touch_goal(state: Dictionary, entity: Dictionary) -> bool:
 	state.vx = 0
 	state.vy = 0
 	state.movement = 5
+	Sound.player(state)
 	return true
 
 
@@ -543,6 +548,7 @@ static func _phase_step(
 				state.separation_grace = 30
 				state.life_phase = PLAY
 				_attach_position(state)
+				Sound.player(state)
 		DEAD:
 			if state.life_ticks == 0:
 				state.life_phase = FADE_OUT

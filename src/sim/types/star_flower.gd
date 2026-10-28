@@ -5,6 +5,7 @@ extends RefCounted
 const Body = preload("res://src/sim/enemy_body.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Near = preload("res://src/sim/types/near_query.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o22"]
 const STEP_PHASE := 0
@@ -131,6 +132,7 @@ static func _swallow(entity: Dictionary, state: Dictionary, world: Dictionary) -
 
 
 static func _release(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	Sound.emit(state, Sound.RELEASE, entity.x, entity.y)
 	var dispatch := registry()
 	var stars := 0
 	for other: Dictionary in state.entities:
