@@ -236,7 +236,7 @@ func switch_block_checks() -> void:
 	)
 
 
-func _ride(state: Dictionary, world: Dictionary, wheel: Dictionary, ticks: int) -> void:
+func _ride(state: Dictionary, world: Dictionary, ticks: int) -> void:
 	for _tick in ticks:
 		Sim.advance(state, 0, world)
 
@@ -259,12 +259,12 @@ func wheel_checks() -> void:
 	_land(state, world, 400 * S, 260 * S, 2)
 	check(wheel.status == Registry.ACTIVE, "The wheel activates on screen")
 	check(type.solid_box(wheel) == [378 * S, 278 * S, 422 * S, 280 * S], "The deck is 44 px wide")
-	_ride(state, world, wheel, 30)
+	_ride(state, world, 30)
 	check(wheel.riding == 1, "Standing on the deck starts the ride")
 	check(wheel.x > 400 * S, "A riding wheel travels along its arrow")
 	check(absi(state.x - wheel.x) < 2 * S, "The rider is carried with the wheel")
 	var before: int = wheel.x
-	_ride(state, world, wheel, 120)
+	_ride(state, world, 120)
 	check(wheel.x < 640 * S - 63 * S, "The wheel never enters the solid in its path")
 	check(wheel.angle == 180 * 60000 and wheel.x < before + 160 * S, "A blocked wheel reflects")
 	state.x = 1000 * S
