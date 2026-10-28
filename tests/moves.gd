@@ -704,15 +704,25 @@ func tick(state: Dictionary, input: int, world: Dictionary) -> void:
 
 
 static func actor(world: Dictionary) -> Dictionary:
+	var compiled := world.duplicate()
+	compiled.erase("maps")
+	world.maps = {1: compiled}
 	var state := State.create(world)
 	Moves.initialize(state)
 	return state
 
 
 static func empty_world() -> Dictionary:
-	return {
-		"identity": "synthetic",
+	var world := {
+		"identity": "synthetic".sha256_text(),
 		"source": {},
+		"initial_map": 1,
+		"map_index": 1,
+		"map_count": 1,
+		"flowers_target": 0,
+		"redcoins_target": 0,
+		"spawn_facing": 1,
+		"entities": [],
 		"width": 100000 * S,
 		"height": 100000 * S,
 		"spawn_x": 128 * S,
@@ -723,6 +733,8 @@ static func empty_world() -> Dictionary:
 		"bridges": [],
 		"goals": [],
 	}
+	world.maps = {1: world.duplicate()}
+	return world
 
 
 static func floor_world() -> Dictionary:
@@ -758,6 +770,7 @@ static func layer(
 		cells[cell[1] * 32 + cell[0]] = 0
 	return {
 		"name": name,
+		"layer": "layer1",
 		"size": 32,
 		"width": 32,
 		"height": 32,

@@ -4,6 +4,7 @@ extends RefCounted
 
 const State = preload("res://src/sim/play_state.gd")
 const Registry = preload("res://src/sim/registry.gd")
+const Maps = preload("res://src/sim/maps.gd")
 const VERSION := 4
 const HEADER := 76
 const CHECKSUM_SIZE := 32
@@ -21,7 +22,9 @@ static func minimum_size() -> int:
 
 
 static func schema_hash() -> PackedByteArray:
-	var schema := ["code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS]
+	var schema := [
+		"code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS
+	]
 	for code: String in Registry.codes():
 		schema.append([code, Registry.fields(code)])
 	return checksum(JSON.stringify(schema).to_utf8_buffer())
@@ -38,7 +41,9 @@ static func encode(state: Dictionary) -> PackedByteArray:
 		if code_bytes.size() > MAX_CODE_BYTES or id_bytes.size() > MAX_CODE_BYTES:
 			push_warning("Cannot encode oversized entity code or id")
 			return PackedByteArray()
-		body_size += 12 + code_bytes.size() + id_bytes.size() + Registry.fields(entity.code).size() * 8
+		body_size += (
+			12 + code_bytes.size() + id_bytes.size() + Registry.fields(entity.code).size() * 8
+		)
 	if body_size + CHECKSUM_SIZE > MAX_BYTES:
 		push_warning("Cannot encode oversized snapshot")
 		return PackedByteArray()
@@ -132,8 +137,14 @@ static func decode(bytes: PackedByteArray, identity: String, world: Dictionary =
 	Registry.attach_views(state)
 	if not valid_state(state):
 		return error("Snapshot invalid state")
-	if not world.is_empty() and not Registry.valid_world(state, world):
-		return error("Snapshot world entity table")
+	if not world.is_empty():
+		# Validate against the saved map without changing the caller's world on rejection.
+		var selected := world.duplicate()
+		if not Maps.sync(state, selected) or not Registry.valid_world(state, selected):
+			return error("Snapshot world entity table")
+		if state.support_bridge > selected.bridges.size():
+			return error("Snapshot world support")
+		Maps.sync(state, world)
 	return {"ok": true, "state": state}
 
 
@@ -153,13 +164,19 @@ static func read_text(bytes: PackedByteArray, cursor: int, end: int) -> Dictiona
 
 static func valid_identity(identity: Variant) -> bool:
 	return (
-		identity is String and identity.length() == 64
-		and identity.is_valid_hex_number() and identity.to_lower() == identity
+		identity is String
+		and identity.length() == 64
+		and identity.is_valid_hex_number()
+		and identity.to_lower() == identity
 	)
 
 
 static func valid_state(state: Dictionary) -> bool:
-	if not State.valid(state) or not state.get("entities") is Array or state.entities.size() > MAX_ENTITIES:
+	if (
+		not State.valid(state)
+		or not state.get("entities") is Array
+		or state.entities.size() > MAX_ENTITIES
+	):
 		return false
 	var actors := []
 	var ids := {}

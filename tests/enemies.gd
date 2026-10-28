@@ -6,6 +6,8 @@ const State = preload("res://src/sim/play_state.gd")
 const Sim = preload("res://src/sim/step.gd")
 const Save = preload("res://src/save/snapshot.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Life = preload("res://src/sim/life.gd")
+const Registry = preload("res://src/sim/registry.gd")
 const Fixtures = preload("res://tests/fixtures.gd")
 const Collision = preload("res://src/level/collision_table.gd")
 const S := State.SCALE
@@ -40,25 +42,26 @@ func fixture(world: Dictionary, code: String) -> Dictionary:
 		cells[32 * 11 + column] = 0
 	result.layers = [
 		{
+			"name": "unit",
+			"layer": "layer1",
 			"size": 32,
 			"width": 32,
 			"height": 12,
 			"cells": cells,
 			"bounds": {0: [0, 0, 32 * S, 32 * S]},
+			"polygons": {0: PackedInt64Array([0, 0, 32 * S, 0, 32 * S, 32 * S, 0, 32 * S])},
 			"solid": true,
 			"water": false
 		}
 	]
-	result.springs = []
-	result.bridges = []
-	result.goals = []
 	result.height = 2000 * S
 	for enemy: Dictionary in world.enemies:
 		if enemy.code == code:
-			var record := enemy.duplicate()
-			record.x = 400 * S
-			record.y = 300 * S
-			result.enemies = [record]
+			var record: Dictionary = enemy.properties.duplicate(true)
+			record.X = 400
+			record.Y = 300
+			var compiled := World.setup_objects({"objects": {"actor": record}}, result)
+			check(compiled.ok, "Isolated actor compiles through the registry")
 			break
 	if code == "e20":
 		var water: Dictionary = result.layers[0].duplicate(true)
@@ -70,6 +73,8 @@ func fixture(world: Dictionary, code: String) -> Dictionary:
 		result.layers.append(water)
 	result.spawn_x = 200 * S
 	result.spawn_y = 300 * S
+	result.erase("maps")
+	result.maps = {1: result.duplicate()}
 	return result
 
 
@@ -196,7 +201,16 @@ func damage_checks(world: Dictionary) -> void:
 	state.vx = 0
 	state.vy = 0
 	Sim.advance(state, 0, test_world)
-	check(state.separated == 0 and state.health == 9, "Touching provisional marker recovers")
+	check(
+		state.life_phase == Life.REJOIN and state.health == 9,
+		"Bubble contact starts the rejoin phase"
+	)
+	for tick in 48:
+		Sim.advance(state, 0, test_world)
+	check(
+		state.separated == 0 and state.life_phase == Life.PLAY,
+		"Rejoin completes after forty-eight ticks"
+	)
 	state.x = 200 * S  # Refill is isolated from a second enemy contact.
 	for tick in 120:
 		Sim.advance(state, 0, test_world)
@@ -218,9 +232,14 @@ func damage_checks(world: Dictionary) -> void:
 	state = restored.state
 	state.enemies[0].status = 3
 	state.x = 1000 * S  # Remain on support, away from the marker; this must not be a pit death.
-	for tick in 450:
+	for tick in 1200:
 		Sim.advance(state, 0, test_world)
-	check(state.deaths == 1 and state.health == 10, "Unrecovered countdown ends in spawn reset")
+		if state.deaths and state.life_phase == Life.PLAY:
+			break
+	check(
+		state.deaths == 1 and state.health == 10,
+		"Unrecovered countdown completes capture, death and respawn"
+	)
 	check(
 		state.enemies[0].status == 1, "Countdown reset activates actors from the fresh spawn camera"
 	)
@@ -255,7 +274,7 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 		"Capture-time scale stays separate from continuing growth"
 	)
 	var bad_pin := player.duplicate(true)
-	bad_pin.enemies[0].pin_size = 16
+	bad_pin.entities[0].pin_size = 16
 	check(
 		not Save.decode(Save.encode(bad_pin), plant_world.identity).ok,
 		"Snapshot rejects an invalid pin scale"
@@ -319,8 +338,14 @@ func lifecycle_checks(world: Dictionary) -> void:
 	player.y = test_world.height + 100 * S
 	Sim.advance(player, 0, test_world)
 	check(
-		player.deaths == 1 and player.enemies[0].status != 3,
-		"Pit resets level actors even while invulnerable"
+		player.deaths == 1 and player.life_phase == Life.DEAD,
+		"Pit starts the death phase even while invulnerable"
+	)
+	player.life_phase = Life.RESPAWN
+	Sim.advance(player, 0, test_world)
+	check(
+		player.life_phase == Life.FADE_IN and player.enemies[0].status == Registry.WAITING,
+		"Respawn recreates defeated actors before fade-in"
 	)
 
 
@@ -341,20 +366,21 @@ func boundary_checks(code: String) -> void:
 	)
 	var real_world: Dictionary = World.build(code, Collision.read()).world
 	var player := State.create(real_world)
+	var bytes := Save.encode(player)
 	check(
-		Save.encode(player).size() == 1164,
-		"v3 fixture snapshot contains 35 scalars and five actors"
+		bytes.size() > Save.minimum_size() and bytes.decode_u32(8) == 4,
+		"Composed v4 snapshot includes the entity table"
 	)
 	player.health = 0
 	check(
-		not Save.decode(Save.encode(player), real_world.identity).ok,
-		"Invalid new damage state rejected"
+		Save.decode(Save.encode(player), real_world.identity).ok,
+		"Zero countdown remains valid while attached"
 	)
 	player = State.create(real_world)
 	player.separated = 1
 	check(
 		not Save.decode(Save.encode(player), real_world.identity).ok,
-		"A running countdown cannot restore with a zero wait"
+		"A separated companion cannot restore in attached mode"
 	)
 	player = State.create(real_world)
 	player.enemies[0].status = 4

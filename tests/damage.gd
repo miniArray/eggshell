@@ -27,18 +27,17 @@ func _initialize() -> void:
 		state.vx = example[0] * 60
 		Damage.hurt(state, state.x + example[1] * S)
 		check(state.vx == example[2] * 60, "post-knockback velocity: %s" % [example])
-		check(state.recovery_x - state.x == example[3] * S, "separation sign/size: %s" % [example])
+		check(state.companion_dx == example[3] * S, "separation sign/size: %s" % [example])
 		check(
-			state.recovery_y == state.y - 56 * S and state.recovery_delay == 36,
-			"Rise and delay stay unchanged"
+			state.recovery_y == state.y - 24 * S and state.recovery_delay == 36,
+			"Launch starts at the attached companion anchor"
 		)
 	for velocity: int in [-800, 800, 0]:
 		var state := State.create(world)
 		Damage.separate(state, velocity * 60)
 		var expected := 112 if velocity == 0 else -velocity / 4
 		check(
-			state.recovery_x - state.x == expected * S,
-			"Zero is clamped positive; no upper magnitude cap"
+			state.companion_dx == expected * S, "Zero is clamped positive; no upper magnitude cap"
 		)
 	for facing: int in [-1, 1]:
 		var state := State.create(world)
@@ -47,7 +46,7 @@ func _initialize() -> void:
 		state.vx = 400 * 60
 		Damage.hurt(state, state.x + S)
 		check(
-			state.vx == -facing * 200 * 60 and state.recovery_x - state.x == facing * 112 * S,
+			state.vx == -facing * 200 * 60 and state.companion_dx == facing * 112 * S,
 			"Swimming separation uses its final knockback"
 		)
 	var separated := State.create(world)

@@ -16,13 +16,26 @@ const ACTIVE := 1
 const QUEUED := 2
 const DEFEATED := 3
 const COMMON_FIELDS := [
-	["source_index", 0], ["map_index", 0], ["family_index", 0],
-	["collected", 0], ["checkpoint_collected", 0],
-	["x", 0], ["y", 0], ["vx", 0], ["vy", 0], ["facing", -1],
-	["layer", 7], ["status", WAITING], ["offscreen", 0],
-	["spawn_mode", 0], ["can_despawn", 0], ["can_respawn", 0],
-	["activation_x", 416 * S], ["activation_y", 224 * S],
-	["despawn_radius", 832 * S], ["respawn_radius", 624 * S]
+	["source_index", 0],
+	["map_index", 0],
+	["family_index", 0],
+	["collected", 0],
+	["checkpoint_collected", 0],
+	["x", 0],
+	["y", 0],
+	["vx", 0],
+	["vy", 0],
+	["facing", -1],
+	["layer", 7],
+	["status", WAITING],
+	["offscreen", 0],
+	["spawn_mode", 0],
+	["can_despawn", 0],
+	["can_respawn", 0],
+	["activation_x", 416 * S],
+	["activation_y", 224 * S],
+	["despawn_radius", 832 * S],
+	["respawn_radius", 624 * S]
 ]
 
 
@@ -60,7 +73,11 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 	world.goals = []
 	for source_id: Variant in objects:
 		var raw_value: Variant = objects[source_id]
-		if not source_id is String or not raw_value is Dictionary or not raw_value.get("A") is String:
+		if (
+			not source_id is String
+			or not raw_value is Dictionary
+			or not raw_value.get("A") is String
+		):
 			return {"ok": false, "error": "Invalid object record or code"}
 		var raw: Dictionary = raw_value
 		for key: String in ["X", "Y"]:
@@ -68,20 +85,36 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 				return {"ok": false, "error": "Invalid object position: " + key}
 		var code: String = raw.A
 		var source := {
-			"source_index": world.entities.size(), "id": source_id,
-			"code": code, "properties": raw.duplicate(true),
-			"x": roundi(raw.X * S), "y": roundi(raw.Y * S),
-			"variant": 0, "mirror": 0, "rotation": 0,
-			"layer": 8 if code in Actor.CODES else 7, "family_index": 0
+			"source_index": world.entities.size(),
+			"id": source_id,
+			"code": code,
+			"properties": raw.duplicate(true),
+			"x": roundi(raw.X * S),
+			"y": roundi(raw.Y * S),
+			"variant": 0,
+			"mirror": 0,
+			"rotation": 0,
+			"layer": 8 if code in Actor.CODES else 7,
+			"family_index": 0
 		}
 		for option: Array in [["F", "variant"], ["M", "mirror"], ["R", "rotation"]]:
 			var value: Variant = raw.get(option[0], 0)
-			if finite_number(value) and value == floor(value) and value >= -MAX_OPTION_PIXELS and value <= MAX_OPTION_PIXELS:
+			if (
+				finite_number(value)
+				and value == floor(value)
+				and value >= -MAX_OPTION_PIXELS
+				and value <= MAX_OPTION_PIXELS
+			):
 				source[option[1]] = int(value)
 		if code in Actor.CODES:
 			for key: String in ["F", "M", "R"]:
 				var value: Variant = raw.get(key, 0)
-				if not finite_number(value) or value != floor(value) or value < 0 or value > MAX_OPTION_PIXELS:
+				if (
+					not finite_number(value)
+					or value != floor(value)
+					or value < 0
+					or value > MAX_OPTION_PIXELS
+				):
 					return {"ok": false, "error": "Invalid actor field: " + key}
 			source.variant = int(raw.get("F", 0))
 			source.mirror = int(raw.get("M", 0))
@@ -96,7 +129,12 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 			world.enemies.append(source)
 		elif code == "o11":
 			var value: Variant = raw.get("F", 0)
-			if not finite_number(value) or value != floor(value) or value < 0 or value > MAX_OPTION_PIXELS:
+			if (
+				not finite_number(value)
+				or value != floor(value)
+				or value < 0
+				or value > MAX_OPTION_PIXELS
+			):
 				return {"ok": false, "error": "Invalid pad variant"}
 			source.variant = int(value)
 			source.y += 16 * S
@@ -125,7 +163,9 @@ static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 		if type.has_method("prepare"):
 			var prepared: Dictionary = type.prepare(source, world)
 			if not prepared.get("ok", false):
-				return {"ok": false, "error": str(prepared.get("error", "Invalid placement options"))}
+				return {
+					"ok": false, "error": str(prepared.get("error", "Invalid placement options"))
+				}
 		world.entities.append(source)
 	return {"ok": true}
 
@@ -271,6 +311,24 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				type.contact(entity, state, world, input)
 
 
+static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callable) -> void:
+	if not on_coin.is_valid():
+		return
+	for entity: Dictionary in state.entities:
+		var type := lookup(entity.code)
+		if entity.status != ACTIVE or not type.get_script_constant_map().get("GOAL_COIN", false):
+			continue
+		var bounds: Array = type.bounds(entity)
+		if (
+			entity.x + bounds[2] > state.camera_x - 416 * S
+			and entity.x + bounds[0] < state.camera_x + 416 * S
+			and entity.y + bounds[3] > state.camera_y - 224 * S
+			and entity.y + bounds[1] < state.camera_y + 224 * S
+		):
+			entity.status = DEFEATED
+			on_coin.call(state)
+
+
 static func valid(entity: Dictionary) -> bool:
 	if not entity.get("code") is String or not entity.get("id") is String:
 		return false
@@ -280,10 +338,20 @@ static func valid(entity: Dictionary) -> bool:
 	for pair: Array in schema:
 		if not entity.get(pair[0]) is int:
 			return false
-	for key: String in ["collected", "checkpoint_collected", "offscreen", "spawn_mode", "can_despawn", "can_respawn"]:
+	for key: String in [
+		"collected", "checkpoint_collected", "offscreen", "spawn_mode", "can_despawn", "can_respawn"
+	]:
 		if entity[key] not in [0, 1]:
 			return false
-	for key: String in ["source_index", "map_index", "family_index", "activation_x", "activation_y", "despawn_radius", "respawn_radius"]:
+	for key: String in [
+		"source_index",
+		"map_index",
+		"family_index",
+		"activation_x",
+		"activation_y",
+		"despawn_radius",
+		"respawn_radius"
+	]:
 		if entity[key] < 0:
 			return false
 	if entity.facing not in [-1, 1] or entity.status not in [WAITING, ACTIVE, QUEUED, DEFEATED]:

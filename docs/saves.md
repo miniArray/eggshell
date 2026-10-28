@@ -37,7 +37,23 @@ on movement, lifetime and map modules validate their own state. Extra undeclared
 state is rejected instead of silently omitted. `Snapshot.decode(bytes, identity,
 world)` can also check the complete ordered entity table against an active world.
 The two-argument form retains level-identity validation without a world check.
-A restore must synchronize the saved map before checking its active entity table.
+The three-argument decoder synchronizes a temporary world selection to the saved
+map before validating the ordered table and bridge support. A successful decode
+selects that map in the caller's world. Rejection leaves its map unchanged.
+
+## Composed version 4 state
+
+Base fields hold simulation frame, follow point, input edges, motion, water and
+capture state. Movement owns action and posture timers, tongue reach, aim, held
+items, egg counts and the saved emission history. Lifetime owns damage, companion
+and rescue motion, countdown, death and goal phases, checkpoints and counters.
+Maps owns selected map, map count and collectible targets. All three owner
+validation hooks run. Derived actor and pad views share the entity dictionaries
+and are not encoded a second time.
+
+This slice keeps version 4 while composing the owners' complete schemas. It does
+not retain an intermediate stub layout. Saved nodes, callbacks and view state
+are never part of the payload.
 
 ## Checkpoint collection flags
 
@@ -56,6 +72,9 @@ The setting `resume_where_i_left_off` defaults to true. The player loads its
 autosave at startup and writes a new one during play and on orderly shutdown.
 F5 writes a manual slot and F9 restores it. On a controller, hold the back
 button and press the left shoulder to save or the right shoulder to load.
+
+Invalid state encodes to an empty payload. Save callers skip that payload, so a
+failed validation cannot replace a valid slot with empty bytes.
 
 Writes happen on a persistent worker. A write flushes and closes a temporary
 file, then renames it within the save directory. It does not synchronize the

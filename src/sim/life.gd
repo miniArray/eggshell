@@ -156,15 +156,13 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 		kill(state, PIT)
 		return
 	for name: String in HAZARD_LAYERS:
-		if (
-			World.named_overlaps(
-				world,
-				name,
-				state.x + PLAYER_BOX[0],
-				state.y + PLAYER_BOX[1],
-				state.x + PLAYER_BOX[2],
-				state.y + PLAYER_BOX[3]
-			)
+		if World.named_overlaps(
+			world,
+			name,
+			state.x + PLAYER_BOX[0],
+			state.y + PLAYER_BOX[1],
+			state.x + PLAYER_BOX[2],
+			state.y + PLAYER_BOX[3]
 		):
 			kill(state, HAZARD)
 			return

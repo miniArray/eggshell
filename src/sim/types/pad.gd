@@ -21,8 +21,12 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 
 static func valid(entity: Dictionary) -> bool:
 	return (
-		entity.vx == 0 and entity.vy >= 0 and entity.vy <= 704 * 60
-		and entity.squash >= 0 and entity.squash <= 12
-		and entity.active in [0, 1] and entity.large in [0, 1]
+		entity.vx == 0
+		and entity.vy >= 0
+		and entity.vy <= 704 * 60
+		and entity.squash >= 0
+		and entity.squash <= 12
+		and entity.active in [0, 1]
+		and entity.large in [0, 1]
 		and entity.single_use in [0, 1]
 	)

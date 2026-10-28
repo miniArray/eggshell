@@ -240,6 +240,9 @@ func _unhandled_input(_event: InputEvent) -> void:
 
 func save_slot(slot: String) -> void:
 	var bytes := Snapshot.encode(state)
+	if bytes.is_empty():
+		printerr("Save skipped: invalid snapshot state")
+		return
 	if slot == "slot":
 		_slot_bytes = bytes
 	_store.submit(_save_dir.path_join(slot + ".egg"), bytes, state.frame)
@@ -252,20 +255,7 @@ func load_slot(slot: String) -> void:
 		if not FileAccess.file_exists(path):
 			return
 		bytes = FileAccess.get_file_as_bytes(path)
-	var loaded := Snapshot.decode(bytes, world.identity)
-	if (
-		loaded.ok
-		and (
-			loaded.state.springs.size() != world.springs.size()
-			or loaded.state.enemies.size() != world.enemies.size()
-			or loaded.state.support_bridge > world.bridges.size()
-			or (
-				loaded.state.captured_by
-				and world.enemies[loaded.state.captured_by - 1].code != "e5"
-			)
-		)
-	):
-		loaded = {"ok": false, "error": "Snapshot world object count"}
+	var loaded := Snapshot.decode(bytes, world.identity, world)
 	if loaded.ok:
 		state = loaded.state
 		print("EGGSHELL_RESUME ", slot, " ", state.frame)

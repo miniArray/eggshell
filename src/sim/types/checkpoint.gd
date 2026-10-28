@@ -9,8 +9,11 @@ const CONTACT_PHASE := 2
 
 
 static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
-	return {"respawn_x": int(source.respawn_x), "respawn_y": int(source.respawn_y),
-		"health_bonus": 30 if source.get("variant", 0) == 1 else 10}
+	return {
+		"respawn_x": int(source.respawn_x),
+		"respawn_y": int(source.respawn_y),
+		"health_bonus": 30 if source.get("variant", 0) == 1 else 10
+	}
 
 
 static func step(_entity: Dictionary, _state: Dictionary, _world: Dictionary) -> void:

@@ -78,7 +78,9 @@ static func flower(enemy: Dictionary, world: Dictionary) -> void:
 		enemy.vx = 0
 
 
-static func contact_entity(enemy: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+static func contact_entity(
+	enemy: Dictionary, state: Dictionary, _world: Dictionary, input: int
+) -> void:
 	if state.captured_by or enemy.status != ACTIVE:
 		return
 	var code: String = enemy.code

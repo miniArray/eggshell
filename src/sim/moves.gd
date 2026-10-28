@@ -5,6 +5,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const World = preload("res://src/sim/world.gd")
 const Water = preload("res://src/sim/water.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
+const Tongue = preload("res://src/sim/move_tongue.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
@@ -688,8 +689,8 @@ static func _actions(state: Dictionary, input: int, pressed: int, world: Diction
 				_emit_ammo(state)
 		elif state.move_held_id:
 			_set_action(state, SPIT)
-			var mouth := _mouth(state)
-			var probe := _mouth_probe(state)
+			var mouth := Tongue.mouth(state, state.move_action == SPIT)
+			var probe := Tongue.probe(state, state.move_action == SPIT)
 			if not World.overlaps_box(world, probe[0], probe[1], probe[2], probe[3]):
 				_emit(
 					state,
@@ -710,44 +711,9 @@ static func _actions(state: Dictionary, input: int, pressed: int, world: Diction
 			state.move_tongue_block_tick = 0
 			state.move_tongue_hold = 16 * S
 			state.move_swallow_queue = int(bool(pressed & InputBits.DOWN))
-			var probe := _mouth_probe(state)
+			var probe := Tongue.probe(state, state.move_action == SPIT)
 			if World.overlaps_box(world, probe[0], probe[1], probe[2], probe[3]):
 				state.move_tongue_phase = TONGUE_FAILED
-
-
-static func _mouth(state: Dictionary) -> Array:
-	var x := 24 * S
-	var y := -24 * S
-	if state.move_tongue_axis:
-		x = (4 if state.move_action_wet else 14) * S
-		y = -38 * S
-		if state.move_action == SPIT:
-			x = 13 * S if state.move_action_wet else 14 * S
-			y = -41 * S - S / 15 if state.move_action_wet else -38 * S
-	return [state.x + state.facing * x, state.y + y]
-
-
-static func _mouth_probe(state: Dictionary) -> Array:
-	var x := 32 * S
-	var y := -24 * S
-	if state.move_tongue_axis:
-		x = (10 if state.move_action_wet else 20) * S
-		y = -52 * S
-		if state.move_action_wet and state.move_action == SPIT:
-			x = 18 * S + 2 * S / 5
-			y = -56 * S - 14 * S / 15
-	x = state.x + state.facing * x
-	y += state.y
-	return [x - 12 * S, y - 12 * S, x + 12 * S, y + 12 * S]
-
-
-static func _ammo_mouth(state: Dictionary) -> Array:
-	var x := (34 if state.swimming else 30) * S
-	var y := (-24 if state.swimming else -28) * S
-	if state.move_tongue_axis:
-		x = (16 if state.swimming else 18) * S
-		y = (-60 if state.swimming else -54) * S
-	return [state.x + state.facing * x, state.y + y]
 
 
 static func _tongue(state: Dictionary, world: Dictionary) -> void:
@@ -771,7 +737,7 @@ static func _tongue(state: Dictionary, world: Dictionary) -> void:
 		var last_clear := mini(16 * S, desired)
 		for candidate in range(last_clear, desired + S, S):
 			var length := mini(candidate, desired)
-			var box := _sensor_box(state, length)
+			var box := Tongue.sensor_box(state, length)
 			if World.overlaps_box(world, box[0], box[1], box[2], box[3]):
 				desired = last_clear
 				state.move_tongue_length = desired
@@ -788,24 +754,6 @@ static func block_tongue(state: Dictionary) -> void:
 		state.move_tongue_hold = state.move_tongue_length
 
 
-static func _sensor_box(state: Dictionary, length: int) -> Array:
-	var mouth := _mouth(state)
-	if state.move_tongue_axis:
-		return [
-			mouth[0] - 7 * S,
-			mouth[1] - length - 4 * S,
-			mouth[0] + 7 * S,
-			mouth[1] - length + 44 * S
-		]
-	var tip: int = mouth[0] + state.facing * length
-	return [
-		tip - (40 if state.facing > 0 else 8) * S,
-		mouth[1] - 7 * S,
-		tip + (8 if state.facing > 0 else 40) * S,
-		mouth[1] + 7 * S
-	]
-
-
 static func tongue_box(state: Dictionary) -> Array:
 	if (
 		state.get("move_action", NORMAL) != TONGUE
@@ -813,7 +761,17 @@ static func tongue_box(state: Dictionary) -> Array:
 		or state.move_tongue_phase not in [TONGUE_OUT, TONGUE_BLOCKED]
 	):
 		return []
-	return _sensor_box(state, state.move_tongue_length)
+	return Tongue.sensor_box(state, state.move_tongue_length)
+
+
+static func tongue_reach_box(state: Dictionary) -> Array:
+	# Rescue uses the whole reach, while eating keeps the tip sensor.
+	if (
+		state.get("move_action", NORMAL) != TONGUE
+		or state.move_tongue_phase not in [TONGUE_OUT, TONGUE_BLOCKED]
+	):
+		return []
+	return Tongue.reach_box(state, state.move_tongue_length)
 
 
 static func catch_item(
@@ -878,7 +836,7 @@ static func _begin_lay(state: Dictionary) -> void:
 
 static func _emit_ammo(state: Dictionary) -> void:
 	var kind: int = state.move_ammo
-	var mouth := _ammo_mouth(state)
+	var mouth := Tongue.ammo_mouth(state)
 	var angle := -90000 if state.move_tongue_axis else (0 if state.facing > 0 else 180000)
 	if kind == SEED:
 		state.rng = (state.rng * 1103515245 + 12345) & 0x7fffffff

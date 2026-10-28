@@ -46,14 +46,18 @@ version 2 or 3 graphics pack. A pack never supplies the level.
 
 - Acceleration, turns, jumping, fluttering, crouching, ground pounds and swimming.
 - Directed tongue, held-item, digestion, aiming and emission state with object hooks.
-- Bounce pads, semisolid bridges and goal sensors.
+- Bounce pads, semisolid bridges, checkpoints and a timed goal sequence.
 - Walkers, flyers, tumblers, rooted biters and fish.
-- Knockback, temporary immunity, a recovery marker and a failure countdown.
-- Exact versioned snapshots with threaded autosave and automatic resume.
-- Container-sized camera fitting with nearest-neighbor graphics.
+- Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
+- Countdown, capture, death and checkpoint respawn phases with a run HUD.
+- Several compiled maps, map selection, three drawing layers and map effects.
+- A type registry and composed version 4 snapshots with autosave and automatic resume.
+- Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
-Player colliders follow the action and posture. The recovery marker is stationary.
+Player colliders follow the action and posture. Companion rescue uses the full
+tongue reach; eating keeps its separate tip sensor. Map travel is a simulation
+interface; no travel object is implemented yet.
 Food contacts, carried items and projectile objects are not yet wired to their
 player-side hooks. Packs without an action pose use their usual default pose.
 Audio and a level editor are not implemented.
@@ -73,7 +77,8 @@ nix develop -c godot --headless --path . --script tests/moves.gd
 nix develop -c godot --headless --path . --script tests/move_input.gd
 ```
 
-Full suite:
+The full suite is reserved for hardening. Its recorded routes need updates after
+movement changes:
 
 ```sh
 nix develop -c python3 tests/check_all.py

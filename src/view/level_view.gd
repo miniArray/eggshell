@@ -32,6 +32,7 @@ var _hud_pack := ""
 var _spring_nodes: Array[Sprite2D] = []
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
+var _placed_nodes: Dictionary = {}
 
 
 func setup(world: Dictionary, pack: String) -> void:
@@ -55,6 +56,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	_spring_nodes.clear()
 	_enemy_nodes.clear()
 	_head_nodes.clear()
+	_placed_nodes.clear()
 	_animations = {}
 	_world = world
 	_built_map = int(world.map_index)
@@ -139,6 +141,9 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	Dressing.room(_root, manifest, pack, world)
 	Dressing.supports(_root, manifest, pack, world)
 	Dressing.placed(_root, manifest, pack, world)
+	for node: Node in _root.get_children():
+		if node.has_meta("placed_id"):
+			_placed_nodes[node.get_meta("placed_id")] = node
 	# Packs without object art keep the diagnostic flat textures.
 	var spring_art := Dressing.object_art(manifest, pack, "o11")
 	for spring: Dictionary in world.springs:
@@ -224,6 +229,11 @@ func render(state: Dictionary) -> void:
 		if child is Sprite2D and child != _player and not child.get_meta("stateful", false):
 			Frames.apply(child, state.frame)
 	_player.position = Vector2(state.x, state.y) / State.SCALE
+	for entity: Dictionary in state.entities:
+		if _placed_nodes.has(entity.id):
+			var node: Sprite2D = _placed_nodes[entity.id]
+			node.position = Vector2(entity.x, entity.y) / State.SCALE
+			node.visible = not entity.collected
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
 		var node := _spring_nodes[index]

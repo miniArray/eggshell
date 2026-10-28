@@ -36,7 +36,10 @@ func _initialize() -> void:
 	landing.y = 255 * S
 	landing.vy = 200 * 60
 	Sim.advance(landing, 0, world)
-	check(landing.y == 256 * S and landing.support_bridge == 1, "Bridge supports falling feet")
+	check(
+		landing.y < 256 * S and 256 * S - landing.y <= S / 16 and landing.support_bridge == 1,
+		"Bridge supports falling feet outside the closed surface"
+	)
 	world = Fixtures.world("lagoon")
 	world.goals.clear()
 	check(World.water_at(world, 1280 * S, 364 * S), "Pool has water")

@@ -63,17 +63,44 @@ in the actor read view until that consumer moves to stable ids.
 are `[String, int]` pairs. Repeated declarations within one scope keep their
 first position and use the last default; a name cannot belong to both scopes.
 Creation initializes defaults and takes level-field values from matching world
-keys. All other new mutable scalar state must be declared in these lists.
-Optional module `valid_state(state)` hooks own their semantic validation.
+keys. It calls `Maps.initialize` and `Life.initialize` before spawning entities.
+All other new mutable scalar state must be declared in these lists.
+The movement, lifetime and map `valid_state(state)` hooks all run at the snapshot
+boundary. Input masks use eight bits. Base validation permits a six-tick jump
+buffer, flutter counters through 71 and water braking of 128.
 
-The state module has no preload of world, collision, registry or step. It binds
-the registry only when creating entities. `units.gd` is the scale-only leaf.
-The world calls its separate `setup_objects(map, world)` placement compiler.
+The state module binds the registry only when creating entities. `units.gd` is
+the scale-only leaf. The world calls its `_build_objects` seam for every compiled
+map, using that map's source and the registry placement compiler. Map caches
+hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
 Snapshot version 4 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
+
+## Fixed step order
+
+1. Synchronize the selected map and increment the simulation frame.
+2. Advance lifetime phases with the registry reset callback and the bound map
+   change callback. On respawn, reset movement-owned fields. A blocking phase
+   returns before input, actor or player motion.
+3. Sample input edges, then advance registered actors and pads. Capture keeps
+   its early exit and fixed camera follow point.
+4. Advance player actions and motion. Water entry and exit set braking to 128
+   and 1296; a release value persists until one of those transitions.
+5. Dispatch registered pad, actor and sensor contacts in phase order. Entering
+   the goal phase converts active eligible actor bodies in the fixed reference
+   area into coins once. An extended plant head is not a separate award.
+6. Check the full tongue reach for companion rescue, then check lifetime terrain
+   hazards and body rescue. Save the follow point and finish the player pose
+   only while play remains active. The delayed goal pose stays intact.
+
+Life and Maps call their callbacks immediately. They never store callbacks in
+state or world. `move_tongue.gd` supplies read-only tongue geometry; movement
+owns action transitions. Rendering rebuilds the active map's nodes and uses the
+existing integer camera scale and rounded root offset. HUD and companion nodes
+read saved state; they do not write it.
 
 ## Terrain contacts
 
@@ -92,12 +119,14 @@ No contact cache or new mutable state enters snapshots.
 
 ## Limits
 
-Actor collision boxes stay fixed rather than following animation shapes.
-Overlap recovery and sideways push limits use those fixed actor dimensions.
-Movement tests endpoints and pushes out; it is not a continuous collision sweep.
-Curved motion uses integer approximations. Recovery uses a stationary marker
-and an immediate reset at countdown zero. Recorded routes need hardening after
-physics changes; polygon contacts do not establish whole-game movement parity.
+Enemy collision boxes stay fixed. The player collider follows actions and
+posture. Movement tests endpoints and pushes out; it is not a continuous sweep.
+Curved motion uses integer approximations. The companion launches, floats and
+returns through saved phases. A lost companion leads through capture, death,
+fade and respawn phases rather than an immediate reset at countdown zero.
+Food, carried-item and projectile consumers remain future object work.
+Recorded routes need hardening after physics changes; focused contacts do not
+establish whole-game movement parity.
 
 ## Test ownership
 

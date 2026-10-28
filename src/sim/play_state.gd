@@ -8,16 +8,29 @@ const Maps = preload("res://src/sim/maps.gd")
 const Units = preload("res://src/sim/units.gd")
 const SCALE := Units.SCALE
 const BASE_LEVEL_FIELDS := [
-	["frame", 0], ["camera_x", 0], ["camera_y", 0],
-	["goal_reached", 0], ["deaths", 0], ["rng", 1]
+	["frame", 0], ["camera_x", 0], ["camera_y", 0], ["goal_reached", 0], ["deaths", 0], ["rng", 1]
 ]
 const BASE_PLAYER_FIELDS := [
-	["x", 0], ["y", 0], ["vx", 0], ["vy", 0], ["movement", 0],
-	["facing", 1], ["on_floor", 0], ["previous_input", 0], ["pressed_input", 0],
-	["jump_buffer", 0], ["flutter_remaining", 0], ["flutter_cooldown", 0],
-	["flutter_ready", 0], ["support_bridge", 0], ["swimming", 0],
-	["water_wait", 0], ["water_phase", 0], ["water_deep", 0],
-	["boosted_flutter", 0], ["captured_by", 0]
+	["x", 0],
+	["y", 0],
+	["vx", 0],
+	["vy", 0],
+	["movement", 0],
+	["facing", 1],
+	["on_floor", 0],
+	["previous_input", 0],
+	["pressed_input", 0],
+	["jump_buffer", 0],
+	["flutter_remaining", 0],
+	["flutter_cooldown", 0],
+	["flutter_ready", 0],
+	["support_bridge", 0],
+	["swimming", 0],
+	["water_wait", 0],
+	["water_phase", 0],
+	["water_deep", 0],
+	["boosted_flutter", 0],
+	["captured_by", 0]
 ]
 
 
@@ -67,6 +80,8 @@ static func create(world: Dictionary) -> Dictionary:
 	state.facing = int(world.get("spawn_facing", state.facing))
 	state.camera_x = state.x
 	state.camera_y = state.y - 28 * SCALE
+	Maps.initialize(state, world)
+	Life.initialize(state, world)
 	var registry: Script = load("res://src/sim/registry.gd")
 	registry.spawn_map(state, world)
 	return state
@@ -87,13 +102,34 @@ static func valid(state: Dictionary) -> bool:
 		if not declared.has(key):
 			return false
 	if (
-		state.frame < 0 or state.deaths < 0
-		or state.facing not in [-1, 1] or state.on_floor not in [0, 1]
+		state.frame < 0
+		or state.deaths < 0
+		or state.facing not in [-1, 1]
+		or state.on_floor not in [0, 1]
 		or state.goal_reached not in [0, 1]
-		or state.previous_input < 0 or state.previous_input & ~input_mask() != 0
-		or state.pressed_input < 0 or state.pressed_input & ~input_mask() != 0
-		or state.captured_by < 0 or state.rng < 0 or state.rng > 0x7fffffff
+		or state.previous_input < 0
+		or state.previous_input & ~input_mask() != 0
+		or state.pressed_input < 0
+		or state.pressed_input & ~input_mask() != 0
+		or state.captured_by < 0
+		or state.rng < 0
+		or state.rng > 0x7fffffff
 	):
+		return false
+	for limit: Array in [
+		["movement", 0, 6],
+		["jump_buffer", 0, 6],
+		["flutter_remaining", 0, 71],
+		["flutter_cooldown", 0, 16],
+		["water_wait", 0, 15],
+		["water_phase", 0, 59]
+	]:
+		if state[limit[0]] < limit[1] or state[limit[0]] > limit[2]:
+			return false
+	for flag: String in ["flutter_ready", "swimming", "water_deep", "boosted_flutter"]:
+		if state[flag] not in [0, 1]:
+			return false
+	if state.support_bridge < 0:
 		return false
 	for module: Script in [Moves, Life, Maps]:
 		if module.has_method("valid_state") and not module.valid_state(state):

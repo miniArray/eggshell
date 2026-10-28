@@ -282,8 +282,8 @@ func actor_checks() -> void:
 	ball.vy = 6 * S
 	ball.active = 1
 	ball.squash = 0
-	world.springs = [{"large": 0}]
-	Pads.advance({"springs": [ball]}, world)
+	ball.large = 0
+	Pads.advance_entity(ball, world)
 	check(ball.y < 82 * S and 82 * S - ball.y <= GAP, "Bounce pad rests on the polygon")
 	check(ball.vy == 0, "Bounce pad stops falling on contact")
 	check(

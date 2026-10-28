@@ -650,6 +650,7 @@ func change_map(state: Dictionary, world: Dictionary, map_index: int, x: int, y:
 func solid_layer(cells: PackedInt32Array, width: int, height: int) -> Dictionary:
 	return {
 		"name": "unit",
+		"layer": "layer1",
 		"size": 32,
 		"width": width,
 		"height": height,

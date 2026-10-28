@@ -28,7 +28,6 @@ static func advance_entity(ball: Dictionary, world: Dictionary) -> void:
 		ball.vy = 0
 
 
-
 static func contact_entity(ball: Dictionary, state: Dictionary, input: int) -> void:
 	var half_width: int = (22 if ball.large else 14) * S
 	var height: int = (46 if ball.large else 30) * S
