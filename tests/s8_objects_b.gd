@@ -7,6 +7,7 @@ const Registry = preload("res://src/sim/registry.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const S := State.SCALE
 var checks := 0
@@ -23,6 +24,7 @@ func _initialize() -> void:
 	_egg_block_checks()
 	_melon_checks()
 	_balloon_checks()
+	_spike_checks()
 	_snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -525,6 +527,41 @@ func _balloon_checks() -> void:
 	state.y = 900 * S
 	type.contact(riser, state, world, 0)
 	check(riser.stepped == 0, "Leaving the deck restores its speed")
+
+
+func _spike_checks() -> void:
+	var world := _world_for(
+		{
+			"up": _place("o13", 300, 300),
+			"down": _place("o13", 600, 300, {"R": 180}),
+			"right": _place("o13", 900, 300, {"R": 90})
+		}
+	)
+	var state := State.create(world)
+	var type: Script = Registry.lookup("o13")
+	var up := _by_id(state, "up")
+	check(
+		type.solid_box(up) == [284 * S, 284 * S, 316 * S, 316 * S], "The spike block is 32x32 solid"
+	)
+	check(type.spike_box(up) == [284 * S, 283 * S, 316 * S, 285 * S], "The spike edge is on top")
+	check(
+		type.spike_box(_by_id(state, "down")) == [584 * S, 315 * S, 616 * S, 317 * S],
+		"R 180 puts the spike underneath"
+	)
+	check(
+		type.spike_box(_by_id(state, "right")) == [915 * S, 284 * S, 917 * S, 316 * S],
+		"R 90 puts the spike on the right"
+	)
+	state.x = 300 * S
+	state.y = 284 * S
+	type.contact(up, state, world, 0)
+	check(state.life_phase == Life.DEAD, "Standing on the spike is fatal")
+	state = State.create(world)
+	state.x = 640 * S
+	state.y = 300 * S
+	type.contact(_by_id(state, "down"), state, world, 0)
+	check(state.life_phase == Life.PLAY, "A safe face is harmless")
+	check(_degrades("o13", {"R": 45}), "A diagonal spike becomes a placeholder")
 
 
 func _snapshot_checks() -> void:
