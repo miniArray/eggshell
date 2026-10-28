@@ -22,6 +22,7 @@ func _initialize() -> void:
 	runner_checks()
 	hopper_checks()
 	producer_checks()
+	spine_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -321,6 +322,58 @@ func producer_checks() -> void:
 	check(released.colour == 0, "Released body uses the first form")
 
 
+func spine_checks() -> void:
+	var world := ledge_world(
+		{"fast": place("e25", 450, 284), "slow": place("e25", 560, 284, {"F": 1, "M": 1})}
+	)
+	var state := State.create(world)
+	rest_player(state)
+	state.x = 2000 * S
+	var fast := by_id(state, "fast")
+	var slow := by_id(state, "slow")
+	var type: Script = Registry.lookup("e25")
+	for entity: Dictionary in [fast, slow]:
+		entity.status = Registry.ACTIVE
+		entity.started = 1
+	var x0: int = fast.x
+	var x1: int = slow.x
+	Collision.begin_step(state, world, Registry)
+	type.step(fast, state, world)
+	type.step(slow, state, world)
+	check(fast.x - x0 == -192 * 60, "First form walks left at 192 px/s")
+	check(slow.x - x1 == 128 * 60, "Second form walks right at 128 px/s")
+	state.x = fast.x + 90 * S
+	state.y = fast.y
+	Collision.begin_step(state, world, Registry)
+	type.step(fast, state, world)
+	check(fast.mode == type.SPIKE and fast.vx == 0, "A near player raises the spines")
+	check(fast.facing == 1, "Raised spines face the player")
+	for tick in 20:
+		type.step(fast, state, world)
+	check(fast.spine_w == 64 and fast.spine_h == 62, "Spines reach full size after 20 ticks")
+	state.x = fast.x + 20 * S
+	state.y = fast.y + 16 * S
+	state.invulnerable = 0
+	type.contact(fast, state, world, 0)
+	check(state.invulnerable > 0, "Raised spines hurt the player")
+	check(type.tongue(fast, state, world) == 0, "Raised spines cannot be eaten")
+	var egg := {"code": "o7", "x": fast.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(fast, egg, state, world) == 1, "Spines consume an egg")
+	check(fast.mode == type.SHRINK and fast.status == 1, "The struck spines fold; the body lives")
+	check(type.projectile_contact(fast, egg, state, world) == 0, "Folding spines ignore eggs")
+	for tick in 20:
+		type.step(fast, state, world)
+	check(fast.mode == type.WALK and fast.cooldown == 60, "After folding it walks with a pause")
+	check(type.valid(fast), "Spine state stays valid")
+	type.projectile_contact(fast, egg, state, world)
+	check(fast.status == Registry.DEFEATED and egg.fall_on_terrain == 1, "Egg defeats a walker")
+	fast.status = Registry.ACTIVE
+	fast.mode = type.SPIKE
+	fast.timer = 59
+	type.step(fast, state, world)
+	check(fast.mode == type.SHRINK, "Spines fold one second after rising")
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -331,7 +384,8 @@ func snapshot_checks() -> void:
 			"e": place("e7", 500, 100),
 			"f": place("e9", 600, 100, {"M": 2}),
 			"g": place("e40", 700, 100, {"F": 1}),
-			"h": place("o17", 800, 100, {"E1": "e40"})
+			"h": place("o17", 800, 100, {"E1": "e40"}),
+			"i": place("e25", 900, 100, {"F": 1, "M": 2})
 		}
 	)
 	var state := State.create(world)
