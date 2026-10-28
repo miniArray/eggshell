@@ -55,6 +55,19 @@ func compile(objects: Dictionary) -> Dictionary:
 	return {"ok": result.ok, "world": world, "error": result.get("error", "")}
 
 
+func degrades(raw: Dictionary) -> bool:
+	var result := compile({"shape": raw})
+	if not result.ok or result.world.entities.size() != 1:
+		return false
+	var source: Dictionary = result.world.entities[0]
+	return (
+		Registry.degraded(source)
+		and source.code == "?" + raw.A
+		and source.properties == raw
+		and not source.has("decor")
+	)
+
+
 func world_for(objects: Dictionary) -> Dictionary:
 	var result := compile(objects)
 	check(result.ok, "Synthetic scenery compiles: " + result.error)
@@ -93,10 +106,7 @@ func registration_checks() -> void:
 		var options := {"F": Decor.frame_count(code) - 1, "E1": "320.5"}
 		check(compile({"shape": placement(code, options)}).ok, "Last declared frame: " + code)
 		options.F += 1
-		check(
-			not compile({"shape": placement(code, options)}).ok,
-			"Unknown frame is explicit: " + code
-		)
+		check(degrades(placement(code, options)), "Unknown frame becomes a placeholder: " + code)
 	var before: Array = state.entities.duplicate(true)
 	Registry.advance(state, world, 0)
 	check(state.entities == before, "Static scenery and still-player reactions have no step work")
@@ -136,13 +146,11 @@ func option_checks() -> void:
 				not compile({"shape": placement("d3", {key: value})}).ok,
 				"Malformed pose is rejected: " + key
 			)
-	check(not compile({"shape": placement("d3", {"M": 2})}).ok, "Unknown mirror mode is explicit")
+	check(degrades(placement("d3", {"M": 2})), "Unknown mirror mode becomes a placeholder")
+	check(not compile({"shape": placement("d3", {"M": -1})}).ok, "Negative mirror is malformed")
 	check(not compile({"shape": placement("d3", {"F": 0.5})}).ok, "Frame is integral")
-	check(
-		not compile({"shape": placement("d14", {"R": 90})}).ok,
-		"Transformed extension is not guessed"
-	)
-	check(not compile({"shape": placement("d5", {"R": 90})}).ok, "Rotated ledge is not guessed")
+	check(degrades(placement("d14", {"R": 90})), "Transformed extension is not guessed")
+	check(degrades(placement("d5", {"R": 90})), "Rotated ledge is not guessed")
 	check(compile({"shape": placement("d5", {"R": 360})}).ok, "A full turn is the unchanged ledge")
 	check(
 		not compile({"shape": placement("d1", {"X": Decor.MAX_PIXELS + 1})}).ok,

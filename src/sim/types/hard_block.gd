@@ -9,14 +9,10 @@ const BOX := [-32 * S, -32 * S, 32 * S, 32 * S]
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if (
-		not (form is int or form is float)
-		or not is_finite(form)
-		or form != floor(form)
-		or form < 0
-		or form > 17
-	):
+	if not (form is int or form is float) or not is_finite(form) or form != floor(form) or form < 0:
 		return {"ok": false, "error": "Invalid hard block form"}
+	if form > 17:
+		return {"ok": false, "degrade": true, "error": "hard block form F=%d" % form}
 	return {"ok": true}
 
 

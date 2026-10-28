@@ -24,7 +24,8 @@ static func prepare(source: Dictionary, last_variant: int, allow_mirror: bool = 
 			return {"ok": false, "error": "Invalid enemy option: " + key}
 		var limit := last_variant if key == "F" else (2 if key == "M" and allow_mirror else 0)
 		if value > limit:
-			return {"ok": false, "error": "Unsupported enemy option: " + key}
+			# Integral values past the built forms degrade to a placeholder; bad data fails.
+			return {"ok": false, "degrade": true, "error": "enemy option %s=%d" % [key, int(value)]}
 		source[{"F": "variant", "M": "mirror", "R": "rotation"}[key]] = int(value)
 	if int(source.get("source_index", 0)) == -1:
 		for key: String in INTERNAL_LIMITS:

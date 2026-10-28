@@ -55,7 +55,10 @@ static func box(enemy: Dictionary, code: String) -> Array:
 		"e3":
 			return [-14 * S, -34 * S, 14 * S, 16 * S]
 		"e5":
-			return [-14 * S, (-14 if enemy.mode == 0 else -10) * S, 14 * S, 16 * S]
+			var top := (-14 if enemy.mode == 0 else -10) * S
+			if enemy.get("variant", 0) == 1:
+				return [-14 * S, -16 * S, 14 * S, -top]  # Hanging stem: flipped vertically.
+			return [-14 * S, top, 14 * S, 16 * S]
 		"e20", "e21":
 			if enemy.mode == 2:
 				return [-14 * S, -12 * S, 14 * S, 16 * S]

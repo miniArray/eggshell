@@ -53,8 +53,16 @@ const S := Units.SCALE
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
-	var maximum := 4 if source.code in ["e1", "e2"] else (3 if source.code in ["e20", "e21"] else 0)
-	return Options.prepare(source, maximum)
+	return Options.prepare(source, last_variant(source.code))
+
+
+static func last_variant(code: String) -> int:
+	# e1/e2/e3 forms select appearance; e5 F=1 hangs; fish forms select the swim pattern.
+	if code in ["e1", "e2"]:
+		return 4
+	if code in ["e20", "e21"]:
+		return 3
+	return 1 if code in ["e3", "e5"] else 0
 
 
 static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -69,6 +77,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var action := Body.process(entity, state)
 	if fresh and entity.code in ["e20", "e21"] and entity.variant == 2:
 		activate(entity, state, world)
+	if fresh and entity.code == "e5" and Plant.hanging(entity):
+		Plant.attach(entity, world)
 	if action in [Body.HELD, Body.GONE]:
 		return
 	if action == Body.RELEASED and entity.code in ["e1", "e2"]:
@@ -154,11 +164,7 @@ static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, in
 static func valid(entity: Dictionary) -> bool:
 	return (
 		Body.valid(entity)
-		and (
-			entity.variant <= 3
-			if entity.code in ["e20", "e21"]
-			else (entity.variant <= 4 if entity.code in ["e1", "e2"] else entity.variant == 0)
-		)
+		and entity.variant <= last_variant(entity.code)
 		and not (
 			entity.phase < 0
 			or entity.phase > 360
@@ -323,6 +329,13 @@ static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 		if entity.code == "e2" and not entity.ground_form:
 			pose = "Fly"
 		result.animation = "Roll" if entity.roll else str(entity.variant) + pose
+	elif entity.code == "e3":
+		# Pack states map these poses to the colour the variant selects.
+		result.animation = "turn" if entity.mode else "walk"
+	elif entity.code == "e5":
+		result.animation = "active" if entity.mode else "idle"
+		if Plant.hanging(entity):
+			result.flip_y = 1
 	elif entity.code in ["e20", "e21"]:
 		var pose := "Swim"
 		if entity.mode == 1:

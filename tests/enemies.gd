@@ -351,7 +351,7 @@ func lifecycle_checks(world: Dictionary) -> void:
 
 func boundary_checks(code: String) -> void:
 	var original: Dictionary = JSON.parse_string(code)
-	for value: Variant in ["1", [], -1, 0.5, 7]:
+	for value: Variant in ["1", [], -1, 0.5]:
 		var source := original.duplicate(true)
 		source.maps.map1.objects["3"].M = value
 		check(
@@ -359,10 +359,17 @@ func boundary_checks(code: String) -> void:
 			"Enemy mirror rejects invalid value %s" % str(value)
 		)
 	var source := original.duplicate(true)
-	source.maps.map1.objects["3"].F = 1
+	source.maps.map1.objects["3"].M = 7
+	var degraded: Dictionary = World.build(JSON.stringify(source), Collision.read())
 	check(
-		not World.build(JSON.stringify(source), Collision.read()).ok,
-		"Unsupported roof plant is explicit, not a ground fallback"
+		(
+			degraded.ok
+			and degraded.world.entities.any(
+				func(placed: Dictionary) -> bool: return placed.id == "3" and placed.code == "?e5"
+			)
+			and degraded.world.enemies.size() == 4
+		),
+		"An unbuilt mirror mode becomes a placeholder, not a guessed plant"
 	)
 	var real_world: Dictionary = World.build(code, Collision.read()).world
 	var player := State.create(real_world)

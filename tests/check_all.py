@@ -40,6 +40,8 @@ def main():
         "s6_enemies",
         "s6_decor",
         "s6_integration",
+        "placeholders",
+        "enemy_variants",
         "core",
         "objects",
         "enemies",

@@ -21,8 +21,14 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 		if not parsed.ok:
 			return {"ok": false, "error": "Invalid post option: " + key}
 		values.append(int(parsed.value))
-	if values[0] < 0 or values[1] < 0 or values[1] > 16 or values[2] not in [0, 1]:
-		return {"ok": false, "error": "Unsupported post size, colour or pointed form"}
+	if values[0] < 0 or values[1] < 0 or values[2] < 0:
+		return {"ok": false, "error": "Invalid post size, colour or pointed form"}
+	if values[1] > 16 or values[2] > 1:
+		return {
+			"ok": false,
+			"degrade": true,
+			"error": "post colour E2=%d or pointed form E3=%d" % [values[1], values[2]]
+		}
 	source.post_height = values[0] * S
 	source.post_colour = values[1]
 	source.post_spiked = values[2]

@@ -12,7 +12,7 @@ const SOLID := 2
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var result := Decor.prepare_options(source)
 	if result.ok and source.decor.rotation != 0:
-		return {"ok": false, "error": "Rotated scenery ledges are not supported"}
+		return {"ok": false, "degrade": true, "error": "rotated scenery ledge"}
 	return result
 
 

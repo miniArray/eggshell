@@ -29,14 +29,10 @@ static func _registry() -> Script:
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if (
-		not (form is int or form is float)
-		or not is_finite(form)
-		or form < 0
-		or form > 1
-		or form != floor(form)
-	):
-		return {"ok": false, "error": "Unsupported switch form"}
+	if not (form is int or form is float) or not is_finite(form) or form < 0 or form != floor(form):
+		return {"ok": false, "error": "Invalid switch form"}
+	if form > 1:
+		return {"ok": false, "degrade": true, "error": "switch form F=%d" % form}
 	return {"ok": true}
 
 
