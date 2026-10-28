@@ -91,7 +91,7 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 6 writes these schemas and the registry's entity schemas.
+Snapshot version 7 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 

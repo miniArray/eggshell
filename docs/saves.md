@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 6 stores the complete integer play state in little-endian
+Snapshot version 7 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 5 and all other versions are rejected with a log line;
+object families. Version 6 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -45,7 +45,7 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 6 state
+## Composed version 7 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
@@ -56,7 +56,10 @@ Maps owns selected map, map count and collectible targets. Registry and type
 pages and shared switch timer/sound state. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 6 adds the schemas of new object types (thorn, colour and growth blocks,
+Version 7 adds the schemas of the next object types (ledges, spans, switches,
+launchers, melons and many walkers and flyers) and the level field
+`seed_request_cursor`, which saves how far the seed consumer has read the
+player's emission requests. Version 6 added the schemas of object types (thorn, colour and growth blocks,
 plank bridge, runners, spiked hopper, spined walker, wing drifter, petal stem,
 needle juggler and ride hound), the thrown egg's skip fields and the spiked
 hopper's carrier fields. Version 5 recorded the common
@@ -83,10 +86,11 @@ references before reusing placed tokens.
 ## Slots and writes
 
 `settings.json` in the save directory holds `version` (1),
-`resume_where_i_left_off`, `music_volume` and `effects_volume`. The volumes are
+`resume_where_i_left_off`, `music_volume`, `effects_volume` and `zoom`. The volumes are
 whole numbers from 0 to 100 and default to 80; a missing volume key uses its
-default, and an invalid one logs a warning and uses 80. Settings are never part
-of a snapshot, and audio never writes play state.
+default, and an invalid one logs a warning and uses 80. `zoom` is a whole number
+of steps from -16 to 16 (default 0). Settings are never part of a snapshot, and
+audio, zoom and smooth drawing never write play state.
 
 The setting `resume_where_i_left_off` defaults to true. The player loads its
 autosave at startup and writes a new one during play and on orderly shutdown.

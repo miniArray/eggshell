@@ -58,10 +58,12 @@ after the separator to silence all audio.
 - Releasing blocks, linked solids, timed switches and saved message pages.
 - Moving and falling supports, redirect clouds, rock blocks, posts and rotated gates.
 - Typed decorations, top-only decoration strips and tick-driven effects.
+- Ledges and spans, counting and dice blocks, arrow lifts, launchers, seed melons,
+  balloons and more walker, hopper and flyer families.
 - Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
 - Countdown, capture, death and checkpoint respawn phases with a run HUD.
 - Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 6 snapshots with autosave and automatic resume.
+- A type registry and composed version 7 snapshots with autosave and automatic resume.
 - Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 - Player zoom in whole steps, and blended pictures on high-refresh displays.
