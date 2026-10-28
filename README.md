@@ -22,9 +22,21 @@ godot --headless --path . --editor --import
 bash tools/play --path . -- --level-code=tests/fixtures/stride.level.json
 ```
 
-Move with the arrows or A/D. Space or Z jumps. Shift or X runs.
-A controller uses the left stick or D-pad, either lower face button for jump,
-and either upper face button for run. F5 saves a manual slot and F9 restores it.
+| Action | Keyboard | Controller |
+| --- | --- | --- |
+| Move | Left/right or A/D | Left stick or D-pad |
+| Jump and flutter | Space or Z | Either lower face button |
+| Tongue or spit | Shift or X | Either upper face button |
+| Look or direct upward | Up or W | Stick or D-pad up |
+| Crouch, pound or dive | Down or S | Stick or D-pad down |
+| Aim, then throw | C | Left shoulder |
+| Toggle aim lock | V | Right shoulder |
+| Save / restore slot | F5 / F9 | Back + left / right shoulder |
+
+Movement reaches running speed without a modifier. Hold jump to flutter.
+Up directs tongue and spit actions upward. Down in the air starts a ground
+pound; in water it selects the submerged posture. Press throw twice to aim
+and throw. Up selects vertical aim; tongue cancels aim.
 The game automatically resumes the last session by default.
 
 Use `--pack=/absolute/path` after the argument separator to select an external
@@ -32,7 +44,8 @@ version 2 or 3 graphics pack. A pack never supplies the level.
 
 ## Implemented behavior
 
-- Walking, running, jumping, fluttering and swimming.
+- Acceleration, turns, jumping, fluttering, crouching, ground pounds and swimming.
+- Directed tongue, held-item, digestion, aiming and emission state with object hooks.
 - Bounce pads, semisolid bridges and goal sensors.
 - Walkers, flyers, tumblers, rooted biters and fish.
 - Knockback, temporary immunity, a recovery marker and a failure countdown.
@@ -40,7 +53,9 @@ version 2 or 3 graphics pack. A pack never supplies the level.
 - Container-sized camera fitting with nearest-neighbor graphics.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
-Actor collision boxes are fixed. The recovery marker is stationary.
+Player colliders follow the action and posture. The recovery marker is stationary.
+Food contacts, carried items and projectile objects are not yet wired to their
+player-side hooks. Packs without an action pose use their usual default pose.
 Audio and a level editor are not implemented.
 
 ## Physics and screens
@@ -50,6 +65,15 @@ zoom and graphics packs do not change the simulation. A future high-refresh
 view can interpolate pictures without changing physics or snapshot bytes.
 
 ## Tests
+
+Fast synthetic player checks (no game scene or graphics pack):
+
+```sh
+nix develop -c godot --headless --path . --script tests/moves.gd
+nix develop -c godot --headless --path . --script tests/move_input.gd
+```
+
+Full suite:
 
 ```sh
 nix develop -c python3 tests/check_all.py

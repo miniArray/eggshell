@@ -4,6 +4,7 @@ extends Node
 const World = preload("res://src/sim/world.gd")
 const State = preload("res://src/sim/play_state.gd")
 const Sim = preload("res://src/sim/step.gd")
+const InputBits = preload("res://src/sim/move_input.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Store = preload("res://src/save/store.gd")
 const Settings = preload("res://src/save/settings.gd")
@@ -68,8 +69,8 @@ func _ready() -> void:
 			fail("Replay must be an action-mask array")
 			return
 		for mask: Variant in replay:
-			if not (mask is float or mask is int) or mask < 0 or mask > 15 or floor(mask) != mask:
-				fail("Replay masks must be integers 0..15")
+			if not valid_replay_mask(mask):
+				fail("Replay masks must be integers 0..%d" % InputBits.MASK)
 				return
 		_replay = replay
 	setup_input()
@@ -144,12 +145,7 @@ func _physics_process(_delta: float) -> void:
 	if _options.has("replay"):
 		input = int(_replay[state.frame]) if state.frame < _replay.size() else 0
 	else:
-		input = (
-			int(Input.is_action_pressed("move_left"))
-			| (int(Input.is_action_pressed("move_right")) << 1)
-			| (int(Input.is_action_pressed("jump")) << 2)
-			| (int(Input.is_action_pressed("run")) << 3)
-		)
+		input = action_mask()
 	var began := Time.get_ticks_usec() if _profile_file != null else 0
 	Sim.advance(state, input, world)
 	if _profile_file != null:
@@ -315,7 +311,11 @@ func setup_input() -> void:
 		"move_left": [KEY_LEFT, KEY_A],
 		"move_right": [KEY_RIGHT, KEY_D],
 		"jump": [KEY_SPACE, KEY_Z],
-		"run": [KEY_SHIFT, KEY_X],
+		"use": [KEY_SHIFT, KEY_X],
+		"move_up": [KEY_UP, KEY_W],
+		"move_down": [KEY_DOWN, KEY_S],
+		"throw": [KEY_C],
+		"aim_lock": [KEY_V],
 		"save": [KEY_F5],
 		"load": [KEY_F9],
 		"slot_modifier": [],
@@ -323,7 +323,10 @@ func setup_input() -> void:
 		"slot_load": []
 	}
 	for action: String in keys:
-		InputMap.add_action(action, 0.25)
+		if InputMap.has_action(action):
+			InputMap.action_erase_events(action)
+		else:
+			InputMap.add_action(action, 0.25)
 		for key: int in keys[action]:
 			var event := InputEventKey.new()
 			event.physical_keycode = key
@@ -332,7 +335,11 @@ func setup_input() -> void:
 		"move_left": [JOY_BUTTON_DPAD_LEFT],
 		"move_right": [JOY_BUTTON_DPAD_RIGHT],
 		"jump": [JOY_BUTTON_A, JOY_BUTTON_B],
-		"run": [JOY_BUTTON_X, JOY_BUTTON_Y],
+		"use": [JOY_BUTTON_X, JOY_BUTTON_Y],
+		"move_up": [JOY_BUTTON_DPAD_UP],
+		"move_down": [JOY_BUTTON_DPAD_DOWN],
+		"throw": [JOY_BUTTON_LEFT_SHOULDER],
+		"aim_lock": [JOY_BUTTON_RIGHT_SHOULDER],
 		"slot_modifier": [JOY_BUTTON_BACK],
 		"slot_save": [JOY_BUTTON_LEFT_SHOULDER],
 		"slot_load": [JOY_BUTTON_RIGHT_SHOULDER]
@@ -347,3 +354,32 @@ func setup_input() -> void:
 		event.axis = JOY_AXIS_LEFT_X
 		event.axis_value = direction
 		InputMap.action_add_event("move_left" if direction < 0 else "move_right", event)
+		var vertical := InputEventJoypadMotion.new()
+		vertical.axis = JOY_AXIS_LEFT_Y
+		vertical.axis_value = direction
+		InputMap.action_add_event("move_up" if direction < 0 else "move_down", vertical)
+
+
+static func action_mask() -> int:
+	var mask := (
+		int(Input.is_action_pressed("move_left")) * InputBits.LEFT
+		| int(Input.is_action_pressed("move_right")) * InputBits.RIGHT
+		| int(Input.is_action_pressed("jump")) * InputBits.JUMP
+		| int(Input.is_action_pressed("use")) * InputBits.USE
+		| int(Input.is_action_pressed("move_up")) * InputBits.UP
+		| int(Input.is_action_pressed("move_down")) * InputBits.DOWN
+	)
+	# Slot chords keep their existing meaning and do not also throw or change aim.
+	if not Input.is_action_pressed("slot_modifier"):
+		mask |= int(Input.is_action_pressed("throw")) * InputBits.THROW
+		mask |= int(Input.is_action_pressed("aim_lock")) * InputBits.LOCK
+	return mask
+
+
+static func valid_replay_mask(value: Variant) -> bool:
+	return (
+		(value is float or value is int)
+		and value >= 0
+		and value <= InputBits.MASK
+		and floor(value) == value
+	)
