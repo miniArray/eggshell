@@ -102,6 +102,7 @@ const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
+const DispatchLoops = preload("res://src/sim/dispatch_loops.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
@@ -268,21 +269,7 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 static func consume_requests(state: Dictionary, world: Dictionary) -> void:
 	for type: Script in _level_consumers:
 		type.consume_level_requests(state, world)
-	var solids := Collision.solid_rows(world)
-	var grid: Variant = EntityGrid.current(world)
-	for entity: Dictionary in state.entities:
-		var known: Variant = _facts_by_code.get(entity.code)
-		if known == null:
-			known = facts(entity.code)
-		if known.consume:
-			var row: Variant = _solid_row(solids, entity)
-			if row != null:
-				Collision.dispatch_begin(world, row)
-			EntityGrid.begin(grid, entity)
-			known.type.consume_requests(entity, state, world)
-			EntityGrid.end(grid, entity)
-			if row != null:
-				Collision.dispatch_end(world, row)
+	DispatchLoops.consume_requests(state, world)
 
 
 static func codes() -> Array[String]:
@@ -780,38 +767,7 @@ static func phase_for(type: Script, key: String, fallback: int) -> int:
 
 
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
-	state.pressed_input = pressed
-	# Preserve actor movement before pad gravity, including capture's early exit.
-	var grid := EntityGrid.attach(state, world)
-	# The grid keeps these two arrays; appending inline keeps dispatch overhead low.
-	var dispatching: Array = grid.dispatching
-	var dirty: Array = grid.dirty
-	for phase in [0, 1]:
-		if phase == 1 and state.captured_by:
-			break
-		var solids := Collision.solid_rows(world)
-		# Cache reads and checks are inlined here: this loop visits every entity every step.
-		for entity: Dictionary in state.entities:
-			var known: Variant = _facts_by_code.get(entity.code)
-			if known == null:
-				known = facts(entity.code)
-			if known.step_phase != phase:
-				continue
-			var row: Variant = solids.get(entity.token)
-			if row != null and is_same(row.entity, entity):
-				Collision.dispatch_begin(world, row)
-			else:
-				row = null
-			dispatching.append(entity)
-			# The lifecycle returns at once for an active entity that cannot despawn.
-			if entity.status != ACTIVE or entity.can_despawn:
-				EntityLifecycle.run(entity, state, world)
-			if entity.status == ACTIVE:
-				known.type.step(entity, state, world)
-			dispatching.pop_back()
-			dirty.append(entity)
-			if row != null:
-				Collision.dispatch_end(world, row)
+	DispatchLoops.advance(state, world, pressed)
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
@@ -823,31 +779,7 @@ static func activation_box(entity: Dictionary, type: Script) -> Array:
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
-	var grid: Variant = EntityGrid.current(world)
-	var dispatching: Array = grid.dispatching if grid != null else []
-	var dirty: Array = grid.dirty if grid != null else []
-	# The step's solid rows only change at the next Collision.begin_step.
-	var solids := Collision.solid_rows(world)
-	for phase in [0, 1, 2]:
-		for entity: Dictionary in state.entities:
-			var known: Variant = _facts_by_code.get(entity.code)
-			if known == null:
-				known = facts(entity.code)
-			if (
-				known.contact_phase == phase
-				and entity.status == ACTIVE
-				and entity.get("held", 0) != 1
-				and entity.get("hidden", 0) != 1
-			):
-				var row: Variant = _solid_row(solids, entity)
-				if row != null:
-					Collision.dispatch_begin(world, row)
-				dispatching.append(entity)
-				known.type.contact(entity, state, world, input)
-				dispatching.pop_back()
-				dirty.append(entity)
-				if row != null:
-					Collision.dispatch_end(world, row)
+	DispatchLoops.contact(state, input, world)
 
 
 static func goal_convert(state: Dictionary, world: Dictionary, on_coin: Callable) -> void:
