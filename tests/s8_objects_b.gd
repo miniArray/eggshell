@@ -25,6 +25,8 @@ func _initialize() -> void:
 	dice_checks()
 	egg_block_checks()
 	spore_checks()
+	launcher_checks()
+	shot_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -595,6 +597,92 @@ func spore_checks() -> void:
 	hurt.y = touch.y + 30 * S
 	type.contact(touch, hurt, hurt_world, 0)
 	check(hurt.invulnerable > 0, "Touching a spore hurts")
+
+
+func _shots(state: Dictionary) -> Array:
+	return state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "enemy_shot" and entity.status == 1
+	)
+
+
+func launcher_checks() -> void:
+	var world := _world_for(
+		{
+			"fixed": _place("e37", 600, 200, {"E1": "Static"}),
+			"aimed": _place("e37", 600, 600, {"E1": "Aim", "F": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 300 * S
+	state.y = 216 * S
+	var type: Script = Registry.lookup("e37")
+	var fixed := _by_id(state, "fixed")
+	_activate(fixed)
+	check(type.solid_box(fixed) == [584 * S, 184 * S, 616 * S, 216 * S], "The launcher is a solid")
+	for _tick in 30:
+		type.step(fixed, state, world)
+	check(_shots(state).is_empty(), "The shot waits for its half-second cue")
+	type.step(fixed, state, world)
+	var shots := _shots(state)
+	check(shots.size() == 1, "A fixed launcher fires one shot")
+	if shots.size() == 1:
+		check(shots[0].vx == -296 * 60 and shots[0].vy == 0, "It fires level toward the player")
+	for _tick in 400:
+		type.step(fixed, state, world)
+	check(_shots(state).size() == 1, "It does not fire again while its shot remains")
+	shots[0].status = Registry.DEFEATED
+	type.step(fixed, state, world)
+	for _tick in 31:
+		type.step(fixed, state, world)
+	check(_shots(state).size() == 1, "Once the shot is gone it fires again")
+	var aimed := _by_id(state, "aimed")
+	_activate(aimed)
+	state.x = 900 * S
+	state.y = 632 * S
+	for _tick in 31:
+		type.step(aimed, state, world)
+	var aimed_shot: Dictionary = _shots(state).back()
+	check(aimed_shot.vx > 0 and aimed_shot.form == 1, "An aiming launcher fires at the player")
+	check(_degrades("e37", {"E1": "Spin"}), "An unknown launcher mode becomes a placeholder")
+	check(_degrades("e37", {"E1": "Static", "F": 2}), "The homing shot form degrades")
+
+
+func shot_checks() -> void:
+	var world := _world_for({"wall": _place("o28", 300, 200)})
+	var state := State.create(world)
+	state.x = 900 * S
+	state.y = 600 * S
+	var shot := Registry.spawn_dynamic(
+		state, world, "enemy_shot", 500 * S, 200 * S, {"vx": -296 * 60, "form": 1, "facing": -1}
+	)
+	var paused := false
+	for _tick in 60:
+		Sim.advance(state, 0, world)
+		paused = paused or shot.pause > 0
+	check(paused, "A bouncing shot pauses against a solid")
+	check(shot.vx > 0 and shot.x > 332 * S + 17 * S - S, "Then it reflects off the solid")
+	var plain := Registry.spawn_dynamic(
+		state, world, "enemy_shot", 500 * S, 400 * S, {"vx": -296 * 60, "facing": -1}
+	)
+	var type: Script = Registry.lookup("enemy_shot")
+	type.step(plain, state, world)
+	check(plain.x == 500 * S - 296 * 60, "A straight shot flies at 296 px/s")
+	state.x = plain.x
+	state.y = plain.y - 4 * S
+	state.vy = 100 * 60
+	type.contact(plain, state, world, 0)
+	check(plain.falling == 1 and state.vy < 0, "Landing on a shot stops it and it drops")
+	type.step(plain, state, world)
+	check(plain.vy == 1024 and plain.x == 500 * S - 296 * 60, "A stopped shot falls")
+	state = State.create(world)
+	var side := Registry.spawn_dynamic(
+		state, world, "enemy_shot", 700 * S, 400 * S, {"vx": -296 * 60, "facing": -1}
+	)
+	state.x = side.x
+	state.y = side.y + 30 * S
+	state.invulnerable = 0
+	type.contact(side, state, world, 0)
+	check(state.invulnerable > 0, "A shot hurts from the side")
 
 
 func snapshot_checks() -> void:
