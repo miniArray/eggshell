@@ -23,6 +23,7 @@ func _initialize() -> void:
 	soft_giant_checks()
 	gust_checks()
 	dice_checks()
+	egg_block_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -492,6 +493,53 @@ func dice_checks() -> void:
 	check(outline.on == 0 and solid.on == 1, "An egg strike toggles the group")
 	check(type.projectile_contact(solid, egg, state, world) == 0, "Eggs pass through outlines")
 	check(_degrades("o34", {"F": 2}), "An unknown dice block form becomes a placeholder")
+
+
+func egg_block_checks() -> void:
+	var world := _world_for(
+		{"yellow": _place("o27", 300, 120), "red": _place("o27", 600, 120, {"F": 1})}
+	)
+	var state := State.create(world)
+	var type: Script = Registry.lookup("o27")
+	var yellow := _by_id(state, "yellow")
+	check(type.solid_box(yellow) == [284 * S, 104 * S, 316 * S, 136 * S], "The egg block is 32x32")
+	state.x = 300 * S
+	state.y = 200 * S
+	state.vy = -700 * 60
+	state.on_floor = 0
+	var struck := false
+	for _tick in 20:
+		Sim.advance(state, 0, world)
+		struck = struck or yellow.busy > 0
+	check(struck, "A head strike starts the egg block")
+	check(type.solid_box(yellow).is_empty(), "A struck egg block is no longer solid")
+	state.x = 900 * S  # Away, so the player does not collect the egg at once.
+	state.y = 600 * S
+	for _tick in 30:
+		Sim.advance(state, 0, world)
+	check(yellow.status == Registry.DEFEATED, "The struck block is gone after its rise and fall")
+	var eggs: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "o7"
+	)
+	check(eggs.size() == 1, "It leaves one egg")
+	if eggs.size() == 1:
+		check(
+			eggs[0].colour == 1 and eggs[0].floating == 1,
+			"A plain block leaves a floating yellow egg"
+		)
+		check(eggs[0].x == yellow.x and eggs[0].y == yellow.home_y, "The egg appears in its place")
+	var red := _by_id(state, "red")
+	type.bump(red, state, world, 0)
+	for _tick in 6:
+		type.step(red, state, world)
+	check(red.y == red.home_y - 64 * S * 6 / 15, "The block rises 64 px over 15 ticks")
+	for _tick in 24:
+		type.step(red, state, world)
+	var reds: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "o7" and entity.colour == 2
+	)
+	check(reds.size() == 1, "F 1 leaves a red egg")
+	check(_degrades("o27", {"F": 2}), "An unknown egg block colour becomes a placeholder")
 
 
 func snapshot_checks() -> void:
