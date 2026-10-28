@@ -36,9 +36,10 @@ func _initialize() -> void:
 	landing.y = 255 * S
 	landing.vy = 200 * 60
 	Sim.advance(landing, 0, world)
+	# Touching a surface is contact, so feet rest within 1/16 pixel above the closed top.
 	check(
 		landing.y < 256 * S and 256 * S - landing.y <= S / 16 and landing.support_bridge == 1,
-		"Bridge supports falling feet outside the closed surface"
+		"Bridge supports falling feet"
 	)
 	world = Fixtures.world("lagoon")
 	world.goals.clear()

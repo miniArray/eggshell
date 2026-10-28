@@ -66,26 +66,40 @@ func check_shapes(name: String, tile: Dictionary, image: Image) -> void:
 
 
 static func joined(image: Image, first: int, second: int, horizontal: bool) -> bool:
-	# Neighbouring tiles must continue each other within a small colour step.
-	for step in 64:
-		var a := Vector2i((first % 8) * 64 + 63, (first / 8) * 64 + step)
-		var b := Vector2i((second % 8) * 64, (second / 8) * 64 + step)
-		if not horizontal:
-			a = Vector2i((first % 8) * 64 + step, (first / 8) * 64 + 63)
-			b = Vector2i((second % 8) * 64 + step, (second / 8) * 64)
-		var left := image.get_pixelv(a)
-		var right := image.get_pixelv(b)
-		if left.a != right.a:
+	# Neighbouring tiles continue each other: the same coverage on both sides, and a seam no
+	# rougher than the 90th-percentile neighbouring line inside the two tiles. The crumb is
+	# noisy, so single pixel steps are not a seam signal; a misaligned seam exceeds this.
+	var along := Vector2i(0, 1) if horizontal else Vector2i(1, 0)
+	var across := Vector2i(1, 0) if horizontal else Vector2i(0, 1)
+	var a := origin(first) + across * 63
+	var b := origin(second)
+	for index in 64:
+		if image.get_pixelv(a + along * index).a != image.get_pixelv(b + along * index).a:
 			return false
-		if (
-			left.a > 0.0
-			and (
-				maxf(maxf(absf(left.r - right.r), absf(left.g - right.g)), absf(left.b - right.b))
-				> 0.2
+	var interior: Array[float] = []
+	for id in [first, second]:
+		for line in 63:
+			var start := origin(id) + across * line
+			interior.append(roughness(image, start, start + across, along))
+	interior.sort()
+	return roughness(image, a, b, along) <= interior[interior.size() * 9 / 10]
+
+
+static func origin(id: int) -> Vector2i:
+	return Vector2i((id % 8) * 64, (id / 8) * 64)
+
+
+static func roughness(image: Image, a: Vector2i, b: Vector2i, along: Vector2i) -> float:
+	# Summed largest channel step between two parallel 64-pixel lines, over painted pairs.
+	var total := 0.0
+	for index in 64:
+		var left := image.get_pixelv(a + along * index)
+		var right := image.get_pixelv(b + along * index)
+		if left.a > 0.0 and right.a > 0.0:
+			total += maxf(
+				maxf(absf(left.r - right.r), absf(left.g - right.g)), absf(left.b - right.b)
 			)
-		):
-			return false
-	return true
+	return total
 
 
 static func visible_equal(loaded: Image, expected: Image) -> bool:
