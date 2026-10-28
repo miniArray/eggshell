@@ -98,6 +98,9 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.0, strength * shade);
 }
 """
+# The generated gradient layer scrolls at a tenth of the camera, so it keeps nine tenths.
+const GRADIENT_FOLLOW := 0.9
+const MAX_GRADIENT_LINES := 4096.0
 var _base := ColorRect.new()
 var _dark := ColorRect.new()
 var _tint := ColorRect.new()
@@ -105,6 +108,8 @@ var _shade := ShaderMaterial.new()
 var _swap := Shader.new()
 var _prepared_root := 0
 var _shimmer_nodes: Array[Dictionary] = []
+var _gradient := {}
+var _gradient_nodes: Array[ColorRect] = []
 
 
 func _init() -> void:
@@ -135,6 +140,9 @@ func update(
 	for node: ColorRect in [_base, _dark, _tint]:
 		node.size = viewport
 	_base.color = policy.background
+	if not _gradient.is_empty():
+		_base.color = _gradient.fill
+		_place_gradient(view_plan, viewport)
 	_tint.color = policy.tint
 	_tint.visible = policy.tint.a > 0
 	_dark.visible = policy.darkness > 0
@@ -150,6 +158,20 @@ func update(
 func _prepare(root: Node2D, player: Sprite2D, world: Dictionary) -> void:
 	_prepared_root = root.get_instance_id()
 	_shimmer_nodes.clear()
+	for node: ColorRect in _gradient_nodes:
+		node.queue_free()
+	_gradient_nodes.clear()
+	var map_source: Variant = world.get("map_source", {})
+	_gradient = (
+		custom_gradient(map_source.get("customGradientGenerator")) if map_source is Dictionary else {}
+	)
+	for band: Dictionary in _gradient.get("bands", []):
+		var node := ColorRect.new()
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		node.color = band.color
+		node.z_index = -39
+		add_child(node)
+		_gradient_nodes.append(node)
 	var palette: Array = world.get("player_palette", [])
 	if not palette.is_empty():
 		var pairs := []
@@ -204,6 +226,88 @@ static func plan(
 		"light_origin": view_plan.offset + center * view_plan.scale,
 		"light_radius": 128.0 * view_plan.scale,
 	}
+
+
+func _place_gradient(view_plan: Dictionary, viewport: Vector2) -> void:
+	var bands: Array = _gradient.bands
+	var scale := float(view_plan.get("scale", 1.0))
+	var offset: Vector2 = view_plan.get("offset", Vector2.ZERO)
+	var center: Vector2 = view_plan.get("center", Vector2(416, 224))
+	var top := center.y - 224.0
+	for index in bands.size():
+		var band: Dictionary = bands[index]
+		var node := _gradient_nodes[index]
+		node.position = Vector2(0, offset.y + (band.y + GRADIENT_FOLLOW * top) * scale)
+		node.size = Vector2(viewport.x, band.height * scale)
+
+
+## Bands of a generated vertical gradient: "lines|start|end|r,g,b_r,g,b..." in 448-pixel
+## reference rows. Returns {} when the field is absent or unusable.
+static func custom_gradient(value: Variant) -> Dictionary:
+	if not value is String:
+		return {}
+	var parts: PackedStringArray = value.split("|")
+	if parts.size() < 4:
+		return {}
+	var lines := _number(parts[0])
+	var start := _number(parts[1])
+	var end := _number(parts[2])
+	var tokens: PackedStringArray = parts[3].split("_") if not parts[3].is_empty() else []
+	var colours := []
+	for token: String in tokens:
+		var channels := token.split(",")
+		var rgb := []
+		for index in 3:
+			rgb.append(_whole(channels[index]) if index < channels.size() else 0)
+		colours.append(rgb)
+	if colours.is_empty():
+		return {}
+	var bands := []
+	if start > 0:
+		bands.append({"y": 0.0, "height": start + 1.0, "color": _packed(colours[0])})
+	var segments := colours.size() - 1
+	if segments > 0 and lines > 0 and is_finite(lines):
+		var step := (end - start) / lines
+		var height := floorf(step + 0.5) + 1.0
+		var per := lines / segments
+		var count := 0
+		for segment in segments:
+			var low: Array = colours[segment]
+			var high: Array = colours[segment + 1]
+			for line in ceili(minf(per, MAX_GRADIENT_LINES)):
+				var rgb := []
+				for channel in 3:
+					var value_at: float = (high[channel] - low[channel]) / per * line + low[channel]
+					rgb.append(8 * floorf(value_at / 8.0 + 0.5))
+				bands.append({"y": start + step * count, "height": height, "color": _packed(rgb)})
+				count += 1
+	return {"bands": bands, "fill": _packed(colours[colours.size() - 1])}
+
+
+static func _number(text: String) -> float:
+	var value := text.strip_edges().to_float()
+	return value if is_finite(value) else 0.0
+
+
+static func _whole(text: String) -> int:
+	# Leading integer digits, like a base-10 parse that ignores trailing text; 0 when absent.
+	var trimmed := text.strip_edges()
+	var digits := ""
+	for index in trimmed.length():
+		var character := trimmed[index]
+		if character.is_valid_int() or (index == 0 and character in ["-", "+"]):
+			digits += character
+		else:
+			break
+	return digits.to_int() if digits.is_valid_int() else 0
+
+
+static func _packed(rgb: Array) -> Color:
+	return Color(
+		clampf(rgb[0], 0, 255) / 255.0,
+		clampf(rgb[1], 0, 255) / 255.0,
+		clampf(rgb[2], 0, 255) / 255.0
+	)
 
 
 static func dice_colour(world: Dictionary, source: Dictionary) -> Array:
