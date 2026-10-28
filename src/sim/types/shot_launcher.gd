@@ -1,7 +1,8 @@
 extends RefCounted
 ## A solid launcher that fires one shot at a time: straight, bouncing or homing.
-## Fixed launchers fire level toward the player's side; aiming launchers fire straight at the player. It
-## fires again five seconds after a shot, once that shot is gone.
+## Fixed launchers fire level toward the player's side; aiming launchers fire
+## straight at the player. It fires again five seconds after a shot, once that
+## shot is gone.
 
 const S := preload("res://src/sim/units.gd").SCALE
 const Motion = preload("res://src/sim/enemy_motion.gd")
