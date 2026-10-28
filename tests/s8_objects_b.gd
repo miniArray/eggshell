@@ -562,6 +562,12 @@ func _spike_checks() -> void:
 	type.contact(_by_id(state, "down"), state, world, 0)
 	check(state.life_phase == Life.PLAY, "A safe face is harmless")
 	check(_degrades("o13", {"R": 45}), "A diagonal spike becomes a placeholder")
+	var blank_world := _world_for({"blank": _place("empty", 300, 300, {"E1": "64"})})
+	var blank := _by_id(State.create(blank_world), "blank")
+	check(
+		blank.code == "empty" and not Registry.lookup("empty").view_state(blank, {}).visible,
+		"An editor blank loads as nothing"
+	)
 
 
 func _snapshot_checks() -> void:
