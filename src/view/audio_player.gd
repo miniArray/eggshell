@@ -63,6 +63,8 @@ const WATCHED := {
 	"message_section": 0,
 }
 
+## Cues derived by the last `observe` call; empty after a resynchronization.
+var last_cues: Array = []
 var _map := AudioMap.new()
 var _world: Dictionary = {}
 var _targets := {}
@@ -115,25 +117,27 @@ func setup(audio_map: AudioMap, world: Dictionary, settings: Dictionary, muted: 
 		_voice_order.append(0)
 
 
-## Feed the current state once per simulation step or rendered frame.
+## Feed the current state once per simulation step. Muted players still derive cues.
 func observe(state: Dictionary) -> void:
+	var current := summarize(state)
+	var continuous: bool = (
+		not _previous.is_empty()
+		and is_same(state, _source)
+		and current.frame > _previous.frame
+		and current.frame - _previous.frame <= MAX_STEP_GAP
+	)
+	last_cues = derive(_previous, current, _targets) if continuous else []
+	_previous = current
+	_source = state
 	if _muted:
 		return
-	var current := summarize(state)
-	if (
-		_previous.is_empty()
-		or not is_same(state, _source)
-		or current.frame <= _previous.frame
-		or current.frame - _previous.frame > MAX_STEP_GAP
-	):
+	if not continuous:
 		_resync(current)
 	else:
-		for cue: Dictionary in derive(_previous, current, _targets):
+		for cue: Dictionary in last_cues:
 			_apply(cue)
 		_update_music(current)
 	_set_event_paused("switch_timer", current.message_stage != 0)
-	_previous = current
-	_source = state
 
 
 static func summarize(state: Dictionary) -> Dictionary:
@@ -250,12 +254,7 @@ static func _move_cues(p: Dictionary, c: Dictionary, cues: Array) -> void:
 		cues.append(_effect("splash"))
 	if c.move_aim and _crossed(p.frame, c.frame, AIM_TICK_FRAMES):
 		cues.append(_effect("aim_tick"))
-	if (
-		c.move_snow
-		and c.on_floor
-		and c.vx != 0
-		and _crossed(p.frame, c.frame, SNOW_STEP_FRAMES)
-	):
+	if c.move_snow and c.on_floor and c.vx != 0 and _crossed(p.frame, c.frame, SNOW_STEP_FRAMES):
 		cues.append(_effect("snow_step"))
 
 
@@ -292,9 +291,7 @@ static func level_track(world: Dictionary, map_index: int, audio_map: AudioMap) 
 	if key.is_empty() or not audio_map.music.has(key):
 		return {}
 	var settings := audio_map.settings_for(key)
-	var result := {
-		"key": key, "loop_start": settings.loop_start, "volume_db": settings.volume_db
-	}
+	var result := {"key": key, "loop_start": settings.loop_start, "volume_db": settings.volume_db}
 	if music.get("custom", false):
 		# Custom selections carry "loop_start_seconds,volume_db" from the level code.
 		var parts := str(music.get("settings", "0,0")).split(",")
