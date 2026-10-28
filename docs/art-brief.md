@@ -17,7 +17,7 @@ Verdigris is locked.
 | Screen scaling | Each art pixel covers a whole number of screen pixels, never fewer than one: no art pixel is dropped and none is blended. The scale is the integer closest in ratio to the 832x448 reference scale, raised only to fit level bounds. Visible world area varies by screen. See [View policy](graphics.md#view-policy) |
 | Hero | Oriel, a slender young heron courier: pale blue-grey feathers, white chest, long yellow beak, coral-red scarf, leather satchel. She carries the city's last living seed to the central glasshouse |
 | Oriel design | Reference drawing round 1, candidate A "true heron" (chosen 2026-10-27): small head, long S-curved neck, very long thin legs, a long dagger beak, wings folded neatly. Reference sprite: `~/.local/share/eggshell/art-direction/approved/oriel-reference/oriel-1x.png`, 91x110 art px, cut on the generator's own pixel grid |
-| Companion | Pip, a seedling with a face, rides in the satchel. A hit throws Pip out, and Pip drifts away under a dandelion parachute. The countdown shows as Pip wilting. Enemies that chase Pip are seed-eaters |
+| Companion | Pip, a seedling with a face in a small broken terracotta pot-shard it carries like a shell (design C, chosen 2026-10-27, reference `approved/pip-reference/`), rides in the satchel. The shard keeps Pip visible against foliage. A hit throws Pip out, and Pip drifts away under a dandelion parachute. The countdown shows as Pip wilting. Enemies that chase Pip are seed-eaters |
 | Grab move | The neck strike: Oriel shoots out her neck and beak, grabs an enemy and swallows it |
 | Throwables | Brass casings: a swallowed clockwork enemy becomes a brass ball. Casings follow her in a line and she throws them along an aim line. Refill blocks are old pneumatic post chutes |
 | Enemies | Clockwork and glass creatures and carnivorous plants, for example a copper beetle (walker), a glass dragonfly (flyer) and a pitcher plant (rooted biter) |
@@ -56,7 +56,7 @@ Verdigris is locked.
 
 1. Concept: chosen (Verdigris).
 2. Style frame: one mock game screen at real size, three variants; A chosen.
-3. Reference drawing of Oriel: approved (round 3, 91x110 art px). Key poses idle, walk-a, walk-b, run, jump, fall and flutter approved as generated (2026-10-27, `approved/oriel-poses-1/`). Next, Pip.
+3. Reference drawing of Oriel: approved (round 3, 91x110 art px). Key poses idle, walk-a, walk-b, run, jump, fall and flutter approved as generated (2026-10-27, `approved/oriel-poses-1/`). Pip: design C chosen; face and parachute clean-up next.
 4. Asset sheets built on the approved frame and drawings, each approved on the page.
 5. In-game check on the handheld and a 1080p screen with the test courses.
 6. Lock: approved files move into the repository with a list of what the user
