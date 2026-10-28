@@ -3,11 +3,10 @@ extends RefCounted
 ## Exactly one 60 Hz tick. No nodes, effects, clocks or engine physics.
 
 const State = preload("res://src/sim/play_state.gd")
-const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
-const Springs = preload("res://src/sim/bounce_pad.gd")
-const Enemies = preload("res://src/sim/enemies.gd")
-const Damage = preload("res://src/sim/damage.gd")
+const Registry = preload("res://src/sim/registry.gd")
+const Maps = preload("res://src/sim/maps.gd")
+const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const S := State.SCALE
@@ -26,15 +25,17 @@ const PLAYER_BOX := Moves.NORMAL_BOX
 
 
 static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
-	if state.goal_reached:
+	if not Maps.sync(state, world) or state.goal_reached:
+		return
+	state.frame += 1
+	if Life.before_step(state, world, Registry.spawn_map, Maps.change.bind(Registry.spawn_map)):
+		Moves.reset(state)
+	if Life.blocks_step(state):
 		return
 	var pressed: int = input & ~state.previous_input
 	var released: int = state.previous_input & ~input
 	state.previous_input = input
-	state.frame += 1
-	if Damage.prepare(state):
-		Damage.respawn(state, world)
-	Enemies.advance(state, world, pressed)
+	Registry.advance(state, world, pressed)
 	if state.captured_by:
 		state.camera_x = state.x
 		state.camera_y = state.y - 28 * S
@@ -43,25 +44,20 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if state.hurt:
 		pressed = 0
 		released = 0
-	Springs.advance(state, world)
-	if Moves.advance(state, action, world, pressed, released):
-		Damage.respawn(state, world)
-	Springs.contact(state, action, world)
-	Enemies.contact(state, action, world)
-	Damage.recover(state)
+	Moves.advance(state, action, world, pressed, released)
+	var phase: int = state.life_phase
+	Registry.contact(state, action, world)
+	if phase != Life.GOAL and state.life_phase == Life.GOAL:
+		Registry.goal_convert(state, world, Life.goal_coin)
+	var tongue := Moves.tongue_reach_box(state)
+	if not tongue.is_empty():
+		Life.catch_companion(state, tongue[0], tongue[1], tongue[2], tongue[3])
+	Life.after_step(state, world)
 	# Store the desired focus only. View-size-dependent clamping belongs to the view.
 	state.camera_x = state.x
 	state.camera_y = state.y - 28 * S
-	Moves.finish(state, action, world)
-	for goal: Array in world.goals:
-		if (
-			state.x + 12 * S > goal[0] - 8 * S
-			and state.x - 12 * S < goal[0] + 8 * S
-			and state.y > goal[1] - 8 * S
-			and state.y - 56 * S < goal[1] + 8 * S
-		):
-			state.goal_reached = 1
-			state.movement = 5
+	if not Life.blocks_step(state):
+		Moves.finish(state, action, world)
 
 
 static func approach(value: int, target: int, amount: int) -> int:
