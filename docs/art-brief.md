@@ -11,6 +11,8 @@ Verdigris is locked.
 |---|---|
 | Concept | Verdigris, chosen 2026-10-27 from three concepts: the overgrown ruins of a glasshouse city. Teal and verdigris copper stone, jade water, coral-pink blossoms, pale gold light and cream mist |
 | Look | Hi-bit pixel art near Hyper Light Drifter: many tones, large dithered gradients, crisp silhouettes, glowing accents, layered haze. Direction only; nothing is copied. It must not read as 8-bit or 16-bit |
+| Style | Style frame round 1 variant A, "pastel painterly" (chosen 2026-10-27): soft pastel colour like a chalk-and-crayon picture book made of pixels, long gentle colour ramps, fine dithered texture on stone and moss, a rich layered background. Reference: `~/.local/share/eggshell/art-direction/style-frames/round-1/A-d1.png` until assets are locked |
+| Crisp pixels | No smoothing of any kind, ever (user, 2026-10-27): no bilinear, sharp-bilinear, box filter or other blending of art pixels on screen. Every art pixel is drawn with nearest-neighbour filtering |
 | Hero | Oriel, a slender young heron courier: pale blue-grey feathers, white chest, long yellow beak, coral-red scarf, leather satchel. She carries the city's last living seed to the central glasshouse |
 | Companion | Pip, a seedling with a face, rides in the satchel. A hit throws Pip out, and Pip drifts away under a dandelion parachute. The countdown shows as Pip wilting. Enemies that chase Pip are seed-eaters |
 | Grab move | The neck strike: Oriel shoots out her neck and beak, grabs an enemy and swallows it |
@@ -29,9 +31,8 @@ Verdigris is locked.
 
 | Topic | Status |
 |---|---|
-| Style variant | Style frame round 1 shows three variants of one screen |
-| Art density | One or two art pixels per world pixel. Round 1 shows both on a 1080p screen and on the 640x480 handheld. Density 2 needs an optional pack field |
-| Screen scaling | The view scales by a non-integer factor with nearest filtering, so art pixels on screen are uneven sizes. Sharp-bilinear scaling (integer nearest, then a smooth fit) is the likely fix |
+| Art density | One or two art pixels per world pixel. Density 2 shows twice the detail at 1080p, but on the 640x480 handheld crisp drawing must drop three art pixels in four, unless the pack also carries a separate density-1 set. Density 2 needs an optional pack field |
+| Screen scaling | The view scales by a non-integer factor (`src/view/screen_plan.gd`), so art pixels on screen are uneven sizes: 2 or 3 screen pixels wide at 1080p. Smoothing is ruled out. The proposed fix is integer scaling: each art pixel covers a whole number of screen pixels, and the visible world area varies by screen (640x480 on the handheld, 960x540 at 1080p). Comparison: `style-frames/round-2/` |
 | Mechanics | The simulation has no companion, grab or throwables yet; the view draws a recovery marker in the companion's place. Sheets for these moves wait until the moves exist |
 
 ## Known costs
@@ -51,8 +52,8 @@ Verdigris is locked.
 ## Approval steps
 
 1. Concept: chosen (Verdigris).
-2. Style frame: one mock game screen at real size, three variants, chosen and
-   iterated on a Tailscale page.
+2. Style frame: one mock game screen at real size, three variants; A chosen. Next,
+   hand clean-up of the A frame on a Tailscale page.
 3. Reference drawing of Oriel, then of Pip.
 4. Asset sheets built on the approved frame and drawings, each approved on the page.
 5. In-game check on the handheld and a 1080p screen with the test courses.
