@@ -21,6 +21,7 @@ func _initialize() -> void:
 	wheel_checks()
 	soft_walker_checks()
 	soft_giant_checks()
+	gust_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -76,7 +77,7 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 
 
 func registration_checks() -> void:
-	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24"]:
+	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24", "e33"]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
 	for pair: Array in [
@@ -388,6 +389,61 @@ func soft_giant_checks() -> void:
 	big.contact = 0
 	type.contact(big, state, world, 0)
 	check(state.invulnerable > 0, "Side contact with the large walker hurts")
+
+
+func gust_checks() -> void:
+	var world := _world_for(
+		{
+			"left": _place("e33", 600, 200, {"R": 270}),
+			"right": _place("e33", 600, 400, {"R": 90}),
+			"seek": _place("e33", 300, 300, {"R": 270, "M": 1}),
+			"up": _place("e33", 900, 300)
+		}
+	)
+	var state := State.create(world)
+	var type: Script = Registry.lookup("e33")
+	var left := _by_id(state, "left")
+	check(left.heading == 180000, "R 270 flies left")
+	check(_by_id(state, "right").heading == 0, "R 90 flies right")
+	check(_by_id(state, "up").heading == 270000, "A missing R flies up")
+	check(
+		type.bounds(left) == [-28 * S, -12 * S, 24 * S, 12 * S],
+		"A level flyer's body lies along its travel"
+	)
+	_activate(left)
+	var start_x: int = left.x
+	type.step(left, state, world)
+	check(left.vx == -312 * 60 / 60, "It eases up from rest")
+	for _tick in 59:
+		type.step(left, state, world)
+	check(left.vx == -312 * 60 and left.y == 200 * S, "After a second it glides at 312 px/s")
+	check(left.x < start_x, "It ignores terrain and keeps flying")
+	state.x = 100 * S
+	state.y = 300 * S
+	var seek := _by_id(state, "seek")
+	seek.status = Registry.WAITING
+	type.activate(seek, state, world)
+	check(seek.heading == 180000, "A seeking flyer already heading at the player keeps going")
+	state.x = 700 * S
+	type.activate(seek, state, world)
+	check(seek.heading == 0, "A seeking flyer turns round toward the player")
+	var plain := _by_id(state, "right")
+	_activate(plain)
+	state.x = plain.x
+	state.y = plain.y - 4 * S
+	state.vy = 200 * 60
+	type.contact(plain, state, world, 0)
+	check(
+		plain.status == Registry.DEFEATED and state.vy < 0, "Landing on it bounces and defeats it"
+	)
+	var up := _by_id(state, "up")
+	_activate(up)
+	state.x = up.x
+	state.y = up.y + 30 * S
+	state.invulnerable = 0
+	type.contact(up, state, world, 0)
+	check(state.invulnerable > 0, "Touching it from below hurts")
+	check(_degrades("e33", {"M": 3}), "An unknown mirror becomes a placeholder")
 
 
 func snapshot_checks() -> void:
