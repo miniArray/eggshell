@@ -237,7 +237,9 @@ side effects. None of them enters snapshots.
   per-code dispatch facts are read once per code or type.
 - Each compiled map caches, per 256 px chunk, which terrain layers have contact
   cells there. Terrain queries read only those layers. Terrain never changes
-  after loading.
+  after loading, so each map also remembers recent terrain answers per probe
+  box, and where `Collision.prepare` moves a body out of terrain when no solid
+  row is filed within the search's reach (that search then reads terrain only).
 - The solid index files each solid row in a 128 px grid under its region: its
   live boxes plus its `bounds` around its position. The registry refiles a row
   after every dispatch on its entity (lifecycle and step, contact, tongue,
@@ -251,9 +253,25 @@ side effects. None of them enters snapshots.
   every indexed query with a full scan and counts differences in
   `Collision.verify_failures`; tests and identity runs use it.
 - `Registry.nearby(state, world, box)` returns the entities whose bounds may
-  overlap a box, in entity order, including every status. Area queries in new
-  types use it instead of iterating `state.entities`. It scans the table today;
-  an index can replace the scan without changing callers.
+  overlap a box (edges count), in entity order, including every status. Area
+  queries in new types use it instead of iterating `state.entities`. During
+  steps the entity grid (`entity_grid.gd`) answers it: every entity filed in
+  128 px cells under its bounds around its position, candidates tested live.
+  The registry marks an entity after every dispatch on it and refiles marked
+  entities at the next query; a dispatching entity is always a candidate.
+  Compaction and runtime creation are found by a walk of the table. A step uses
+  the grid when the previous step asked at least four queries, and scans
+  otherwise; both give the same answer.
+- **Contract for types (all entities):** code that moves another entity, or
+  changes a field its `bounds` read (a hit that changes its form, for example),
+  must call `Collision.refresh(world, entity)` (`NearQuery.refresh_solid` in
+  types). It refiles both indexes. Verify runs compare every `nearby` answer
+  with a scan too.
+- Tables change only by replacement or by appending (runtime creation).
+  Compaction builds a new table when an entity leaves and keeps the table
+  otherwise. Code must not replace or remove elements of `state.entities` in
+  place: `Collision.begin_step` reuses its rows while the table array and its
+  size are unchanged.
 
 ## Limits
 
