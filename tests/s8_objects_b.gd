@@ -30,6 +30,7 @@ func _initialize() -> void:
 	melon_checks()
 	leaper_checks()
 	bumper_checks()
+	stilt_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -832,6 +833,63 @@ func bumper_checks() -> void:
 	check(type.projectile_contact(walker, egg, state, world) == 3, "An egg passes on")
 	check(walker.status == Registry.DEFEATED, "An egg defeats it")
 	check(_degrades("e19", {"F": 3}), "An unknown bumper form becomes a placeholder")
+
+
+func stilt_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 700, 316, {"E1": "400"}),
+			"tall": _place("e35", 600, 284, {"E1": "82", "F": 2})
+		}
+	)
+	var state := State.create(world)
+	state.x = 890 * S
+	state.y = 300 * S - S / 16
+	var type: Script = Registry.lookup("e35")
+	var tall := _by_id(state, "tall")
+	check(
+		tall.y == 300 * S and tall.height == 100 * S,
+		"The stilts stand on the floor, E1 + 18 px tall"
+	)
+	_activate(tall)
+	var start: int = tall.x
+	for _tick in 36:
+		Sim.advance(state, 0, world)
+	check(tall.x == start - 24 * S, "It strides 24 px every 0.6 s")
+	var turned := false
+	for _tick in 36 * 6:
+		Sim.advance(state, 0, world)
+		turned = turned or tall.facing == 1
+	check(turned and tall.x >= 500 * S, "It turns at the ledge")
+	state = State.create(world)
+	tall = _by_id(state, "tall")
+	_activate(tall)
+	state.x = tall.x
+	state.y = tall.y - 40 * S
+	state.invulnerable = 0
+	type.contact(tall, state, world, 0)
+	check(state.invulnerable > 0, "Its legs hurt")
+	tall.contact = 0
+	state.y = type.top(tall) + 10 * S
+	state.vy = 200 * 60
+	type.contact(tall, state, world, 0)
+	check(tall.status == Registry.DEFEATED and state.vy < 0, "Landing on top unseats the rider")
+	var riders: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "e1" and entity.source_index == -1
+	)
+	check(riders.size() == 1 and riders[0].variant == 2, "The rider walks on in its colour")
+	state = State.create(world)
+	tall = _by_id(state, "tall")
+	_activate(tall)
+	var low_egg := {"code": "o7", "x": tall.x - 30 * S, "y": tall.y - 10 * S, "fall_on_terrain": 0}
+	check(
+		type.projectile_contact(tall, low_egg, state, world) == 1, "An egg is spent on the stilts"
+	)
+	check(tall.phase == type.KNOCKED and tall.vx > 0, "A low egg knocks it back")
+	var high_egg := {"code": "o7", "x": tall.x, "y": type.top(tall) + 5 * S, "fall_on_terrain": 0}
+	type.projectile_contact(tall, high_egg, state, world)
+	check(tall.status == Registry.DEFEATED, "An egg at the rider unseats it")
+	check(_degrades("e35", {"F": 5}), "An unknown rider colour becomes a placeholder")
 
 
 func snapshot_checks() -> void:
