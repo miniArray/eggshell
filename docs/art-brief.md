@@ -16,6 +16,7 @@ Verdigris is locked.
 | Crisp pixels | No smoothing of any kind, ever (user, 2026-10-27): no bilinear, sharp-bilinear, box filter or other blending of art pixels on screen. Every art pixel is drawn with nearest-neighbour filtering |
 | Screen scaling | Positive integer scale, closest in ratio to the 832x448 reference scale, raised only to fit level bounds. One art set serves every screen; visible world area varies. See [View policy](graphics.md#view-policy) |
 | Hero | Oriel, a slender young heron courier: pale blue-grey feathers, white chest, long yellow beak, coral-red scarf, leather satchel. She carries the city's last living seed to the central glasshouse |
+| Oriel design | Reference drawing round 1, candidate A "true heron" (chosen 2026-10-27): small head, long S-curved neck, very long thin legs, a long dagger beak, wings folded neatly. Source: `~/.local/share/eggshell/art-direction/oriel/round-1/A-raw.png`. In game she is 60 art px from crest to toes, crown about 56, so her body matches the collision box |
 | Companion | Pip, a seedling with a face, rides in the satchel. A hit throws Pip out, and Pip drifts away under a dandelion parachute. The countdown shows as Pip wilting. Enemies that chase Pip are seed-eaters |
 | Grab move | The neck strike: Oriel shoots out her neck and beak, grabs an enemy and swallows it |
 | Throwables | Brass casings: a swallowed clockwork enemy becomes a brass ball. Casings follow her in a line and she throws them along an aim line. Refill blocks are old pneumatic post chutes |
@@ -54,7 +55,7 @@ Verdigris is locked.
 1. Concept: chosen (Verdigris).
 2. Style frame: one mock game screen at real size, three variants; A chosen. Next,
    hand clean-up of the A frame on a Tailscale page.
-3. Reference drawing of Oriel, then of Pip.
+3. Reference drawing of Oriel (design A chosen; clean-up at game size next), then of Pip.
 4. Asset sheets built on the approved frame and drawings, each approved on the page.
 5. In-game check on the handheld and a 1080p screen with the test courses.
 6. Lock: approved files move into the repository with a list of what the user
