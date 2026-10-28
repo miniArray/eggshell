@@ -14,24 +14,25 @@ var failures := 0
 
 
 func _initialize() -> void:
-	registration_checks()
-	span_checks()
-	turning_span_checks()
-	switch_block_checks()
-	wheel_checks()
-	soft_walker_checks()
-	soft_giant_checks()
-	gust_checks()
-	dice_checks()
-	egg_block_checks()
-	spore_checks()
-	launcher_checks()
-	shot_checks()
-	melon_checks()
-	leaper_checks()
-	bumper_checks()
-	stilt_checks()
-	snapshot_checks()
+	_registration_checks()
+	_span_checks()
+	_turning_span_checks()
+	_switch_block_checks()
+	_wheel_checks()
+	_soft_walker_checks()
+	_soft_giant_checks()
+	_gust_checks()
+	_dice_checks()
+	_egg_block_checks()
+	_spore_checks()
+	_launcher_checks()
+	_shot_checks()
+	_melon_checks()
+	_leaper_checks()
+	_bumper_checks()
+	_stilt_checks()
+	_helmet_checks()
+	_snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -85,9 +86,22 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 		Sim.advance(state, 0, world)
 
 
-func registration_checks() -> void:
+func _registration_checks() -> void:
 	for code: String in [
-		"p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21", "e23", "e24", "e33", "o33", "o34"
+		"p6",
+		"p9",
+		"p10",
+		"p13",
+		"p11",
+		"p12",
+		"o30",
+		"o21",
+		"e23",
+		"e24",
+		"e33",
+		"o33",
+		"o34",
+		"e29"
 	]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
@@ -98,7 +112,7 @@ func registration_checks() -> void:
 		check(not built.ok, "Malformed option is rejected: " + pair[0])
 
 
-func span_checks() -> void:
+func _span_checks() -> void:
 	var world := _world_for(
 		{
 			"log": _place("p9", 600, 300, {"E1": "160.9"}),
@@ -163,7 +177,7 @@ func _spin_world() -> Dictionary:
 	)
 
 
-func turning_span_checks() -> void:
+func _turning_span_checks() -> void:
 	var world := _spin_world()
 	var state := State.create(world)
 	var span := _by_id(state, "left")
@@ -194,7 +208,7 @@ func turning_span_checks() -> void:
 	)
 
 
-func switch_block_checks() -> void:
+func _switch_block_checks() -> void:
 	var world := _spin_world()
 	var state := State.create(world)
 	var block := _by_id(state, "switch")
@@ -265,7 +279,7 @@ func _ride(state: Dictionary, world: Dictionary, ticks: int) -> void:
 		Sim.advance(state, 0, world)
 
 
-func wheel_checks() -> void:
+func _wheel_checks() -> void:
 	var world := _world_for(
 		{
 			"wheel": _place("o21", 400, 300, {"E1": "0", "E2": "120", "E3": "0", "R": 90}),
@@ -327,7 +341,7 @@ func _activate(entity: Dictionary) -> void:
 	entity.started = 1
 
 
-func soft_walker_checks() -> void:
+func _soft_walker_checks() -> void:
 	var world := _ledge_world({"milde": _place("e23", 400, 284)})
 	var state := State.create(world)
 	state.x = 900 * S
@@ -361,7 +375,7 @@ func soft_walker_checks() -> void:
 	check(milde.status == Registry.DEFEATED, "An egg defeats the soft walker")
 
 
-func soft_giant_checks() -> void:
+func _soft_giant_checks() -> void:
 	var world := _ledge_world({"big": _place("e24", 500, 268)})
 	var state := State.create(world)
 	var big := _by_id(state, "big")
@@ -414,7 +428,7 @@ func soft_giant_checks() -> void:
 	check(state.invulnerable > 0, "Side contact with the large walker hurts")
 
 
-func gust_checks() -> void:
+func _gust_checks() -> void:
 	var world := _world_for(
 		{
 			"left": _place("e33", 600, 200, {"R": 270}),
@@ -469,7 +483,7 @@ func gust_checks() -> void:
 	check(_degrades("e33", {"M": 3}), "An unknown mirror becomes a placeholder")
 
 
-func dice_checks() -> void:
+func _dice_checks() -> void:
 	var world := _world_for(
 		{
 			"switch": _place("o33", 300, 120, {"E1": "255", "E2": "0", "E3": "0", "E4": "1"}),
@@ -514,7 +528,7 @@ func dice_checks() -> void:
 	check(_degrades("o34", {"F": 2}), "An unknown dice block form becomes a placeholder")
 
 
-func egg_block_checks() -> void:
+func _egg_block_checks() -> void:
 	var world := _world_for(
 		{"yellow": _place("o27", 300, 120), "red": _place("o27", 600, 120, {"F": 1})}
 	)
@@ -561,7 +575,7 @@ func egg_block_checks() -> void:
 	check(_degrades("o27", {"F": 2}), "An unknown egg block colour becomes a placeholder")
 
 
-func spore_checks() -> void:
+func _spore_checks() -> void:
 	var world := _world_for(
 		{
 			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
@@ -621,7 +635,7 @@ func _shots(state: Dictionary) -> Array:
 	)
 
 
-func launcher_checks() -> void:
+func _launcher_checks() -> void:
 	var world := _world_for(
 		{
 			"fixed": _place("e37", 600, 200, {"E1": "Static"}),
@@ -663,7 +677,7 @@ func launcher_checks() -> void:
 	check(_degrades("e37", {"E1": "Static", "F": 2}), "The homing shot form degrades")
 
 
-func shot_checks() -> void:
+func _shot_checks() -> void:
 	var world := _world_for({"wall": _place("o28", 300, 200)})
 	var state := State.create(world)
 	state.x = 900 * S
@@ -701,7 +715,7 @@ func shot_checks() -> void:
 	check(state.invulnerable > 0, "A shot hurts from the side")
 
 
-func melon_checks() -> void:
+func _melon_checks() -> void:
 	var world := _world_for(
 		{
 			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
@@ -742,7 +756,7 @@ func melon_checks() -> void:
 	check(_degrades("o25", {"F": 6}), "An ice melon is not built yet and becomes a placeholder")
 
 
-func leaper_checks() -> void:
+func _leaper_checks() -> void:
 	var world := _world_for(
 		{
 			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
@@ -796,7 +810,7 @@ func leaper_checks() -> void:
 	check(_degrades("e17", {"F": 3}), "An unknown leaper colour becomes a placeholder")
 
 
-func bumper_checks() -> void:
+func _bumper_checks() -> void:
 	var world := _world_for(
 		{
 			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
@@ -847,7 +861,7 @@ func bumper_checks() -> void:
 	check(_degrades("e19", {"F": 3}), "An unknown bumper form becomes a placeholder")
 
 
-func stilt_checks() -> void:
+func _stilt_checks() -> void:
 	var world := _world_for(
 		{
 			"floor": _place("p2", 700, 316, {"E1": "400"}),
@@ -904,10 +918,56 @@ func stilt_checks() -> void:
 	check(_degrades("e35", {"F": 5}), "An unknown rider colour becomes a placeholder")
 
 
-func snapshot_checks() -> void:
+func _helmet_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 316, {"E1": "2000"}),
+			"grunt": _place("e29", 500, 284),
+			"runner": _place("e29", 900, 284, {"F": 1})
+		}
+	)
+	var state := State.create(world)
+	state.x = 1300 * S
+	state.y = 300 * S - S / 16
+	var type: Script = Registry.lookup("e29")
+	var grunt := _by_id(state, "grunt")
+	var runner := _by_id(state, "runner")
+	_activate(grunt)
+	_activate(runner)
+	Sim.advance(state, 0, world)
+	check(grunt.vx == -48 * 60 and runner.vx == -144 * 60, "F 1 runs at 144 px/s, F 0 walks at 48")
+	state.x = grunt.x
+	state.y = grunt.y - 20 * S
+	state.invulnerable = 0
+	type.contact(grunt, state, world, 0)
+	check(
+		state.invulnerable > 0 and grunt.status == Registry.ACTIVE,
+		"Its helmet hurts even from above"
+	)
+	var egg := {"code": "o7", "x": grunt.x - 20 * S, "fall_on_terrain": 0}
+	check(type.projectile_contact(grunt, egg, state, world) == 1, "An egg is spent on the helmet")
+	check(grunt.helmet == 0 and grunt.vx > 0 and grunt.vy < 0, "The egg knocks the helmet off")
+	state.x = 1300 * S
+	state.y = 300 * S - S / 16
+	state.invulnerable = 0
+	var ran := false
+	for _tick in 120:
+		Sim.advance(state, 0, world)
+		ran = ran or grunt.phase == type.RUN
+	check(ran and grunt.speed == 144, "Without its helmet it lands, blushes and runs")
+	grunt.contact = 0
+	state.x = grunt.x
+	state.y = grunt.y - 20 * S
+	state.vy = 200 * 60
+	type.contact(grunt, state, world, 0)
+	check(grunt.status == Registry.DEFEATED and state.vy < 0, "A bare walker can be stomped")
+	check(_degrades("e29", {"F": 2}), "An unknown helmet walker form becomes a placeholder")
+
+
+func _snapshot_checks() -> void:
 	var world := _spin_world()
 	var state := State.create(world)
-	type_trigger(state, world)
+	_type_trigger(state, world)
 	for _tick in 5:
 		Sim.advance(state, 0, world)
 	var bytes := Snapshot.encode(state)
@@ -930,7 +990,7 @@ func snapshot_checks() -> void:
 	check(decoded.ok and Snapshot.encode(decoded.state) == bytes, "Resizable spans round trip")
 
 
-func type_trigger(state: Dictionary, world: Dictionary) -> void:
+func _type_trigger(state: Dictionary, world: Dictionary) -> void:
 	Registry.lookup("o30").trigger(_by_id(state, "switch"), state, world)
 
 
