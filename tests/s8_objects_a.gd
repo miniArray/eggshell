@@ -105,6 +105,26 @@ func gradient_checks() -> void:
 	check(three.bands.size() == 6, "Each segment gets its share of the lines")
 	check(_near(three.bands[3].color, 0, 0, 240), "The second segment starts at its colour")
 	check(Effects.custom_gradient("8|0|448|9,9,9").bands.is_empty(), "One colour draws no bands")
+	var effects: Node2D = Effects.new()
+	var root := Node2D.new()
+	var player := Sprite2D.new()
+	var world := {"map_source": {"customGradientGenerator": "4|0|448|0,0,0_80,160,240"}}
+	var state := {"x": 416 * S, "y": 1252 * S, "frame": 0}
+	var view := {"scale": 2.0, "offset": Vector2(10, -1000), "center": Vector2(416, 1224)}
+	effects.update(root, player, world, state, view, Vector2(1664, 896))
+	var rects := []
+	for node: Node in effects.get_children():
+		if node is ColorRect and node.z_index == -39:
+			rects.append(node)
+	check(rects.size() == 4, "One screen rectangle per band")
+	if rects.size() == 4:
+		# Reference top 1000 px down moves the bands by nine tenths of it: (112 + 900) * 2 - 1000.
+		check(is_equal_approx(rects[1].position.y, 1024.0), "Bands follow a tenth of the camera")
+		check(is_equal_approx(rects[1].size.y, 226.0), "Band heights scale with the view")
+		check(rects[1].size.x == 1664.0, "Bands span the whole view width")
+	effects.free()
+	root.free()
+	player.free()
 
 
 func ledge_checks() -> void:
