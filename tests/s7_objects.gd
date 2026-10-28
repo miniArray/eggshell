@@ -20,6 +20,8 @@ func _initialize() -> void:
 	grow_block_checks()
 	bridge_checks()
 	runner_checks()
+	hopper_checks()
+	producer_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -234,6 +236,91 @@ func runner_checks() -> void:
 	check(plain.status == Registry.DEFEATED, "An egg defeats a placed runner")
 
 
+func ledge_world(extra: Dictionary) -> Dictionary:
+	var objects := {
+		"floor": place("p2", 500, 316, {"E1": "320"}),
+		"rest": place("p2", 900, 316, {"E1": "200"})
+	}
+	objects.merge(extra, true)
+	return world_for(objects)
+
+
+func rest_player(state: Dictionary) -> void:
+	state.x = 900 * S
+	state.y = 300 * S - S / 16
+	state.vx = 0
+	state.vy = 0
+
+
+func hopper_checks() -> void:
+	var world := ledge_world({"spike": place("e40", 500, 200)})
+	var state := State.create(world)
+	rest_player(state)
+	var spike := by_id(state, "spike")
+	var landed := -1
+	var hopped := false
+	for tick in 240:
+		Sim.advance(state, 0, world)
+		if landed < 0 and spike.sink_window:
+			landed = tick
+		if landed >= 0 and spike.vy < -300 * 60 and not spike.sinking:
+			hopped = true
+		if spike.sinking:
+			break
+	check(landed > 0, "Spiked body falls and lands on support")
+	check(hopped, "First landing starts a high hop on the next tick")
+	check(spike.sinking == 1, "Landing again inside one second starts sinking")
+	var before: int = spike.y
+	for tick in 60:
+		Sim.advance(state, 0, world)
+	check(spike.y > 316 * S or spike.status != 1, "A sinking body falls through the support")
+	check(state.life_phase == Life.PLAY and before < spike.y, "Player was never touched")
+	var yellow_world := ledge_world({"spike": place("e40", 500, 200, {"F": 1})})
+	state = State.create(yellow_world)
+	rest_player(state)
+	spike = by_id(state, "spike")
+	for tick in 120:
+		Sim.advance(state, 0, yellow_world)
+	check(spike.status == Registry.DEFEATED, "The second form breaks on landing")
+	check(not build({"one": place("e40", 1, 1, {"F": 2})}).ok, "Unknown form is refused")
+	state = State.create(world)
+	spike = by_id(state, "spike")
+	spike.status = Registry.ACTIVE
+	state.x = spike.x
+	state.y = spike.y + 20 * S
+	var type: Script = Registry.lookup("e40")
+	type.contact(spike, state, world, 0)
+	check(state.invulnerable > 0, "Touching the body hurts the player")
+	var egg := {"code": "o7", "x": spike.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(spike, egg, state, world) == 3, "Egg reacts and continues")
+	check(
+		spike.status == Registry.DEFEATED and egg.fall_on_terrain == 1,
+		"Egg defeats the body and falls at its next terrain contact"
+	)
+
+
+func producer_checks() -> void:
+	var world := ledge_world({"plant": place("o17", 500, 284, {"E1": "e40"})})
+	var state := State.create(world)
+	rest_player(state)
+	var released := {}
+	for tick in 80:
+		Sim.advance(state, 0, world)
+		for entity: Dictionary in state.entities:
+			if entity.code == "e40" and released.is_empty():
+				released = entity.duplicate()
+	var plant := by_id(state, "plant")
+	check(plant.unavailable == 0, "Producer can release its spiked payload")
+	check(not released.is_empty(), "Producer releases a spiked body")
+	if released.is_empty():
+		return
+	check(released.source_index == -1 and released.can_respawn == 0, "Released body is runtime")
+	check(
+		released.vx >= -176 * 60 and released.vx <= 176 * 60, "Release speed is within 176 px/s"
+	)
+	check(released.colour == 0, "Released body uses the first form")
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -242,7 +329,9 @@ func snapshot_checks() -> void:
 			"c": place("o10", 300, 100),
 			"d": place("p2", 400, 100, {"E1": "64.00000000000728"}),
 			"e": place("e7", 500, 100),
-			"f": place("e9", 600, 100, {"M": 2})
+			"f": place("e9", 600, 100, {"M": 2}),
+			"g": place("e40", 700, 100, {"F": 1}),
+			"h": place("o17", 800, 100, {"E1": "e40"})
 		}
 	)
 	var state := State.create(world)
