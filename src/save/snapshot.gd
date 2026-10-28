@@ -5,7 +5,7 @@ extends RefCounted
 const State = preload("res://src/sim/play_state.gd")
 const Registry = preload("res://src/sim/registry.gd")
 const Maps = preload("res://src/sim/maps.gd")
-const VERSION := 5
+const VERSION := 6
 const HEADER := 76
 const CHECKSUM_SIZE := 32
 const MAX_ENTITIES := 100_000

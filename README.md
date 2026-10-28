@@ -40,7 +40,9 @@ and throw. Up selects vertical aim; tongue cancels aim.
 The game automatically resumes the last session by default.
 
 Use `--pack=/absolute/path` after the argument separator to select an external
-version 2 or 3 graphics pack. A pack never supplies the level.
+version 2 or 3 graphics pack. A pack never supplies the level. A pack may also
+supply music and sound effects; Pantry has none, so it is silent. Use `--mute`
+after the separator to silence all audio.
 
 ## Implemented behavior
 
@@ -55,7 +57,8 @@ version 2 or 3 graphics pack. A pack never supplies the level.
 - Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
 - Countdown, capture, death and checkpoint respawn phases with a run HUD.
 - Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 5 snapshots with autosave and automatic resume.
+- A type registry and composed version 6 snapshots with autosave and automatic resume.
+- Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
@@ -63,11 +66,12 @@ Player colliders follow the action and posture. Companion rescue uses the full
 tongue reach; eating keeps its separate tip sensor. Map travel is a simulation
 interface; no travel object is implemented yet.
 Registered food and projectile families use the saved player-side requests.
-Thrown inventory items still lack slope-normal ricochets and liquid responses.
-The large inventory payload and some object codes and variants remain unsupported.
+Some object codes and variants remain unsupported. Such an object loads as an
+inert placeholder and logs `Unsupported object <code> (<reason>)`; the level
+still loads. Malformed object data still stops the level.
 Packs without art use diagnostic shapes; absent action poses use the default pose.
 Messages use Up/Down for pages and Throw to close. Red coins change only the red
-counter. Audio and a level editor are not implemented.
+counter. A level editor is not implemented.
 
 ## Physics and screens
 

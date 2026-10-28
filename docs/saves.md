@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 5 stores the complete integer play state in little-endian
+Snapshot version 6 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 4 and all other versions are rejected with a log line;
+object families. Version 5 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -45,7 +45,7 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 5 state
+## Composed version 6 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
@@ -56,8 +56,12 @@ Maps owns selected map, map count and collectible targets. Registry and type
 pages and shared switch timer/sound state. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 5 records the new common interaction tokens, expanded enemy/type fields
-and type-owned level fields. Version 4 has a different layout and is not migrated.
+Version 6 adds the schemas of new object types (thorn, colour and growth blocks,
+plank bridge, runners, spiked hopper, spined walker, wing drifter, petal stem,
+needle juggler and ride hound), the thrown egg's skip fields and the spiked
+hopper's carrier fields. Version 5 recorded the common
+interaction tokens, expanded enemy/type fields and type-owned level fields.
+Earlier versions have a different layout and are not migrated.
 The schema digest binds the complete ordered declarations. Saved nodes, callbacks,
 view state and transient solid-contact caches are never part of the payload.
 Restore rebuilds enemy/pad views without repairing encoded family indices.
@@ -77,6 +81,12 @@ map reset clears old held-item references, request histories and modal/captor
 references before reusing placed tokens.
 
 ## Slots and writes
+
+`settings.json` in the save directory holds `version` (1),
+`resume_where_i_left_off`, `music_volume` and `effects_volume`. The volumes are
+whole numbers from 0 to 100 and default to 80; a missing volume key uses its
+default, and an invalid one logs a warning and uses 80. Settings are never part
+of a snapshot, and audio never writes play state.
 
 The setting `resume_where_i_left_off` defaults to true. The player loads its
 autosave at startup and writes a new one during play and on orderly shutdown.

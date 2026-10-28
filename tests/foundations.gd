@@ -61,7 +61,7 @@ func map_checks() -> void:
 	)
 	check(state.entities[0].map_index == 2, "Entity belongs to selected map")
 	var bytes := Snapshot.encode(state)
-	check(not bytes.is_empty() and bytes.decode_u32(8) == 5, "Composed fields encode as v5")
+	check(not bytes.is_empty() and bytes.decode_u32(8) == 6, "Composed fields encode as v6")
 	check(Maps.change(state, world, 1, 64 * S, 100 * S, Registry.spawn_map), "Map switch succeeds")
 	check(state.entities.is_empty() and world.map_index == 1, "Map switch replaces entity views")
 	var decoded := Snapshot.decode(bytes, world.identity, world)

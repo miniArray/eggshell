@@ -375,8 +375,8 @@ func boundary_checks(code: String) -> void:
 	var player := State.create(real_world)
 	var bytes := Save.encode(player)
 	check(
-		bytes.size() > Save.minimum_size() and bytes.decode_u32(8) == 5,
-		"Composed v5 snapshot includes the entity table"
+		bytes.size() > Save.minimum_size() and bytes.decode_u32(8) == 6,
+		"Composed v6 snapshot includes the entity table"
 	)
 	player.health = 0
 	check(

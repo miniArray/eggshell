@@ -91,7 +91,7 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 5 writes these schemas and the registry's entity schemas.
+Snapshot version 6 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 
@@ -190,6 +190,11 @@ uses pixel-step push-out followed by four fractional probes, down to 1/16 pixel.
 A one-pixel raised side probe separates walkable slopes from walls. Grounded
 movement follows descending slopes only within a speed-sized probe distance.
 Floor detection probes one pixel below the actor without moving saved state.
+
+Lava and spike tilemaps are contact-only hazards. `World.LAVA_LAYERS` names the
+whole lava family (`lava` and `lava_1` through `lava_4`), and every consumer reads
+that one list: the player dies, enemies and stars are removed, and thrown eggs
+treat it as lava. The spike tilemap kills only the player.
 
 The player, terrain-aware enemies and bounce pads share `src/sim/collision.gd`.
 Bridges catch downward entry from above, not upward travel or entry from below.

@@ -73,10 +73,6 @@ func numeric_option_checks() -> void:
 			check(not built.ok, "Invalid numeric option is rejected: " + pair[0])
 		object[pair[1]] = pair[2] + 1
 		built = World.build(JSON.stringify(code), {"tilemaps": {}})
-		if pair[0] == "o7":
-			# The inventory item still refuses its next form until its owner converts it.
-			check(not built.ok, "Invalid numeric option is rejected: " + pair[0])
-			continue
 		check(
 			built.ok and built.world.entities[0].code == "?" + pair[0],
 			"Unbuilt numeric option becomes a placeholder: " + pair[0]
@@ -131,12 +127,12 @@ func mixed_checks() -> void:
 	check(
 		restored.ok and Snapshot.encode(restored.state) == bytes, "All families round trip together"
 	)
-	check(bytes.decode_u32(8) == 5, "Combined layout has version five")
+	check(bytes.decode_u32(8) == 6, "Combined layout has version six")
 	var old := bytes.duplicate()
-	old.encode_u32(8, 4)
+	old.encode_u32(8, 5)
 	check(
 		not Snapshot.decode(old, world.identity).ok,
-		"Version four is rejected before reading fields"
+		"Version five is rejected before reading fields"
 	)
 	for code: String in ["o1", "o2", "o3"]:
 		var entity: Dictionary = by_id(state, {"o1": "coin", "o2": "red", "o3": "flower"}[code])

@@ -48,6 +48,11 @@ func _build(objects: Dictionary) -> Dictionary:
 	return World.build(JSON.stringify(_level(objects)), {"tilemaps": {}})
 
 
+func _degrades(code: String, options: Dictionary) -> bool:
+	var built := _build({"one": _place(code, 200, 200, options)})
+	return built.ok and built.world.entities[0].code == "?" + code
+
+
 func _world_for(objects: Dictionary) -> Dictionary:
 	var built := _build(objects)
 	check(built.ok, "Invented placements compile: " + str(built.get("error", "")))
@@ -85,8 +90,7 @@ func registration_checks() -> void:
 		check(not seen.has(code), "Code appears once: " + code)
 		seen[code] = true
 	for pair: Array in [["o12", {"F": 2}], ["o29", {"F": 3}]]:
-		var built := _build({"one": _place(pair[0], 200, 200, pair[1])})
-		check(not built.ok, "Out-of-range form is not silently accepted: " + pair[0])
+		check(_degrades(pair[0], pair[1]), "Out-of-range form becomes a placeholder: " + pair[0])
 	for pair: Array in [["o12", {"F": 0.5}], ["o29", {"F": "x"}], ["p2", {"E1": "wide"}]]:
 		var built := _build({"one": _place(pair[0], 200, 200, pair[1])})
 		check(not built.ok, "Malformed option is rejected: " + pair[0])
@@ -288,7 +292,7 @@ func hopper_checks() -> void:
 	for tick in 120:
 		Sim.advance(state, 0, yellow_world)
 	check(spike.status == Registry.DEFEATED, "The second form breaks on landing")
-	check(not _build({"one": _place("e40", 1, 1, {"F": 2})}).ok, "Unknown form is refused")
+	check(_degrades("e40", {"F": 2}), "Unknown form becomes a placeholder")
 	state = State.create(world)
 	spike = _by_id(state, "spike")
 	spike.status = Registry.ACTIVE
