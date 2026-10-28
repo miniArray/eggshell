@@ -7,7 +7,18 @@ const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
 const Checkpoint = preload("res://src/sim/types/checkpoint.gd")
 const Inert = preload("res://src/sim/types/inert.gd")
-const TYPES := [Actor, Pad, Bridge, Goal, Checkpoint]
+const TYPES := [
+	Actor,
+	Pad,
+	Bridge,
+	Goal,
+	Checkpoint,
+	# slice 6: s6-decor
+	preload("res://src/sim/types/decor.gd"),
+	preload("res://src/sim/types/decor_platform.gd"),
+	preload("res://src/sim/types/lamp.gd"),
+	preload("res://src/sim/types/snow_tree.gd")
+]
 const Units = preload("res://src/sim/units.gd")
 const S := Units.SCALE
 const MAX_OPTION_PIXELS := 0x7fffffffffffffff / S - 1
