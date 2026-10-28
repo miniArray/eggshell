@@ -26,6 +26,7 @@ func _initialize() -> void:
 	_helmet_checks()
 	_slime_checks()
 	_ghost_checks()
+	_disc_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -682,3 +683,50 @@ func _ghost_checks() -> void:
 	check(type.projectile_contact(ghost, front, state, world) == 3, "An egg at its face defeats it")
 	check(ghost.status == Registry.DEFEATED, "It leaves a star when defeated")
 	check(_degrades("e26", {"F": 4}), "An unknown ghost form becomes a placeholder")
+
+
+func _disc_checks() -> void:
+	var world := _world_for(
+		{
+			"floor": _place("p2", 1000, 616, {"E1": "2000"}),
+			"block": _place("e38", 600, 300, {"E1": "2", "E2": "96", "E3": "96"})
+		}
+	)
+	var state := State.create(world)
+	state.x = 1000 * S
+	state.y = 600 * S - S / 16
+	var block := _by_id(state, "block")
+	_activate(block)
+	var type: Script = Registry.lookup("e38")
+	check(
+		type.solid_box(block) == [584 * S, 284 * S, 616 * S, 316 * S], "The disc block is a solid"
+	)
+	Sim.advance(state, 0, world)
+	var discs: Array = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "enemy_disc"
+	)
+	check(discs.is_empty(), "No discs while the player is far")
+	state.x = 800 * S
+	for _tick in 31:
+		Sim.advance(state, 0, world)
+	discs = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "enemy_disc" and entity.status == 1
+	)
+	check(discs.size() == 2, "Near the player it sends out E1 discs")
+	if discs.size() == 2:
+		var reach: int = absi(discs[0].x - block.x) + absi(discs[0].y - block.y)
+		check(reach > 90 * S, "The discs reach out to the E3 radius")
+		check(discs[1].offset == 180000, "Discs are spread evenly around the block")
+		var disc_type: Script = Registry.lookup("enemy_disc")
+		var victim := State.create(world)
+		victim.x = discs[0].x
+		victim.y = discs[0].y + 20 * S
+		disc_type.contact(discs[0], victim, world, 0)
+		check(victim.invulnerable > 0, "A disc hurts on contact")
+	state.x = 1400 * S
+	for _tick in 31:
+		Sim.advance(state, 0, world)
+	discs = state.entities.filter(
+		func(entity: Dictionary) -> bool: return entity.code == "enemy_disc" and entity.status == 1
+	)
+	check(discs.is_empty() and block.out == 0, "When the player leaves, the discs draw back in")

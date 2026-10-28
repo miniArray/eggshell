@@ -80,6 +80,8 @@ const TYPES := [
 	preload("res://src/sim/types/slime_drop.gd"),
 	preload("res://src/sim/types/rise_balloon.gd"),
 	preload("res://src/sim/types/shy_ghost.gd"),
+	preload("res://src/sim/types/disc_block.gd"),
+	preload("res://src/sim/types/orbit_disc.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
