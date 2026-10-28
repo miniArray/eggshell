@@ -32,6 +32,7 @@ func _run() -> void:
 		for rate: int in RATES:
 			for zoom: int in ZOOMS:
 				drive(name, world, inputs, reference, rate, zoom)
+	inactive_drawing_checks()
 	print("VIEW_INVARIANCE_RESULT: %d assertions, %d failures" % [_checks, _failures])
 	quit(1 if _failures else 0)
 
@@ -121,6 +122,45 @@ func drive(
 	view.free()
 	viewport.free()
 	audio.free()
+
+
+func inactive_drawing_checks() -> void:
+	var world := Fixtures.world("actors")
+	var state := State.create(world)
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(3840, 2160)
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	root.add_child(viewport)
+	var view := View.new()
+	viewport.add_child(view)
+	view.setup(world, "")
+	view.zoom = -99
+	var inputs := Fixtures.recording("actors")
+	var seen_inactive := false
+	var seen_active := false
+	for index in 240:
+		Sim.advance(state, int(inputs[index]), world)
+		var bytes := var_to_bytes(state)
+		view.render(state)
+		check(var_to_bytes(state) == bytes, "Drawing inactive enemies never writes state")
+		var expected := 0
+		for enemy: Dictionary in state.enemies:
+			expected += int(View.inactive_shown(enemy))
+			seen_active = seen_active or enemy.status == 1
+		seen_inactive = seen_inactive or expected > 0
+		check(tinted(view) == expected, "Each inactive enemy is drawn dimmed (tick %d)" % index)
+	check(seen_inactive and seen_active, "The fixture shows inactive and active enemies")
+	view.free()
+	viewport.free()
+
+
+static func tinted(node: Node) -> int:
+	var count := 0
+	for child: Node in node.get_children():
+		if child is CanvasItem and child.visible and child.self_modulate == View.INACTIVE_TINT:
+			count += 1
+		count += tinted(child)
+	return count
 
 
 func check(condition: bool, label: String) -> void:
