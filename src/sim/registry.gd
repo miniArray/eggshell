@@ -57,6 +57,10 @@ const TYPES := [
 	preload("res://src/sim/types/stem_petal.gd"),
 	preload("res://src/sim/types/needle_juggler.gd"),
 	preload("res://src/sim/types/ride_hound.gd"),
+	# slice 8: objects B
+	preload("res://src/sim/types/wide_span.gd"),
+	preload("res://src/sim/types/spin_span.gd"),
+	preload("res://src/sim/types/spin_block.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
