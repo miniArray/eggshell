@@ -24,6 +24,7 @@ func _initialize() -> void:
 	producer_checks()
 	spine_checks()
 	flyer_checks()
+	petal_checks()
 	snapshot_checks()
 	print("S7_OBJECTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -430,6 +431,81 @@ func flyer_checks() -> void:
 	check(type.valid(calm) and type.valid(low), "Flyer state stays valid")
 
 
+func petals_of(state: Dictionary, stem: Dictionary) -> Array:
+	var result := []
+	for entity: Dictionary in state.entities:
+		if entity.code == "enemy_petal" and entity.stem_token == stem.token and entity.status == 1:
+			result.append(entity)
+	return result
+
+
+func petal_checks() -> void:
+	var world := ledge_world({"stem": place("e18", 500, 284)})
+	var state := State.create(world)
+	rest_player(state)
+	var stem := by_id(state, "stem")
+	var type: Script = Registry.lookup("e18")
+	var ticks := 0
+	while stem.status != 1 and ticks < 5:
+		Sim.advance(state, 0, world)
+		ticks += 1
+	check(stem.status == 1, "Stem activates near the player")
+	while stem.timer < type.PETAL_TICK and ticks < 60:
+		Sim.advance(state, 0, world)
+		ticks += 1
+	var petals := petals_of(state, stem)
+	check(petals.size() == 5, "Face grows five petals after 0.3 s")
+	for tick in 18:
+		Sim.advance(state, 0, world)
+	petals = petals_of(state, stem)
+	var center: Array = type.face_center(stem)
+	check(center[1] == stem.y - 32 * S, "Face rests 32 px above the stem centre")
+	if petals.size() == 5:
+		var top: Dictionary = petals[0]
+		check(
+			absi(top.x - center[0]) <= S and absi(top.y - (center[1] - 32 * S)) <= S,
+			"First petal orbits 32 px above the face"
+		)
+		check(Registry.lookup("enemy_petal").valid(top), "Petal state is valid")
+	while stem.phase == type.GROW and ticks < 600:
+		Sim.advance(state, 0, world)
+		ticks += 1
+	check(stem.phase == type.SHOOT, "After dancing the stem prepares to shoot")
+	check(stem.shoot_at >= 300 and stem.shoot_at <= 318, "Shot comes 3.7 to 4 s after the dance")
+	for tick in 27:
+		Sim.advance(state, 0, world)
+	var flying := 0
+	for entity: Dictionary in state.entities:
+		if entity.code == "enemy_petal" and entity.mode == 1:
+			flying += 1
+			var speed: int = entity.vx * entity.vx + entity.vy * entity.vy
+			check(absi(speed - 15360 * 15360) < 15360 * 400, "Petals fly at 256 px/s")
+	check(flying == 5 and stem.phase == type.REGAIN, "All petals fly out and the face is gone")
+	state = State.create(world)
+	rest_player(state)
+	stem = by_id(state, "stem")
+	for tick in 40:
+		Sim.advance(state, 0, world)
+	check(petals_of(state, stem).size() == 5, "New stem has petals")
+	state.move_impact += 1
+	Sim.advance(state, 0, world)
+	var dropped := 0
+	for entity: Dictionary in state.entities:
+		if entity.code == "enemy_petal" and entity.mode == 2:
+			dropped += 1
+	check(dropped == 5 and stem.phase == type.FADE, "A ground pound drops every attached petal")
+	check(type.tongue(stem, state, world) == 0, "The stem cannot be eaten")
+	var petal_type: Script = Registry.lookup("enemy_petal")
+	var loose := petals_of(state, stem)[0] as Dictionary
+	check(petal_type.tongue(loose, state, world) == 0, "A dropped petal cannot be eaten")
+	for tick in 78:
+		Sim.advance(state, 0, world)
+	check(stem.phase == type.REGAIN, "The face fades 1.3 s after the pound")
+	for tick in 180:
+		Sim.advance(state, 0, world)
+	check(stem.phase == type.GROW, "Petals regrow three seconds later")
+
+
 func snapshot_checks() -> void:
 	var world := world_for(
 		{
@@ -442,7 +518,8 @@ func snapshot_checks() -> void:
 			"g": place("e40", 700, 100, {"F": 1}),
 			"h": place("o17", 800, 100, {"E1": "e40"}),
 			"i": place("e25", 900, 100, {"F": 1, "M": 2}),
-			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2})
+			"j": place("e30", 1000, 100, {"F": 1, "E1": "1", "M": 2}),
+			"k": place("e18", 1100, 100)
 		}
 	)
 	var state := State.create(world)
