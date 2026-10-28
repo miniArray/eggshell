@@ -1,14 +1,34 @@
 extends RefCounted
 
 const Motion = preload("res://src/sim/enemy_motion.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const S := 3600
 const CHEW_REACH := 44  # Head anchor reach relative to the stem origin.
 const HEAD := [50, 22, 30, 34, 8, 26, -2, 8, 8, -10, 30, -20, 50, -8, 62, 8]
+const HANGING := 1  # Placement form F=1: the stem hangs from the ceiling.
+
+
+## The hanging form flips the stem and pins it to a solid just above it. Without one,
+## it becomes the ground form for the rest of this spawn.
+static func attach(enemy: Dictionary, world: Dictionary) -> void:
+	if not Collision.overlaps(enemy, world, Motion.box(enemy, "e5"), 0, -4 * S):
+		enemy.variant = 0
+
+
+static func hanging(enemy: Dictionary) -> bool:
+	return enemy.variant == HANGING
+
+
+static func pivot_y(enemy: Dictionary) -> int:
+	return enemy.y + (10 if hanging(enemy) else -10) * S
 
 
 static func advance(enemy: Dictionary, state: Dictionary, world: Dictionary, pressed: int) -> void:
-	Motion.gravity(enemy, world, "e5")
+	if hanging(enemy):
+		enemy.vy = 0  # Pinned to the ceiling; no gravity.
+	else:
+		Motion.gravity(enemy, world, "e5")
 	if enemy.mode == 4:
 		enemy.head_size = mini(15, enemy.head_size + 1)
 		enemy.phase += 1
@@ -47,7 +67,9 @@ static func advance(enemy: Dictionary, state: Dictionary, world: Dictionary, pre
 static func track(enemy: Dictionary, state: Dictionary) -> void:
 	enemy.facing = 1 if state.x > enemy.x else -1
 	var dx: int = state.x - enemy.x
-	var dy: int = mini(0, state.y - enemy.y + 10 * S)
+	# Ground heads track the upper half-turn, hanging heads the lower one.
+	var dy: int = state.y - pivot_y(enemy)
+	dy = maxi(0, dy) if hanging(enemy) else mini(0, dy)
 	if dx == 0 and dy == 0:
 		enemy.head_dx = S
 		enemy.head_dy = 0
@@ -76,8 +98,8 @@ static func head_box(enemy: Dictionary) -> Array:
 		top = mini(top, rotated_y)
 		bottom = maxi(bottom, rotated_y)
 	var pivot_x: int = enemy.x + enemy.facing * 2 * S
-	var pivot_y: int = enemy.y - 10 * S
-	return [pivot_x + left, pivot_y + top, pivot_x + right, pivot_y + bottom]
+	var pivot := pivot_y(enemy)
+	return [pivot_x + left, pivot + top, pivot_x + right, pivot + bottom]
 
 
 static func capture(enemy: Dictionary, index: int, state: Dictionary) -> void:
@@ -108,7 +130,7 @@ static func pin_player(enemy: Dictionary, state: Dictionary) -> void:
 	var width: int = 16 * S + 48 * S * enemy.pin_size / 15
 	var reach := CHEW_REACH * width / 64
 	state.x = enemy.x + enemy.facing * 2 * S + reach * enemy.head_dx / S
-	state.y = enemy.y - 10 * S + reach * enemy.head_dy / S
+	state.y = pivot_y(enemy) + reach * enemy.head_dy / S
 
 
 static func release(enemy: Dictionary, state: Dictionary) -> void:

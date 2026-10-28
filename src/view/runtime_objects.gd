@@ -170,6 +170,12 @@ static func place(
 			node.scale.x = absf(node.scale.x) * (-1 if style.flip_x else 1)
 		else:
 			node.flip_h = bool(style.flip_x)
+	if style.get("flip_y", 0):
+		# Position-anchored art flips around its origin; box art flips within its box.
+		if position_anchor:
+			node.scale.y = -absf(node.scale.y)
+		else:
+			node.flip_v = true
 	node.position += Vector2(float(style.get("offset_x", 0)), float(style.get("offset_y", 0)))
 	node.rotation_degrees = float(style.get("rotation", 0))
 	node.modulate.a = clampf(float(style.get("modulate_alpha", 1)), 0, 1)
