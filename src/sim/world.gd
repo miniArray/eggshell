@@ -6,6 +6,10 @@ const Polygon = preload("res://src/sim/polygon.gd")
 const Maps = preload("res://src/sim/maps.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 # Every tilemap of the deadly lava family. Players, enemies and items share this list.
+## Terrain chunk edge for the static terrain lookup cache.
+const CHUNK := 256 * S
+## A probe covering more chunks than this reads every layer, as before the cache.
+const MAX_CHUNKS := 16
 const LAVA_LAYERS := ["lava", "lava_1", "lava_2", "lava_3", "lava_4"]
 const SPIKE_LAYER := "ySSpikes"
 
@@ -47,6 +51,8 @@ static func build(code: String, facts: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "%s: %s" % [map_name, compiled.error]}
 		compiled.world.map_index = index + 1
 		compiled.world.map_name = map_name
+		# Transient lookup cache for this map's static terrain; never saved.
+		compiled.world.terrain_chunks = {}
 		world.maps[index + 1] = compiled.world
 	Maps.select_map(world, world.initial_map)
 	return {"ok": true, "world": world}
@@ -248,10 +254,82 @@ static func overlaps(world: Dictionary, x: int, y: int) -> bool:
 
 
 static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
-	for layer: Dictionary in world.layers:
+	for layer: Dictionary in layers_near(world, left, top, right, bottom):
 		if layer.solid and layer_overlaps(layer, left, top, right, bottom):
 			return true
 	return false
+
+
+## Layers, in draw order, that can answer layer_overlaps() true for this probe: those with
+## a contact cell in a terrain chunk the probe touches. Any other layer only has empty or
+## disabled cells there, so skipping it never changes a result. Terrain never changes after
+## loading, so each chunk's list is computed once. Worlds without the cache get all layers.
+static func layers_near(world: Dictionary, left: int, top: int, right: int, bottom: int) -> Array:
+	var chunks: Variant = world.get("terrain_chunks")
+	if chunks == null:
+		return world.layers
+	# layer_overlaps() reads cells touching [left - 1, right] x [top - 1, bottom].
+	var cx0 := floor_div(left - 1, CHUNK)
+	var cy0 := floor_div(top - 1, CHUNK)
+	var cx1 := floor_div(right, CHUNK)
+	var cy1 := floor_div(bottom, CHUNK)
+	if cx1 < cx0 or cy1 < cy0 or (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > MAX_CHUNKS:
+		return world.layers
+	if cx0 == cx1 and cy0 == cy1:
+		return _chunk_layers(world, chunks, cx0, cy0)
+	var found := {}
+	for cy in range(cy0, cy1 + 1):
+		for cx in range(cx0, cx1 + 1):
+			for index: int in _chunk_indices(world, chunks, cx, cy):
+				found[index] = true
+	var indices := found.keys()
+	indices.sort()
+	var result := []
+	for index: int in indices:
+		result.append(world.layers[index])
+	return result
+
+
+static func _chunk_layers(world: Dictionary, chunks: Dictionary, cx: int, cy: int) -> Array:
+	_chunk_indices(world, chunks, cx, cy)
+	return chunks[_chunk_key(cx, cy)][1]
+
+
+static func _chunk_indices(world: Dictionary, chunks: Dictionary, cx: int, cy: int) -> Array:
+	var key := _chunk_key(cx, cy)
+	var entry: Variant = chunks.get(key)
+	if entry != null:
+		return entry[0]
+	var indices := []
+	var layers := []
+	for index in world.layers.size():
+		var layer: Dictionary = world.layers[index]
+		if layer.bounds.is_empty():
+			continue
+		var size: int = layer.size * S
+		# A cell's closed span reaches its far edge, so include one cell before the chunk.
+		var x0 := maxi(0, floor_div(cx * CHUNK, size) - 1)
+		var x1 := mini(layer.width - 1, floor_div((cx + 1) * CHUNK - 1, size))
+		var y0 := maxi(0, floor_div(cy * CHUNK, size) - 1)
+		var y1 := mini(layer.height - 1, floor_div((cy + 1) * CHUNK - 1, size))
+		var hit := false
+		for row in range(y0, y1 + 1):
+			for column in range(x0, x1 + 1):
+				var box: Variant = layer.bounds.get(layer.cells[row * layer.width + column])
+				if box != null and not box.is_empty():
+					hit = true
+					break
+			if hit:
+				break
+		if hit:
+			indices.append(index)
+			layers.append(layer)
+	chunks[key] = [indices, layers]
+	return indices
+
+
+static func _chunk_key(cx: int, cy: int) -> int:
+	return (cx << 32) ^ (cy & 0xffffffff)
 
 
 static func water_at(world: Dictionary, x: int, y: int) -> bool:
@@ -259,7 +337,7 @@ static func water_at(world: Dictionary, x: int, y: int) -> bool:
 
 
 static func water_overlaps(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
-	for layer: Dictionary in world.layers:
+	for layer: Dictionary in layers_near(world, left, top, right, bottom):
 		if layer.water and layer_overlaps(layer, left, top, right, bottom):
 			return true
 	return false
@@ -268,7 +346,7 @@ static func water_overlaps(world: Dictionary, left: int, top: int, right: int, b
 static func named_overlaps(
 	world: Dictionary, tilemap_name: String, left: int, top: int, right: int, bottom: int
 ) -> bool:
-	for layer: Dictionary in world.layers:
+	for layer: Dictionary in layers_near(world, left, top, right, bottom):
 		if layer.name == tilemap_name and layer.layer != "layer3":
 			if layer_overlaps(layer, left, top, right, bottom):
 				return true

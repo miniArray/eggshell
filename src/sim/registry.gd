@@ -59,6 +59,8 @@ const TYPES := [
 	preload("res://src/sim/types/ride_hound.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
+const Collision = preload("res://src/sim/collision.gd")
+const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
 const MAX_DYNAMIC_SERIAL := 0x7fffffffffffffff - TOKEN_BASE
@@ -97,7 +99,6 @@ static var _ordered_level_fields := compose_level_schema()
 # Dispatch caches. Types and their constants never change at run time, so these
 # answer exactly what a scan of TYPES and get_script_constant_map() would.
 static var _by_code := compose_lookup()
-static var _constants := {}
 static var _enemy_codes := {}
 static var _fields_by_code := {}
 
@@ -118,11 +119,7 @@ static func compose_lookup() -> Dictionary:
 
 ## A type's script constant, read once per type. Callers must not mutate the value.
 static func constant(type: Script, key: String, fallback: Variant = null) -> Variant:
-	var constants: Variant = _constants.get(type)
-	if constants == null:
-		constants = type.get_script_constant_map()
-		_constants[type] = constants
-	return constants.get(key, fallback)
+	return Constants.read(type, key, fallback)
 
 
 static func implemented(code: String) -> bool:
@@ -204,10 +201,16 @@ static func consume_requests(state: Dictionary, world: Dictionary) -> void:
 	for type: Script in TYPES:
 		if type.has_method("consume_level_requests"):
 			type.consume_level_requests(state, world)
+	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
 		var type := lookup(entity.code)
 		if type.has_method("consume_requests"):
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			type.consume_requests(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 
 
 static func codes() -> Array[String]:
@@ -494,7 +497,12 @@ static func tongue_contact(state: Dictionary, world: Dictionary, box: Array) -> 
 			continue
 		var result := 0
 		if type.has_method("tongue"):
+			var row: Variant = _solid_row(Collision.solid_rows(world), entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			result = type.tongue(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 		elif phase_for(type, "SOLID", 0) == 1:
 			for solid: Array in solid_boxes(entity, type):
 				if (
@@ -523,10 +531,24 @@ static func solid_boxes(entity: Dictionary, type: Script) -> Array:
 
 static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 	# Switch links are map-wide, not limited to the camera or active entities.
+	var solids := Collision.solid_rows(world)
 	for entity: Dictionary in state.entities:
 		var type := lookup(entity.code)
 		if type.has_method("toggle"):
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			type.toggle(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
+
+
+## This step's solid index row for an entity, or null. See Collision.refresh.
+static func _solid_row(solids: Dictionary, entity: Dictionary) -> Variant:
+	if solids.is_empty():
+		return null
+	var row: Variant = solids.get(entity.token)
+	return row if row != null and is_same(row.entity, entity) else null
 
 
 ## Entities whose bounds may overlap `box` ([left, top, right, bottom], simulation units),
@@ -688,17 +710,26 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 	for phase in [0, 1]:
 		if phase == 1 and state.captured_by:
 			break
+		var solids := Collision.solid_rows(world)
 		for entity: Dictionary in state.entities:
 			var type := lookup(entity.code)
 			if phase_for(type, "STEP_PHASE", 0) != phase:
 				continue
+			var row: Variant = _solid_row(solids, entity)
+			if row != null:
+				Collision.dispatch_begin(world, row)
 			lifecycle(entity, state, world)
 			if entity.status == ACTIVE:
 				type.step(entity, state, world)
+			if row != null:
+				Collision.dispatch_end(world, row)
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if entity.status == DEFEATED or entity.get("held", 0) == 1:
+		return
+	# An active entity that cannot despawn has no transition below; skip the box work.
+	if entity.status == ACTIVE and not entity.can_despawn:
 		return
 	var type := lookup(entity.code)
 	var box := activation_box(entity, type)
@@ -768,10 +799,15 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				and entity.get("held", 0) != 1
 				and entity.get("hidden", 0) != 1
 			):
+				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
+				if row != null:
+					Collision.dispatch_begin(world, row)
 				type.contact(entity, state, world, input)
+				if row != null:
+					Collision.dispatch_end(world, row)
 
 
-static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callable) -> void:
+static func goal_convert(state: Dictionary, world: Dictionary, on_coin: Callable) -> void:
 	if not on_coin.is_valid():
 		return
 	for entity: Dictionary in state.entities:
@@ -791,6 +827,7 @@ static func goal_convert(state: Dictionary, _world: Dictionary, on_coin: Callabl
 			and entity.y + bounds[1] < state.camera_y + 224 * S
 		):
 			entity.status = DEFEATED
+			Collision.refresh(world, entity)
 			on_coin.call(state)
 
 

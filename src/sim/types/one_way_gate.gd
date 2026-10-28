@@ -26,7 +26,12 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	var boxes := _body_boxes(state, world)
+	var area := bounds(entity)
+	var boxes := _body_boxes(
+		state,
+		world,
+		[entity.x + area[0], entity.y + area[1], entity.x + area[2], entity.y + area[3]]
+	)
 	if entity.opened:
 		for box: Array in boxes:
 			if Turn.overlaps(entity.angle, AREA, box, entity.x, entity.y):
@@ -79,7 +84,9 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 	return 2 if solid_touches(entity, probe) else 0
 
 
-static func _body_boxes(state: Dictionary, world: Dictionary) -> Array:
+## Body boxes that may touch `area`, the gate's world bounds. The step only asks whether
+## any box overlaps the turned area, and a box that does touches its bounds.
+static func _body_boxes(state: Dictionary, world: Dictionary, area: Array) -> Array:
 	var result := []
 	if not state.get("captured_by", 0):
 		var box := Moves.player_box(state)
@@ -87,17 +94,21 @@ static func _body_boxes(state: Dictionary, world: Dictionary) -> Array:
 	var registry := Collision.registry_for(world)
 	if registry == null:
 		return result
-	for entity: Dictionary in state.entities:
+	var indexed := registry.has_method("nearby") and registry.has_method("is_enemy")
+	var candidates: Array = registry.nearby(state, world, area) if indexed else state.entities
+	for entity: Dictionary in candidates:
 		if entity.status != 1 or entity.collected or entity.get("held", 0):
 			continue
 		var type: Script = registry.lookup(entity.code)
-		var constants := type.get_script_constant_map()
-		var actor: bool = (
-			entity.code in registry.Actor.CODES
-			or constants.get("ENEMY", false)
-			or entity.code in ["o4", "o7", "o14"]
-			or entity.get("moving", 0)
+		var enemy: bool = (
+			registry.is_enemy(entity.code)
+			if indexed
+			else (
+				entity.code in registry.Actor.CODES
+				or type.get_script_constant_map().get("ENEMY", false)
+			)
 		)
+		var actor: bool = enemy or entity.code in ["o4", "o7", "o14"] or entity.get("moving", 0)
 		if not actor or not type.has_method("bounds"):
 			continue
 		var box: Array = type.bounds(entity)

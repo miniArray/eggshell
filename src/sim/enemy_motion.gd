@@ -4,6 +4,8 @@ extends RefCounted
 const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
+# The registry is bound late to avoid an import cycle; load() once, not per probe.
+static var _registry: Script = null
 
 
 static func random_ticks(state: Dictionary, low: int, high: int) -> int:
@@ -70,8 +72,9 @@ static func box(enemy: Dictionary, code: String) -> Array:
 				else [-24 * S, -16 * S, 12 * S, 14 * S]
 			)
 		_:
-			var registry: Script = load("res://src/sim/registry.gd")
-			var type: Script = registry.lookup(code)
+			if _registry == null:
+				_registry = load("res://src/sim/registry.gd")
+			var type: Script = _registry.lookup(code)
 			return (
 				type.bounds(enemy)
 				if type.has_method("bounds")
