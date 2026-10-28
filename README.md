@@ -34,12 +34,32 @@ bash tools/play --path . -- --level-code=tests/fixtures/stride.level.json
 | Save / restore slot | F5 / F9 | Back + left / right shoulder |
 | Zoom in / out | `=` / `-` (or keypad `+` / `-`) | Right stick up / down |
 | Reset zoom | `0` (or keypad `0`) | Right stick press |
+| Pause menu | Escape or P | Start |
+
+In the menu:
+
+| Action | Keyboard | Controller |
+| --- | --- | --- |
+| Move the focus | Up/Down or W/S | D-pad or left stick |
+| Change a value | Left/Right or A/D | D-pad or left stick |
+| Select | Enter, Space or Z | A (lower face button) |
+| Back; resume on the first page | Escape, Backspace or X | B (right face button) |
+| Close the menu | P | Start |
+| Page through the level list | Page Up / Page Down | Left / right shoulder |
 
 Movement reaches running speed without a modifier. Hold jump to flutter.
 Up directs tongue and spit actions upward. Down in the air starts a ground
 pound; in water it selects the submerged posture. Press throw twice to aim
 and throw. Up selects vertical aim; tongue cancels aim.
 The game automatically resumes the last session by default.
+The pause menu stops play. It offers Resume, Restart level, the manual slot,
+the level list and Settings: zoom, music and effects volume, quick death, a play
+timer and resume where I left off. See [menus](docs/ui.md).
+
+Pass `--levels=DIR` after the separator to open a folder of level files. The
+menu then lists each level by name and author and offers Next level after a
+goal. Each level in the folder keeps its own autosave and slot. With
+`--levels` alone, the game starts at the list.
 Zoom changes only the picture, in whole steps that keep art pixels square. It
 stops before the view shows space outside the level, and the last zoom is saved.
 
@@ -67,6 +87,7 @@ after the separator to silence all audio.
 - Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 - Player zoom in whole steps, and blended pictures on high-refresh displays.
+- A pause menu with settings, and a level list for a folder of level files.
 
 Terrain collision uses integer polygons, slope walking and floor snapping.
 Player colliders follow the action and posture. Companion rescue uses the full
@@ -113,7 +134,7 @@ clean shutdown and twenty hard-kill recovery cycles.
 
 ## Development
 
-Read `docs/architecture.md`, `docs/level-code.md`, `docs/graphics.md` and
-`docs/saves.md`. Tools under `tools/device*` target a development handheld.
+Read `docs/architecture.md`, `docs/level-code.md`, `docs/graphics.md`,
+`docs/saves.md` and `docs/ui.md`. Tools under `tools/device*` target a development handheld.
 They require a separately configured, host-key-pinned SSH transport.
 No device operation runs as part of the public test suite.
