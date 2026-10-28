@@ -15,6 +15,9 @@ const Hits = preload("res://src/sim/hits.gd")
 const STATIONARY := 0
 const THROWN := 1
 const FALLING := 2
+const SKIP := 3
+const SPEED := 1024 * 60
+const UNIT := 1_000_000
 const FIELDS := [
 	["variant", 0],
 	["colour", 0],
@@ -28,7 +31,11 @@ const FIELDS := [
 	["last_target", 0],
 	["origin_token", 0],
 	["loot_created", 0],
-	["ignore_terrain", 0]
+	["ignore_terrain", 0],
+	["skip_ticks", 0],
+	["skip_total", 0],
+	["skip_vx", 0],
+	["skip_ghost", 0]
 ]
 const LEVEL_FIELDS := [
 	["egg_request_cursor", 0],
@@ -59,14 +66,10 @@ static func registry() -> Script:
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var form: Variant = source.properties.get("F", 0)
-	if (
-		not (form is int or form is float)
-		or not is_finite(form)
-		or form < 0
-		or form > 3
-		or form != floor(form)
-	):
-		return {"ok": false, "error": "Unsupported inventory item form"}
+	if not (form is int or form is float) or not is_finite(form) or form < 0 or form != floor(form):
+		return {"ok": false, "error": "Invalid inventory item form"}
+	if form > 3:
+		return {"ok": false, "degrade": true, "error": "Unsupported inventory item form"}
 	return {"ok": true}
 
 
@@ -82,7 +85,7 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 
 static func bounds(entity: Dictionary) -> Array:
-	return [-12 * S, -12 * S, 12 * S, (12 if entity.mode == THROWN else 16) * S]
+	return [-12 * S, -12 * S, 12 * S, (12 if entity.mode in [THROWN, SKIP] else 16) * S]
 
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
@@ -96,18 +99,19 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	if entity.mode == THROWN:
 		travel(entity, state, world)
+		if entity.mode == THROWN and entity.status == 1:
+			enter_liquid(entity, state, world)
+	elif entity.mode == SKIP:
+		skip(entity, state, world)
 	elif entity.mode == FALLING:
 		entity.vy = mini(576 * 60, entity.vy + 1600)
 		entity.y += entity.vy
 	elif not entity.floating and Motion.fall(entity, world, bounds(entity), 1600, 576 * 60):
 		entity.vx = 0
-	var box := bounds(entity)
-	for name: String in ["lava", "lava_3"]:
-		if World.named_overlaps(
-			world, name, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
-		):
-			remove(entity, state, world, false)
-			return
+	# Thrown and skipping eggs meet lava through their liquid rules instead.
+	if entity.status == 1 and entity.mode not in [THROWN, SKIP] and liquid_at(world, entity) == 2:
+		remove(entity, state, world, false)
+		return
 
 
 static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, _input: int) -> void:
@@ -282,6 +286,9 @@ static func reset_map(state: Dictionary, _world: Dictionary) -> void:
 
 static func travel(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var steps := maxi(1, (maxi(absi(entity.vx), absi(entity.vy)) + S - 1) / S)
+	# The native ricochet measures from where the egg was when this movement began.
+	var last_x: int = entity.x
+	var last_y: int = entity.y
 	for index in steps:
 		var dx: int = entity.vx * (index + 1) / steps - entity.vx * index / steps
 		var dy: int = entity.vy * (index + 1) / steps - entity.vy * index / steps
@@ -303,8 +310,18 @@ static func travel(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 		var preserved := preserve_solid_bounce(entity, box, x, y, dx, dy, contact.solids)
 		horizontal = horizontal or preserved[0]
 		vertical = vertical or preserved[1]
-		entity.vx = -vx if horizontal else vx
-		entity.vy = -vy if vertical else vy
+		if horizontal or vertical:
+			var turned := ricochet(
+				world, box, last_x, last_y, x + dx, y + dy, vx, vy, contact.solids
+			)
+			entity.vx = turned[0]
+			entity.vy = turned[1]
+			last_x = entity.x
+			last_y = entity.y
+		else:
+			# Terrain probes may clear the body velocity; free travel keeps the heading.
+			entity.vx = vx
+			entity.vy = vy
 		if horizontal or vertical:
 			entity.bounces = maxi(-9223372036854775806, entity.bounces - 1)
 			if entity.colour < 2:
@@ -344,11 +361,12 @@ static func object_collisions(
 		):
 			continue
 		var type: Script = dispatch.lookup(other.code)
-		if not dispatch.overlaps_box(other, type, probe):
+		var old_shapes := solid_shapes(type, other)
+		# Terrain-style blocking stops the egg at an edge, so a full solid's edge counts.
+		if not dispatch.overlaps_box(other, type, probe) and not touches_full(old_shapes, probe):
 			continue
 		if type.has_method("touches") and not type.touches(other, probe):
 			continue
-		var old_shapes := solid_shapes(type, other)
 		var response := 0
 		if type.has_method("projectile_contact"):
 			response = type.projectile_contact(other, entity, state, world)
@@ -369,6 +387,167 @@ static func object_collisions(
 		if response in [2, 3]:
 			entity.last_target = other.token
 	return result
+
+
+static func ricochet(
+	world: Dictionary,
+	box: Array,
+	last_x: int,
+	last_y: int,
+	hit_x: int,
+	hit_y: int,
+	vx: int,
+	vy: int,
+	shapes: Array
+) -> Array:
+	# Native bullet bounce: probe a circle around the previous position in 5 degree steps
+	# on both sides of the motion, take the first free angles, and reflect the motion
+	# about the normal halfway between them.
+	var speed := mini(SPEED, Math.root(vx * vx + vy * vy))
+	var dx: int = hit_x - last_x
+	var dy: int = hit_y - last_y
+	if dx == 0 and dy == 0:
+		dx = vx
+		dy = vy
+	var travel_angle := Math.angle_to(dx, dy)
+	var radius := maxi(10 * S, Math.root(dx * dx + dy * dy))
+	var sides := []
+	for sign: int in [-1, 1]:
+		var found := posmod(travel_angle + 180000, 360000)
+		for step in range(1, 36):
+			var angle := posmod(travel_angle + sign * step * 5000, 360000)
+			var x := last_x + Math.turn_cosine(angle, radius)
+			var y := last_y + Math.turn_sine(angle, radius)
+			if not blocked_at(world, box, x, y, shapes):
+				found = angle
+				break
+		sides.append(found)
+	var result: int
+	if sides[0] == sides[1]:
+		result = sides[0]
+	else:
+		var spread := posmod(sides[1] - sides[0], 360000)
+		var normal := posmod(sides[0] + spread / 2 + 180000, 360000)
+		var lx := Math.turn_cosine(travel_angle, UNIT)
+		var ly := Math.turn_sine(travel_angle, UNIT)
+		var nx := Math.turn_cosine(normal, UNIT)
+		var ny := Math.turn_sine(normal, UNIT)
+		var dot := (lx * nx + ly * ny) / UNIT
+		result = Math.angle_to(lx - 2 * dot * nx / UNIT, ly - 2 * dot * ny / UNIT)
+	return exact_turn(result, speed, vx, vy)
+
+
+static func exact_turn(angle: int, speed: int, vx: int, vy: int) -> Array:
+	# A pure axis flip keeps exact integer speed; integer trig noise must not bend it.
+	if vy != 0 or vx != 0:
+		if absi(Math.angle_delta(angle, Math.angle_to(-vx, vy))) <= 500:
+			return [-vx, vy]
+		if absi(Math.angle_delta(angle, Math.angle_to(vx, -vy))) <= 500:
+			return [vx, -vy]
+	return [Math.turn_cosine(angle, speed), Math.turn_sine(angle, speed)]
+
+
+static func blocked_at(world: Dictionary, box: Array, x: int, y: int, shapes: Array) -> bool:
+	if Collision.overlaps({"x": x, "y": y}, world, box):
+		return true
+	for shape: Dictionary in shapes:
+		if shape.mode == 1 and rect_overlap(x, y, box, shape.box):
+			return true
+	return false
+
+
+static func liquid_at(world: Dictionary, entity: Dictionary) -> int:
+	var box := bounds(entity)
+	var area := [entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
+	for name: String in ["lava", "lava_3"]:
+		if World.named_overlaps(world, name, area[0], area[1], area[2], area[3]):
+			return 2
+	return int(World.water_overlaps(world, area[0], area[1], area[2], area[3]))
+
+
+static func enter_liquid(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	var kind := liquid_at(world, entity)
+	if kind == 0:
+		return
+	if entity.vx == 0 and entity.vy == 0:
+		return
+	var angle := Math.angle_to(entity.vx, entity.vy)
+	var speed := Math.root(entity.vx * entity.vx + entity.vy * entity.vy)
+	if angle > 0 and angle < 30000:
+		start_skip(entity, speed / 2, angle / 400 + 120)
+	elif angle > 150000 and angle < 180000:
+		start_skip(entity, -speed / 2, angle / 3000 + 120)
+	elif angle > 30000 and angle < 150000:
+		if kind == 2:
+			remove(entity, state, world, false)
+		else:
+			settle(entity, -256 * 60, true)
+
+
+static func start_skip(entity: Dictionary, vx: int, ticks: int) -> void:
+	entity.mode = SKIP
+	entity.skip_vx = vx
+	entity.skip_total = ticks
+	entity.skip_ticks = 0
+	entity.skip_ghost = 0
+	entity.vx = vx
+
+
+static func settle(entity: Dictionary, vy: int, in_liquid: bool) -> void:
+	entity.mode = STATIONARY
+	entity.floating = 0
+	entity.camera = 0
+	entity.vx = 0
+	entity.vy = vy
+	entity.skip_ghost = 0
+	if in_liquid:
+		entity.despawn_ticks = 480
+
+
+static func skip(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	# A shallow liquid entry glides on the surface while its speed eases to zero.
+	entity.skip_ticks += 1
+	entity.vx = entity.skip_vx * (entity.skip_total - entity.skip_ticks) / entity.skip_total
+	var box := bounds(entity)
+	if liquid_at(world, entity) != 0:
+		entity.vy = -256 * 60
+	else:
+		entity.vy = mini(704 * 60, entity.vy + 1536)
+	if not entity.skip_ghost:
+		var contact := object_collisions(entity, state, world, entity.vx, entity.vy)
+		if not contact.alive:
+			return
+	var x: int = entity.x
+	var moved := Collision.horizontal(entity, world, box, entity.vx, 0)
+	if moved != entity.vx:
+		entity.skip_ghost = 1
+	var desired: int = entity.vy
+	var actual := Collision.vertical(entity, world, box, desired, 0)
+	if desired > 0 and actual != desired:
+		settle(entity, -256 * 60, false)
+		return
+	if entity.skip_ticks >= entity.skip_total:
+		var kind := liquid_at(world, entity)
+		if kind == 2:
+			remove(entity, state, world, false)
+			return
+		settle(entity, 0, kind == 1)
+	if entity.x == x and entity.vx != 0:
+		entity.skip_ghost = 1
+
+
+static func touches_full(shapes: Array, probe: Array) -> bool:
+	for shape: Dictionary in shapes:
+		var box: Array = shape.box
+		if (
+			shape.mode == 1
+			and probe[2] >= box[0]
+			and probe[0] <= box[2]
+			and probe[3] >= box[1]
+			and probe[1] <= box[3]
+		):
+			return true
+	return false
 
 
 static func solid_shapes(type: Script, entity: Dictionary) -> Array:
@@ -414,7 +593,7 @@ static func remove(
 ) -> void:
 	entity.status = 3
 	mark_origin(state, entity.origin_token)
-	if with_loot and entity.mode == THROWN and not entity.loot_created:
+	if with_loot and entity.mode in [THROWN, SKIP] and not entity.loot_created:
 		entity.loot_created = 1
 		loot(entity, state, world)
 
@@ -499,7 +678,13 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.variant <= 3
 		and entity.colour >= 0
 		and entity.colour <= 3
-		and entity.mode in [STATIONARY, THROWN, FALLING]
+		and entity.mode in [STATIONARY, THROWN, FALLING, SKIP]
+		and entity.skip_ticks >= 0
+		and entity.skip_total >= 0
+		and entity.skip_ticks <= entity.skip_total
+		and entity.skip_total <= 400
+		and absi(entity.skip_vx) <= 512 * 60
+		and entity.skip_ghost in [0, 1]
 		and entity.floating in [0, 1]
 		and entity.ignore_terrain in [0, 1]
 		and entity.pickup_delay >= 0

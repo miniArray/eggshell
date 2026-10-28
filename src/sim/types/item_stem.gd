@@ -81,14 +81,16 @@ static func amount(entity: Dictionary, state: Dictionary) -> int:
 static func release(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if entity.unavailable:
 		return
-	var gravity := 1024 if entity.payload == 1 else 1600
+	var gravity: int = [1600, 1024, 1536, 1600][entity.payload]
 	var options := {
 		"vx": Math.random_ticks(state, -176 * 60, 176 * 60),
 		"vy": -Math.root(2 * gravity * 144 * 3600),
-		"pickup_delay": 6,
-		"ignore_terrain": 1,
 		"can_despawn": 1
 	}
+	if entity.payload != 2:
+		# Only pickups ignore terrain and wait before collection; spiked bodies collide.
+		options.pickup_delay = 6
+		options.ignore_terrain = 1
 	if entity.payload == 1:
 		options.wait_for_land = 1
 	var made: Dictionary = registry().spawn_dynamic(

@@ -44,6 +44,19 @@ const TYPES := [
 	preload("res://src/sim/types/decor_platform.gd"),
 	preload("res://src/sim/types/lamp.gd"),
 	preload("res://src/sim/types/snow_tree.gd"),
+	# slice 7: objects
+	preload("res://src/sim/types/thorn_block.gd"),
+	preload("res://src/sim/types/colour_block.gd"),
+	preload("res://src/sim/types/grow_block.gd"),
+	preload("res://src/sim/types/plank_bridge.gd"),
+	preload("res://src/sim/types/bare_runner.gd"),
+	preload("res://src/sim/types/spike_hopper.gd"),
+	preload("res://src/sim/types/spine_walker.gd"),
+	preload("res://src/sim/types/wing_drifter.gd"),
+	preload("res://src/sim/types/petal_stem.gd"),
+	preload("res://src/sim/types/stem_petal.gd"),
+	preload("res://src/sim/types/needle_juggler.gd"),
+	preload("res://src/sim/types/ride_hound.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
