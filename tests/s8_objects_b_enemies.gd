@@ -27,6 +27,7 @@ func _initialize() -> void:
 	_slime_checks()
 	_ghost_checks()
 	_disc_checks()
+	_sack_checks()
 	print("S8_OBJECTS_B_ENEMIES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -730,3 +731,39 @@ func _disc_checks() -> void:
 		func(entity: Dictionary) -> bool: return entity.code == "enemy_disc" and entity.status == 1
 	)
 	check(discs.is_empty() and block.out == 0, "When the player leaves, the discs draw back in")
+
+
+func _sack_checks() -> void:
+	var world := _world_for(
+		{
+			"wall": _place("o28", 500, 300),
+			"sack": _place("e34", 300, 300, {"F": 1, "R": 90}),
+			"big": _place("e34", 900, 300)
+		}
+	)
+	var state := State.create(world)
+	state.x = 700 * S
+	state.y = 700 * S
+	var type: Script = Registry.lookup("e34")
+	var sack := _by_id(state, "sack")
+	check(sack.vx == 120 * 60 and sack.vy == 0, "R 90 drifts right at 120 px/s")
+	check(_by_id(state, "big").vy == -120 * 60, "A missing R drifts up")
+	check(
+		type.bounds(_by_id(state, "big")) == [-68 * S, -68 * S, 68 * S, 68 * S],
+		"F 0 is the large sack"
+	)
+	sack.status = Registry.ACTIVE
+	var bounced := false
+	for _tick in 120:
+		Collision.begin_step(state, world, Registry)
+		type.step(sack, state, world)
+		bounced = bounced or sack.vx < 0
+	check(
+		bounced and sack.x < 500 * S - 32 * S - 38 * S + S, "It reflects off the solid in its way"
+	)
+	state.x = sack.x
+	state.y = sack.y + 20 * S
+	state.invulnerable = 0
+	type.contact(sack, state, world, 0)
+	check(state.invulnerable > 0, "Touching it hurts")
+	check(_degrades("e34", {"F": 2}), "An unknown sack form becomes a placeholder")
