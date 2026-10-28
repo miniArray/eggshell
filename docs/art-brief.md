@@ -26,7 +26,7 @@ Verdigris is locked.
 | Readability | Every surface you can stand on has a lit 1-2 px top edge. The foreground is calmer than the background |
 | Compatibility | Verdigris is a graphics pack. It never changes world units, collision, level data or saves. Every level JSON plays the same with Verdigris, Pantry, the user's imported original pack or placeholders |
 | Engine | The engine may change when that shows the art better (user, 2026-10-27). Each such change is an optional pack field or a view change. Packs without the field keep their current look and still load |
-| Generator | gpt-image-2 with the approved concept as an image reference (agent's choice, 2026-10-27; the user may change it) |
+| Generator | gpt-image-2 made the concept, style frames, Oriel and Pip. From 2026-10-27 new art uses Nano Banana Pro (`gemini-3-pro-image`), because Codex credits are running out; a side-by-side redraw of Oriel kept the approved look. It returns JPEG, so cuts must ignore each generator pixel's edge ring and be checked for artefact specks |
 | Method | Generate, cut to the pixel grid with a cluster-preserving downscale (mode colour per cell, never an average), then clean up only. Never redraw characters from scratch as typed pixels. Never shrink generated art below the generator's own pixel grid: ask the generator for the target size and cut on its grid (round 2 lost the drawing's detail by shrinking 110 px to 60 px) |
 | Clean-up | Agents clean up generated art pixel by pixel; the user approves each sheet |
 
