@@ -69,12 +69,7 @@ static func spawn(
 		CODES[0] if kind == Elements.FIRE else CODES[1],
 		x - BACK * cosine / S,
 		y - BACK * sine / S,
-		{
-			"heading": heading,
-			"vx": SPEED * cosine / S,
-			"vy": SPEED * sine / S,
-			"can_despawn": 1
-		}
+		{"heading": heading, "vx": SPEED * cosine / S, "vy": SPEED * sine / S, "can_despawn": 1}
 	)
 
 
@@ -93,11 +88,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if (
 		not entity.wall_ticks
 		and World.overlaps_box(
-			world,
-			entity.x + BOX[0],
-			entity.y + BOX[1],
-			entity.x + BOX[2],
-			entity.y + BOX[3]
+			world, entity.x + BOX[0], entity.y + BOX[1], entity.x + BOX[2], entity.y + BOX[3]
 		)
 	):
 		entity.wall_ticks = WALL_TICKS

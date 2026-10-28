@@ -42,8 +42,9 @@ static func element(entity: Dictionary) -> int:
 static func projectile_contact(
 	entity: Dictionary, projectile: Dictionary, _state: Dictionary, _world: Dictionary
 ) -> int:
-	var striking: int = {"fire_shot": Elements.FIRE, "e16": Elements.FIRE, "ice_shot": Elements.ICE}.get(
-		projectile.get("code", ""), Elements.NONE
+	var striking: int = (
+		{"fire_shot": Elements.FIRE, "e16": Elements.FIRE, "ice_shot": Elements.ICE}
+		. get(projectile.get("code", ""), Elements.NONE)
 	)
 	if striking != Elements.NONE:
 		entity.lamp_lit = int(striking == element(entity))

@@ -1,7 +1,7 @@
 extends RefCounted
 ## A bubble that leaps out of its home and drops back, again and again. It rises
 ## along its rotation (up when R is 0) at 256 px/s, slowing to a stop
-## 32 x (E1 + random 0..E2) px from where it was placed, then accelerates back
+## 32 x (E1 + random 0..E2) + 16 px from home, then steps back 16 px, accelerates
 ## home at 256 px/s² and hides for E3 seconds. The first leap waits E4 seconds.
 ## Touching it hurts. Swallowing it loads three fire shots, or three ice shots
 ## for the cold form F 3. Ice freezes the other forms; fire only defeats the
@@ -209,7 +209,7 @@ static func _touch_lamps(entity: Dictionary, state: Dictionary, world: Dictionar
 static func _leap(entity: Dictionary, state: Dictionary) -> void:
 	state.rng = (state.rng * 1103515245 + 12345) & 0x7fffffff
 	var extra: int = (state.rng * (2 * entity.rise_extra) / 2147483648 + 1) / 2
-	entity.target = LEAP_UNIT * (entity.rise_units + extra)
+	entity.target = LEAP_UNIT * (entity.rise_units + extra) + STEP_BACK
 	entity.travel = STEP_BACK
 	entity.speed = MAX_SPEED
 	entity.phase = RISE
@@ -225,8 +225,9 @@ static func _move(entity: Dictionary, goal: int, acceleration: int, deceleration
 	var limit := MAX_SPEED
 	var braking := false
 	if deceleration > 0:
-		var stop: int = speed * speed / (2 * deceleration) * 10001 / 10000
-		if distance <= stop:
+		# Exact braking keeps braking to the end; integer rounding must not undo it,
+		# so a body already below full speed (it never accelerates here) brakes on.
+		if speed < MAX_SPEED or distance * 2 * deceleration * 10000 <= speed * speed * 10001:
 			braking = true
 			speed = Motion.root(2 * deceleration * distance)
 			limit = speed

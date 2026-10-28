@@ -136,7 +136,10 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 		and state.y + player[3] > entity.y - 16 * S
 		and state.y + player[1] < entity.y + 16 * S
 	):
-		if entity.y > state.y - 8 * S and state.move_action not in [Moves.POUND_FALL, Moves.POUND_LAND]:
+		if (
+			entity.y > state.y - 8 * S
+			and state.move_action not in [Moves.POUND_FALL, Moves.POUND_LAND]
+		):
 			Moves.bounce(state, -320 * 60, input)
 		entity.status = 3
 		entity.can_respawn = 0

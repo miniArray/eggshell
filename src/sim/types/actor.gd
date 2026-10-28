@@ -14,9 +14,7 @@ const Damage = preload("res://src/sim/damage.gd")
 const CODES := ["e1", "e2", "e3", "e5", "e20", "e21"]
 const ENEMY := true
 ## Every code reacts; `element_reactions` gives each code's own flags.
-const ELEMENT_REACTIONS := (
-	Elements.BURNS | Elements.FREEZES | Elements.THAWS | Elements.ANCHORED
-)
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES | Elements.THAWS | Elements.ANCHORED
 const DYNAMIC := true
 const FIELDS := (
 	Body.FIELDS
