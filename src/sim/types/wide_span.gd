@@ -3,7 +3,9 @@ extends RefCounted
 ## per-form offset below the body's top edge supports bodies from above.
 
 const S := preload("res://src/sim/units.gd").SCALE
-const CODES := ["p6", "p9", "p10", "p13"]
+const CODES := [
+	"p6", "p7", "p8", "p9", "p10", "p13", "p14", "p15", "p16", "p17", "p18", "p19", "p20", "p21"
+]
 const SOLID := 2
 const POST_SUPPORT := true
 const STEP_PHASE := -1
@@ -12,9 +14,19 @@ const FIELDS := [["width", 96 * S]]
 ## Per form: default width, drawn height and support offset from the top, in pixels.
 const FORMS := {
 	"p6": [96, 32, 0],
+	"p7": [96, 32, 0],
+	"p8": [96, 32, 0],
 	"p9": [96, 56, 12],
 	"p10": [128, 32, 0],
 	"p13": [80, 32, 0],
+	"p14": [96, 32, 0],
+	"p15": [96, 32, 0],
+	"p16": [96, 32, 0],
+	"p17": [96, 32, 0],
+	"p18": [96, 32, 0],
+	"p19": [64, 32, 0],
+	"p20": [96, 32, 0],
+	"p21": [96, 32, 0],
 }
 const MAX_WIDTH := 1_000_000
 

@@ -127,6 +127,18 @@ func span_checks() -> void:
 		"The cap span supports at its body top"
 	)
 	check(type.view_state(_by_id(state, "log"), state).size_y == 56.0, "The log span draws 56 px")
+	for code: String in ["p7", "p8", "p14", "p15", "p16", "p17", "p18", "p20", "p21"]:
+		var one := _world_for({"span": _place(code, 300, 300)})
+		var span := _by_id(State.create(one), "span")
+		check(
+			type.solid_box(span) == [252 * S, 284 * S, 348 * S, 286 * S],
+			"A plain 96 px span supports at its top: " + code
+		)
+	var narrow := _world_for({"span": _place("p19", 300, 300)})
+	check(
+		_by_id(State.create(narrow), "span").width == 64 * S,
+		"The narrow snow span defaults to 64 px"
+	)
 	_land(state, world, 600 * S, 260 * S)
 	check(state.y <= 284 * S and state.y > 283 * S, "A falling player lands on the log span")
 	state.x = 1000 * S
