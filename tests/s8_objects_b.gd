@@ -17,6 +17,7 @@ func _initialize() -> void:
 	span_checks()
 	turning_span_checks()
 	switch_block_checks()
+	wheel_checks()
 	snapshot_checks()
 	print("S8_OBJECTS_B_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -72,7 +73,7 @@ func _land(state: Dictionary, world: Dictionary, x: int, y: int, ticks: int = 40
 
 
 func registration_checks() -> void:
-	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30"]:
+	for code: String in ["p6", "p9", "p10", "p13", "p11", "p12", "o30", "o21"]:
 		check(Registry.implemented(code), "Slice 8 B code is registered: " + code)
 	check(_degrades("o30", {"F": 2}), "An unknown switch colour becomes a placeholder")
 	for pair: Array in [
@@ -230,6 +231,62 @@ func switch_block_checks() -> void:
 		type.projectile_contact(block, egg, state, world) == 3,
 		"A lifting block reflects the next projectile as a solid"
 	)
+
+
+func _ride(state: Dictionary, world: Dictionary, wheel: Dictionary, ticks: int) -> void:
+	for _tick in ticks:
+		Sim.advance(state, 0, world)
+
+
+func wheel_checks() -> void:
+	var world := _world_for(
+		{
+			"wheel": _place("o21", 400, 300, {"E1": "0", "E2": "120", "E3": "0", "R": 90}),
+			"wall": _place("o28", 640, 300),
+			"turner": _place("o21", 1200, 300, {"E1": "90", "E2": "64"}),
+			"timed": _place("o21", 2000, 300, {"E2": "60", "E3": "0.5", "R": 0})
+		}
+	)
+	var state := State.create(world)
+	var type: Script = Registry.lookup("o21")
+	var wheel := _by_id(state, "wheel")
+	check(wheel.angle == 0 and wheel.speed == 120, "R 90 points the arrow right at E2 px/s")
+	check(_by_id(state, "turner").angle == 270 * 60000, "A missing R points the arrow up")
+	check(type.SOLID == 2, "The wheel deck is top-only")
+	_land(state, world, 400 * S, 260 * S, 2)
+	check(wheel.status == Registry.ACTIVE, "The wheel activates on screen")
+	check(type.solid_box(wheel) == [378 * S, 278 * S, 422 * S, 280 * S], "The deck is 44 px wide")
+	_ride(state, world, wheel, 30)
+	check(wheel.riding == 1, "Standing on the deck starts the ride")
+	check(wheel.x > 400 * S, "A riding wheel travels along its arrow")
+	check(absi(state.x - wheel.x) < 2 * S, "The rider is carried with the wheel")
+	var before: int = wheel.x
+	_ride(state, world, wheel, 120)
+	check(wheel.x < 640 * S - 63 * S, "The wheel never enters the solid in its path")
+	check(wheel.angle == 180 * 60000 and wheel.x < before + 160 * S, "A blocked wheel reflects")
+	state.x = 1000 * S
+	state.y = 600 * S
+	state.on_floor = 0
+	Sim.advance(state, 0, world)
+	check(wheel.riding == 0, "The ride stops when the rider falls below the deck")
+	var resting: int = wheel.x
+	Sim.advance(state, 0, world)
+	check(wheel.x == resting, "A wheel without a rider stays put")
+	var turner := _by_id(state, "turner")
+	turner.status = Registry.ACTIVE
+	var angle: int = turner.angle
+	type.step(turner, state, world)
+	check(turner.angle == angle + 90 * 1000, "An idle wheel turns E1 degrees per second")
+	var timed := _by_id(state, "timed")
+	timed.status = Registry.ACTIVE
+	check(timed.life == 30, "E3 is the lifetime in seconds")
+	timed.start = 1
+	for _tick in 30:
+		type.step(timed, state, world)
+	check(timed.shrink == 1 and type.solid_box(timed).is_empty(), "An expired wheel shrinks")
+	for _tick in 6:
+		type.step(timed, state, world)
+	check(timed.status == Registry.QUEUED, "A vanished wheel waits for camera respawn")
 
 
 func snapshot_checks() -> void:
