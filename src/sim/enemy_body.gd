@@ -183,6 +183,19 @@ static func world_box(entity: Dictionary, bounds: Array) -> Array:
 	return [entity.x + bounds[0], entity.y + bounds[1], entity.x + bounds[2], entity.y + bounds[3]]
 
 
+## The world box of a picture given facing left, in pixels around the origin; facing
+## right mirrors it. Waking on screen tests the picture, not the collision box.
+static func picture_box(entity: Dictionary, picture: Array) -> Array:
+	var left: int = picture[0] if entity.facing < 0 else -picture[2]
+	var right: int = picture[2] if entity.facing < 0 else -picture[0]
+	return [
+		entity.x + left * S,
+		entity.y + picture[1] * S,
+		entity.x + right * S,
+		entity.y + picture[3] * S
+	]
+
+
 static func player_overlap(entity: Dictionary, state: Dictionary, bounds: Array) -> bool:
 	if (
 		entity.hidden
