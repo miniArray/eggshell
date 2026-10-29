@@ -130,7 +130,7 @@ func _flat_walker_ledge_checks() -> void:
 	check(air_x < edge_x, "The leap carries it off the ledge the way it walks")
 
 
-## Enemies 1281-1285 and Global Events 98-107: a burst knocks a nearby soft walker
+## A burst knocks a nearby soft walker
 ## aside at 448 px/s, eased to zero over 1 s, with a hop when it stands.
 func _soft_walker_knock_checks() -> void:
 	var world := _ledge_world({"soft": _place("e23", 400, 284), "other": _place("e23", 480, 284)})

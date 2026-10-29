@@ -127,7 +127,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		_hop(entity, landed)
 
 
-## Knock-back (Global Events 98-107, `knockBackEnemy`): the Platform speed follows a
+## Knock-back: the horizontal speed follows a
 ## linear 1 s tween from the knock speed to 0. Each landing while it is faster than 24
 ## px/s hops at -(speed / 2 + 160). Against a wall faster than 64 px/s the tween restarts
 ## at 48 px/s away from the wall over 1.5 s. When the tween ends the body stands, then
@@ -171,7 +171,7 @@ static func pin(entity: Dictionary, state: Dictionary) -> void:
 	state.y = entity.y
 
 
-## Enemies 1281-1285: the burst knocks soft walkers within 128 px aside (vx -448 left
+## The burst knocks soft walkers within 128 px aside (vx -448 left
 ## of it, +448 right of it), then removes the body. Other enemy kinds are not knocked
 ## yet (not ported).
 static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
