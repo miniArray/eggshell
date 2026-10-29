@@ -3,6 +3,8 @@ extends SceneTree
 
 const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
 var assertions := 0
 var failures := 0
@@ -33,7 +35,7 @@ func damage_checks() -> void:
 		state.vx == -656 * 60 and state.vy == -384 * 60, "Damage reverses velocity before knockback"
 	)
 	check(
-		state.invulnerable == 120 and state.hurt == Life.KNOCKED_LOCK,
+		state.invulnerable == Life.IMMUNITY and state.hurt == Life.KNOCKED_LOCK,
 		"Damage starts immunity and first hurt lock"
 	)
 	check(
@@ -41,7 +43,7 @@ func damage_checks() -> void:
 	)
 	check(state.companion_dx == 164 * S, "Launch distance uses final knockback velocity")
 	check(
-		state.health == 10 and state.health_wait == 45,
+		state.health == 10 and state.health_wait == Life.COUNTDOWN_STEPS,
 		"Damage starts a countdown without consuming health"
 	)
 	check(state.hits == 1, "A separation counts once")
@@ -91,10 +93,16 @@ func companion_checks() -> void:
 	check(state.recovery_x == start_x + 56 * S, "Launch travels horizontally during the arc")
 	for tick in 18:
 		step(state, world)
-	check(state.companion_mode == Life.BUBBLE, "Launch creates a bubble after thirty-six ticks")
+	check(
+		state.companion_mode == Life.LAUNCH and state.recovery_y == start_y,
+		"Launch returns to its initial height after thirty-six ticks"
+	)
+	for tick in Life.LAUNCH_STEPS - 36:
+		step(state, world)
+	check(state.companion_mode == Life.BUBBLE, "The bubble forms two ticks after the arc")
 	check(
 		state.recovery_y == start_y and state.recovery_x == start_x + 112 * S,
-		"Launch returns to its initial height"
+		"The bubble forms where the arc ended"
 	)
 	start_x = state.recovery_x
 	for tick in 60:
@@ -102,6 +110,9 @@ func companion_checks() -> void:
 	check(state.recovery_x > start_x, "Free bubble drifts instead of remaining a marker")
 	check(state.companion_vx == 48 * 60, "Bubble horizontal speed cap")
 	check(state.companion_vy == -192 * 60, "Bubble initial vertical ramp takes one second")
+	# The swing holds the ramp's last speed for one step, then reverses over two seconds.
+	step(state, world)
+	check(state.companion_vy == -192 * 60, "The swing starts one step after the ramp")
 	for tick in 120:
 		step(state, world)
 	check(state.companion_vy == 192 * 60, "Bubble vertical motion reverses over a two-second leg")
@@ -144,6 +155,54 @@ func bubble_contact_checks() -> void:
 	check(
 		state.recovery_x != 176 * S or state.recovery_y != 200 * S,
 		"An embedded bubble escapes instead of remaining stuck"
+	)
+	# Terrain sees the bubble's octagon, not its bounding box: a block at its corner is clear.
+	var corner := {"x": 135 * S, "y": 165 * S}
+	check(
+		(
+			Collision.overlaps(corner, world, Life.BUBBLE_BOX)
+			and not Collision.overlaps(corner, world, Life._bubble_body())
+		),
+		"A block beside the bubble's cut corner does not touch it"
+	)
+	corner.x = 150 * S
+	check(Collision.overlaps(corner, world, Life._bubble_body()), "Its side still meets the block")
+	# A bubble that forms inside a block is pushed out on the step it forms.
+	state = player(world)
+	Damage.hurt(state, state.x + S)
+	state.companion_age = Life.LAUNCH_STEPS - 1
+	# The bubble box ends 6 px inside the block's top.
+	state.companion_from_x = 176 * S
+	state.companion_from_y = 166 * S
+	state.companion_dx = 0
+	step(state, world)
+	check(state.companion_mode == Life.BUBBLE, "The bubble forms on its launch step")
+	check(
+		not World.overlaps_box(
+			world,
+			state.recovery_x - 30 * S,
+			state.recovery_y - 60 * S,
+			state.recovery_x + 30 * S,
+			state.recovery_y
+		),
+		"A bubble that forms in a block is pushed out at once"
+	)
+	# Deep inside terrain it drifts toward the player on both axes.
+	var solid := PackedInt32Array()
+	solid.resize(15 * 9)
+	solid.fill(0)
+	world.layers = [solid_layer(solid, 15, 9)]
+	state = player(world)
+	Life.separate(state, 0, true)
+	state.x = 64 * S
+	state.y = 100 * S
+	state.recovery_x = 300 * S
+	state.recovery_y = 250 * S
+	state.companion_age = 100
+	step(state, world)
+	check(
+		state.recovery_x == 300 * S - 96 * 60 and state.recovery_y < 250 * S,
+		"An embedded bubble drifts toward the player"
 	)
 	cells.fill(-1)
 	for column in 15:
@@ -198,13 +257,13 @@ func countdown_checks() -> void:
 	var world := course()
 	var state := player(world)
 	Life.separate(state, 0)
-	for tick in 44:
+	for tick in Life.COUNTDOWN_STEPS - 1:
 		step(state, world)
 	check(state.health == 10, "Countdown waits the full first interval")
 	step(state, world)
 	check(
-		state.health == 9 and state.health_wait == 45,
-		"Countdown consumes one unit per forty-five ticks"
+		state.health == 9 and state.health_wait == Life.COUNTDOWN_STEPS,
+		"Countdown consumes one unit per forty-six ticks"
 	)
 	var item := {"collected": 0}
 	check(Life.collect(state, Life.STAR, item), "Star pickup is accepted")
@@ -240,6 +299,8 @@ func rescue_checks() -> void:
 	far.camera_x = 1000000000000
 	var far_start: int = far.camera_x - 120 * S
 	step(far, wide)
+	check(far.rescue_1_x == far_start, "Captors appear without moving on the step they come")
+	step(far, wide)
 	check(
 		far.rescue_1_x < far_start and far.rescue_1_x >= far_start - 1024 * 60,
 		(
@@ -273,10 +334,10 @@ func rescue_checks() -> void:
 		"The companion can be caught at zero"
 	)
 	check(
-		state.life_phase == Life.REJOIN and state.life_ticks == 48,
+		state.life_phase == Life.REJOIN and state.life_ticks == Life.REJOIN_STEPS,
 		"Catch starts the two-leg return sequence"
 	)
-	for tick in 47:
+	for tick in Life.REJOIN_STEPS - 1:
 		step(state, world)
 	check(
 		state.separated == 1 and state.health == 0, "Countdown and play pause during reattachment"
@@ -303,7 +364,11 @@ func rescue_checks() -> void:
 	Life.collect(state, Life.STAR)
 	step(state, world)
 	check(
-		state.health == 1 and state.health_wait == 44 and state.rescue_active == 1,
+		(
+			state.health == 1
+			and state.health_wait == Life.COUNTDOWN_STEPS - 1
+			and state.rescue_active == 1
+		),
 		"Refill at zero restarts the interval, not the capture helpers"
 	)
 	state = player(world)
@@ -572,7 +637,7 @@ func checkpoint_checks() -> void:
 	)
 	step(state, world)
 	check(
-		state.health == 29 and state.health_wait == 45,
+		state.health == 29 and state.health_wait == Life.COUNTDOWN_STEPS,
 		"Separated checkpoint meter returns to ordinary countdown intervals"
 	)
 

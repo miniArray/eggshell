@@ -101,7 +101,7 @@ func movement_and_contact(world: Dictionary, code: String) -> void:
 		check(state.captured_by == 1, "Plant captures rather than permitting a stomp")
 	else:
 		check(state.hits == 1 and state.deaths == 0, code + " side contact hurts, not kills")
-		check(state.invulnerable == 120 and state.vy == -384 * 60, code + " hurt impulse")
+		check(state.invulnerable == Life.IMMUNITY and state.vy == -384 * 60, code + " hurt impulse")
 	var restored := Save.decode(Save.encode(state), test_world.identity)
 	check(restored.ok and restored.state == state, code + " active state round trip")
 	for tick in 90:
@@ -209,10 +209,10 @@ func damage_checks(world: Dictionary) -> void:
 	Damage.hurt(state, state.x + 10 * S)
 	check(Save.encode(state) == saved, "Flashing rejects a second damage request without mutation")
 	state.enemies[0].status = 3  # Isolate the timer from a knockback-to-stomp bounce.
-	for tick in 44:
+	for tick in Life.COUNTDOWN_STEPS - 1:
 		Sim.advance(state, Sim.RIGHT, test_world)
 	check(
-		state.health == 10 and state.hits == 1, "Countdown waits 45 ticks without another contact"
+		state.health == 10 and state.hits == 1, "Countdown waits 46 ticks without another contact"
 	)
 	Sim.advance(state, 0, test_world)
 	check(state.health == 9, "Countdown decrements at 0.75 seconds")
@@ -225,11 +225,11 @@ func damage_checks(world: Dictionary) -> void:
 		state.life_phase == Life.REJOIN and state.health == 9,
 		"Bubble contact starts the rejoin phase"
 	)
-	for tick in 48:
+	for tick in Life.REJOIN_STEPS:
 		Sim.advance(state, 0, test_world)
 	check(
 		state.separated == 0 and state.life_phase == Life.PLAY,
-		"Rejoin completes after forty-eight ticks"
+		"Rejoin completes after fifty-one ticks"
 	)
 	state.x = 200 * S  # Refill is isolated from a second enemy contact.
 	for tick in 120:
@@ -241,14 +241,14 @@ func damage_checks(world: Dictionary) -> void:
 	var timer_world := test_world.duplicate(true)
 	timer_world.enemies.clear()
 	timer_state.enemies.clear()
-	for tick in 119:
+	for tick in Life.IMMUNITY - 1:
 		Sim.advance(timer_state, 0, timer_world)
 	check(
 		timer_state.invulnerable == 1 and timer_state.hurt == 0,
 		"Hurt ends before the full two-second immunity window"
 	)
 	Sim.advance(timer_state, 0, timer_world)
-	check(timer_state.invulnerable == 0, "Invulnerability ends at exactly 120 ticks")
+	check(timer_state.invulnerable == 0, "Invulnerability ends after 121 ticks")
 	state = restored.state
 	state.enemies[0].status = 3
 	state.x = 1000 * S  # Remain on support, away from the marker; this must not be a pit death.
@@ -327,7 +327,7 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 			break
 	check(escaped_at > 30 and escaped_at < 150, "Jump presses shorten hold only after flee delay")
 	check(
-		player.invulnerable == 120 and player.hurt_deceleration == 648,
+		player.invulnerable == Life.IMMUNITY and player.hurt_deceleration == 648,
 		"Plant release flashes with release deceleration"
 	)
 	check(

@@ -138,7 +138,7 @@ static func release(enemy: Dictionary, state: Dictionary) -> void:
 	enemy.mode = 5
 	enemy.timer = 30
 	state.captured_by = 0
-	state.invulnerable = 120
+	state.invulnerable = Life.IMMUNITY
 	Life.start_hurt(state, Life.KNOCKED_LOCK, true)
 	state.hurt_deceleration = 648
 	state.vx = enemy.facing * 400 * 60

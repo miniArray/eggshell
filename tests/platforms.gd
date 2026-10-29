@@ -7,6 +7,7 @@ const Snapshot = preload("res://src/save/snapshot.gd")
 const Sim = preload("res://src/sim/step.gd")
 const World = preload("res://src/sim/world.gd")
 const Screen = preload("res://src/sim/screen.gd")
+const Life = preload("res://src/sim/life.gd")
 const Shapes = preload("res://tests/platform_shapes.gd")
 const S := 3600
 const BOX := [-4 * S, -8 * S, 4 * S, 0]
@@ -544,7 +545,7 @@ func post_type_checks() -> void:
 	Collision.begin_step(state, world, Registry)
 	type.contact(entity, state, world, 0)
 	check(
-		state.invulnerable == 120 and state.separated == 1,
+		state.invulnerable == Life.IMMUNITY and state.separated == 1,
 		"spiked form uses the shared damage and companion path"
 	)
 	type.bump(entity, state, world, 1)

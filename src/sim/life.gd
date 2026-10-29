@@ -41,6 +41,20 @@ const KNOCKED_LOCK := 38
 const SPIN_LOCK := 63
 const LOOK_AROUND_LOCK := 43
 const MAX_HURT := 63
+# Contact immunity after a hit: the reference game counts its 2 s flash down by the frame
+# time and ends it when the remainder is no longer positive; 120 frame-time subtractions
+# leave a rounding remainder, so a new hit is possible on the 121st step.
+const IMMUNITY := 121
+# The countdown loses one unit every 46 steps while separated: its 0.75 s timer fires
+# after 45 frames and is restarted on the following frame.
+const COUNTDOWN_STEPS := 46
+# A catch freezes the world while the companion rises 96 px over 24 steps and drops to
+# the saddle over 24 more; each of the two moves ends one step late, and play resumes
+# on the step after the second ends: 51 steps.
+const REJOIN_STEPS := 51
+# The launch arc takes 36 steps; the bubble forms on the 38th (its tween reports the end
+# one step late and the bubble's body moves from the next frame).
+const LAUNCH_STEPS := 38
 # Death and restart timing in steps. An ordinary death waits 240 steps, then fades for 61:
 # the reference game restarts on the step after its 60-step fade completes. A quick death
 # fades for 32. After the respawn the first step holds the body, the second moves it
@@ -127,6 +141,8 @@ const LEVEL_FIELDS := [
 	["checkpoint_play_ticks", 0]
 ]
 
+static var _bubble_body_cache: Array = []
+
 
 static func ensure_fields(state: Dictionary) -> void:
 	for list: Array in [PLAYER_FIELDS, LEVEL_FIELDS]:
@@ -163,8 +179,10 @@ static func before_step(
 	state.invulnerable = maxi(0, state.invulnerable - 1)
 	_hurt_step(state)
 	state.separation_grace = maxi(0, state.separation_grace - 1)
-	_countdown_step(state, world)
+	# The companion moves before the countdown: captors summoned at zero appear after the
+	# bubble's last move and first chase it on the next step.
 	_companion_step(state, world)
+	_countdown_step(state, world)
 	return false
 
 
@@ -238,7 +256,7 @@ static func separate(
 	_attach_position(state)
 	state.separated = 1
 	state.hits = _plus_one(state.hits)
-	state.health_wait = 45
+	state.health_wait = COUNTDOWN_STEPS
 	state.companion_mode = BUBBLE if instant else LAUNCH
 	state.companion_age = 0
 	state.recovery_delay = 0 if instant else 36
@@ -283,7 +301,7 @@ static func catch_companion(
 	):
 		return false
 	state.life_phase = REJOIN
-	state.life_ticks = 48
+	state.life_ticks = REJOIN_STEPS
 	state.companion_mode = RETURNING
 	state.companion_from_x = state.recovery_x
 	state.companion_from_y = state.recovery_y
@@ -445,11 +463,11 @@ static func _countdown_step(state: Dictionary, world: Dictionary) -> void:
 	if state.separated:
 		if state.health > 0:
 			if state.health_wait <= 0:
-				state.health_wait = 45
+				state.health_wait = COUNTDOWN_STEPS
 			state.health_wait -= 1
 			if state.health_wait <= 0:
 				state.health -= 1
-				state.health_wait = 45 if state.health else 0
+				state.health_wait = COUNTDOWN_STEPS if state.health else 0
 				if state.health == 0 and state.companion_mode == BUBBLE:
 					_start_rescue(state, world)
 	elif state.health < 10:
@@ -470,9 +488,12 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 			state.recovery_x = state.companion_from_x + state.companion_dx * age / 36
 			state.recovery_y = state.companion_from_y - 56 * S * leg * (36 - leg) / 324
 			state.recovery_delay = 36 - age
-			if age == 36:
+			# The arc ends after 36 steps; the bubble forms two steps later and its body
+			# first moves in that step, out of any terrain it formed in.
+			if state.companion_age >= LAUNCH_STEPS:
 				state.companion_mode = BUBBLE
 				state.companion_age = 0
+				_bubble_settle(state, world)
 				if state.health == 0:
 					_start_rescue(state, world)
 		BUBBLE:
@@ -502,44 +523,47 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 	if age <= 60:
 		state.companion_vy = -192 * 60 * age / 60
 	else:
-		var leg := (age - 60) % 240
+		# The swing starts one step after the ramp ends (the ramp reports its end late).
+		var leg := (age - 61) % 240
 		state.companion_vy = -192 * 60 + 384 * 60 * mini(leg, 240 - leg) / 120
-	state.companion_vx = clampi(
-		state.companion_vx + state.companion_direction * 512, -48 * 60, 48 * 60
-	)
 	if state.bubble_bound_ticks:
 		state.bubble_bound_ticks -= 1
-		state.recovery_x = (
-			state.bubble_bound_from_x
-			+ (
-				(state.bubble_bound_to_x - state.bubble_bound_from_x)
-				* (6 - state.bubble_bound_ticks)
-				/ 6
-			)
-		)
+		var span: int = state.bubble_bound_to_x - state.bubble_bound_from_x
+		state.recovery_x = state.bubble_bound_from_x + span * (6 - state.bubble_bound_ticks) / 6
 		state.recovery_y += state.companion_vy
 		return
-	if World.overlaps_box(
-		world,
-		state.recovery_x - 30 * S,
-		state.recovery_y - 60 * S,
-		state.recovery_x + 30 * S,
-		state.recovery_y
-	):
-		state.recovery_x += signi(state.recovery_x - state.x) * 96 * 60
-		state.recovery_y += signi(state.recovery_y - state.y) * 96 * 60
+	var bubble_body := _bubble_body()
+	var here := {"x": state.recovery_x, "y": state.recovery_y}
+	# This step's push uses the direction before the wall checks turn it.
+	var control: int = state.companion_direction
+	if state.companion_direction < 0 and Collision.by_wall(here, world, bubble_body, -1, 2, 3):
+		state.companion_direction = 1
+	if state.companion_direction > 0 and Collision.by_wall(here, world, bubble_body, 1, 2, 3):
+		state.companion_direction = -1
+	if Collision.overlaps(here, world, bubble_body):
+		# An embedded bubble drifts toward the player on both axes.
+		state.recovery_x += signi(state.x - state.recovery_x) * 96 * 60
+		state.recovery_y += signi(state.y - state.recovery_y) * 96 * 60
 	var body := {
 		"x": state.recovery_x,
 		"y": state.recovery_y,
 		"vx": state.companion_vx,
 		"vy": state.companion_vy
 	}
-	if Collision.prepare(body, world, BUBBLE_BOX):
-		var distance: int = body.vx
-		var actual := Collision.horizontal(body, world, BUBBLE_BOX, distance, 0, false, 640 * 60)
-		if actual != distance or body.vx == 0:
-			state.companion_direction *= -1
-		Collision.vertical(body, world, BUBBLE_BOX, body.vy)
+	# A body that cannot get out of terrain does not move or speed up this step.
+	if Collision.prepare(body, world, bubble_body):
+		var previous: int = body.vx
+		var next := clampi(previous + control * 512, -48 * 60, 48 * 60)
+		# The body moves by the mean of the old and new speed, and not at all from rest.
+		var distance: int = (previous + next) / 2 if previous else 0
+		Collision.horizontal(body, world, bubble_body, distance, 0, false, 640 * 60)
+		Collision.vertical(body, world, bubble_body, body.vy)
+		# A blocked body restarts from rest; a wall right ahead stops the new speed.
+		body.vx = (
+			clampi(body.vx + control * 512, -48 * 60, 48 * 60) if body.vx != previous else next
+		)
+		if body.vx != 0 and Collision.by_wall(body, world, bubble_body, signi(body.vx)):
+			body.vx = 0
 	state.recovery_x = body.x
 	state.recovery_y = body.y
 	state.companion_vx = body.vx
@@ -552,6 +576,18 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		state.bubble_bound_to_x = clampi(state.recovery_x, left, right)
 		state.companion_direction = 1 if state.recovery_x < left else -1
 		state.companion_vx = 0
+
+
+static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
+	# The new bubble's first body step: no speed yet, only the push out of terrain; one
+	# still embedded then drifts toward the player at once.
+	var body := {"x": state.recovery_x, "y": state.recovery_y, "vx": 0, "vy": 0}
+	Collision.prepare(body, world, _bubble_body())
+	if Collision.overlaps(body, world, _bubble_body()):
+		body.x += signi(state.x - body.x) * 96 * 60
+		body.y += signi(state.y - body.y) * 96 * 60
+	state.recovery_x = body.x
+	state.recovery_y = body.y
 
 
 static func _start_rescue(state: Dictionary, world: Dictionary) -> void:
@@ -612,14 +648,16 @@ static func _phase_step(
 	state.life_ticks = maxi(0, state.life_ticks - 1)
 	match state.life_phase:
 		REJOIN:
-			var age: int = 48 - state.life_ticks
+			var age: int = REJOIN_STEPS - state.life_ticks
+			var across := mini(age, 48)
 			state.recovery_x = (
-				state.companion_from_x + (_anchor_x(state) - state.companion_from_x) * age / 48
+				state.companion_from_x + (_anchor_x(state) - state.companion_from_x) * across / 48
 			)
 			if age <= 24:
 				state.recovery_y = state.companion_from_y - 96 * S * age * (48 - age) / 576
 			else:
-				var leg := age - 24
+				# The drop starts one step after the rise ends and holds at the saddle.
+				var leg := clampi(age - 25, 0, 24)
 				state.recovery_y = (
 					state.companion_from_y
 					- 96 * S
@@ -777,7 +815,7 @@ static func valid_state(state: Dictionary) -> bool:
 		state.hurt < 0
 		or state.hurt > MAX_HURT
 		or state.invulnerable < 0
-		or state.invulnerable > 120
+		or state.invulnerable > IMMUNITY
 	):
 		return false
 	if (
@@ -891,6 +929,15 @@ static func _anchor_y(state: Dictionary) -> int:
 static func _attach_position(state: Dictionary) -> void:
 	state.recovery_x = _anchor_x(state)
 	state.recovery_y = _anchor_y(state)
+
+
+## The bubble's body against terrain: its octagon inside the box that bounds it.
+static func _bubble_body() -> Array:
+	if _bubble_body_cache.is_empty():
+		_bubble_body_cache = BUBBLE_BOX.duplicate()
+		_bubble_body_cache.append(_bubble_points())
+		_bubble_body_cache.make_read_only()
+	return _bubble_body_cache
 
 
 static func _bubble_points() -> PackedInt64Array:

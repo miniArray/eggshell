@@ -280,13 +280,7 @@ static func registry_for(world: Dictionary) -> Script:
 static func overlaps(
 	body: Dictionary, world: Dictionary, bounds: Array, dx: int = 0, dy: int = 0, bridge: int = 0
 ) -> bool:
-	if World.overlaps_box(
-		world,
-		body.x + bounds[0] + dx,
-		body.y + bounds[1] + dy,
-		body.x + bounds[2] + dx,
-		body.y + bounds[3] + dy
-	):
+	if _terrain(body, world, bounds, dx, dy):
 		return true
 	for shape: Dictionary in _shapes(
 		world,
@@ -311,6 +305,26 @@ static func overlaps(
 			and _shape_overlap(body, bounds, selected, dx, dy)
 		)
 	return false
+
+
+## Terrain test for a body box, or for the polygon a body's bounds may carry as a fifth
+## element (relative to the body, in world units) inside that box.
+static func _terrain(body: Dictionary, world: Dictionary, bounds: Array, dx: int, dy: int) -> bool:
+	var left: int = body.x + bounds[0] + dx
+	var top: int = body.y + bounds[1] + dy
+	var right: int = body.x + bounds[2] + dx
+	var bottom: int = body.y + bounds[3] + dy
+	if not World.overlaps_box(world, left, top, right, bottom):
+		return false
+	if bounds.size() < 5:
+		return true
+	var shape: PackedInt64Array = bounds[4]
+	var points := PackedInt64Array()
+	points.resize(shape.size())
+	for index in range(0, shape.size(), 2):
+		points[index] = shape[index] + body.x + dx
+		points[index + 1] = shape[index + 1] + body.y + dy
+	return World.overlaps_polygon(world, points, [left, top, right, bottom])
 
 
 static func bridge_overlap(
@@ -345,13 +359,7 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	# A nearby wall is not a floor if the actor already overlaps it.
 	if overlaps(body, world, bounds):
 		return 0
-	if World.overlaps_box(
-		world,
-		body.x + bounds[0],
-		body.y + bounds[1] + S,
-		body.x + bounds[2],
-		body.y + bounds[3] + S
-	):
+	if _terrain(body, world, bounds, 0, S):
 		return -1
 	var below := _shapes(
 		world,
@@ -407,10 +415,14 @@ static func settle_floor(body: Dictionary, world: Dictionary, bounds: Array, sup
 		body.vy = 0
 
 
-static func by_wall(body: Dictionary, world: Dictionary, bounds: Array, direction: int) -> bool:
+## A wall `reach` px to the `direction` side that is still there `lift` px higher (so not
+## a slope).
+static func by_wall(
+	body: Dictionary, world: Dictionary, bounds: Array, direction: int, reach := 1, lift := 1
+) -> bool:
 	return (
-		overlaps(body, world, bounds, direction * S, 0)
-		and overlaps(body, world, bounds, direction * S, -S)
+		overlaps(body, world, bounds, direction * reach * S, 0)
+		and overlaps(body, world, bounds, direction * reach * S, -lift * S)
 	)
 
 

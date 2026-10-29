@@ -42,7 +42,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	Collision.begin_step(state, world, Registry)
 	Registry.advance(state, world, pressed)
 	var locked := Life.locks_input(state)
-	var action := 0 if locked else input
+	var action := _locked_action(state, input) if locked else input
 	if not state.captured_by:
 		if locked:
 			pressed = 0
@@ -64,6 +64,18 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.camera_y = state.y - 28 * S
 	if not state.captured_by and not Life.blocks_step(state):
 		Moves.finish(state, action, world)
+
+
+static func _locked_action(state: Dictionary, input: int) -> int:
+	# A hit lands after the reference game read that frame's input, so on the step after
+	# the hit the held direction still pushes the body (against the hurt braking).
+	var hurt: int = state.hurt
+	if (
+		state.invulnerable == Life.IMMUNITY - 1
+		and (hurt == Life.KNOCKED_LOCK - 1 or hurt == Life.SPIN_LOCK - 1)
+	):
+		return input & (LEFT | RIGHT)
+	return 0
 
 
 static func begin_level(state: Dictionary, world: Dictionary) -> void:

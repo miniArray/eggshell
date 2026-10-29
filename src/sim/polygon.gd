@@ -27,6 +27,21 @@ static func overlaps_box(
 	return false
 
 
+## Two closed polygons in the same coordinates share a point (edges included).
+static func overlaps_polygon(a: PackedInt64Array, b: PackedInt64Array) -> bool:
+	if a.is_empty() or b.is_empty():
+		return false
+	if contains_point(b, a[0], a[1]) or contains_point(a, b[0], b[1]):
+		return true
+	for i in range(0, a.size(), 2):
+		var ni := (i + 2) % a.size()
+		for j in range(0, b.size(), 2):
+			var nj := (j + 2) % b.size()
+			if segments_meet(a[i], a[i + 1], a[ni], a[ni + 1], b[j], b[j + 1], b[nj], b[nj + 1]):
+				return true
+	return false
+
+
 static func contains_point(points: PackedInt64Array, x: int, y: int) -> bool:
 	var inside := false
 	for index in range(0, points.size(), 2):
