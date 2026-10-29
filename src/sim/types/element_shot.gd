@@ -121,6 +121,8 @@ static func strike(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 			type.hit(other, state, world, kind, entity.x)
 		elif type.has_method("projectile_contact"):
 			type.projectile_contact(other, entity, state, world)
+		# A strike can change what the struck entity's bounds and solid boxes read.
+		Near.refresh_solid(world, other)
 
 
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:

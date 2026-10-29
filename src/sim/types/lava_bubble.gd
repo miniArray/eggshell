@@ -204,6 +204,7 @@ static func _touch_lamps(entity: Dictionary, state: Dictionary, world: Dictionar
 			and registry.overlaps_box(other, type, box)
 		):
 			type.projectile_contact(other, entity, state, world)
+			Near.refresh_solid(world, other)
 
 
 static func _leap(entity: Dictionary, state: Dictionary) -> void:
