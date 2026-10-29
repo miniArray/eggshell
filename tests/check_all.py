@@ -31,6 +31,7 @@ def main():
         "nearby",
         "entity_grid",
         "terrain_memo",
+        "oriented_box",
         "collision_index",
         "moves",
         "move_order",

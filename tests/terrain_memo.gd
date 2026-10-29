@@ -15,11 +15,13 @@ var seed := 31337
 class Block:
 	extends RefCounted
 	const SOLID := 1
+	static var probes := 0
 
 	static func bounds(_entity: Dictionary) -> Array:
 		return [-16 * 3600, -16 * 3600, 16 * 3600, 16 * 3600]
 
 	static func solid_box(entity: Dictionary) -> Array:
+		probes += 1
 		if entity.status != 1:
 			return []
 		return [
@@ -27,16 +29,31 @@ class Block:
 		]
 
 
+class NarrowBlock:
+	extends RefCounted
+	const SOLID := 1
+
+	static func bounds(entity: Dictionary) -> Array:
+		return Block.bounds(entity)
+
+	static func solid_box(entity: Dictionary) -> Array:
+		return Block.solid_box(entity)
+
+	static func solid_touches(entity: Dictionary, _probe: Array) -> bool:
+		return not entity.opened
+
+
 class Dispatch:
 	extends RefCounted
 
-	static func lookup(_code: String) -> Script:
-		return Block
+	static func lookup(code: String) -> Script:
+		return NarrowBlock if code == "narrow" else Block
 
 
 func _initialize() -> void:
 	probe_checks()
 	escape_checks()
+	live_solid_escape_checks()
 	print("TERRAIN_MEMO_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -138,6 +155,63 @@ func escape_checks() -> void:
 					"Remembered escape equals the search: %s %s" % [start, results]
 				)
 	check(not pair[1].terrain_escapes.is_empty(), "Escapes are remembered")
+
+
+## A pad trapped in a full solid repeats hundreds of live probes. Remembered answers
+## must follow the live boxes, including toggles/removal without an explicit refresh.
+func live_solid_escape_checks() -> void:
+	var block := {"code": "block", "id": "1", "token": 1, "status": 1, "x": 64 * S, "y": 64 * S}
+	var state := {"x": 0, "y": 0, "frame": 1, "entities": [block]}
+	var plain := {"layers": [], "bridges": [], "width": 512 * S, "height": 512 * S}
+	var remembered := plain.duplicate()
+	remembered.terrain_escapes = {}
+	for world: Dictionary in [plain, remembered]:
+		Collision.begin_step(state, world, Dispatch)
+	var bounds := [-14 * S, -30 * S, 14 * S, 0]
+	var start := {"x": 64 * S, "y": 64 * S, "vx": 0, "vy": 2000}
+	var first_probes := 0
+	for repeat in 2:
+		Block.probes = 0
+		var body := start.duplicate()
+		var ok := Collision.prepare(body, remembered, bounds)
+		check(not ok and body == start, "trapped pad keeps its position and speed")
+		if repeat == 0:
+			first_probes = Block.probes
+		else:
+			check(Block.probes * 2 < first_probes, "unchanged solids reuse the push-out search")
+	for change in ["move", "disable", "enable", "return"]:
+		match change:
+			"move":
+				block.x += 16 * S
+				for world: Dictionary in [plain, remembered]:
+					Collision.refresh(world, block)
+			"disable":
+				block.status = 3
+			"enable":
+				block.status = 1
+			"return":
+				block.x -= 16 * S
+				for world: Dictionary in [plain, remembered]:
+					Collision.refresh(world, block)
+		var expected := start.duplicate()
+		var actual := start.duplicate()
+		var expected_ok := Collision.prepare(expected, plain, bounds)
+		var actual_ok := Collision.prepare(actual, remembered, bounds)
+		check(actual_ok == expected_ok and actual == expected, "live solid change: " + change)
+		if change == "move":
+			check(actual_ok and actual != start, "moving blocker permits a different escape")
+	# The same box can change its narrow phase without changing any box coordinates.
+	block = block.duplicate()
+	block.code = "narrow"
+	block.opened = 0
+	state.entities = [block]
+	remembered.erase("solids_step")
+	Collision.begin_step(state, remembered, Dispatch)
+	var trapped := start.duplicate()
+	check(not Collision.prepare(trapped, remembered, bounds), "narrow blocker traps pad")
+	block.opened = 1
+	var released := start.duplicate()
+	check(Collision.prepare(released, remembered, bounds), "narrow removal is live")
 
 
 func check(condition: bool, label: String) -> void:
