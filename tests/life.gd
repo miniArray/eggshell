@@ -14,6 +14,7 @@ func _initialize() -> void:
 	bubble_contact_checks()
 	countdown_checks()
 	rescue_checks()
+	rescue_spawn_checks()
 	death_checks()
 	checkpoint_checks()
 	goal_checks()
@@ -227,7 +228,10 @@ func countdown_checks() -> void:
 
 func rescue_checks() -> void:
 	var world := course()
-	var far := player(world)
+	# A map wide enough for a far follow point: the screen centre stays inside it.
+	var wide := course()
+	wide.width = 4000000000000
+	var far := player(wide)
 	Life.separate(far, 0, true)
 	far.recovery_x = 1000 * S
 	far.recovery_y = 200 * S
@@ -235,7 +239,7 @@ func rescue_checks() -> void:
 	far.health_wait = 1
 	far.camera_x = 1000000000000
 	var far_start: int = far.camera_x - 120 * S
-	step(far, world)
+	step(far, wide)
 	check(
 		far.rescue_1_x < far_start and far.rescue_1_x >= far_start - 1024 * 60,
 		(
@@ -251,9 +255,14 @@ func rescue_checks() -> void:
 	state.health_wait = 1
 	step(state, world)
 	check(state.health == 0 and state.rescue_active == 1, "Zero starts the last rescue window")
+	# The course is 448 px high: the screen centre is held at 224 px, and at x 64 the
+	# centre is held 416 px from the left edge.
 	check(
-		state.rescue_1_y >= state.camera_y - 304 * S,
-		"Capture agents start from the saved scroll-center offset"
+		(
+			absi(state.rescue_4_x - (416 + 120) * S) <= 1024 * 60
+			and absi(state.rescue_4_y - (224 - 304) * S) <= 1024 * 60
+		),
+		"Capture agents start from the clamped screen centre and pursue at once"
 	)
 	check(
 		state.life_phase == Life.PLAY and state.deaths == 0,
@@ -321,6 +330,52 @@ func rescue_checks() -> void:
 		state.life_phase == Life.DEAD and state.death_cause == Life.COUNTDOWN,
 		"Failed rescue enters the death sequence"
 	)
+
+
+func rescue_spawn_checks() -> void:
+	var world := course()
+	world.width = 4000 * S
+	world.height = 2000 * S
+	var fresh := player(world)
+	fresh.x = 2000 * S
+	fresh.y = 1000 * S
+	fresh.camera_x = fresh.x
+	fresh.camera_y = fresh.y - 28 * S
+	fresh.health = 0
+	Life.separate(fresh, 0, true, world)
+	check(
+		fresh.rescue_active == 1 and fresh.rescue_1_y == (1000 - 64 - 304) * S,
+		"Mid-map captors start 304 px above the screen centre, 64 px above the player"
+	)
+	check(
+		(
+			fresh.rescue_1_x == (2000 - 120) * S
+			and fresh.rescue_2_x == (2000 - 24) * S
+			and fresh.rescue_3_x == (2000 + 24) * S
+			and fresh.rescue_4_x == (2000 + 120) * S
+		),
+		"Mid-map captors spread around the player's x"
+	)
+	var edge := player(world)
+	edge.x = 100 * S
+	edge.y = 1950 * S
+	edge.camera_x = edge.x
+	edge.camera_y = edge.y - 28 * S
+	edge.health = 0
+	Life.separate(edge, 0, true, world)
+	check(
+		edge.rescue_1_x == (416 - 120) * S and edge.rescue_1_y == (2000 - 224 - 304) * S,
+		"Near a corner the captors start from the screen held inside the map"
+	)
+	var deferred := player(world)
+	deferred.health = 0
+	Life.separate(deferred, 0, true)
+	# Keep the bubble away from the player so contact does not catch it.
+	deferred.recovery_x = 1000 * S
+	deferred.recovery_y = 600 * S
+	check(deferred.rescue_active == 0, "Without the world the summons waits for the step")
+	Life.before_step(deferred, world)
+	check(deferred.rescue_active == 1, "The next companion step summons the captors")
 
 
 func death_checks() -> void:
