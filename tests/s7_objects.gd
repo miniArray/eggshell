@@ -772,17 +772,28 @@ func hound_checks() -> void:
 	check((dog.x - start) * dog.facing > 20 * S, "A rider makes it run the way the rider faces")
 	check(absi(state.x - dog.x) < 30 * S and state.y < dog.y - 30 * S, "The rider is carried")
 	var enemy_world := _hound_world(
-		{"dog": _place("o16", 1000, 284), "walker": _place("e7", 960, 284)}
+		{
+			"dog": _place("o16", 1000, 284),
+			"walker": _place("e7", 960, 284),
+			"stilts": _place("e35", 1000, 284, {"E1": "82", "F": 2, "M": 1}),
+			"giant": _place("e24", 990, 284, {"M": 2}),
+			"frozen": _place("e4", 1010, 284),
+		}
 	)
 	state = State.create(enemy_world)
 	dog = _by_id(state, "dog")
-	var walker := _by_id(state, "walker")
+	var touched := ["walker", "stilts", "giant", "frozen"]
+	for id: String in touched:
+		_by_id(state, id).status = 1
+	_by_id(state, "frozen").frozen = 1
 	dog.status = 1
-	walker.status = 1
 	dog.vx = -100 * 60
 	Collision.begin_step(state, enemy_world, Registry)
-	type._flatten(dog, state, enemy_world, type.bounds(dog))
-	check(walker.status == Registry.DEFEATED, "A moving runner defeats an enemy it touches")
+	type._destroy_enemies(dog, state, enemy_world, type.bounds(dog))
+	check(
+		touched.all(func(id: String) -> bool: return _by_id(state, id).status == Registry.DEFEATED),
+		"A moving runner destroys every enemy it touches, whatever its strike reactions"
+	)
 	var egg := {"code": "o7", "x": dog.x - 20 * S, "mode": 1, "token": 77, "vx": 1, "vy": 0}
 	dog.playing = 0
 	dog.ridden = 0

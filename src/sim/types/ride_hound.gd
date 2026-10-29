@@ -1,12 +1,11 @@
 extends RefCounted
 ## A friendly runner with a top-only back. It follows the player, runs where its rider
-## faces, jumps at walls, plays with resting eggs and flattens enemies in its path.
+## faces, jumps at walls, plays with resting eggs and destroys enemies in its path.
 
 const Body = preload("res://src/sim/enemy_body.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Moves = preload("res://src/sim/moves.gd")
-const Hits = preload("res://src/sim/hits.gd")
 const World = preload("res://src/sim/world.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o16"]
@@ -32,6 +31,8 @@ const FAR := 128 * S
 const QUEUE_TICKS := 20
 const STROKE_TICKS := 24
 const SWIM_SPEED := 200 * 60
+## Runtime projectiles that are not enemies to the runner: it passes through them.
+const NOT_DESTROYED := ["enemy_pellet", "enemy_spike", "enemy_mace"]
 # Body facing left, in pixels around the origin. The back is a 60 x 16 top-only strip.
 const BODY := [-34, -6, 20, 16]
 const FIELDS := (
@@ -132,7 +133,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	_move(entity, world, box, control)
 	box = bounds(entity)
 	if entity.vx != 0:
-		_flatten(entity, state, world, box)
+		_destroy_enemies(entity, state, world, box)
 	if not entity.ridden and not entity.playing:
 		_kick_eggs(entity, state, box)
 	if entity.y > world.get("height", 0) + 1664 * S:
@@ -298,7 +299,11 @@ static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: in
 	entity.grounded = int(Collision.floor_at(entity, world, box) != 0)
 
 
-static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, box: Array) -> void:
+## A moving runner destroys every active enemy it touches, frozen or not, whatever the
+## enemy's own reaction to other strikes.
+static func _destroy_enemies(
+	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array
+) -> void:
 	var body := Body.world_box(entity, box)
 	var dispatch := registry()
 	for other: Dictionary in state.entities:
@@ -307,13 +312,14 @@ static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, b
 			or other.get("held", 0)
 			or other.get("hidden", 0)
 			or not dispatch.is_enemy(other.code)
+			or other.code in NOT_DESTROYED
 		):
 			continue
 		var type: Script = dispatch.lookup(other.code)
-		if not type.has_method("hit") or not type.has_method("bounds"):
+		if not type.has_method("bounds"):
 			continue
 		if Body.overlap(body, Body.world_box(other, type.bounds(other))):
-			type.hit(other, state, world, Hits.SHELL, entity.x)
+			Body.remove(other, state)
 			Collision.refresh(world, other)
 
 
