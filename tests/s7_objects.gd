@@ -823,6 +823,48 @@ func hound_checks() -> void:
 	check(lowest < 260 * S and dog.y < 200 * S, "It floats with its back at the surface")
 	check(dog.x > 400 * S, "Paddle strokes carry it toward the player")
 	check(type.valid(dog), "Swimming state stays valid")
+	# Lava is a liquid to the runner too: it swims there instead of sinking through.
+	var hot := _world_for({"dog": _place("o16", 400, 200)})
+	var lava_layer := _tile_layer("lava", wet, 32, [0, 0, 32, 0, 32, 32, 0, 32], false)
+	lava_layer.solid = false
+	hot.layers = [lava_layer]
+	state = State.create(hot)
+	dog = _by_id(state, "dog")
+	dog.status = 1
+	state.x = 900 * S
+	state.y = 100 * S
+	lowest = dog.y
+	var fastest := 0
+	for tick in 240:
+		Collision.begin_step(state, hot, Registry)
+		type.step(dog, state, hot)
+		lowest = maxi(lowest, dog.y)
+		if dog.swimming:
+			fastest = maxi(fastest, dog.vy)
+	check(dog.swimming == 1 and dog.status == 1, "The runner swims in lava")
+	check(lowest < 260 * S and dog.y < 200 * S, "It floats in lava as in water")
+	check(fastest <= 704 * 60 / 4, "In a liquid it falls at most a quarter of its fall speed")
+	# An enemy standing on the back moves with the runner.
+	var ride_world := _hound_world(
+		{"dog": _place("o16", 1000, 284), "walker": _place("e4", 1000, 200)}
+	)
+	state = State.create(ride_world)
+	dog = _by_id(state, "dog")
+	var rider := _by_id(state, "walker")
+	dog.status = 1
+	rider.status = 1
+	Collision.begin_step(state, ride_world, Registry)
+	rider.y = dog.y - 48 * S
+	rider.vy = 0
+	dog.vy = -600 * 60
+	var dog_y: int = dog.y
+	var rider_y: int = rider.y
+	type.step(dog, state, ride_world)
+	check(
+		dog.y < dog_y and rider.y - rider_y == dog.y - dog_y,
+		"An enemy standing on the back rises with the runner"
+	)
+	check(rider.status == 1, "A rider on the back is not touched by the runner's body")
 
 
 func snapshot_checks() -> void:

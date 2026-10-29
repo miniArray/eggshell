@@ -31,6 +31,7 @@ const FAR := 128 * S
 const QUEUE_TICKS := 20
 const STROKE_TICKS := 24
 const SWIM_SPEED := 200 * 60
+const LIQUID_FALL := 704 * 60 / 4
 ## Runtime projectiles that are not enemies to the runner: it passes through them.
 const NOT_DESTROYED := ["enemy_pellet", "enemy_spike", "enemy_mace"]
 # Body facing left, in pixels around the origin. The back is a 60 x 16 top-only strip.
@@ -130,9 +131,15 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.queue_turn -= 1
 		if entity.queue_turn == 0:
 			_pose(entity, TURN)
+	var riders := _enemy_riders(entity, state)
+	var start_x: int = entity.x
+	var start_y: int = entity.y
 	_move(entity, world, box, control)
+	if riders and (entity.x != start_x or entity.y != start_y):
+		Collision.refresh(world, entity)
+		_carry(riders, world, entity.x - start_x, entity.y - start_y)
 	box = bounds(entity)
-	if entity.vx != 0:
+	if entity.vx != 0 or entity.vy != 0:
 		_destroy_enemies(entity, state, world, box)
 	if not entity.ridden and not entity.playing:
 		_kick_eggs(entity, state, box)
@@ -236,8 +243,12 @@ static func _decide(
 	return 0
 
 
+## Water and lava are both liquids the runner swims in.
 static func _wet(world: Dictionary, area: Array) -> bool:
-	return World.water_overlaps(world, area[0], area[1], area[2], area[3])
+	return (
+		World.water_overlaps(world, area[0], area[1], area[2], area[3])
+		or World.lava_overlaps(world, area[0], area[1], area[2], area[3])
+	)
 
 
 static func _move(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
@@ -290,6 +301,8 @@ static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: in
 		entity.vy = 0
 	if not _wet(world, [back[0], back[1] + 6 * S, back[2], back[3] + 6 * S]):
 		entity.y += 16 * 60
+	# Every body in a liquid falls at most a quarter of its normal fall speed.
+	entity.vy = mini(entity.vy, LIQUID_FALL)
 	var distance: int = entity.vx
 	if distance and Motion.move(entity, world, box, distance, true) != distance:
 		entity.vx = 0
@@ -297,6 +310,39 @@ static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: in
 	if distance and Motion.move(entity, world, box, distance, false) != distance:
 		entity.vy = 0
 	entity.grounded = int(Collision.floor_at(entity, world, box) != 0)
+
+
+## Enemies standing on the back move with it, as on any moving support.
+static func _enemy_riders(entity: Dictionary, state: Dictionary) -> Array:
+	var back := solid_box(entity)
+	if back.is_empty():
+		return []
+	var dispatch := registry()
+	var riders := []
+	for other: Dictionary in state.entities:
+		if (
+			other.status != 1
+			or other.get("held", 0)
+			or other.get("hidden", 0)
+			or other.get("vy", 0) < 0
+			or not dispatch.is_enemy(other.code)
+		):
+			continue
+		# The body box the enemy moves with, not a wider contact box (a plant's head).
+		var box := Body.world_box(other, Motion.box(other, other.code))
+		if box[3] <= back[1] and box[3] >= back[1] - S and box[0] < back[2] and box[2] > back[0]:
+			riders.append(other)
+	return riders
+
+
+static func _carry(riders: Array, world: Dictionary, dx: int, dy: int) -> void:
+	for rider: Dictionary in riders:
+		var box := Motion.box(rider, rider.code)
+		if dy:
+			Motion.move(rider, world, box, dy, false)
+		if dx:
+			Motion.move(rider, world, box, dx, true)
+		Collision.refresh(world, rider)
 
 
 ## A moving runner destroys every active enemy it touches, frozen or not, whatever the
