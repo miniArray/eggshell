@@ -202,6 +202,9 @@ func _build_map(world: Dictionary, pack: String) -> void:
 				node.offset = -bridge_art.origin
 				node.set_meta("pack_art", bridge_art)
 			node.scale.x = width / bridge_art.texture.get_width()
+			var bridge_entry: Variant = manifest.objects.get("p1")
+			if Dressing.SpanDressing.has_slices(bridge_entry):
+				Dressing.SpanDressing.attach_body(node, bridge_art, bridge_entry)
 		_root.add_child(node)
 	var head_art := Dressing.object_art(manifest, pack, "e5_head")
 	for enemy: Dictionary in world.enemies:
