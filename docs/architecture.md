@@ -361,6 +361,15 @@ side effects. None of them enters snapshots.
   Compaction and runtime creation are found by a walk of the table. A step uses
   the grid when the previous step asked at least four queries, and scans
   otherwise; both give the same answer.
+- A type whose bounds stay inside one box in every state may name it per code
+  in `GRID_BOUNDS` (pickups, thorn blocks, spike pillars, item blocks other
+  than the message block, falling spans). The grid files those entities by that
+  box, and the step and contact loops mark them only when they moved. Queries
+  still test the exact bounds. A type must not name a box its bounds can leave.
+- `src/sim/player_hull.gd` holds a hull around every box `Moves.player_box`
+  returns (`tests/player_hull.gd` checks it). Contact tests may return early
+  when the hull misses their area; a change to the player boxes must keep the
+  hull around them.
 - **Contract for types (all entities):** code that moves another entity, or
   changes a field its `bounds` read (a hit that changes its form, for example),
   must call `Collision.refresh(world, entity)` (`NearQuery.refresh_solid` in
