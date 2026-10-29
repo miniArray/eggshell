@@ -192,6 +192,22 @@ func platform_order_checks() -> void:
 		"the next move still counts that jump and adds gravity"
 	)
 	state = actor(world)
+	state.y = 255 * S
+	state.vx = 300 * 60
+	state.vy = 100 * 60
+	state.flutter_remaining = 10
+	state.flutter_ready = 0
+	tick(state, Bits.JUMP | Bits.RIGHT, world)
+	tick(state, Bits.JUMP | Bits.RIGHT, world)
+	check(
+		(
+			state.flutter_remaining == 0
+			and state.vy == -Moves.JUMP_SPEED + Moves.GRAVITY
+			and state.vx == 256 * 60 + 512
+		),
+		"a jump during a flutter keeps that step's vx clamp, then ends the flutter"
+	)
+	state = actor(world)
 	state.x = 20 * S
 	for count in 40:
 		tick(state, Bits.LEFT, world)

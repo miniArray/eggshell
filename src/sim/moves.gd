@@ -237,6 +237,12 @@ static func advance(
 		jumping = true
 		bounds = player_box(state)
 	var lift := _flutter(state, input)
+	if jumping:
+		# A flutter still damps on the step of a jump; then the jump pose ends it, and the
+		# move repeats the jump from the floor it starts on.
+		cancel_flutter(state)
+		if support != 0:
+			state.vy = -JUMP_SPEED
 	if release_flutter:
 		state.flutter_remaining = 0
 		state.flutter_cooldown = FLUTTER_COOLDOWN
@@ -381,8 +387,6 @@ static func finish(state: Dictionary, input: int, world: Dictionary) -> void:
 
 static func jump(state: Dictionary) -> void:
 	Sound.player(state)
-	# The jump pose does not support a flutter.
-	cancel_flutter(state)
 	state.vy = -JUMP_SPEED
 	state.on_floor = 0
 	state.jump_buffer = 0
