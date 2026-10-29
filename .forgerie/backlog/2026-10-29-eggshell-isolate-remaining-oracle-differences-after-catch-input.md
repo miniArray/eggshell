@@ -8,7 +8,8 @@ source: forgerie-suggestion
 
 The REJOIN input fix now matches the stored original at the targeted velocities, but full 900-step comparisons still fail with `--offset 1`.
 
-Evidence, sample-level identifiers, the previous task ID, and source provenance are stored in private review reports under this task's ID.
+Private evidence and original card provenance remain outside this repository.
+See `docs/backlog.md` for the recovery directory and ID mapping.
 
 First sample level: jump release at aligned 300 is now −91.6 px/s, and first resumed move at 332 is −57.4667 on both sides. First position episode beyond 0.5 px is now aligned 357, x 1067.315 original versus 1068.915 fixed, a 1.6 px episode. At 376, original vy is −257.6 versus −264.0 fixed near x 1174.195/y 925.94. Original dies at 725; fixed has no death by 898. Root cause of later velocity/contact/death differences is not isolated.
 

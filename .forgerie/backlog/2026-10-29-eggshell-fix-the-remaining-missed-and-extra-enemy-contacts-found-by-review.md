@@ -16,7 +16,8 @@ Review round 2 verified contact differences that change gameplay, not just posit
 
 Use the oracle's nearby-entity traces to find each contacting actor, fix it, and add an outcome regression per case.
 
-Evidence, sample-level identifiers, and source provenance are stored in private review reports under this task's ID.
+Private evidence and original card provenance remain outside this repository.
+See `docs/backlog.md` for the recovery directory and ID mapping.
 
 ## Context
 

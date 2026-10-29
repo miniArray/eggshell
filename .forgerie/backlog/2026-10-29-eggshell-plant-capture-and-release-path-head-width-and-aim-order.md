@@ -10,7 +10,8 @@ On the plant capture regression level, the plant capture still diverges at step 
 
 Fix: port the head width and aim order from the source, then check the release and death path against the oracle with full-episode regressions.
 
-Evidence, the sample-level identifier, and source provenance are stored in private review reports under this task's ID.
+Private evidence and original card provenance remain outside this repository.
+See `docs/backlog.md` for the recovery directory and ID mapping.
 
 ## Context
 

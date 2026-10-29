@@ -10,7 +10,8 @@ Review round 2 of the finish run found that `src/sim/step.gd:37-41` returns befo
 
 Fix: during REJOIN, run the player's input and event updates without advancing the world or moving the body. Add release-during-catch and jump-during-catch regressions and prove them against the stored oracle traces (`--offset 1`).
 
-Evidence and source provenance are stored in private review reports under this task's ID.
+Private evidence and original card provenance remain outside this repository.
+See `docs/backlog.md` for the recovery directory and ID mapping.
 
 ## Context
 
