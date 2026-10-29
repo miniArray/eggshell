@@ -514,7 +514,8 @@ static func _deceleration(state: Dictionary, input: int, liquid := false) -> int
 	if liquid:
 		return 128
 	if not state.on_floor and not state.swimming:
-		return DECELERATION if input & InputBits.LEFT and input & InputBits.RIGHT else 0
+		# Air braking applies while either direction is held (an OR block in the source).
+		return DECELERATION if input & (InputBits.LEFT | InputBits.RIGHT) else 0
 	# Snow brakes lightly while the body slides against its facing (a reversal or a
 	# shove). The brake is chosen from the speed before the last object contact.
 	if state.move_snow and state.facing * state.move_brake_vx < 0:

@@ -44,6 +44,10 @@ func motion_checks() -> void:
 	tick(state, Bits.LEFT | Bits.RIGHT, world)
 	check(state.vx == 100 * 60 - 1296, "opposite directions brake in the air")
 	state = actor(world)
+	state.vx = 100 * 60
+	tick(state, Bits.LEFT, world)
+	check(state.vx == 100 * 60 - 512 - 1296, "one held direction reverses with braking in the air")
+	state = actor(world)
 	var x: int = state.x
 	tick(state, Bits.RIGHT, world)
 	check(state.x == x and state.vx == 512, "first acceleration tick does not translate rest")
