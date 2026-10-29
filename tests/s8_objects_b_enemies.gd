@@ -539,6 +539,14 @@ func _bumper_checks() -> void:
 	state.invulnerable = 0
 	type.contact(walker, state, world, 0)
 	check(state.vx == -224 * 60 and state.invulnerable == 0, "Touching it shoves without hurting")
+	check(walker.vx == 96 * 60, "The shove pushes the bumper the other way at 96 px/s")
+	var shoved_x: int = walker.x
+	Collision.begin_step(state, world, Registry)
+	type.step(walker, state, world)
+	check(
+		walker.x > shoved_x and walker.vx == 96 * 60 - type.DECELERATION,
+		"An idle bumper slides out of a shove under its deceleration"
+	)
 	state.x = walker.x
 	state.y = walker.y - 6 * S
 	state.on_floor = 0
