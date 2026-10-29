@@ -51,6 +51,7 @@ static func cancel(state: Dictionary) -> void:
 		state.flutter_cooldown = COOLDOWN
 	state.flutter_remaining = 0
 	state.move_flutter_flow = 0
+	state.move_bounce = 0
 
 
 ## One flutter step: STARTED when a lift starts, LANDED when a lift that landed ends
@@ -92,6 +93,38 @@ static func step(state: Dictionary, input: int) -> int:
 		state.move_gravity_tick = 1
 		state.move_flutter_flow = 0
 	return result
+
+
+## A stomp bounce. The original runs the player's flutter rules of that frame before the
+## enemy's bounce: a flutter may start or damp with the speed from before the bounce, and
+## its vx clamp stays. The flutter then lasts one more move under normal gravity, damps
+## once more and ends (the bounce pose does not support it). Without a flutter it ends.
+static func before_bounce(state: Dictionary, input: int, can_flutter: bool) -> void:
+	if can_flutter and not state.on_floor:
+		# Those rules belong to the next step, after its delay countdown.
+		if state.flutter_cooldown == 1:
+			state.flutter_cooldown = 0
+		step(state, input)
+	if state.flutter_remaining:
+		state.move_bounce = 2
+	else:
+		cancel(state)
+
+
+## The step after a bounce skips the flutter rules (they ran before it); the next one runs
+## them once more and then ends the flutter. Returns false (no landing lift).
+static func after_bounce(state: Dictionary) -> bool:
+	if state.move_bounce == 2:
+		state.move_bounce = 1
+		return true
+	return false
+
+
+## Ends a flutter kept through a bounce once its last damping step has run.
+static func end_bounce(state: Dictionary) -> void:
+	if state.move_bounce == 1:
+		cancel(state)
+		state.move_bounce = 0
 
 
 ## Gravity of this step's recovery, advancing it; the caller checks move_gravity_tick.

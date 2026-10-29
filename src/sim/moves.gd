@@ -10,6 +10,7 @@ const Requests = preload("res://src/sim/move_requests.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Flutter = preload("res://src/sim/move_flutter.gd")
 const Facing = preload("res://src/sim/move_facing.gd")
+const Pose = preload("res://src/sim/move_pose.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -126,6 +127,7 @@ const PLAYER_FIELDS := [
 	# A jump that started after the move (landing with a buffered jump) still counts as a
 	# jump for the next move, which therefore adds gravity.
 	["move_jump_carry", 0],
+	["move_bounce", 0],
 ]
 
 
@@ -234,7 +236,10 @@ static func advance(
 		jump(state)
 		jumping = true
 		bounds = player_box(state)
-	var lift := _flutter(state, input)
+	var lift := false
+	if not Flutter.after_bounce(state):
+		lift = _flutter(state, input)
+		Flutter.end_bounce(state)
 	if jumping:
 		# A flutter still damps on the step of a jump; then the jump pose ends it, and the
 		# move repeats the jump from the floor it starts on.
@@ -400,8 +405,11 @@ static func bounce(state: Dictionary, velocity: int, input: int) -> bool:
 	if state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 		state.move_pound_delay = 6
 	if state.move_action != TONGUE:
+		var can_flutter: bool = (
+			not state.swimming and state.move_action not in [POUND_START, POUND_FALL, POUND_LAND]
+		)
 		_set_action(state, NORMAL)
-		cancel_flutter(state)
+		Flutter.before_bounce(state, input, can_flutter)
 	state.vy = velocity - (384 * 60 if input & InputBits.JUMP else 0)
 	state.on_floor = 0
 	state.support_bridge = 0
@@ -412,23 +420,8 @@ static func bounce(state: Dictionary, velocity: int, input: int) -> bool:
 	return true
 
 
-## How far below the map bottom the player's feet may fall before the pit takes it: the
-## height of the pose the player shows. Airborne poses use the original's frame heights
-## (fall, jump, flutter, hurt; empty or full mouth). Other poses keep the fixed 62 px.
-## Pack independent.
 static func pit_height(state: Dictionary) -> int:
-	if state.get("on_floor", 0) or state.get("swimming", 0):
-		return 62 * S
-	if state.get("move_action", NORMAL) not in [NORMAL, LAND]:
-		return 62 * S
-	var full: bool = state.get("move_held_id", 0) != 0 or state.get("move_ammo_count", 0) != 0
-	if state.get("hurt", 0):
-		return 64 * S
-	if state.get("flutter_remaining", 0):
-		return (70 if full else 68) * S
-	if state.get("vy", 0) < 0:
-		return (72 if full else 66) * S
-	return (64 if full else 66) * S
+	return Pose.pit_height(state, state.get("move_action", NORMAL) in [NORMAL, LAND])
 
 
 static func player_box(state: Dictionary) -> Array:
@@ -542,7 +535,9 @@ static func _snow(state: Dictionary, world: Dictionary, bounds: Array) -> void:
 
 
 static func _gravity(state: Dictionary) -> int:
-	if state.swimming or state.flutter_remaining or state.move_action == POUND_START:
+	if state.swimming or state.move_action == POUND_START:
+		return 0
+	if state.flutter_remaining and not state.move_bounce:
 		return 0
 	if state.move_action == POUND_FALL:
 		return 2 * GRAVITY
@@ -962,6 +957,7 @@ static func valid_state(state: Dictionary) -> bool:
 		["move_tongue_hold", 0, 128 * S],
 		["move_tongue_length", 0, 128 * S],
 		["move_gravity_tick", 0, 24],
+		["move_bounce", 0, 2],
 		["move_water_transition", 0, 9],
 		["move_spread", 0, 14000]
 	]:
