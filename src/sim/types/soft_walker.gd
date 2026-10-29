@@ -37,6 +37,7 @@ const FIELDS := (
 )
 const WALK_BOX := [-14 * S, -14 * S, 14 * S, 16 * S]
 const SQUASH_BOX := [-14 * S, 2 * S, 14 * S, 16 * S]
+const SQUASH_LOW_BOX := [-14 * S, 6 * S, 14 * S, 14 * S]
 const MAX_SLIDE := 1024 * 60
 
 
@@ -49,7 +50,10 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 
 static func bounds(entity: Dictionary) -> Array:
-	return SQUASH_BOX if entity.mode == SQUASH else WALK_BOX
+	if entity.mode != SQUASH:
+		return WALK_BOX
+	# The squash's second picture (from 1/8 s) stands 2 px shorter at the bottom.
+	return SQUASH_BOX if entity.timer > SQUASH_TICKS - 9 else SQUASH_LOW_BOX
 
 
 ## A copy thrown out with a horizontal speed that eases to zero over `ticks`.
@@ -75,10 +79,13 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	if entity.mode == SQUASH:
 		entity.vx = 0
-		pin(entity, state)
 		entity.timer -= 1
 		if entity.timer <= 0:
 			burst(entity, state, world)
+			return
+		# The body keeps its gravity, so the shorter picture settles 2 px lower.
+		Motion.gravity_box(entity, world, bounds(entity))
+		pin(entity, state)
 		return
 	var grounded := Collision.floor_at(entity, world, box) != 0
 	if entity.slide_ticks > 0:

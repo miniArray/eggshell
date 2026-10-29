@@ -163,7 +163,15 @@ func _soft_walker_checks() -> void:
 		state.x == held_x and state.y == milde.y,
 		"After the player's own move the hold puts it back"
 	)
-	for _tick in 15:
+	var squashed_y: int = milde.y
+	for _tick in 12:
+		Collision.begin_step(state, world, Registry)
+		type.step(milde, state, world)
+	check(
+		milde.y > squashed_y + S and state.y == milde.y,
+		"The shorter second squash picture settles about 2 px lower, and the player with it"
+	)
+	for _tick in 3:
 		type.step(milde, state, world)
 	check(milde.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
 	state = _placed_state(world)
