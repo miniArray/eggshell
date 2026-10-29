@@ -99,6 +99,7 @@ func movement_and_contact(world: Dictionary, code: String) -> void:
 		for tick in 20:
 			Sim.advance(state, 0, test_world)
 		check(state.captured_by == 1, "Plant captures rather than permitting a stomp")
+		check(state.hits == 0, "A capture is not a hurt until the companion is lost")
 	else:
 		check(state.hits == 1 and state.deaths == 0, code + " side contact hurts, not kills")
 		check(state.invulnerable == Life.IMMUNITY and state.vy == -384 * 60, code + " hurt impulse")
@@ -123,7 +124,11 @@ func movement_constants(world: Dictionary) -> void:
 	# The step that wakes an object does not move it; 180 moves follow.
 	for tick in 181:
 		Sim.advance(player, 0, test_world)
-	check(player.enemies[0].vx == 128 * 60, "Flyer reaches its horizontal tween endpoint")
+	# The swing tweens -128 to 128 px/s, capped at the body's 48 px/s top speed.
+	check(
+		player.enemies[0].vx == 48 * 60,
+		"Flyer swings at its capped top speed near the tween endpoint"
+	)
 	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 	check(
 		player.enemies[0].y == 300 * S + wave,
@@ -280,6 +285,7 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 		leaped = leaped or fish.enemies[0].vy == -944 * 60
 		floated = floated or fish.enemies[0].water == 1
 	check(leaped and floated, "Vertical fish floats, waits, prepares and leaps at configured speed")
+	patrol_order_checks(world)
 	var plant_world := fixture(world, "e5")
 	var player := _placed_state(plant_world)
 	player.x = 430 * S
@@ -361,7 +367,7 @@ func lifecycle_checks(world: Dictionary) -> void:
 	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(
-		player.enemies[0].status == 1 and player.enemies[0].phase == 1,
+		player.enemies[0].status == 1 and player.enemies[0].phase == 360,
 		"Returning recreates the placement, not a timer"
 	)
 	player.enemies[0].status = 3
@@ -444,6 +450,49 @@ func check(condition: bool, message: String) -> void:
 
 ## Entities run one world tick at level start, as in the original. These unit checks
 ## start from the placement, so the table is spawned again after the level start.
+## Platform order for a patrolling fish: it moves by the mean of its old and new speed
+## while it speeds up, and a turn first coasts one tick and then brakes by its old speed.
+func patrol_order_checks(world: Dictionary) -> void:
+	var fish_world := fixture(world, "e20")
+	fish_world.enemies[0].variant = 0
+	var state := _placed_state(fish_world)
+	var fish: Dictionary = state.enemies[0]
+	var moves: Array[int] = []
+	var turn_moves: Array[int] = []
+	var turn_at := -1
+	for tick in 120:
+		var before: int = fish.x
+		var mode: int = fish.mode
+		Sim.advance(state, 0, fish_world)
+		if fish.water and mode == 0 and fish.mode == 0:
+			moves.append(absi(fish.x - before))
+		if mode == 1 and turn_moves.size() < 3:
+			turn_moves.append(absi(fish.x - before))
+		var crossed: bool = (
+			(fish.facing < 0 and fish.x < fish.home_x - fish.fish_left)
+			or (fish.facing > 0 and fish.x > fish.home_x + fish.fish_right)
+		)
+		if mode == 0 and crossed and turn_at < 0:
+			turn_at = tick if fish.mode == 1 else tick + 1000
+	var speeding := moves.filter(func(move: int) -> bool: return move > 0 and move < 7680)
+	check(
+		(
+			speeding.size() > 2
+			and speeding.all(func(move: int) -> bool: return move % 512 == 256)
+			and speeding[1] - speeding[0] == 512
+		),
+		"A patrolling fish speeds up by the mean of its old and new speed"
+	)
+	check(
+		turn_at >= 0 and turn_at < 1000,
+		"A fish turn starts on the step whose move crosses the patrol limit"
+	)
+	check(
+		turn_moves == [7680, 7680, 7168],
+		"A fish turn coasts one tick at full speed, then brakes by its old speed"
+	)
+
+
 func _placed_state(world: Dictionary) -> Dictionary:
 	var state := State.create(world)
 	Registry.spawn_map(state, world)

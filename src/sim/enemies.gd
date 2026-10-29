@@ -44,12 +44,23 @@ static func walker(enemy: Dictionary, state: Dictionary, world: Dictionary) -> v
 ## The horizontal swing starts when the flyer wakes; its vertical wave runs on the level
 ## clock from level load, so every flyer of a level bobs in phase.
 static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary, frame: int) -> void:
-	enemy.phase = (enemy.phase + 1) % 360
+	if enemy.phase == 0:
+		# The swing starts one step after the first step: only the wave moves it now.
+		enemy.phase = 360
+		bob(enemy, source, frame)
+		return
+	enemy.phase = enemy.phase % 360 + 1
 	var leg: int = enemy.phase if enemy.phase <= 180 else 360 - enemy.phase
-	enemy.vx = (-128 * 60 + 256 * 60 * leg / 180) * enemy.cycles
+	# The swing tweens the speed from -128 to 128 px/s; the body's 48 px/s top speed caps it.
+	enemy.vx = clampi((-128 * 60 + 256 * 60 * leg / 180) * enemy.cycles, -48 * 60, 48 * 60)
 	Motion.move(enemy, world, Motion.box(enemy, "e2"), enemy.vx, true)
 	if enemy.vx != 0:
 		enemy.facing = 1 if enemy.vx > 0 else -1
+	bob(enemy, source, frame)
+
+
+## The vertical wave alone, on the level clock.
+static func bob(enemy: Dictionary, source: Dictionary, frame: int) -> void:
 	enemy.y = source.y + Motion.sine((frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 
 

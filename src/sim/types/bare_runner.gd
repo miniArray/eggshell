@@ -28,6 +28,10 @@ static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 	return values
 
 
+static func activation_bounds(entity: Dictionary) -> Array:
+	return Walker.activation_bounds(entity)
+
+
 static func bounds(entity: Dictionary) -> Array:
 	return Walker.bounds(entity)
 

@@ -357,7 +357,13 @@ func spine_checks() -> void:
 	type.contact(fast, state, world, 0)
 	check(fast.mode == type.SPIKE and fast.vx == 0, "A near player raises the spines")
 	check(fast.facing == 1, "Raised spines face the player")
-	for tick in 20:
+	for tick in 11:
+		type.step(fast, state, world)
+	check(
+		fast.spine_w == 67 and fast.spine_h == 65,
+		"The raise overshoots (out-back): 65.5 px high after 11 ticks"
+	)
+	for tick in 9:
 		type.step(fast, state, world)
 	check(fast.spine_w == 64 and fast.spine_h == 62, "Spines reach full size after 20 ticks")
 	state.x = fast.x + 20 * S

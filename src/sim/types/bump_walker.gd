@@ -15,6 +15,8 @@ const Moves = preload("res://src/sim/moves.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e19"]
+## Platform deceleration, 256 px/s², as a speed change per step.
+const DECELERATION := 256
 const ENEMY := true
 const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
@@ -75,7 +77,11 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var grounded := Collision.floor_at(entity, world, BOX) != 0
 	match entity.phase:
 		IDLE:
-			entity.vx = 0
+			# Standing still sets no speed: a shove slides out under the body's deceleration.
+			if entity.vx > 0:
+				entity.vx = maxi(0, entity.vx - DECELERATION)
+			else:
+				entity.vx = mini(0, entity.vx + DECELERATION)
 			if entity.timer == 0:
 				entity.timer = Motion.random_ticks(state, 60, 150)
 				entity.cycles = Motion.random_cycles(state) + 2  # round(random(3, 6))

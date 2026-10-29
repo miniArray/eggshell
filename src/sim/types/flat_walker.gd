@@ -37,6 +37,11 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return Body.create(source)
 
 
+## The walking picture, 34 x 40 px facing left, wakes it on screen.
+static func activation_bounds(entity: Dictionary) -> Array:
+	return Body.picture_box(entity, [-18, -24, 16, 16])
+
+
 static func bounds(entity: Dictionary) -> Array:
 	return (
 		[-14 * S, 2 * S, 14 * S, 16 * S]

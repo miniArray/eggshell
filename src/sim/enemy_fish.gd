@@ -4,6 +4,9 @@ extends RefCounted
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
 const S := 3600
+## A turn: the 0.15 s wait and the 0.4 s turn picture (33 ticks), plus one tick because
+## a simulated control press reaches the Platform movement on the next tick.
+const TURN_TICKS := 34
 
 
 static func advance(
@@ -92,24 +95,21 @@ static func advance(
 		enemy.phase = (enemy.phase + 1) % 60
 		var next_y: int = enemy.home_y + Motion.sine(enemy.phase, 60, 6 * S)
 		_translate(enemy, world, bounds, 0, next_y - enemy.y)
+	# Platform order: an accelerating body moves by the mean of its old and new speed
+	# (only when it already moves); a braking body moves by its old speed.
+	var braking: bool = enemy.mode == 1 and enemy.timer < TURN_TICKS
+	var old_vx: int = enemy.vx
 	if enemy.mode == 1:
 		enemy.timer -= 1
-		enemy.vx = approach(enemy.vx, 0, 512)
+		# The last control press still accelerates on the turn's first tick.
+		var target: int = 0 if braking else enemy.facing * 128 * 60
+		enemy.vx = approach(enemy.vx, target, 512)
 		if enemy.timer == 0:
 			enemy.facing *= -1
 			enemy.mode = 0
 			enemy.fish_ready = 1
 	else:
 		enemy.vx = approach(enemy.vx, enemy.facing * 128 * 60, 512)
-		if (
-			enemy.variant <= 2
-			and (
-				(enemy.x < enemy.home_x - enemy.fish_left and enemy.facing < 0)
-				or (enemy.x > enemy.home_x + enemy.fish_right and enemy.facing > 0)
-			)
-		):
-			enemy.mode = 1
-			enemy.timer = 33
 		if source.variant == 1 and enemy.water:
 			if not enemy.cycles:
 				enemy.cycles = Motion.random_ticks(state, 60, 180)
@@ -135,7 +135,23 @@ static func advance(
 					enemy.fish_ready = 0
 				else:
 					enemy.fish_jumps -= 1
-	_translate(enemy, world, bounds, enemy.vx, 0)
+	var dx: int = enemy.vx
+	if braking:
+		dx = old_vx
+	elif enemy.mode in [0, 1]:
+		dx = (old_vx + enemy.vx) / 2 if old_vx else 0
+	_translate(enemy, world, bounds, dx, 0)
+	# The patrol turn is tested in the events, after this frame's move.
+	if (
+		enemy.mode == 0
+		and enemy.variant <= 2
+		and (
+			(enemy.x < enemy.home_x - enemy.fish_left and enemy.facing < 0)
+			or (enemy.x > enemy.home_x + enemy.fish_right and enemy.facing > 0)
+		)
+	):
+		enemy.mode = 1
+		enemy.timer = TURN_TICKS
 
 
 static func _translate(
@@ -158,7 +174,7 @@ static func _translate(
 					enemy.fish_left = (-24 if enemy.facing < 0 else 232) * S
 					enemy.fish_right = (232 if enemy.facing < 0 else -24) * S
 				enemy.mode = 1
-				enemy.timer = 33
+				enemy.timer = TURN_TICKS
 	if dy:
 		var actual := Motion.move(enemy, world, bounds, dy, false)
 		if actual != dy:
