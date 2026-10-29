@@ -8,15 +8,15 @@ extends RefCounted
 ## a spikes entry may select its strip through `variants` keyed by `E2`, like other
 ## object entries. Without an entry a part draws as a diagnostic box of the same size.
 ##
-## The body of a fixed resizable span (`p6`..`p21`) with pack art is drawn in slices, not
-## as one stretched image: the entry's optional `slices` gives the left, right, top and
-## bottom margins in the pack image's pixels (kept at their size) and `fill` (`tile`, the
-## default, or `stretch`) for the part between them. Without `slices` the whole image
-## repeats across the span's width.
+## The body of a resizable span (`p1`..`p21`) with pack art and `slices` is drawn in
+## slices, not as one stretched image: `slices` gives the left, right, top and bottom
+## margins in the pack image's pixels (kept at their size) and `fill` (`tile`, the
+## default, or `stretch`) for the part between them. Without `slices` the fixed spans
+## `p6`..`p21` (except the turning `p11`/`p12`) repeat their whole image; the others
+## keep the stretched image the pack drew for them.
 
 const Frames = preload("res://src/view/pack_frames.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
-const WideSpan = preload("res://src/sim/types/wide_span.gd")
 const STEM_CODES := ["p6", "p7", "p8"]
 const SPIKE_CODES := ["p11", "p12"]
 const STEM_WIDTH := 32.0
@@ -29,6 +29,35 @@ const SPIKE_HEIGHT := 10.0
 const SPIKE_BOTTOM := -8.0
 const SPIKE_MARGIN := 36.0
 const SPIKE_FORMS := [0, 1]
+## Resizable spans whose body the source draws as a nine-slice panel. Their pack art is
+## drawn in slices when its entry has `slices`; otherwise it keeps the stretched image,
+## except for REPEAT_CODES, whose whole image repeats.
+const BODY_CODES := [
+	"p1",
+	"p2",
+	"p3",
+	"p4",
+	"p5",
+	"p6",
+	"p7",
+	"p8",
+	"p9",
+	"p10",
+	"p11",
+	"p12",
+	"p13",
+	"p14",
+	"p15",
+	"p16",
+	"p17",
+	"p18",
+	"p19",
+	"p20",
+	"p21"
+]
+const REPEAT_CODES := [
+	"p6", "p7", "p8", "p9", "p10", "p13", "p14", "p15", "p16", "p17", "p18", "p19", "p20", "p21"
+]
 ## The largest slice margin read from a pack, in image pixels.
 const MAX_SLICE := 4096
 static var _frames := Frames.new()
@@ -36,7 +65,12 @@ static var _boxes := {}
 
 
 static func dressed(code: String) -> bool:
-	return code in STEM_CODES or code in SPIKE_CODES or code in WideSpan.CODES
+	return code in STEM_CODES or code in SPIKE_CODES or code in BODY_CODES
+
+
+## Whether a pack entry names its slices.
+static func has_slices(entry: Variant) -> bool:
+	return entry is Dictionary and entry.get("slices") is Dictionary
 
 
 ## The slices of a span body entry: {"left", "right", "top", "bottom"} margins in image
@@ -108,8 +142,10 @@ static func attach(
 	properties: Dictionary,
 	span_width: float
 ) -> void:
-	if code in WideSpan.CODES:
-		_attach_body(node, manifest, pack, code, int(properties.get("F", 0)), span_width)
+	var variant := int(properties.get("F", 0))
+	var entry: Variant = _entry(manifest, code, variant)
+	if node is Sprite2D and code in BODY_CODES and (has_slices(entry) or code in REPEAT_CODES):
+		attach_body(node, _art(manifest, pack, code, variant), entry)
 	for part: Dictionary in parts(code, properties, span_width):
 		var art := _art(manifest, pack, part.name, part.variant)
 		var child := (
@@ -123,35 +159,39 @@ static func attach(
 	follow(node)
 
 
-## A span body drawn in the pack's slices over the node's own stretched image, which is
-## then hidden. Without pack art the node keeps its diagnostic box.
-static func _attach_body(
-	node: Node2D, manifest: Dictionary, pack: String, code: String, variant: int, width: float
-) -> void:
-	var art := _art(manifest, pack, code, variant)
-	if art.is_empty() or width <= 0:
+## Draw a resizable span's pack art in slices over the node's own stretched image, which
+## is hidden. `node` is the span's uncentred sprite; `follow` sizes the slices to the area
+## that image covers, so they track the node's stretch, mirror and turn. `entry` is the
+## pack's object entry (its `slices`). Without art nothing changes.
+static func attach_body(node: Sprite2D, art: Dictionary, entry: Variant) -> void:
+	if art.is_empty() or node.texture == null:
 		return
-	var size := Vector2(width, WideSpan.FORMS[code][1])
-	var texture_size: Vector2 = art.texture.get_size()
-	var rect := Rect2(-art.origin / texture_size * size, size)
-	var entry: Variant = manifest.get("objects", {}).get(code, {})
-	if entry is Dictionary and entry.get("variants") is Dictionary:
-		entry = entry.variants.get(str(variant), entry)
-	var child := _sliced(art, rect, slices(entry))
-	child.set_meta("span_part", rect)
-	child.z_as_relative = true
-	node.add_child(child)
+	var cuts := slices(entry)
+	var density := int(art.get("density", 1))
+	var holder := _sliced(art, Rect2(), cuts)
+	holder.set_meta("span_body", density)
+	holder.z_as_relative = true
+	node.add_child(holder)
+	node.move_child(holder, 0)
 	node.self_modulate.a = 0.0
+	follow(node)
 
 
 ## Keep the parts at world size while the span's node stretches to its width.
 static func follow(node: Node2D) -> void:
 	var scale := node.scale
+	var usable := absf(scale.x) > 0.0001 and absf(scale.y) > 0.0001
 	for child: Node in node.get_children():
-		if not child is Node2D or not child.has_meta("span_part"):
+		if not child is Node2D:
 			continue
 		var part := child as Node2D
-		var usable := absf(scale.x) > 0.0001 and absf(scale.y) > 0.0001
+		if part.has_meta("span_body"):
+			part.visible = usable
+			if usable:
+				_lay_body(node as Sprite2D, part)
+			continue
+		if not part.has_meta("span_part"):
+			continue
 		part.visible = usable
 		if not usable:
 			continue
@@ -160,16 +200,37 @@ static func follow(node: Node2D) -> void:
 		part.scale = Vector2.ONE / scale
 
 
+## Fit a body's slices to the area the node's stretched image covers.
+static func _lay_body(node: Sprite2D, holder: Node2D) -> void:
+	var size: Vector2 = node.texture.get_size() if node.texture != null else Vector2.ZERO
+	var scale := node.scale
+	var corner := node.offset
+	# A mirrored axis draws the holder back from the far edge of the image area.
+	for axis in 2:
+		if scale[axis] < 0:
+			corner[axis] += size[axis]
+	holder.position = corner
+	holder.scale = Vector2.ONE / scale
+	var patch := holder.get_child(0) as NinePatchRect
+	patch.size = (size * scale).abs() * int(holder.get_meta("span_body"))
+
+
 static func _art(manifest: Dictionary, pack: String, name: String, variant: int) -> Dictionary:
+	var entry: Variant = _entry(manifest, name, variant)
+	if not entry is Dictionary or entry.is_empty():
+		return {}
+	return _frames.visual(pack, entry, int(manifest.get("density", 1)))
+
+
+## The pack's object entry for a name and placed variant, or {}.
+static func _entry(manifest: Dictionary, name: String, variant: int) -> Variant:
 	var objects: Variant = manifest.get("objects", {})
 	if not objects is Dictionary:
 		return {}
 	var entry: Variant = objects.get(name, {})
 	if entry is Dictionary and entry.get("variants") is Dictionary:
 		entry = entry.variants.get(str(variant), entry)
-	if not entry is Dictionary or entry.is_empty():
-		return {}
-	return _frames.visual(pack, entry, int(manifest.get("density", 1)))
+	return entry
 
 
 ## Pack art fills the part's box: a stalk repeats down its height, a spike strip keeps

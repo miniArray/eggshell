@@ -13,6 +13,7 @@ const Damage = preload("res://src/sim/damage.gd")
 const Life = preload("res://src/sim/life.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const SpanDressing = preload("res://src/view/span_dressing.gd")
+const Frames = preload("res://src/view/pack_frames.gd")
 const PACK := "res://packs/pantry"
 const S := State.SCALE
 var checks := 0
@@ -354,16 +355,21 @@ func _span_body_checks() -> void:
 		"Slices read margins; an invalid margin reads as 0"
 	)
 	var entry := {"file": "objects/e1.png", "origin": [0, 0], "slices": {"left": 4, "right": 6}}
-	var span := Sprite2D.new()
-	span.scale = Vector2(10, 1)
 	var pack := ProjectSettings.globalize_path(PACK)
+	var image: Texture2D = Frames.new().texture(pack, "objects/e1.png")
+	var span := Sprite2D.new()
+	span.centered = false
+	span.texture = image
+	span.offset = Vector2(-image.get_width() / 2.0, -image.get_height() / 2.0)
+	# The stretch the view gives the node: the span's 320 by 56 px over the image.
+	span.scale = Vector2(320, 56) / image.get_size()
 	SpanDressing.attach(span, {"objects": {"p9": entry}}, pack, "p9", {}, 320)
 	var holder: Node2D = span.get_child(0) if span.get_child_count() else null
 	var patch: NinePatchRect = holder.get_child(0) if holder != null else null
 	check(
 		(
 			patch != null
-			and patch.size == Vector2(320, 56)
+			and patch.size.is_equal_approx(Vector2(320, 56))
 			and patch.patch_margin_left == 4
 			and patch.patch_margin_right == 6
 			and patch.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_TILE
@@ -374,11 +380,32 @@ func _span_body_checks() -> void:
 		(
 			holder != null
 			and (span.transform * holder.transform).get_scale().is_equal_approx(Vector2.ONE)
+			and (span.transform * holder.transform).origin.is_equal_approx(Vector2(-160, -28))
 		),
-		"The body keeps art pixels at world size under the stretched node"
+		"The body keeps art pixels at world size over the stretched image's area"
 	)
 	check(span.self_modulate.a == 0.0, "The node's own stretched image is hidden")
+	span.scale = Vector2(-160, 56) / image.get_size()
+	span.rotation_degrees = 90
+	SpanDressing.follow(span)
+	var mirrored := span.transform * holder.transform
+	check(
+		(
+			patch.size.is_equal_approx(Vector2(160, 56))
+			and mirrored.basis_xform(Vector2(160, 56)).is_equal_approx(Vector2(-56, 160))
+			and mirrored.origin.is_equal_approx(Vector2(28, -80))
+		),
+		"A narrower, mirrored, turned span keeps the slices on the image's area"
+	)
 	span.free()
+	var plank := Sprite2D.new()
+	plank.texture = image
+	SpanDressing.attach(plank, {"objects": {"p2": {"file": "objects/e1.png"}}}, pack, "p2", {}, 96)
+	check(
+		plank.get_child_count() == 0 and plank.self_modulate.a == 1.0,
+		"A bridge entry without slices keeps the image the pack drew for it"
+	)
+	plank.free()
 	var bare := Sprite2D.new()
 	SpanDressing.attach(bare, {}, pack, "p9", {}, 320)
 	check(

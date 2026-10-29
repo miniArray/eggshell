@@ -69,11 +69,15 @@ the span, turning with it; the entry `<code>_spikes` may pick the strip through
 `variants` and keeps 36-pixel end caps while its middle repeats. Without an entry,
 each part draws as a diagnostic box of the same size. The parts have no collision.
 
-The body of a fixed resizable span (`p6` to `p21`) with pack art is drawn in
-slices, not as one image stretched to the span's width. The entry may carry
+The body of a resizable span (`p1` to `p21`, including the bridge `p1` and
+the turning `p11` and `p12`) with pack art is drawn in slices, not as one
+image stretched to the span's width. The entry carries
 `slices: {left, right, top, bottom, fill}`: margins in the entry image's pixels,
 kept at their size, and `fill` (`tile`, the default, or `stretch`) for the
-part between them. Without `slices` the whole image repeats across the width.
+part between them. The slices cover the area the stretched image would cover,
+so they follow its width, mirror and turn. Without `slices` the fixed spans
+`p6`–`p10` and `p13`–`p21` repeat their whole image, and the other spans
+keep the stretched image (Pantry's `p1` plank is drawn that way).
 Spans without pack art keep their diagnostic box.
 
 The view reads `bg1`, `bg2`, `bg3`, `gradient` and `bgcolor` from the selected
