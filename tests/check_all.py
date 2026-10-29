@@ -51,6 +51,7 @@ def main():
         "s8_objects_a",
         "s8_objects_b",
         "s8_objects_b_enemies",
+        "lastcodes",
         "audio",
         "view_motion",
         "view_invariance",

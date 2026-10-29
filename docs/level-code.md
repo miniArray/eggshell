@@ -111,5 +111,6 @@ remain follow-up work.
 
 Objects use `A` as a kind identifier, `X`/`Y` as coordinates and optional
 code-specific fields. Reading or drawing an object is not a claim that its
-behavior is implemented. The reader, compiler and focused synthetic checks in
+behavior is implemented. An empty `A` is accepted and behaves as the blank editor
+form `empty`: nothing spawns, contacts or draws, and its fields are kept unread. The reader, compiler and focused synthetic checks in
 `tests/level_format.gd` define the current accepted boundary.

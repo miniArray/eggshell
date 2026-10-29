@@ -7,6 +7,7 @@ const Water = preload("res://src/sim/water.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const Tongue = preload("res://src/sim/move_tongue.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -28,6 +29,8 @@ const TOSS := 8
 const HEAD_BUMP := 9
 const LAND := 10
 const SWALLOW := 11
+## Actions whose start the original voices with a player sound effect.
+const SOUNDING_ACTIONS := [POUND_START, POUND_LAND, TONGUE, TOSS, HEAD_BUMP]
 const TONGUE_NONE := 0
 const TONGUE_OUT := 1
 const TONGUE_BLOCKED := 2
@@ -339,6 +342,7 @@ static func finish(state: Dictionary, input: int, world: Dictionary) -> void:
 
 
 static func jump(state: Dictionary) -> void:
+	Sound.player(state)
 	state.vy = -JUMP_SPEED
 	state.on_floor = 0
 	state.jump_buffer = 0
@@ -509,6 +513,7 @@ static func _flutter(state: Dictionary, input: int) -> void:
 	):
 		state.flutter_remaining = 50 if state.boosted_flutter else 40
 		state.flutter_ready = 0
+		Sound.player(state)
 		state.vy = mini(state.vy, 392 * 60)
 		state.move_gravity_tick = 0
 	if not state.flutter_remaining:
@@ -530,6 +535,9 @@ static func _flutter(state: Dictionary, input: int) -> void:
 
 
 static func _set_action(state: Dictionary, action: int) -> void:
+	# Starting a pound, landing one, the tongue, a toss or a head bump makes a sound.
+	if action != state.move_action and action in SOUNDING_ACTIONS:
+		Sound.player(state)
 	if state.move_action == TONGUE and action != TONGUE:
 		state.move_tongue_phase = TONGUE_NONE
 	state.move_action = action

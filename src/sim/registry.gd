@@ -100,6 +100,8 @@ const TYPES := [
 	# finish: elements
 	preload("res://src/sim/types/element_shot.gd"),
 	preload("res://src/sim/types/lava_bubble.gd"),
+	# finish: lastcodes
+	preload("res://src/sim/types/blind_ghost.gd"),
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")

@@ -2,6 +2,7 @@ extends RefCounted
 ## Contact damage changes motion and separates the companion; it does not kill.
 
 const Life = preload("res://src/sim/life.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 
 
 static func separate(state: Dictionary, velocity_at_separation: int) -> void:
@@ -15,6 +16,7 @@ static func hurt(state: Dictionary, damager_x: int) -> void:
 		return
 	var already_separated: bool = state.separated == 1
 	state.invulnerable = 120
+	Sound.player(state)
 	state.hurt = 60 if already_separated else (0 if state.swimming else 36)
 	state.hurt_deceleration = 128 if state.swimming else 1296
 	if state.swimming:

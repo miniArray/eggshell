@@ -53,7 +53,10 @@ items, egg counts and the saved emission history. Lifetime owns damage, companio
 and rescue motion, countdown, death and goal phases, checkpoints and counters.
 Maps owns selected map, map count and collectible targets. Registry and type
 `LEVEL_FIELDS` add the dynamic serial, modal holder, inventory metadata, message
-pages and shared switch timer/sound state. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
+pages and shared switch timer/sound state. Sound events own `sound_serial`,
+`sound_kind`, `sound_x` and `sound_y` after the map fields (see
+[architecture](architecture.md#sound-events)); with the listening ghost's schema and the
+empty code's blank schema they change the layout from version 7. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
 Version 7 adds the schemas of the next object types (ledges, spans, switches,

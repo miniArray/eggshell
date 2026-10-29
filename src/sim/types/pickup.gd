@@ -2,6 +2,7 @@ extends RefCounted
 ## Counter pickups keep their collection flag in the canonical entity table.
 
 const Life = preload("res://src/sim/life.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
@@ -116,6 +117,7 @@ static func collect(entity: Dictionary, state: Dictionary) -> void:
 		else (Life.RED_COIN if entity.code == "o2" else Life.COIN)
 	)
 	if Life.collect(state, kind, entity):
+		Sound.emit(state, Sound.PICKUP, entity.x, entity.y)
 		if entity.origin_token:
 			var registry: Script = load("res://src/sim/registry.gd")
 			var origin: Dictionary = registry.find_token(state, entity.origin_token)

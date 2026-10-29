@@ -5,6 +5,7 @@ const CODES := ["o4"]
 const DYNAMIC := true
 const S := preload("res://src/sim/units.gd").SCALE
 const Moves = preload("res://src/sim/moves.gd")
+const Sound = preload("res://src/sim/sound_events.gd")
 const Life = preload("res://src/sim/life.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Motion = preload("res://src/sim/item_motion.gd")
@@ -102,6 +103,7 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _
 
 static func collect(entity: Dictionary, state: Dictionary) -> void:
 	if Life.collect(state, Life.STAR, entity):
+		Sound.emit(state, Sound.PICKUP, entity.x, entity.y)
 		if entity.origin_token:
 			var registry: Script = load("res://src/sim/registry.gd")
 			var origin: Dictionary = registry.find_token(state, entity.origin_token)
