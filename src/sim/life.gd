@@ -52,6 +52,9 @@ const COUNTDOWN_STEPS := 46
 # the saddle over 24 more; each of the two moves ends one step late, and play resumes
 # on the step after the second ends: 51 steps.
 const REJOIN_STEPS := 51
+# The launch arc takes 36 steps; the bubble forms on the 38th (its tween reports the end
+# one step late and the bubble's body moves from the next frame).
+const LAUNCH_STEPS := 38
 # Death and restart timing in steps. An ordinary death waits 240 steps, then fades for 61:
 # the reference game restarts on the step after its 60-step fade completes. A quick death
 # fades for 32. After the respawn the first step holds the body, the second moves it
@@ -481,9 +484,12 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 			state.recovery_x = state.companion_from_x + state.companion_dx * age / 36
 			state.recovery_y = state.companion_from_y - 56 * S * leg * (36 - leg) / 324
 			state.recovery_delay = 36 - age
-			if age == 36:
+			# The arc ends after 36 steps; the bubble forms two steps later and its body
+			# first moves in that step, out of any terrain it formed in.
+			if state.companion_age >= LAUNCH_STEPS:
 				state.companion_mode = BUBBLE
 				state.companion_age = 0
+				_bubble_settle(state, world)
 				if state.health == 0:
 					_start_rescue(state, world)
 		BUBBLE:
@@ -537,8 +543,9 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		state.recovery_x + 30 * S,
 		state.recovery_y
 	):
-		state.recovery_x += signi(state.recovery_x - state.x) * 96 * 60
-		state.recovery_y += signi(state.recovery_y - state.y) * 96 * 60
+		# An embedded bubble drifts toward the player on both axes.
+		state.recovery_x += signi(state.x - state.recovery_x) * 96 * 60
+		state.recovery_y += signi(state.y - state.recovery_y) * 96 * 60
 	var body := {
 		"x": state.recovery_x,
 		"y": state.recovery_y,
@@ -563,6 +570,14 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		state.bubble_bound_to_x = clampi(state.recovery_x, left, right)
 		state.companion_direction = 1 if state.recovery_x < left else -1
 		state.companion_vx = 0
+
+
+static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
+	# The new bubble's first body step: no speed yet, only the push out of terrain.
+	var body := {"x": state.recovery_x, "y": state.recovery_y, "vx": 0, "vy": 0}
+	Collision.prepare(body, world, BUBBLE_BOX)
+	state.recovery_x = body.x
+	state.recovery_y = body.y
 
 
 static func _start_rescue(state: Dictionary, world: Dictionary) -> void:

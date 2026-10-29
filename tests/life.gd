@@ -3,6 +3,7 @@ extends SceneTree
 
 const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const World = preload("res://src/sim/world.gd")
 const S := 3600
 var assertions := 0
 var failures := 0
@@ -91,10 +92,16 @@ func companion_checks() -> void:
 	check(state.recovery_x == start_x + 56 * S, "Launch travels horizontally during the arc")
 	for tick in 18:
 		step(state, world)
-	check(state.companion_mode == Life.BUBBLE, "Launch creates a bubble after thirty-six ticks")
+	check(
+		state.companion_mode == Life.LAUNCH and state.recovery_y == start_y,
+		"Launch returns to its initial height after thirty-six ticks"
+	)
+	for tick in Life.LAUNCH_STEPS - 36:
+		step(state, world)
+	check(state.companion_mode == Life.BUBBLE, "The bubble forms two ticks after the arc")
 	check(
 		state.recovery_y == start_y and state.recovery_x == start_x + 112 * S,
-		"Launch returns to its initial height"
+		"The bubble forms where the arc ended"
 	)
 	start_x = state.recovery_x
 	for tick in 60:
@@ -144,6 +151,43 @@ func bubble_contact_checks() -> void:
 	check(
 		state.recovery_x != 176 * S or state.recovery_y != 200 * S,
 		"An embedded bubble escapes instead of remaining stuck"
+	)
+	# A bubble that forms inside a block is pushed out on the step it forms.
+	state = player(world)
+	Damage.hurt(state, state.x + S)
+	state.companion_age = Life.LAUNCH_STEPS - 1
+	# The bubble box ends 6 px inside the block's top.
+	state.companion_from_x = 176 * S
+	state.companion_from_y = 166 * S
+	state.companion_dx = 0
+	step(state, world)
+	check(state.companion_mode == Life.BUBBLE, "The bubble forms on its launch step")
+	check(
+		not World.overlaps_box(
+			world,
+			state.recovery_x - 30 * S,
+			state.recovery_y - 60 * S,
+			state.recovery_x + 30 * S,
+			state.recovery_y
+		),
+		"A bubble that forms in a block is pushed out at once"
+	)
+	# Deep inside terrain it drifts toward the player on both axes.
+	var solid := PackedInt32Array()
+	solid.resize(15 * 9)
+	solid.fill(0)
+	world.layers = [solid_layer(solid, 15, 9)]
+	state = player(world)
+	Life.separate(state, 0, true)
+	state.x = 64 * S
+	state.y = 100 * S
+	state.recovery_x = 300 * S
+	state.recovery_y = 250 * S
+	state.companion_age = 100
+	step(state, world)
+	check(
+		state.recovery_x == 300 * S - 96 * 60 and state.recovery_y < 250 * S,
+		"An embedded bubble drifts toward the player"
 	)
 	cells.fill(-1)
 	for column in 15:
