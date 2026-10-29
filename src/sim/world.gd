@@ -444,6 +444,34 @@ static func layer_overlaps(layer: Dictionary, left: int, top: int, right: int, b
 	return false
 
 
+## Like overlaps_box() for a polygon body: `points` in world units, `box` its bounds.
+## The side borders stay boxes.
+static func overlaps_polygon(world: Dictionary, points: PackedInt64Array, box: Array) -> bool:
+	if border_overlaps(world, box[0], box[1], box[2], box[3]):
+		return true
+	for layer: Dictionary in layers_near(world, box[0], box[1], box[2], box[3]):
+		if not layer.solid:
+			continue
+		var size: int = layer.size * S
+		var x0 := maxi(0, floor_div(box[0] - 1, size))
+		var x1 := mini(layer.width - 1, floor_div(box[2], size))
+		var y0 := maxi(0, floor_div(box[1] - 1, size))
+		var y1 := mini(layer.height - 1, floor_div(box[3], size))
+		for row in range(y0, y1 + 1):
+			for column in range(x0, x1 + 1):
+				var cell: int = layer.cells[row * layer.width + column]
+				if layer.bounds.get(cell, []).is_empty():
+					continue
+				var local := PackedInt64Array()
+				local.resize(points.size())
+				for index in range(0, points.size(), 2):
+					local[index] = points[index] - column * size
+					local[index + 1] = points[index + 1] - row * size
+				if Polygon.overlaps_polygon(local, layer.polygons[cell]):
+					return true
+	return false
+
+
 ## A closed axis-aligned rectangle with positive area: four corners, each edge along one
 ## axis. For such a polygon, Polygon.overlaps_box equals the inclusive bounds test, which
 ## layer_overlaps() has already passed, so the polygon test can be skipped.

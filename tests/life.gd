@@ -4,6 +4,7 @@ extends SceneTree
 const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
 var assertions := 0
 var failures := 0
@@ -109,6 +110,9 @@ func companion_checks() -> void:
 	check(state.recovery_x > start_x, "Free bubble drifts instead of remaining a marker")
 	check(state.companion_vx == 48 * 60, "Bubble horizontal speed cap")
 	check(state.companion_vy == -192 * 60, "Bubble initial vertical ramp takes one second")
+	# The swing holds the ramp's last speed for one step, then reverses over two seconds.
+	step(state, world)
+	check(state.companion_vy == -192 * 60, "The swing starts one step after the ramp")
 	for tick in 120:
 		step(state, world)
 	check(state.companion_vy == 192 * 60, "Bubble vertical motion reverses over a two-second leg")
@@ -152,6 +156,17 @@ func bubble_contact_checks() -> void:
 		state.recovery_x != 176 * S or state.recovery_y != 200 * S,
 		"An embedded bubble escapes instead of remaining stuck"
 	)
+	# Terrain sees the bubble's octagon, not its bounding box: a block at its corner is clear.
+	var corner := {"x": 135 * S, "y": 165 * S}
+	check(
+		(
+			Collision.overlaps(corner, world, Life.BUBBLE_BOX)
+			and not Collision.overlaps(corner, world, Life._bubble_body())
+		),
+		"A block beside the bubble's cut corner does not touch it"
+	)
+	corner.x = 150 * S
+	check(Collision.overlaps(corner, world, Life._bubble_body()), "Its side still meets the block")
 	# A bubble that forms inside a block is pushed out on the step it forms.
 	state = player(world)
 	Damage.hurt(state, state.x + S)

@@ -141,6 +141,8 @@ const LEVEL_FIELDS := [
 	["checkpoint_play_ticks", 0]
 ]
 
+static var _bubble_body_cache: Array = []
+
 
 static func ensure_fields(state: Dictionary) -> void:
 	for list: Array in [PLAYER_FIELDS, LEVEL_FIELDS]:
@@ -519,8 +521,10 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 	if age <= 60:
 		state.companion_vy = -192 * 60 * age / 60
 	else:
-		var leg := (age - 60) % 240
+		# The swing starts one step after the ramp ends (the ramp reports its end late).
+		var leg := (age - 61) % 240
 		state.companion_vy = -192 * 60 + 384 * 60 * mini(leg, 240 - leg) / 120
+	var previous_vx: int = state.companion_vx
 	state.companion_vx = clampi(
 		state.companion_vx + state.companion_direction * 512, -48 * 60, 48 * 60
 	)
@@ -536,13 +540,8 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		)
 		state.recovery_y += state.companion_vy
 		return
-	if World.overlaps_box(
-		world,
-		state.recovery_x - 30 * S,
-		state.recovery_y - 60 * S,
-		state.recovery_x + 30 * S,
-		state.recovery_y
-	):
+	var bubble_body := _bubble_body()
+	if Collision.overlaps({"x": state.recovery_x, "y": state.recovery_y}, world, bubble_body):
 		# An embedded bubble drifts toward the player on both axes.
 		state.recovery_x += signi(state.x - state.recovery_x) * 96 * 60
 		state.recovery_y += signi(state.y - state.recovery_y) * 96 * 60
@@ -552,12 +551,13 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		"vx": state.companion_vx,
 		"vy": state.companion_vy
 	}
-	if Collision.prepare(body, world, BUBBLE_BOX):
-		var distance: int = body.vx
-		var actual := Collision.horizontal(body, world, BUBBLE_BOX, distance, 0, false, 640 * 60)
+	if Collision.prepare(body, world, bubble_body):
+		# The body moves by the mean of the old and new speed, and not at all from rest.
+		var distance: int = (previous_vx + body.vx) / 2 if previous_vx else 0
+		var actual := Collision.horizontal(body, world, bubble_body, distance, 0, false, 640 * 60)
 		if actual != distance or body.vx == 0:
 			state.companion_direction *= -1
-		Collision.vertical(body, world, BUBBLE_BOX, body.vy)
+		Collision.vertical(body, world, bubble_body, body.vy)
 	state.recovery_x = body.x
 	state.recovery_y = body.y
 	state.companion_vx = body.vx
@@ -575,7 +575,7 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
 	# The new bubble's first body step: no speed yet, only the push out of terrain.
 	var body := {"x": state.recovery_x, "y": state.recovery_y, "vx": 0, "vy": 0}
-	Collision.prepare(body, world, BUBBLE_BOX)
+	Collision.prepare(body, world, _bubble_body())
 	state.recovery_x = body.x
 	state.recovery_y = body.y
 
@@ -919,6 +919,15 @@ static func _anchor_y(state: Dictionary) -> int:
 static func _attach_position(state: Dictionary) -> void:
 	state.recovery_x = _anchor_x(state)
 	state.recovery_y = _anchor_y(state)
+
+
+## The bubble's body against terrain: its octagon inside the box that bounds it.
+static func _bubble_body() -> Array:
+	if _bubble_body_cache.is_empty():
+		_bubble_body_cache = BUBBLE_BOX.duplicate()
+		_bubble_body_cache.append(_bubble_points())
+		_bubble_body_cache.make_read_only()
+	return _bubble_body_cache
 
 
 static func _bubble_points() -> PackedInt64Array:
