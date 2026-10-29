@@ -110,7 +110,7 @@ const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
 const DispatchLoops = preload("res://src/sim/dispatch_loops.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
-const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
+const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0], ["birth_serial", 0]]
 const TOKEN_BASE := 1_000_000
 const MAX_DYNAMIC_SERIAL := 0x7fffffffffffffff - TOKEN_BASE
 const Units = preload("res://src/sim/units.gd")
@@ -243,6 +243,8 @@ static func valid_state(state: Dictionary) -> bool:
 		or state.dynamic_serial < 1
 		or state.dynamic_serial > MAX_DYNAMIC_SERIAL + 1
 	):
+		return false
+	if not state.get("birth_serial") is int or state.birth_serial < 0:
 		return false
 	if not state.get("modal_token") is int or state.modal_token < 0:
 		return false
@@ -885,18 +887,26 @@ static func valid(entity: Dictionary) -> bool:
 static func valid_table(state: Dictionary) -> bool:
 	if (
 		not state.get("entities") is Array
+		or not state.get("birth_serial") is int
+		or state.birth_serial < 0
 		or not state.get("dynamic_serial") is int
 		or state.dynamic_serial < 1
 		or state.dynamic_serial > MAX_DYNAMIC_SERIAL + 1
 	):
 		return false
 	var ids := {}
+	var births := {}
 	var dynamic := false
 	for index in state.entities.size():
 		var entity: Variant = state.entities[index]
 		if not entity is Dictionary or not valid(entity) or ids.has(entity.id):
 			return false
 		ids[entity.id] = true
+		if entity.has("birth_serial"):
+			var serial: int = entity.birth_serial
+			if serial <= 0 or serial > state.birth_serial or births.has(serial):
+				return false
+			births[serial] = true
 		if entity.map_index != state.get("map_index", 0):
 			return false
 		if entity.source_index == -1:

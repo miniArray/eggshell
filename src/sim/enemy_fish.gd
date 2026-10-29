@@ -4,6 +4,7 @@ extends RefCounted
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const S := 3600
 ## A turn includes the pause, turn picture, zero-duration event wait and the final
 ## queued control press. The mirror changes one tick after the picture returns to swim.
@@ -172,10 +173,10 @@ static func finish_advance(state: Dictionary, world: Dictionary) -> void:
 		):
 			continue
 		if enemy.facing < 0 and enemy.x < enemy.home_x - enemy.fish_left:
-			if left.is_empty() or enemy.birth_frame < left.birth_frame:
+			if left.is_empty() or Birth.born_before(enemy, left):
 				left = enemy
 		elif enemy.facing > 0 and enemy.x > enemy.home_x + enemy.fish_right:
-			if right.is_empty() or enemy.birth_frame < right.birth_frame:
+			if right.is_empty() or Birth.born_before(enemy, right):
 				right = enemy
 	for enemy: Dictionary in [left, right]:
 		if not enemy.is_empty():

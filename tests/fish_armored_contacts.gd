@@ -27,6 +27,11 @@ func _initialize() -> void:
 		fish_group(false, blocker)
 	soft_group_selection()
 	birth_lifecycle()
+	for direction in [-1, 1]:
+		same_frame_runtime_fish(direction)
+	same_frame_runtime_armor()
+	same_frame_recreation()
+	birth_validation()
 	print("FISH_ARMORED_CONTACTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -182,8 +187,8 @@ func armor_group(reverse: bool, older_right: bool) -> void:
 	var unit := fixture(objects)
 	var left := by_id(unit.state, "left")
 	var right := by_id(unit.state, "right")
-	left.birth_frame = 20 if older_right else 10
-	right.birth_frame = 10 if older_right else 20
+	rebirth(unit, right if older_right else left, 10)
+	rebirth(unit, left if older_right else right, 20)
 	unit.state.frame = 30
 	var soft := by_id(unit.state, "burst")
 	soft.mode = Registry.lookup("e23").SQUASH
@@ -212,8 +217,8 @@ func armor_tween_age(reverse: bool) -> void:
 	var unit := fixture(objects)
 	var left := by_id(unit.state, "left")
 	var right := by_id(unit.state, "right")
-	left.birth_frame = 10
-	right.birth_frame = 20
+	rebirth(unit, left, 10)
+	rebirth(unit, right, 20)
 	left.roll_direction = -1
 	right.roll_direction = 1
 	left.knock_ticks = 9
@@ -239,13 +244,13 @@ func soft_group_selection() -> void:
 	)
 	var type: Script = Registry.lookup("e23")
 	var older := by_id(unit.state, "older_soft")
-	older.birth_frame = 10
+	rebirth(unit, older, 10)
 	older.mode = type.KNOCKED
 	older.slide_from = -448 * 60
 	older.slide_total = 60
 	older.slide_ticks = 40
 	var armor := by_id(unit.state, "armor")
-	armor.birth_frame = 20
+	rebirth(unit, armor, 20)
 	unit.state.frame = 30
 	var soft := by_id(unit.state, "burst")
 	soft.mode = type.SQUASH
@@ -269,9 +274,10 @@ func fish_group(reverse: bool, blocker: int = 0, tied: bool = false) -> void:
 	var first := by_id(unit.state, "first")
 	var second := by_id(unit.state, "second")
 	var right := by_id(unit.state, "right")
-	first.birth_frame = 10
-	second.birth_frame = 10 if tied else 20
-	right.birth_frame = 30
+	if not tied:
+		rebirth(unit, first, 10)
+		rebirth(unit, second, 20)
+		rebirth(unit, right, 30)
 	var last := by_id(unit.state, "last")
 	if blocker == 1:
 		Registry.lookup("e20").tongue(last, unit.state, unit.world)
@@ -297,6 +303,22 @@ func fish_group(reverse: bool, blocker: int = 0, tied: bool = false) -> void:
 	Sim.advance(unit.state, 0, unit.world)
 	check(deferred.mode == 1, "The second crossing fish turns on the next frame")
 	restored_future(unit)
+
+
+func rebirth(unit: Dictionary, entity: Dictionary, frame: int) -> void:
+	unit.state.frame = frame
+	var camera_x: int = unit.state.camera_x
+	var camera_y: int = unit.state.camera_y
+	unit.state.camera_x = entity.spawn_x
+	unit.state.camera_y = entity.spawn_y - 28 * S
+	entity.status = Registry.QUEUED
+	entity.offscreen = 1
+	Registry.lifecycle(entity, unit.state, unit.world)
+	unit.state.camera_x = camera_x
+	unit.state.camera_y = camera_y
+	check(entity.birth_frame == frame, "Recreation records its actual birth")
+	if entity.has("started"):
+		entity.started = 1
 
 
 func birth_lifecycle() -> void:
@@ -338,6 +360,109 @@ func birth_lifecycle() -> void:
 		"A distant runtime birth culls before activation and does not become a picked body"
 	)
 	restored_future(unit)
+
+
+func reverse_runtime(unit: Dictionary) -> void:
+	var prefix: int = unit.world.entities.size()
+	var rows: Array = unit.state.entities.slice(prefix)
+	rows.reverse()
+	unit.state.entities = unit.state.entities.slice(0, prefix) + rows
+	Registry.attach_views(unit.state)
+	check(Registry.valid_table(unit.state), "Dispatch reordering retains a valid table")
+
+
+func prepare_crossing(unit: Dictionary, fish: Dictionary, direction: int) -> void:
+	fish.facing = direction
+	fish.water = 1
+	fish.home_y = fish.y
+	fish.x = fish.home_x + direction * 50 * S
+	fish.vx = direction * 128 * 60
+	water(unit)
+
+
+func same_frame_runtime_fish(direction: int) -> void:
+	var unit := fixture({})
+	var first := Registry.spawn_dynamic(unit.state, unit.world, "e20", 700 * S, 300 * S, {})
+	var second := Registry.spawn_dynamic(unit.state, unit.world, "e21", 750 * S, 300 * S, {})
+	check(first.birth_frame == second.birth_frame, "The fish are genuinely born in one frame")
+	reverse_runtime(unit)
+	prepare_crossing(unit, first, direction)
+	prepare_crossing(unit, second, direction)
+	Sim.advance(unit.state, 0, unit.world)
+	check(
+		first.mode == 1 and second.mode == 0, "Earlier runtime birth wins after dispatch reordering"
+	)
+	restored_future(unit)
+
+
+func same_frame_runtime_armor() -> void:
+	var unit := fixture(
+		{
+			"burst": {"A": "e23", "X": 400, "Y": 284},
+			"wall": {"A": "o9", "X": 448, "Y": 272},
+			"floor": {"A": "p2", "X": 500, "Y": 316, "E1": "1024"}
+		}
+	)
+	var left := Registry.spawn_dynamic(
+		unit.state, unit.world, "e11", 320 * S, 284 * S, {"variant": 3}
+	)
+	var right := Registry.spawn_dynamic(
+		unit.state, unit.world, "e11", 480 * S, 284 * S, {"variant": 3}
+	)
+	check(left.birth_frame == right.birth_frame, "The armor bodies are born in one frame")
+	for armor: Dictionary in [left, right]:
+		armor.started = 1
+	reverse_runtime(unit)
+	var soft := by_id(unit.state, "burst")
+	soft.mode = Registry.lookup("e23").SQUASH
+	soft.timer = 1
+	Sim.advance(unit.state, 0, unit.world)
+	check(right.knock_ticks < 0, "The older runtime body's sign wins after dispatch reordering")
+	restored_future(unit)
+
+
+func same_frame_recreation() -> void:
+	var unit := fixture(
+		{"first": {"A": "e20", "X": 700, "Y": 300}, "second": {"A": "e21", "X": 750, "Y": 300}}
+	)
+	var first := by_id(unit.state, "first")
+	var second := by_id(unit.state, "second")
+	var previous: int = second.birth_serial
+	rebirth(unit, second, 20)
+	rebirth(unit, first, 20)
+	check(
+		second.birth_serial > previous,
+		"Recreation renews identity instead of retaining the placement token"
+	)
+	prepare_crossing(unit, first, -1)
+	prepare_crossing(unit, second, -1)
+	Sim.advance(unit.state, 0, unit.world)
+	check(
+		second.mode == 1 and first.mode == 0,
+		"Same-frame recreation order wins over placement order"
+	)
+	restored_future(unit)
+
+
+func birth_validation() -> void:
+	var unit := fixture({})
+	var first := Registry.spawn_dynamic(unit.state, unit.world, "e20", 700 * S, 300 * S, {})
+	var second := Registry.spawn_dynamic(unit.state, unit.world, "e21", 750 * S, 300 * S, {})
+	var serial: int = second.birth_serial
+	second.birth_serial = first.birth_serial
+	check(Snapshot.encode(unit.state).is_empty(), "Duplicate birth identities cannot be saved")
+	second.birth_serial = serial
+	unit.state.birth_serial = serial - 1
+	check(Snapshot.encode(unit.state).is_empty(), "A stale birth high-water mark cannot be saved")
+	unit.state.birth_serial = serial
+	var decoded := Snapshot.decode(Snapshot.encode(unit.state), unit.state.identity, unit.world)
+	check(decoded.ok, "Birth identity and its high-water mark restore together")
+	if decoded.ok:
+		var later := Registry.spawn_dynamic(decoded.state, unit.world, "e20", 650 * S, 300 * S, {})
+		check(
+			later.birth_serial > serial,
+			"Restored allocation never reuses an existing birth identity"
+		)
 
 
 func restored_future(unit: Dictionary) -> void:

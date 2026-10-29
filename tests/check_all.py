@@ -64,6 +64,10 @@ def main():
         "core",
         "objects",
         "enemies",
+        "flyer_contacts",
+        "flower_contacts",
+        "roller_shell_contacts",
+        "fish_armored_contacts",
         "damage",
         "elements",
     ]:

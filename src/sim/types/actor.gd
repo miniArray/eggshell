@@ -26,6 +26,7 @@ const FIELDS := (
 		["roll_bounce", 0],
 		["ground_form", 0],
 		["birth_frame", -1],
+		["birth_serial", 0],
 		["home_x", 0],
 		["fish_finish", 0],
 		["fish_dry", 0],
@@ -78,9 +79,8 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 
 static func created(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, initial_map: bool = false
+	entity: Dictionary, _state: Dictionary, _world: Dictionary, initial_map: bool = false
 ) -> void:
-	entity.birth_frame = state.frame
 	if entity.code == "e2" and entity.source_index >= 0 and not entity.ground_form:
 		# The initial map alone ran the hidden intro ticks before play began.
 		entity.timer = Motion.LEVEL_INTRO_TICKS - 2 if initial_map else 0
@@ -230,6 +230,7 @@ static func valid(entity: Dictionary) -> bool:
 			or entity.roll_bounce not in [0, 1]
 			or entity.ground_form not in [0, 1]
 			or entity.birth_frame < -1
+			or entity.birth_serial < 0
 			or entity.fish_finish < 0
 			or entity.fish_finish > 3
 			or entity.fish_dry not in [0, 1]

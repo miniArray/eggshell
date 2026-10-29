@@ -40,7 +40,8 @@ const FIELDS := (
 		["slide_from", 0],
 		["slide_ticks", 0],
 		["slide_total", 0],
-		["birth_frame", 0]
+		["birth_frame", 0],
+		["birth_serial", 0]
 	]
 )
 const WALK_BOX := [-14 * S, -14 * S, 14 * S, 16 * S]
@@ -56,10 +57,6 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return Body.create(source)
-
-
-static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
-	entity.birth_frame = state.frame
 
 
 static func knockback_velocity(entity: Dictionary) -> int:
@@ -299,4 +296,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_ticks >= 0
 		and entity.slide_ticks <= entity.slide_total
 		and entity.birth_frame >= 0
+		and entity.birth_serial >= 0
 	)

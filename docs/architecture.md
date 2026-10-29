@@ -38,7 +38,11 @@ a type without them steps in phase 0 and contacts in phase 1.
 
 An optional `created(entity, state, world, initial_map)` hook runs at map creation, runtime
 birth and camera recreation, before activation. It does not run during placement
-validation or snapshot restoration. Types can stamp saved birth metadata here.
+validation or snapshot restoration. For types that declare `birth_serial`, the
+lifecycle stamps `birth_frame` and a unique saved serial before the type callback.
+The registry saves its high-water mark. Recreation renews identity; activation
+does not. First-picked family rules compare birth identity, not mutable dispatch
+positions. Validation rejects duplicate identities and stale high-water marks.
 `CREATION_CULL = true` opts into a distance check at birth, even before activation;
 a mixed type can instead supply `creation_cull(entity)` to choose by code.
 Ordinary distance despawn still requires an active entity. Birth culling runs

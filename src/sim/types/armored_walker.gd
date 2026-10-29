@@ -8,6 +8,7 @@ const Moves = preload("res://src/sim/moves.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const World = preload("res://src/sim/world.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
@@ -30,7 +31,14 @@ const RECOVER := 5
 ## 61 defers a burst until this body's normal motion has finished this tick.
 const FIELDS := (
 	Body.FIELDS
-	+ [["mode", WALK], ["timer", 0], ["roll_direction", -1], ["knock_ticks", 0], ["birth_frame", 0]]
+	+ [
+		["mode", WALK],
+		["timer", 0],
+		["roll_direction", -1],
+		["knock_ticks", 0],
+		["birth_frame", 0],
+		["birth_serial", 0]
+	]
 )
 static var _registry: Script = null
 
@@ -43,10 +51,6 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var values := Body.create(source)
 	values.mode = AIR if int(source.get("variant", 0)) % 2 == 1 else WALK
 	return values
-
-
-static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
-	entity.birth_frame = state.frame
 
 
 static func bounds(_entity: Dictionary) -> Array:
@@ -171,7 +175,7 @@ static func _first_knock_velocity(state: Dictionary) -> int:
 		if not type.has_method("knockback_velocity"):
 			continue
 		var candidate: int = type.knockback_velocity(other)
-		if candidate and (first.is_empty() or other.birth_frame < first.birth_frame):
+		if candidate and (first.is_empty() or Birth.born_before(other, first)):
 			first = other
 			velocity = candidate
 	return velocity
@@ -266,4 +270,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.knock_ticks >= -90
 		and entity.knock_ticks <= 61
 		and entity.birth_frame >= 0
+		and entity.birth_serial >= 0
 	)

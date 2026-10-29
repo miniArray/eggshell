@@ -26,6 +26,10 @@ static func created(
 ) -> void:
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
+	if entity.has("birth_serial"):
+		state.birth_serial += 1
+		entity.birth_serial = state.birth_serial
+		entity.birth_frame = state.frame
 	if type.has_method("created"):
 		type.created(entity, state, world, initial_map)
 	var cull: bool = dispatch.constant(type, "CREATION_CULL", false)
@@ -39,6 +43,11 @@ static func created(
 	):
 		entity.status = DEFEATED if entity.source_index == -1 else QUEUED
 		entity.offscreen = 0
+
+
+## Birth identity does not change when dispatch rows are reordered.
+static func born_before(candidate: Dictionary, current: Dictionary) -> bool:
+	return candidate.birth_serial < current.birth_serial
 
 
 static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
