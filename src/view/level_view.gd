@@ -17,6 +17,8 @@ const Maps = preload("res://src/sim/maps.gd")
 const Effects = preload("res://src/view/map_effects.gd")
 const Hud = preload("res://src/view/hud.gd")
 const TerrainStrips = preload("res://src/view/terrain_strips.gd")
+const Visibility = preload("res://src/view/view_visibility.gd")
+const VisualBounds = preload("res://src/view/visual_bounds.gd")
 const PLAYER_COLOR := Color("ffffff")  # Placeholder specification: plain player box.
 const GOAL_COLOR := Color("ffd43b")  # Generated diagnostic goal marker.
 ## Tint for placed enemies that the simulation has not activated (see docs/graphics.md).
@@ -43,6 +45,10 @@ var _spring_nodes: Array[Sprite2D] = []
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
 var _placed_nodes: Dictionary = {}
+var _placed_bounds: Dictionary = {}
+var _enemy_bounds: Array = []
+var _static_frames: Array[Dictionary] = []
+var _snapped: Array[Sprite2D] = []
 var _runtime := Runtime.new()
 
 
@@ -69,6 +75,10 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	_enemy_nodes.clear()
 	_head_nodes.clear()
 	_placed_nodes.clear()
+	_placed_bounds.clear()
+	_enemy_bounds.clear()
+	_static_frames.clear()
+	_snapped.clear()
 	_animations = {}
 	_world = world
 	_built_map = int(world.map_index)
@@ -169,7 +179,9 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	Dressing.placed(_root, manifest, pack, world)
 	for node: Node in _root.get_children():
 		if node.has_meta("placed_id"):
-			_placed_nodes[node.get_meta("placed_id")] = node
+			var id: String = node.get_meta("placed_id")
+			_placed_nodes[id] = node
+			_placed_bounds[id] = VisualBounds.placed(node, node.get_meta("placed_code"))
 	# Packs without object art keep the diagnostic flat textures.
 	var spring_art := Dressing.object_art(manifest, pack, "o11")
 	for spring: Dictionary in world.springs:
@@ -185,6 +197,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		else:
 			node = Dressing.sprite(spring_art, 10)
 			node.set_meta("base", size / float(spring_art.texture.get_height()))
+		node.set_meta("stateful", true)
 		node.set_meta("pack_variant", int(spring.large) + 2 * int(spring.single_use))
 		if not spring_art.is_empty():
 			Frames.apply(node, 0)
@@ -218,6 +231,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		_enemy_nodes.append(actor_node(art, placeholder(enemy.code, 32)))
 		_enemy_nodes[-1].set_meta("entity_art", art)
 		_enemy_nodes[-1].set_meta("pack_variant", int(enemy.variant))
+		_enemy_bounds.append(VisualBounds.enemy(_enemy_nodes[-1], enemy.code))
 		_head_nodes.append(
 			(
 				Head.create(enemy.code, _root, manifest, pack, placeholder)
@@ -250,6 +264,14 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		image.fill(PLAYER_COLOR)
 		_player.texture = ImageTexture.create_from_image(image)
 		_player.offset = Vector2(-12, -56)
+	for child: Node in _root.get_children():
+		if (
+			child is Sprite2D
+			and child != _player
+			and not child.get_meta("stateful", false)
+			and not child.has_meta("placed_id")
+		):
+			_static_frames.append({"node": child, "bounds": VisualBounds.tree(child, false)})
 
 
 func render(state: Dictionary) -> void:
@@ -259,10 +281,10 @@ func render(state: Dictionary) -> void:
 		if selected.is_empty():
 			return
 		_build_map(selected, _pack_path)
-	if _density > 1:
-		for child: Node in _root.get_children():
-			if child is Sprite2D:
-				Frames.unsnap(child)
+	for child: Sprite2D in _snapped:
+		if is_instance_valid(child):
+			Frames.unsnap(child)
+	_snapped.clear()
 	var viewport := get_viewport_rect().size
 	var focus := Vector2(state.camera_x, state.camera_y) / State.SCALE
 	plan = Plan.plan(
@@ -273,27 +295,29 @@ func render(state: Dictionary) -> void:
 	_root.set_meta("hud_scale", plan.base_scale)
 	# Half-pixel translations can put nearest samples on texel boundaries.
 	_root.position = plan.offset.round()
+	var camera := Visibility.camera(viewport, _root.position, plan.scale)
 	_background.render(plan, state.frame)
-	for child: Node in _root.get_children():
-		if (
-			child is Sprite2D
-			and child != _player
-			and not child.get_meta("stateful", false)
-			and not child.has_meta("placed_id")
-		):
-			# Placed rows select their final animation below. Applying a default first
-			# repeats sampling and can upload a texture that is immediately replaced.
+	for entry: Dictionary in _static_frames:
+		var child: Sprite2D = entry.node
+		child.visible = Visibility.needed(entry.bounds, child.position, camera)
+		if child.visible:
 			Frames.apply(child, state.frame)
 	_player.position = Vector2(state.x, state.y) / State.SCALE
 	for entity: Dictionary in state.entities:
 		if _placed_nodes.has(entity.id):
 			var node: Sprite2D = _placed_nodes[entity.id]
+			if not Visibility.needed(
+				_placed_bounds[entity.id], Vector2(entity.x, entity.y) / State.SCALE, camera
+			):
+				node.visible = false
+				continue
 			node.position = Vector2(entity.x, entity.y) / State.SCALE
 			node.visible = not entity.collected
 			Dressing.update_placed(node, entity, state)
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
 		var node := _spring_nodes[index]
+		Frames.apply(node, state.frame)
 		var size := 48.0 if _world.springs[index].large else 32.0
 		var squash: int = mini(ball.squash, 12 - ball.squash)
 		node.position = Vector2(ball.x, ball.y) / State.SCALE
@@ -312,6 +336,16 @@ func render(state: Dictionary) -> void:
 		var node := _enemy_nodes[index]
 		var art: Dictionary = node.get_meta("entity_art", {})
 		var head := _head_nodes[index]
+		var origin := Vector2(enemy.x, enemy.y) / State.SCALE
+		if inactive_shown(enemy):
+			var source: Dictionary = Registry.source_for(enemy, _world)
+			origin = Vector2(source.get("x", enemy.x), source.get("y", enemy.y)) / State.SCALE
+		if not Visibility.needed(
+			VisualBounds.at_body(_enemy_bounds[index], art, bounds), origin, camera
+		):
+			node.visible = false
+			head.visible = false
+			continue
 		# Keep any tint another view helper gave the node while it is active.
 		if not node.has_meta("active_tint"):
 			node.set_meta("active_tint", node.self_modulate)
@@ -361,13 +395,14 @@ func render(state: Dictionary) -> void:
 		_player.set_meta("pack_variant", pose.frame)
 		Frames.apply(_player, pose.tick, pose.name)
 		_player.scale.x = float(state.facing) / _density
-	_runtime.render(state, _world, _root, _hud_manifest, _hud_pack, placeholder)
+	_runtime.render(state, _world, _root, _hud_manifest, _hud_pack, placeholder, camera)
 	Hud.present(self, _root, state, _world, _hud_manifest, _hud_pack)
 	_effects.update(_root, _player, _world, state, plan, viewport)
 	if _density > 1:
 		for child: Node in _root.get_children():
-			if child is Sprite2D:
+			if child is Sprite2D and child.visible and child.has_meta("pack_density"):
 				Frames.snap(child, plan.scale)
+				_snapped.append(child)
 
 
 ## Placed enemies that are waiting for activation, or queued to respawn, are drawn

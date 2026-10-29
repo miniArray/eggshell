@@ -5,6 +5,8 @@ const Registry = preload("res://src/sim/registry.gd")
 const Dressing = preload("res://src/view/pack_dressing.gd")
 const Frames = preload("res://src/view/pack_frames.gd")
 const Head = preload("res://src/view/enemy_head.gd")
+const Visibility = preload("res://src/view/view_visibility.gd")
+const VisualBounds = preload("res://src/view/visual_bounds.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 var _nodes := {}
 var _root: Node2D
@@ -18,7 +20,8 @@ func render(
 	root: Node2D,
 	manifest: Dictionary,
 	pack: String,
-	fallback: Callable
+	fallback: Callable,
+	camera_rect: Variant = null
 ) -> void:
 	if root != _root or pack != _pack or world.get("identity", "") != _identity:
 		clear()
@@ -33,6 +36,17 @@ func render(
 			continue
 		seen[entity.token] = true
 		var type := Registry.lookup(entity.code)
+		var existing: Dictionary = _nodes.get(entity.token, {})
+		if (
+			camera_rect is Rect2
+			and not existing.is_empty()
+			and existing.code == entity.code
+			and existing.variant == int(entity.get("variant", 0))
+			and is_instance_valid(existing.node)
+			and not Visibility.needed(existing.bounds, Vector2(entity.x, entity.y) / S, camera_rect)
+		):
+			existing.node.visible = false
+			continue
 		var style: Dictionary = (
 			type.view_state(entity, state) if type.has_method("view_state") else {}
 		)
@@ -108,10 +122,23 @@ static func make_node(
 	node.set_meta("stateful", true)
 	node.set_meta("entity_token", entity.token)
 	root.add_child(node)
+	node.set_meta("entity_art", art)
+	# Box-anchored runtime art needs the current body offset. Leave it on the full
+	# path until that offset can be included; position-anchored looks need none.
+	var envelope: Variant = (
+		VisualBounds.enemy(node, entity.code) if art.get("anchor", "box") == "position" else null
+	)
 	var head: Sprite2D
 	if Registry.lookup(entity.code).has_method("head_box"):
 		head = Head.create(entity.code, root, manifest, pack, fallback)
-	return {"node": node, "head": head, "art": art, "code": entity.code, "variant": variant}
+	return {
+		"node": node,
+		"head": head,
+		"art": art,
+		"code": entity.code,
+		"variant": variant,
+		"bounds": envelope
+	}
 
 
 static func apply_frame(
