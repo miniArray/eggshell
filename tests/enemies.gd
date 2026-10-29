@@ -285,6 +285,7 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 		leaped = leaped or fish.enemies[0].vy == -944 * 60
 		floated = floated or fish.enemies[0].water == 1
 	check(leaped and floated, "Vertical fish floats, waits, prepares and leaps at configured speed")
+	patrol_order_checks(world)
 	var plant_world := fixture(world, "e5")
 	var player := _placed_state(plant_world)
 	player.x = 430 * S
@@ -449,6 +450,38 @@ func check(condition: bool, message: String) -> void:
 
 ## Entities run one world tick at level start, as in the original. These unit checks
 ## start from the placement, so the table is spawned again after the level start.
+## Platform order for a patrolling fish: it moves by the mean of its old and new speed
+## while it speeds up, and a turn first coasts one tick and then brakes by its old speed.
+func patrol_order_checks(world: Dictionary) -> void:
+	var fish_world := fixture(world, "e20")
+	fish_world.enemies[0].variant = 0
+	var state := _placed_state(fish_world)
+	var fish: Dictionary = state.enemies[0]
+	var moves: Array[int] = []
+	var turn_moves: Array[int] = []
+	for tick in 120:
+		var before: int = fish.x
+		var mode: int = fish.mode
+		Sim.advance(state, 0, fish_world)
+		if fish.water and mode == 0 and fish.mode == 0:
+			moves.append(absi(fish.x - before))
+		if mode == 1 and turn_moves.size() < 3:
+			turn_moves.append(absi(fish.x - before))
+	var speeding := moves.filter(func(move: int) -> bool: return move > 0 and move < 7680)
+	check(
+		(
+			speeding.size() > 2
+			and speeding.all(func(move: int) -> bool: return move % 512 == 256)
+			and speeding[1] - speeding[0] == 512
+		),
+		"A patrolling fish speeds up by the mean of its old and new speed"
+	)
+	check(
+		turn_moves == [7680, 7680, 7168],
+		"A fish turn coasts one tick at full speed, then brakes by its old speed"
+	)
+
+
 func _placed_state(world: Dictionary) -> Dictionary:
 	var state := State.create(world)
 	Registry.spawn_map(state, world)
