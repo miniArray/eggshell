@@ -2,6 +2,7 @@ extends SceneTree
 ## Invented contacts. Damage immunity and the movement lock are separate rules.
 const World = preload("res://src/sim/world.gd")
 const State = preload("res://src/sim/play_state.gd")
+const Sim = preload("res://src/sim/step.gd")
 const Registry = preload("res://src/sim/registry.gd")
 const Body = preload("res://src/sim/enemy_body.gd")
 const Life = preload("res://src/sim/life.gd")
@@ -21,6 +22,8 @@ func _initialize() -> void:
 		_spin_boundary(code)
 	# Flower contacts share the callback but keep their own defeat reaction.
 	_hurt_entry("e3", Life.HURT_NONE)
+	_recovered_step(Bits.RIGHT | Bits.JUMP)
+	_recovered_step(Bits.RIGHT)
 	_controllability()
 	print("ROLLER_SHELL_CONTACTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -76,6 +79,8 @@ func _lock(state: Dictionary, phase: int) -> void:
 
 
 func _touch(scene: Dictionary) -> void:
+	# Direct hooks supply this step's raw input just as Sim.advance does before contact.
+	scene.state.previous_input = Bits.JUMP
 	Registry.lookup(scene.actor.code).contact(scene.actor, scene.state, scene.world, Bits.JUMP)
 
 
@@ -159,6 +164,26 @@ func _spin_boundary(code: String) -> void:
 	check(scene.state.hurt == 1, "The spin is on its final movement-lock tick")
 	_touch(scene)
 	check(scene.state.vy == 160 * 60, code + " final spin tick still blocks the enemy bounce")
+
+
+func _recovered_step(input: int) -> void:
+	var scene := _scene("e28")
+	scene.state.y = scene.actor.y - 15 * S
+	# The release case must replace a previously held raw jump, not reuse it.
+	scene.state.previous_input = Bits.RIGHT | Bits.JUMP
+	Life.start_hurt(scene.state, 2, true)
+	Sim.advance(scene.state, input, scene.world)
+	check(
+		scene.state.hurt == 1 and scene.state.hurt_phase == Life.HURT_RECOVERED,
+		"The real step reaches the pose-clear boundary"
+	)
+	check(scene.state.previous_input == input, "The real step saves current raw input")
+	check(scene.state.vx == 0, "The pose-clear step still masks directional movement")
+	var expected: int = (-704 if input & Bits.JUMP else -320) * 60
+	check(
+		scene.state.vy == expected,
+		"Recovered bounce uses current held/released jump: %d/%d" % [scene.state.vy, expected]
+	)
 
 
 func _controllability() -> void:

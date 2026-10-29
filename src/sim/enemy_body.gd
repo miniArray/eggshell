@@ -3,6 +3,7 @@ extends RefCounted
 
 const Constants = preload("res://src/sim/script_constants.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const InputBits = preload("res://src/sim/move_input.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Life = preload("res://src/sim/life.gd")
@@ -242,6 +243,10 @@ static func bounce(entity: Dictionary, state: Dictionary, input: int) -> void:
 		or state.get("modal_token", 0)
 	):
 		return
+	if recovered:
+		# Sim stores this step's raw mask before contact; direct callers must do so too.
+		# Only the bounce's held-jump check bypasses the remaining movement-input lock.
+		input = (input & ~InputBits.JUMP) | (int(state.get("previous_input", 0)) & InputBits.JUMP)
 	Moves.bounce(state, -absi(entity.vy / 2) - 320 * 60, input)
 
 
