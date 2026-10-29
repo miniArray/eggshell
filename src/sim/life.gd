@@ -7,6 +7,7 @@ const World = preload("res://src/sim/world.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Pose = preload("res://src/sim/move_pose.gd")
 const Screen = preload("res://src/sim/screen.gd")
 const PLAY := 0
 const REJOIN := 1
@@ -652,10 +653,13 @@ static func _phase_step(
 	state.life_ticks = maxi(0, state.life_ticks - 1)
 	match state.life_phase:
 		REJOIN:
+			var anchor := Pose.companion_anchor(
+				state, state.get("move_action", Moves.NORMAL) == Moves.NORMAL
+			)
 			var age: int = REJOIN_STEPS - state.life_ticks
 			var across := mini(age, 48)
 			state.recovery_x = (
-				state.companion_from_x + (_anchor_x(state) - state.companion_from_x) * across / 48
+				state.companion_from_x + (anchor[0] - state.companion_from_x) * across / 48
 			)
 			if age <= 24:
 				state.recovery_y = state.companion_from_y - 96 * S * age * (48 - age) / 576
@@ -665,7 +669,7 @@ static func _phase_step(
 				state.recovery_y = (
 					state.companion_from_y
 					- 96 * S
-					+ (_anchor_y(state) - state.companion_from_y + 96 * S) * leg * leg / 576
+					+ (anchor[1] - state.companion_from_y + 96 * S) * leg * leg / 576
 				)
 			if state.life_ticks == 0:
 				state.separated = 0
@@ -732,6 +736,8 @@ static func _respawn(
 	else:
 		if not reset_map.is_valid():
 			return false
+		# Creation culling uses the respawn destination, not the old death camera.
+		state.merge({"x": x, "y": y, "camera_x": x, "camera_y": y - 28 * S}, true)
 		reset_map.call(state, world, true)
 	var hits: int = state.hits
 	var quick: int = state.quick_death
@@ -750,13 +756,10 @@ static func _respawn(
 	]:
 		if state.has(name):
 			state[name] = 0
-	state.x = x
-	state.y = y
+	state.merge({"x": x, "y": y, "camera_x": x, "camera_y": y - 28 * S}, true)
 	state.vx = 0
 	state.vy = 0
 	state.facing = state.run_spawn_facing
-	state.camera_x = x
-	state.camera_y = y - 28 * S
 	state.goal_reached = 0
 	state.movement = 0
 	state.redcoins = state.checkpoint_redcoins
@@ -923,17 +926,12 @@ static func valid_state(state: Dictionary) -> bool:
 	return true
 
 
-static func _anchor_x(state: Dictionary) -> int:
-	return int(state.x) - int(state.facing) * 10 * S
-
-
-static func _anchor_y(state: Dictionary) -> int:
-	return int(state.y) - 24 * S
-
-
 static func _attach_position(state: Dictionary) -> void:
-	state.recovery_x = _anchor_x(state)
-	state.recovery_y = _anchor_y(state)
+	var anchor := Pose.companion_anchor(
+		state, state.get("move_action", Moves.NORMAL) == Moves.NORMAL
+	)
+	state.recovery_x = anchor[0]
+	state.recovery_y = anchor[1]
 
 
 ## The bubble's body against terrain: its octagon inside the box that bounds it.

@@ -40,7 +40,10 @@ An optional `created(entity, state, world)` hook runs at map creation, runtime
 birth and camera recreation, before activation. It does not run during placement
 validation or snapshot restoration. Types can stamp saved birth metadata here.
 `CREATION_CULL = true` opts into a distance check at birth, even before activation;
-ordinary distance despawn still requires an active entity.
+a mixed type can instead supply `creation_cull(entity)` to choose by code.
+Ordinary distance despawn still requires an active entity. Birth culling runs
+before passive wave motion. Map travel and respawn set the destination position
+and reference point before invoking birth hooks.
 
 `state.entities` is the single ordered saved entity table. Every placement,
 including an unknown code, gets its original string `id`, its code, common
@@ -67,7 +70,8 @@ when their contact body has not reached the area. Flyers and flowers use their
 reference walking or flying picture footprint, not the narrower contact body.
 A flyer's vertical wave starts at creation and advances while it waits off screen.
 Only creation checks an inactive flyer's distance. Ordinary despawn requires
-activation; recreation starts a new wave.
+activation; recreation starts a new wave. Only the initial map includes the
+hidden intro ticks; a later map reset starts a new wave at zero.
 The shared lifecycle can queue distant actors and recreate them after their
 placement anchor leaves and returns. The distances and flags are common saved
 fields. Load-active pads and static sensors keep their previous timing.
@@ -137,7 +141,10 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    screen (`entity_lifecycle.gd`, see [reference screen](#reference-screen-and-map-borders))
    and the step of every entity, in table order and phase order, including rows
    appended during the loop. An object that wakes in this pass first moves in the
-   next step.
+   next step. An optional type-level `after_advance(state, world)` runs once after
+   every body in that type's `STEP_PHASE`, including bodies whose step returned
+   early. It does not depend on any particular entity reaching a callback.
+   A hook that changes another row's bounds must refresh its query indexes.
 4. `Life.locks_input` holds during a hurt lock (`hurt` above 0) and on the last
    restart step: movement and contacts then see no input and no edges. Unless
    captured, advance Moves. Its `Collision.prepare` carries the player
@@ -168,12 +175,18 @@ Hurt locks are saved in `hurt` (steps left) and `hurt_phase`. A first dry-land h
 starts the knock-back pose with a 38-step lock (`Life.start_hurt(state,
 Life.KNOCKED_LOCK, true)`; the plant's release uses the same call). Landing while
 the knock-back pose lasts starts the look-around: a new 43-step lock
-(`Life.LOOK_AROUND_LOCK`). A hit while the companion is away spins for 63 steps
+(`Life.LOOK_AROUND_LOCK`). The final knocked input-lock tick has the saved
+`HURT_RECOVERED` tag: the pose has cleared and enemy bounces work, but movement
+input remains locked. A hit while the companion is away spins for 63 steps
 without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
 death fades for 32; input works again on the third step after the respawn. Contact
 immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
-A companion catch freezes the world for 51 steps. The companion bubble uses an
-octagon for terrain contact, not its rectangular hull. Captors first move on the
+A companion catch freezes the world for 51 steps. `move_pose.gd` supplies the
+companion's reference attachment point. Steady swimming uses 12 px behind and
+30 px above the feet; floating uses 10 px behind and 32 px above. It reads the
+pre-contact velocity in `move_brake_vx`, because damage changes `vx` before
+separation. Other action poses retain the standing reference. The companion
+bubble uses an octagon for terrain contact, not its rectangular hull. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers
 aside with a hop and a 60-step horizontal ease to rest.
 
@@ -407,8 +420,9 @@ Most enemy collision boxes stay fixed; airborne flyer bounds follow the flight
 frame. Flower activation uses a reference picture, not each frame's changing
 height. The player collider follows actions and posture. Movement tests endpoints
 and pushes out; it is not a continuous sweep.
-Curved motion uses integer approximations. The companion launches, floats and
-returns through saved phases. A lost companion leads through capture, death,
+Curved motion uses integer approximations. Companion attachment uses reference
+saddles, not every animated point; one full-mouth swim frame differs by 1 px
+horizontally. The companion launches, floats and returns through saved phases. A lost companion leads through capture, death,
 fade and respawn phases rather than an immediate reset at countdown zero.
 Item consumers and thrown inventory items use saved requests. More food,
 projectile and liquid interaction variants remain object work.

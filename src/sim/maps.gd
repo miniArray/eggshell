@@ -81,13 +81,14 @@ static func change(
 		return false
 	state.map_index = map_index
 	select_map(world, map_index)
-	reset_map.call(state, world)
 	state.x = target_x
 	state.y = target_y
 	for field: String in ["vx", "vy", "movement", "on_floor", "support_bridge", "captured_by"]:
 		state[field] = 0
 	state.camera_x = target_x
 	state.camera_y = target_y - 28 * S
+	# Birth hooks must see the new reference area, not the camera in the old map.
+	reset_map.call(state, world)
 	return true
 
 

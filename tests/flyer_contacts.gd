@@ -19,11 +19,13 @@ func _initialize() -> void:
 	picture_activation()
 	flight_frame_contacts()
 	runtime_birth()
+	creation_cull_precedes_wave()
+	map_reset_starts_new_wave()
 	print("FLYER_CONTACT_RESULT: %d assertions, %d failures" % [assertions, failures])
 	quit(1 if failures else 0)
 
 
-func course(x: int) -> Dictionary:
+func course(x: int, y: int = 512) -> Dictionary:
 	var world := Fixtures.world()
 	world.layers = []
 	world.bridges = []
@@ -32,7 +34,7 @@ func course(x: int) -> Dictionary:
 	world.spawn_x = 200 * S
 	world.spawn_y = 512 * S
 	var built := World.setup_objects(
-		{"objects": {"flyer": {"A": "e2", "X": x, "Y": 512, "M": 0, "F": 0}}}, world
+		{"objects": {"flyer": {"A": "e2", "X": x, "Y": y, "M": 0, "F": 0}}}, world
 	)
 	check(built.ok, "Synthetic flyer compiles")
 	world.maps = {1: world.duplicate()}
@@ -166,6 +168,28 @@ func runtime_birth() -> void:
 	check(not flyer.is_empty() and flyer.timer == 0, "Runtime birth has no level-intro wave age")
 	Registry.advance(state, world, 0)
 	check(flyer.y == 512 * S + Motion.sine(1, 180, 12 * S), "Runtime wave ignores the level frame")
+
+
+func creation_cull_precedes_wave() -> void:
+	# The anchor is outside 832 px; the intro's negative wave would move it back inside.
+	var world := course(600, 1282)
+	var state := State.create(world)
+	check(state.entities[0].status == 2, "Birth culls the anchor before the intro wave moves it")
+	world = course(600)
+	state = State.create(world)
+	var far := Registry.spawn_dynamic(state, world, "e2", 1500 * S, 512 * S, {})
+	check(not far.is_empty() and far.status == 3, "A distant runtime birth is culled immediately")
+
+
+func map_reset_starts_new_wave() -> void:
+	var world := course(600)
+	var state := State.create(world)
+	state.frame = 1000
+	Registry.spawn_map(state, world)
+	var flyer: Dictionary = state.entities[0]
+	check(flyer.timer == 0 and flyer.y == 512 * S, "Map reset does not replay the level intro wave")
+	Registry.advance(state, world, 0)
+	check(flyer.y == 512 * S + Motion.sine(1, 180, 12 * S), "Reset wave starts at its new birth")
 
 
 func check(ok: bool, message: String) -> void:

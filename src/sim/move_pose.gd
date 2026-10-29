@@ -17,3 +17,25 @@ static func pit_height(state: Dictionary, plain_action: bool) -> int:
 	if state.get("vy", 0) < 0:
 		return (72 if full else 66) * S
 	return (64 if full else 66) * S
+
+
+## Steady water poses have different attachment points from the standing reference.
+## move_brake_vx is the movement velocity before contact damage changes vx.
+static func companion_anchor(state: Dictionary, normal_action: bool) -> Array[int]:
+	var dx := 10
+	var dy := 24
+	if (
+		normal_action
+		and state.get("swimming", 0)
+		and not state.get("hurt", 0)
+		and not state.get("move_water_transition", 0)
+		and not state.get("move_water_jump", 0)
+		and not state.get("move_dive", 0)
+		and not state.get("move_aim", 0)
+		and not state.get("move_duck", 0)
+		and not state.get("move_look", 0)
+	):
+		var moving: bool = state.get("move_brake_vx", state.get("vx", 0)) != 0
+		dx = 12 if moving else 10
+		dy = 30 if moving else 32
+	return [int(state.x) - int(state.facing) * dx * S, int(state.y) - dy * S]

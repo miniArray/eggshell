@@ -47,10 +47,9 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 		return
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
-	# Passive motion may request a creation-only cull before the body's first wake.
-	var despawn_waiting := false
+	# Waiting motion does not repeat the birth-only distance cull.
 	if entity.status == WAITING and type.has_method("waiting_step"):
-		despawn_waiting = type.waiting_step(entity, state, world)
+		type.waiting_step(entity, state, world)
 	var screen_x := Screen.centre_x(state, world)
 	var screen_y := Screen.centre_y(state, world)
 	# Despawning measures the origin, not the box, on each axis.
@@ -66,7 +65,7 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 			entity.status = DEFEATED
 		return
 	var source: Dictionary = dispatch.source_for(entity, world)
-	if (entity.status == ACTIVE or despawn_waiting) and entity.can_despawn and far:
+	if entity.status == ACTIVE and entity.can_despawn and far:
 		entity.status = QUEUED
 		entity.offscreen = 0
 	if entity.status == QUEUED and entity.can_respawn:

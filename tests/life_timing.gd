@@ -7,6 +7,7 @@ const Sim = preload("res://src/sim/step.gd")
 const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Bits = preload("res://src/sim/move_input.gd")
+const Moves = preload("res://src/sim/moves.gd")
 const Courses = preload("res://tests/moves.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const S := 3600
@@ -21,6 +22,7 @@ func _initialize() -> void:
 	restart_checks()
 	dead_body_checks()
 	level_start_checks()
+	swimming_anchor_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -246,6 +248,62 @@ func level_start_checks() -> void:
 		first_input_step(standing, ground, 10) == 1,
 		"input works on the first step after the level start"
 	)
+
+
+func swimming_anchor_checks() -> void:
+	for facing in [-1, 1]:
+		for moving in [false, true]:
+			var world := Courses.water_world()
+			var state := Courses.actor(world)
+			state.y = 500 * S
+			state.facing = facing
+			state.vx = facing * 128 * 60 if moving else 0
+			var input := (Bits.RIGHT if facing > 0 else Bits.LEFT) if moving else 0
+			Sim.advance(state, input, world)
+			check(state.swimming == 1, "the anchor fixture reaches ordinary swimming")
+			var x: int = state.x - facing * (12 if moving else 10) * S
+			var y: int = state.y - (30 if moving else 32) * S
+			Damage.hurt(state, state.x + facing * S)
+			check(state.companion_from_x == x, "water separation uses the pre-hit pose's saddle x")
+			check(
+				state.companion_from_y == y,
+				"water separation uses the swimming or floating saddle y"
+			)
+			var restored := Snapshot.decode(Snapshot.encode(state), state.identity, world)
+			check(restored.ok, "the pose-based companion launch restores")
+			if restored.ok:
+				for tick in 20:
+					Sim.advance(state, 0, world)
+					Sim.advance(restored.state, 0, world)
+				check(
+					Snapshot.encode(state) == Snapshot.encode(restored.state),
+					"the companion launch replays byte exactly"
+				)
+	for flags: Dictionary in [
+		{"move_dive": 1},
+		{"move_water_transition": 2},
+		{"move_water_jump": 1},
+		{"move_aim": 1},
+		{"move_duck": 1},
+		{"move_look": 1},
+		{"hurt": 1},
+		{"move_action": Moves.TONGUE}
+	]:
+		var world := Courses.water_world()
+		var state := Courses.actor(world)
+		state.y = 500 * S
+		state.swimming = 1
+		state.vx = 128 * 60
+		state.move_brake_vx = state.vx
+		state.merge(flags, true)
+		Life.after_step(state, world)
+		check(
+			(
+				state.recovery_x == state.x - state.facing * 10 * S
+				and state.recovery_y == state.y - 24 * S
+			),
+			"non-steady water poses keep their existing reference anchor"
+		)
 
 
 func validation_checks() -> void:

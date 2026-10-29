@@ -16,6 +16,7 @@ var failures := 0
 
 func _initialize() -> void:
 	map_checks()
+	map_birth_reference_checks()
 	goal_checks()
 	tongue_checks()
 	respawn_checks()
@@ -75,6 +76,27 @@ func map_checks() -> void:
 	Registry.attach_views(wrong)
 	var invalid := Snapshot.decode(Snapshot.encode(wrong), world.identity, world)
 	check(not invalid.ok and world.map_index == 2, "Rejected table does not change active geometry")
+
+
+func map_birth_reference_checks() -> void:
+	var world := world_for({"flyer": {"A": "e2", "X": 200, "Y": 100}}, 2)
+	var state := State.create(world)
+	state.x = 1500 * S
+	state.camera_x = state.x
+	check(
+		Maps.change(state, world, 1, 64 * S, 100 * S, Registry.spawn_map),
+		"Map travel with a birth-cull actor succeeds"
+	)
+	check(
+		state.entities[0].status == Registry.WAITING,
+		"Birth culling uses the destination reference, not the old map camera"
+	)
+	var before := Snapshot.encode(state)
+	check(
+		not Maps.change(state, world, 2, 3000 * S, 100 * S, Registry.spawn_map),
+		"An out-of-map destination fails before creating actors"
+	)
+	check(Snapshot.encode(state) == before, "Rejected travel leaves position and camera unchanged")
 
 
 func goal_checks() -> void:
