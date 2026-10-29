@@ -39,6 +39,14 @@ const KNOCKED_LOCK := 38
 const SPIN_LOCK := 63
 const LOOK_AROUND_LOCK := 43
 const MAX_HURT := 63
+# Death and restart timing in steps. An ordinary death waits 240 steps, then fades for 61:
+# the reference game restarts on the step after its 60-step fade completes. A quick death
+# fades for 32. After the respawn the first step holds the body, the second moves it
+# without input, and input works from the third.
+const DEATH_WAIT := 240
+const DEATH_FADE := 61
+const QUICK_FADE := 32
+const RESTART_STEPS := 3
 const COIN := 0
 const RED_COIN := 1
 const FLOWER := 2
@@ -159,7 +167,14 @@ static func before_step(
 
 
 static func blocks_step(state: Dictionary) -> bool:
-	return int(state.get("life_phase", PLAY)) != PLAY
+	# The last restart step runs the world and moves the body, without input.
+	var phase := int(state.get("life_phase", PLAY))
+	return phase != PLAY and not (phase == FADE_IN and int(state.get("life_ticks", 0)) == 1)
+
+
+static func locks_input(state: Dictionary) -> bool:
+	# Movement input is ignored in a hurt pose and on the last restart step.
+	return int(state.get("hurt", 0)) != 0 or int(state.get("life_phase", PLAY)) == FADE_IN
 
 
 static func after_step(state: Dictionary, world: Dictionary) -> void:
@@ -264,7 +279,7 @@ static func kill(state: Dictionary, cause: int = HAZARD, fast: bool = false) -> 
 	state.deaths = _plus_one(int(state.get("deaths", 0)))
 	state.death_cause = cause
 	state.life_phase = FADE_OUT if fast or state.quick_death else DEAD
-	state.life_ticks = 30 if fast or state.quick_death else 240
+	state.life_ticks = QUICK_FADE if fast or state.quick_death else DEATH_WAIT
 	state.vx = 0
 	state.vy = 0
 	state.hurt = 0
@@ -588,7 +603,7 @@ static func _phase_step(
 		DEAD:
 			if state.life_ticks == 0:
 				state.life_phase = FADE_OUT
-				state.life_ticks = 60
+				state.life_ticks = DEATH_FADE
 		FADE_OUT:
 			if state.life_ticks == 0:
 				state.life_phase = RESPAWN
@@ -675,7 +690,7 @@ static func _respawn(
 	state.health = state.checkpoint_health if state.checkpoint_id else 10
 	state.play_ticks = state.checkpoint_play_ticks
 	state.life_phase = FADE_IN
-	state.life_ticks = 30
+	state.life_ticks = RESTART_STEPS
 	_attach_position(state)
 	return true
 

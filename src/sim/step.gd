@@ -39,9 +39,10 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.previous_input = input
 	Collision.begin_step(state, world, Registry)
 	Registry.advance(state, world, pressed)
-	var action := 0 if state.hurt else input
+	var locked := Life.locks_input(state)
+	var action := 0 if locked else input
 	if not state.captured_by:
-		if state.hurt:
+		if locked:
 			pressed = 0
 			released = 0
 		Moves.advance(state, action, world, pressed, released)

@@ -17,6 +17,7 @@ func _initialize() -> void:
 	knocked_lock_checks()
 	look_around_checks()
 	spin_lock_checks()
+	restart_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -126,6 +127,49 @@ func spin_lock_checks() -> void:
 	check(
 		spun.on_floor == 1 and spun.hurt_phase == Life.HURT_NONE,
 		"landing during a spin does not look around"
+	)
+
+
+func restart_checks() -> void:
+	var world := Courses.floor_world()
+	var state := Courses.actor(world)
+	for count in 3:
+		Sim.advance(state, 0, world)
+	state.x += 200 * S
+	# The death lands in this step's contact phase.
+	Life.kill(state, Life.PIT)
+	var ordinary := Life.DEATH_WAIT + Life.DEATH_FADE + Life.RESTART_STEPS
+	check(ordinary == 304, "an ordinary death returns control 304 steps later")
+	check(
+		first_input_step(state, world, 400) == ordinary,
+		"input works again on the 304th step after an ordinary death"
+	)
+	var probe := state.duplicate(true)
+	for count in Life.DEATH_WAIT + Life.DEATH_FADE - 1:
+		Sim.advance(probe, 0, world)
+	check(probe.x != world.spawn_x, "the body stays until the fade completes")
+	Sim.advance(probe, 0, world)
+	check(
+		probe.x == world.spawn_x and probe.life_phase == Life.FADE_IN,
+		"the restart places the player on the step after the fade"
+	)
+	var quick := Courses.actor(world)
+	Sim.advance(quick, 0, world)
+	Life.quick_restart(quick)
+	check(
+		first_input_step(quick, world, 100) == Life.QUICK_FADE + Life.RESTART_STEPS,
+		"input works again on the 35th step after a quick death"
+	)
+	# A respawn point in the air: the body falls one step before input works.
+	var air := Courses.empty_world()
+	var falling := Courses.actor(air)
+	Sim.advance(falling, 0, air)
+	Life.quick_restart(falling)
+	for count in Life.QUICK_FADE + Life.RESTART_STEPS - 1:
+		Sim.advance(falling, Bits.RIGHT, air)
+	check(
+		falling.vy > 0 and falling.vx == 0 and falling.life_phase == Life.FADE_IN,
+		"the last restart step moves the body without input"
 	)
 
 
