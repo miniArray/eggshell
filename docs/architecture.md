@@ -94,11 +94,15 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 7 writes these schemas and the registry's entity schemas.
+Snapshot version 8 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 
 ## Fixed step order
+
+Before a step, and never while the pause menu is open, the game copies the quick
+death setting into the saved player field `quick_death`. Nothing else outside the
+simulation writes play state.
 
 1. Synchronize the selected map and increment the simulation frame. Dispatch
    `Registry.modal_step`; return while a message or switch holds the world.
@@ -106,18 +110,29 @@ byte order, limits, reset flags and compatibility rules.
    change callback. Reset Moves on respawn. Return when `Life.blocks_step` holds.
 3. Sample input edges. Call `Collision.begin_step` immediately before
    `Registry.advance`, capturing the old solid geometry before object motion.
+   `Registry.advance` runs `dispatch_loops.gd`: the camera lifecycle
+   (`entity_lifecycle.gd`) and the step of every entity, in table order and
+   phase order, including rows appended during the loop.
 4. Unless captured, advance Moves. Its `Collision.prepare` carries the player
    using old and new support positions before floor and jump processing. Object
    motion must precede this carry. Water entry/exit braking remains 128/1296.
-5. Dispatch registry contacts. On a not-GOAL to GOAL transition, convert eligible
+5. Dispatch registry contacts (`dispatch_loops.gd`, three contact phases). On a not-GOAL to GOAL transition, convert eligible
    visible active enemy bodies once. Keep the goal pose and delay.
 6. Dispatch `Registry.tongue_contact` with the eating tip sensor. Check companion
    rescue with the full tongue reach, not that tip.
-7. Call `Registry.consume_requests`, then `Life.after_step`, then `Registry.compact`
-   once outside entity loops. Captured players skip movement/contact paths but
+7. Call `Registry.consume_requests` (type-level consumers such as seed, fire and
+   ice shots first, then entity consumers), then `Life.after_step`, then
+   `Registry.compact` once outside entity loops. Captured players skip movement/contact paths but
    still reach request cleanup and compaction.
 8. Save the fixed follow point. Finish the movement pose only during uncaptured
    active play.
+
+Movement, damage, life and some types emit sound events during these phases
+(`SoundEvents.emit`). Listeners compare their saved serial in their own step, so
+they react one step later. Any code in these phases that moves another entity, or
+changes a field its `bounds` read, calls `Collision.refresh(world, entity)`, and
+no phase replaces or removes elements of `state.entities` in place (see
+[query indexes](#query-indexes)).
 
 Life and Maps call their callbacks immediately. They never store callbacks in
 state or world. `move_tongue.gd` supplies read-only tongue geometry; movement
@@ -131,7 +146,7 @@ The game node runs the fixed step and drawing through `src/view/frame_loop.gd`.
 Each physics callback calls `tick`; an advancing callback calls `step`, which
 records the drawn positions, advances the simulation once and lets sound observe
 the new state once. Each rendered frame draws `picture`, then the view reads it.
-The view and sound never write state. Snapshots, saves and activation never read
+The view and sound never write state (the quick death copy above is the one setting that reaches it). Snapshots, saves and activation never read
 zoom, refresh rate, container size or the drawn picture.
 
 On displays faster than 60 Hz, `picture` blends positions between the state

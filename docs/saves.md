@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 7 stores the complete integer play state in little-endian
+Snapshot version 8 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 6 and all other versions are rejected with a log line;
+object families. Version 7 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -45,7 +45,7 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 7 state
+## Composed version 8 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
@@ -55,11 +55,15 @@ Maps owns selected map, map count and collectible targets. Registry and type
 `LEVEL_FIELDS` add the dynamic serial, modal holder, inventory metadata, message
 pages and shared switch timer/sound state. Sound events own `sound_serial`,
 `sound_kind`, `sound_x` and `sound_y` after the map fields (see
-[architecture](architecture.md#sound-events)); with the listening ghost's schema and the
-empty code's blank schema they change the layout from version 7. All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
+[architecture](architecture.md#sound-events)). All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 7 adds the schemas of the next object types (ledges, spans, switches,
+Version 8 adds the four sound-event level fields; the level field
+`element_request_cursor`, which saves how far the fire and ice shot consumer has
+read the player's emission requests; `frozen` and `thaw_ticks` on every enemy
+body that composes the shared body fields (and `frozen` on the launcher); and the
+schemas of the fire and ice shots, the burning bubble, the listening ghost and the
+empty code. Version 7 added the schemas of the next object types (ledges, spans, switches,
 launchers, melons and many walkers and flyers) and the level field
 `seed_request_cursor`, which saves how far the seed consumer has read the
 player's emission requests. Version 6 added the schemas of object types (thorn, colour and growth blocks,

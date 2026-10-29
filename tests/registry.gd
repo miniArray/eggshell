@@ -332,7 +332,7 @@ func snapshot_checks() -> void:
 	state.entities[2].timer = 37
 	state.entities[1].squash = 7
 	var bytes := Snapshot.encode(state)
-	check(not bytes.is_empty() and bytes.decode_u32(8) == 7, "Version seven bytes encoded")
+	check(not bytes.is_empty() and bytes.decode_u32(8) == 8, "Version eight bytes encoded")
 	var decoded := Snapshot.decode(bytes, world.identity, world)
 	check(decoded.ok, "Mixed entity state round trips")
 	if decoded.ok:
@@ -342,8 +342,10 @@ func snapshot_checks() -> void:
 			decoded.state.entities[2].timer == 11, "Restored compatibility view shares dictionaries"
 		)
 	var old := bytes.duplicate()
-	old.encode_u32(8, 6)
-	check(not Snapshot.decode(old, world.identity).ok, "Version six rejected before layout parsing")
+	old.encode_u32(8, 7)
+	check(
+		not Snapshot.decode(old, world.identity).ok, "Version seven rejected before layout parsing"
+	)
 	var corrupt := bytes.duplicate()
 	corrupt[Snapshot.HEADER] ^= 1
 	check(not Snapshot.decode(corrupt, world.identity).ok, "Checksum corruption rejected")

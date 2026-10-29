@@ -51,6 +51,8 @@ Movement reaches running speed without a modifier. Hold jump to flutter.
 Up directs tongue and spit actions upward. Down in the air starts a ground
 pound; in water it selects the submerged posture. Press throw twice to aim
 and throw. Up selects vertical aim; tongue cancels aim.
+Eating a fire or ice melon, or a burning bubble, fills the mouth with fire or
+ice breath; the tongue button then breathes it (up held breathes upward).
 The game automatically resumes the last session by default.
 The pause menu stops play. It offers Resume, Restart level, the manual slot,
 the level list and Settings: zoom, music and effects volume, quick death, a play
@@ -80,10 +82,13 @@ after the separator to silence all audio.
 - Typed decorations, top-only decoration strips and tick-driven effects.
 - Ledges and spans, counting and dice blocks, arrow lifts, launchers, seed melons,
   balloons and more walker, hopper and flyer families.
+- Fire and ice breath: burning and freezing enemies, thawing, lamps lit and put
+  out, and burning bubbles.
+- Saved sound events, which a listening ghost follows.
 - Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
 - Countdown, capture, death and checkpoint respawn phases with a run HUD.
 - Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 7 snapshots with autosave and automatic resume.
+- A type registry and composed version 8 snapshots with autosave and automatic resume.
 - Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 - Player zoom in whole steps, and blended pictures on high-refresh displays.
