@@ -387,6 +387,8 @@ func _producer_checks() -> void:
 	)
 	var state := _placed_state(world)
 	var producer: Dictionary = state.entities[0]
+	# The first tick wakes the producer; its cycle runs from the next.
+	_advance_objects(state, world)
 	for tick in 62:
 		_advance_objects(state, world)
 	_check(

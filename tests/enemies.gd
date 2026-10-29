@@ -120,7 +120,8 @@ func movement_constants(world: Dictionary) -> void:
 	check(absi(player.enemies[0].vx) == 48 * 60, "Walker assigns 48 px/s after its idle wait")
 	test_world = fixture(world, "e2")
 	player = _placed_state(test_world)
-	for tick in 180:
+	# The step that wakes an object does not move it; 180 moves follow.
+	for tick in 181:
 		Sim.advance(player, 0, test_world)
 	check(player.enemies[0].vx == 128 * 60, "Flyer reaches its horizontal tween endpoint")
 	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
@@ -130,6 +131,8 @@ func movement_constants(world: Dictionary) -> void:
 	)
 	test_world = fixture(world, "e3")
 	player = _placed_state(test_world)
+	# It wakes in the first step and first moves in the second.
+	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(player.enemies[0].vx == -48 * 60, "Flower starts walking at 48 px/s")
 	test_world = fixture(world, "e20")
@@ -345,6 +348,8 @@ func lifecycle_checks(world: Dictionary) -> void:
 	)
 	player.x = 200 * S
 	player.camera_x = player.x
+	# The recreated actor wakes in this step and first moves in the next.
+	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(
 		player.enemies[0].status == 1 and player.enemies[0].phase == 1,

@@ -143,6 +143,8 @@ func _quiet_ghost_checks() -> void:
 	check(ghost.heard == state.sound_serial, "A sound before it woke is not news")
 	check(ghost.mode == Ghost.FOCUSING and ghost.anim == Ghost.FOCUS, "It wakes up listening")
 	var facing: int = ghost.facing
+	# The step that wakes it does not run it; its listening time starts in the next.
+	_tick(state, world)
 	_tick(state, world, Ghost.LISTEN_TICKS)
 	check(ghost.mode == Ghost.CONFUSED, "Two quiet seconds of listening confuse it")
 	var flips := 0

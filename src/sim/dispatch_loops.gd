@@ -60,10 +60,12 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 			else:
 				row = null
 			dispatching.append(entity)
+			# An object that wakes on screen first moves in the next step.
+			var awake: bool = entity.status == ACTIVE
 			# The lifecycle returns at once for an active entity that cannot despawn.
-			if entity.status != ACTIVE or entity.can_despawn:
+			if not awake or entity.can_despawn:
 				EntityLifecycle.run(entity, state, world)
-			if entity.status == ACTIVE:
+			if awake and entity.status == ACTIVE:
 				known.type.step(entity, state, world)
 			dispatching.pop_back()
 			dirty.append(entity)

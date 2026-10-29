@@ -68,21 +68,16 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 
 static func begin_level(state: Dictionary, world: Dictionary) -> void:
 	## Level start. Before the first step that reads input the player's body runs for two
-	## steps without input. Objects on screen wake at the end of the first of them and run
-	## in the second, so the world is one tick in when input starts. Step counters stay at
-	## the first step.
+	## steps without input. The world runs with them: objects on screen wake in the first
+	## and first move in the second, so they are one tick in when input starts. Step
+	## counters stay at the first step.
 	for tick in 2:
 		Collision.begin_step(state, world, Registry)
-		if tick == 1:
-			state.camera_x = state.x
-			state.camera_y = state.y - 28 * S
-			Registry.advance(state, world, 0)
+		Registry.advance(state, world, 0)
 		Moves.advance(state, 0, world, 0, 0)
-		if tick == 1:
-			Registry.consume_requests(state, world)
+		Registry.consume_requests(state, world)
 		Life.after_step(state, world)
-		if tick == 1:
-			Registry.compact(state)
+		Registry.compact(state)
 		Moves.finish(state, 0, world)
 	state.camera_x = state.x
 	state.camera_y = state.y - 28 * S
