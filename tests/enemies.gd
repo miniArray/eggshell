@@ -459,6 +459,7 @@ func patrol_order_checks(world: Dictionary) -> void:
 	var fish: Dictionary = state.enemies[0]
 	var moves: Array[int] = []
 	var turn_moves: Array[int] = []
+	var turn_at := -1
 	for tick in 120:
 		var before: int = fish.x
 		var mode: int = fish.mode
@@ -467,6 +468,12 @@ func patrol_order_checks(world: Dictionary) -> void:
 			moves.append(absi(fish.x - before))
 		if mode == 1 and turn_moves.size() < 3:
 			turn_moves.append(absi(fish.x - before))
+		var crossed: bool = (
+			(fish.facing < 0 and fish.x < fish.home_x - fish.fish_left)
+			or (fish.facing > 0 and fish.x > fish.home_x + fish.fish_right)
+		)
+		if mode == 0 and crossed and turn_at < 0:
+			turn_at = tick if fish.mode == 1 else tick + 1000
 	var speeding := moves.filter(func(move: int) -> bool: return move > 0 and move < 7680)
 	check(
 		(
@@ -475,6 +482,10 @@ func patrol_order_checks(world: Dictionary) -> void:
 			and speeding[1] - speeding[0] == 512
 		),
 		"A patrolling fish speeds up by the mean of its old and new speed"
+	)
+	check(
+		turn_at >= 0 and turn_at < 1000,
+		"A fish turn starts on the step whose move crosses the patrol limit"
 	)
 	check(
 		turn_moves == [7680, 7680, 7168],

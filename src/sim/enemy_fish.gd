@@ -4,9 +4,9 @@ extends RefCounted
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
 const S := 3600
-## A turn: the 0.15 s wait and the 0.4 s turn picture (33 ticks), plus one tick each way
-## because a simulated control press reaches the Platform movement on the next tick.
-const TURN_TICKS := 35
+## A turn: the 0.15 s wait and the 0.4 s turn picture (33 ticks), plus one tick because
+## a simulated control press reaches the Platform movement on the next tick.
+const TURN_TICKS := 34
 
 
 static func advance(
@@ -110,15 +110,6 @@ static func advance(
 			enemy.fish_ready = 1
 	else:
 		enemy.vx = approach(enemy.vx, enemy.facing * 128 * 60, 512)
-		if (
-			enemy.variant <= 2
-			and (
-				(enemy.x < enemy.home_x - enemy.fish_left and enemy.facing < 0)
-				or (enemy.x > enemy.home_x + enemy.fish_right and enemy.facing > 0)
-			)
-		):
-			enemy.mode = 1
-			enemy.timer = TURN_TICKS
 		if source.variant == 1 and enemy.water:
 			if not enemy.cycles:
 				enemy.cycles = Motion.random_ticks(state, 60, 180)
@@ -150,6 +141,17 @@ static func advance(
 	elif enemy.mode in [0, 1]:
 		dx = (old_vx + enemy.vx) / 2 if old_vx else 0
 	_translate(enemy, world, bounds, dx, 0)
+	# The patrol turn is tested in the events, after this frame's move.
+	if (
+		enemy.mode == 0
+		and enemy.variant <= 2
+		and (
+			(enemy.x < enemy.home_x - enemy.fish_left and enemy.facing < 0)
+			or (enemy.x > enemy.home_x + enemy.fish_right and enemy.facing > 0)
+		)
+	):
+		enemy.mode = 1
+		enemy.timer = TURN_TICKS
 
 
 static func _translate(
