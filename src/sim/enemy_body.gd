@@ -69,10 +69,7 @@ static func process(entity: Dictionary, state: Dictionary) -> int:
 		entity.vx = 0
 		entity.vy = 0
 		return HELD
-	# A frozen spit already consumed its request, but has not taken its first move.
-	# Wall bounces also reset the age; they are not new mouth releases.
-	var pending: bool = entity.spat and entity.spit_age == 0 and not entity.spit_wall
-	return RELEASED if released or pending else FREE
+	return RELEASED if released else FREE
 
 
 ## Apply saved input consequences without initializing or moving the enemy.

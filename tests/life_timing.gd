@@ -515,7 +515,9 @@ func catch_request_checks() -> void:
 
 
 func catch_held_enemy_checks() -> void:
-	for sequence: Array in [["e3", Bits.USE], ["e1", Bits.USE], ["e3", Bits.DOWN]]:
+	for sequence: Array in [
+		["e3", Bits.USE], ["e1", Bits.USE], ["e33", Bits.USE], ["e3", Bits.DOWN]
+	]:
 		var code: String = sequence[0]
 		var world := Courses.floor_world()
 		var state := Courses.actor(world)
@@ -535,6 +537,7 @@ func catch_held_enemy_checks() -> void:
 			),
 			"the player catches the companion while holding " + code
 		)
+		var released_facing: int = state.facing
 		Sim.advance(state, sequence[1], world)
 		check(
 			not enemy.held and not state.move_held_id,
@@ -548,7 +551,7 @@ func catch_held_enemy_checks() -> void:
 		var restored: Dictionary = decoded.get("state", {})
 		var restored_world := world.duplicate(true)
 		for count in 6:
-			for input: int in [0, Bits.THROW, 0, Bits.THROW]:
+			for input: int in [Bits.LEFT | Bits.JUMP, Bits.THROW, 0, Bits.THROW]:
 				Sim.advance(state, input, world)
 				if decoded.ok:
 					Sim.advance(restored, input, restored_world)
@@ -565,6 +568,13 @@ func catch_held_enemy_checks() -> void:
 			check(
 				enemy.roll != 0,
 				"the first resumed step preserves the enemy-specific release transition"
+			)
+			check(
+				enemy.facing == released_facing and state.facing != released_facing,
+				(
+					"later input cannot redirect an accepted release (player=%d, enemy=%d, release=%d)"
+					% [state.facing, enemy.facing, released_facing]
+				)
 			)
 		check(state == restored, "restoring a frozen enemy release preserves resumed behavior")
 		# A spit that hit a wall also resets its age, but must not replay its release.

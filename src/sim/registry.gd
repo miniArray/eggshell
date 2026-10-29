@@ -283,9 +283,13 @@ static func consume_requests(state: Dictionary, world: Dictionary, frozen := fal
 	if frozen:
 		# Enemy requests normally run inside their steps. Consume held-body events now,
 		# without AI, timers, travel or contacts, before later input expires the history.
-		for entity: Dictionary in state.enemies:
-			if entity.get("held", 0):
-				EnemyBody.consume_requests(entity, state)
+		# Body-schema actors such as gust flyers need not belong to the enemy view.
+		for entity: Dictionary in state.entities:
+			if entity.get("held", 0) and entity.has("spat"):
+				var released := EnemyBody.consume_requests(entity, state)
+				var type := lookup(entity.code)
+				if released and type.has_method("on_spit_release"):
+					type.on_spit_release(entity, state)
 				Collision.refresh(world, entity)
 				EntityGrid.touch(world, entity)
 	for type: Script in _level_consumers:
