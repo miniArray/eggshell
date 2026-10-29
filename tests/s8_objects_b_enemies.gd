@@ -133,11 +133,12 @@ func _flat_walker_ledge_checks() -> void:
 ## A burst knocks a nearby soft walker
 ## aside at 448 px/s, eased to zero over 1 s, with a hop when it stands.
 func _soft_walker_knock_checks() -> void:
-	var world := _ledge_world({"soft": _place("e23", 400, 284), "other": _place("e23", 480, 284)})
+	# Placement ids sort into dispatch order: the bursting row must precede the other.
+	var world := _ledge_world({"first": _place("e23", 400, 284), "other": _place("e23", 480, 284)})
 	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 100 * S
-	var soft := _by_id(state, "soft")
+	var soft := _by_id(state, "first")
 	var other := _by_id(state, "other")
 	var type: Script = Registry.lookup("e23")
 	_activate(soft)
