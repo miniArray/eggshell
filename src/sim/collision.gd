@@ -103,6 +103,7 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 		if holder != null:
 			_place(context, holder, _boxes(holder.type, holder.entity))
 	world.solids_step = context
+	world.erase("floor_at_start")  # Per-step marks of bodies that started on a floor.
 
 
 static func _same_rows(

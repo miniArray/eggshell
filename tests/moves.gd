@@ -758,6 +758,8 @@ func water_checks() -> void:
 	state.y = 400 * S
 	for count in 16:
 		tick(state, 0, world)
+	check(state.swimming == 1 and state.vy == 0, "the lift waits while the delay still runs")
+	tick(state, 0, world)
 	check(state.swimming == 1 and state.vy < 0, "deep water enters with a delayed lift")
 	check(state.hurt_deceleration == 128, "water entry selects the liquid braking value")
 	state.hurt_deceleration = 648
@@ -802,7 +804,7 @@ func water_checks() -> void:
 	)
 	var vy: int = state.vy
 	tick(state, 0, world)
-	check(state.vy == vy / 4 + 256, "surface jump also respects release height")
+	check(state.vy == (vy + 256) / 4, "surface jump release cut follows the water rules")
 	state = actor(world)
 	state.swimming = 1
 	state.y = 352 * S

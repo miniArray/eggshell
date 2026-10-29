@@ -196,8 +196,6 @@ static func advance(
 		elif not state.flutter_ready:
 			state.boosted_flutter = 0
 		state.flutter_ready = 1
-		if state.vy < 0:
-			state.vy /= 4
 	elif not input & InputBits.JUMP and not state.flutter_remaining and not state.flutter_ready:
 		state.flutter_ready = 1
 		state.boosted_flutter = 0
@@ -206,6 +204,8 @@ static func advance(
 		state, input, world, pressed, state.move_action not in [TONGUE, SPIT, EMIT]
 	)
 	var bob: int = water.bob
+	if released & InputBits.JUMP and state.vy < 0:
+		state.vy /= 4  # The release cut follows the water rules of the same step.
 	if water.jump:
 		jump(state)
 	if state.swimming:
@@ -353,7 +353,6 @@ static func advance(
 		if not Collision.overlaps(state, world, NORMAL_BOX, 0, -S):
 			jump(state)
 			state.move_jump_carry = 1
-	state.x = clampi(state.x, 12 * S, world.width - 12 * S)
 	state.move_brake_vx = state.vx
 	Water.finish(state, world, player_box(state))
 	if state.move_action == TONGUE:
