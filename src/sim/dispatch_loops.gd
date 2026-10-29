@@ -10,6 +10,7 @@ const ACTIVE := 1
 static var _registry: Script = null
 ## Per code: the registry's dispatch facts (Registry.facts), read once.
 static var _facts := {}
+static var _phase_finishers := {}
 
 
 ## The registry, resolved at first use to avoid a registry/loops import cycle.
@@ -75,6 +76,24 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 				dirty.append(entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
+		for type: Script in _finishers(phase):
+			type.after_advance(state, world)
+
+
+## A family event runs after every body in its movement phase, including early returns.
+static func _finishers(phase: int) -> Array:
+	var known: Variant = _phase_finishers.get(phase)
+	if known == null:
+		known = []
+		var dispatch := registry()
+		for type: Script in dispatch.TYPES:
+			if (
+				type.has_method("after_advance")
+				and dispatch.phase_for(type, "STEP_PHASE", 0) == phase
+			):
+				known.append(type)
+		_phase_finishers[phase] = known
+	return known
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
