@@ -119,7 +119,10 @@ failed validation cannot replace a valid slot with empty bytes. Play goes on.
 `Snapshot.refusal(state)` names the first failing check: for an entity, its id,
 its code and the field whose default would make it valid (for example
 `entity 55 (e35): timer = -2`). The game logs `Save skipped: invalid snapshot
-state: <reason>` once for each new reason, not on every autosave.
+state: <reason>` once for each new reason, not on every autosave. After a
+refused autosave the game tries again every step, so autosave resumes on the
+first step the state is valid again (`Save resumed at frame N`), then returns
+to every 60 steps (`tests/autosave_retry.gd`).
 `tests/valid_states.gd` plays every registered type on invented terrain with
 seeded input and hook strikes and checks that its state stays valid.
 
