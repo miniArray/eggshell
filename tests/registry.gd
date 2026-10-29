@@ -396,6 +396,18 @@ func snapshot_checks() -> void:
 	check(
 		Snapshot.decode(Snapshot.encode(empty), empty.identity).ok, "Empty entity table round trips"
 	)
+	empty.water_wait = 16
+	empty.move_bounce = 2
+	var limits := Snapshot.decode(Snapshot.encode(empty), empty.identity)
+	check(
+		limits.ok and limits.state.water_wait == 16 and limits.state.move_bounce == 2,
+		"Water lift delay and final bounce phase round trip at their limits"
+	)
+	empty.water_wait = 17
+	check(Snapshot.encode(empty).is_empty(), "Water lift delay above 16 is rejected")
+	empty.water_wait = 16
+	empty.move_bounce = 3
+	check(Snapshot.encode(empty).is_empty(), "Bounce phase above two is rejected")
 	var objects := {}
 	for code: String in Registry.codes():
 		var options := {"A": code, "X": 1, "Y": 2, "E1": "32", "E2": "64"}
