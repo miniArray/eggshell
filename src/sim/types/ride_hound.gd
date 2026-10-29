@@ -36,6 +36,8 @@ const LIQUID_FALL := 704 * 60 / 4
 const NOT_DESTROYED := ["enemy_pellet", "enemy_spike", "enemy_mace"]
 # Body facing left, in pixels around the origin. The back is a 60 x 16 top-only strip.
 const BODY := [-34, -6, 20, 16]
+# Standing picture facing left, in pixels around the origin.
+const IMAGE := [-54, -38, 24, 16]
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -88,6 +90,15 @@ static func bounds(entity: Dictionary) -> Array:
 	if entity.facing < 0:
 		return [BODY[0] * S, BODY[1] * S, BODY[2] * S, BODY[3] * S]
 	return [-BODY[2] * S, BODY[1] * S, -BODY[0] * S, BODY[3] * S]
+
+
+## Waking on screen uses the whole standing picture (78 x 54 px), which reaches higher
+## and farther back than the body.
+static func activation_bounds(entity: Dictionary) -> Array:
+	var box: Array = IMAGE if entity.facing < 0 else [-IMAGE[2], IMAGE[1], -IMAGE[0], IMAGE[3]]
+	return [
+		entity.x + box[0] * S, entity.y + box[1] * S, entity.x + box[2] * S, entity.y + box[3] * S
+	]
 
 
 static func solid_box(entity: Dictionary) -> Array:
