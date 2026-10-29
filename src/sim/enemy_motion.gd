@@ -167,14 +167,17 @@ static func gravity_box(
 	if support != 0 and enemy.vy >= 0:
 		enemy.vy = 0
 		return true
-	enemy.vy = mini(enemy.vy + acceleration, cap)
-	var distance: int = enemy.vy
+	# Platform order: move by the mean of this step's old and new speed (only when the
+	# body already moves), then add gravity unless the step started on a floor.
+	var distance: int = mini(enemy.vy + acceleration / 2, cap) if enemy.vy else 0
 	var actual := Collision.vertical(enemy, world, bounds, distance, support)
 	var landed := (
 		distance >= 0 and (actual != distance or Collision.floor_at(enemy, world, bounds) != 0)
 	)
 	if landed or actual != distance:
 		enemy.vy = 0
+	if not landed and support == 0:
+		enemy.vy = mini(enemy.vy + acceleration, cap)
 	return landed
 
 

@@ -16,6 +16,15 @@ const GRAVITY := 2048
 const MAX_SPEED := 400 * 60
 const MAX_FALL := 704 * 60
 const JUMP_SPEED := 776 * 60
+## Flutter lift: the end timer (0.66 s, 0.82 s boosted) is checked after the frame's
+## damping, so the lift damps on one more step than its whole-step length.
+const FLUTTER_TICKS := 41
+const BOOSTED_FLUTTER_TICKS := 51
+## Flutter delay after a cancel: a 0.266 s timer still counts as running on the step it
+## expires, so the next flutter can start 17 steps after the cancel.
+const FLUTTER_COOLDOWN := 17
+## A flutter that lands lifts the body this far before the next move.
+const FLUTTER_LANDING_LIFT := 2 * S
 const NORMAL_BOX := [-12 * S, -56 * S, 12 * S, 0]
 const NORMAL := 0
 const POUND_START := 1
@@ -118,6 +127,12 @@ const PLAYER_FIELDS := [
 	["move_emit_3_vx", 0],
 	["move_emit_3_vy", 0],
 	["move_spread", 0],
+	# Horizontal speed after the player's own move, before object contacts change it. The
+	# snow brake for the next step is chosen from it.
+	["move_brake_vx", 0],
+	# A jump that started after the move (landing with a buffered jump) still counts as a
+	# jump for the next move, which therefore adds gravity.
+	["move_jump_carry", 0],
 ]
 
 
@@ -169,18 +184,22 @@ static func advance(
 		interrupt(state)
 	var bounds := player_box(state)
 	var can_move := Collision.prepare(state, world, bounds)
-	var support := Collision.track_floor(state, world, bounds)
-	state.on_floor = int(support != 0 and state.vy >= 0)
-	if state.on_floor:
-		state.vy = 0
+	# Rules before the move see the floor only once the body stands on it (no vertical
+	# speed). A body still falling onto the floor settles there just before the move.
+	var support := Collision.track_floor(state, world, bounds, false)
+	state.on_floor = int(support != 0 and state.vy == 0)
 	var was_grounded: bool = state.on_floor != 0
+	var carried_jump: bool = state.move_jump_carry != 0
+	state.move_jump_carry = 0
 	_snow(state, world, bounds)
 	state.jump_buffer = 6 if pressed & InputBits.JUMP else maxi(0, state.jump_buffer - 1)
 	if state.frame <= 1:
 		state.flutter_ready = 1
+	# Releasing jump during a flutter still damps this step; the flutter ends after that.
+	var release_flutter := false
 	if released & InputBits.JUMP:
 		if state.flutter_remaining:
-			cancel_flutter(state)
+			release_flutter = true
 		elif not state.flutter_ready:
 			state.boosted_flutter = 0
 		state.flutter_ready = 1
@@ -205,7 +224,7 @@ static func advance(
 		_actions(state, input, pressed, world)
 	_posture(state, input, world)
 	bounds = player_box(state)
-	var jumping := false
+	var jumping := carried_jump
 	if (
 		not state.swimming
 		and state.on_floor
@@ -217,7 +236,13 @@ static func advance(
 		jump(state)
 		jumping = true
 		bounds = player_box(state)
-	_flutter(state, input)
+	var lift := _flutter(state, input)
+	if release_flutter:
+		state.flutter_remaining = 0
+		state.flutter_cooldown = FLUTTER_COOLDOWN
+		state.move_flutter_flow = 0
+		state.move_gravity_tick = 0
+		state.boosted_flutter = 0
 	var direction := int(bool(input & InputBits.RIGHT)) - int(bool(input & InputBits.LEFT))
 	if state.move_duck or state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 		direction = 0
@@ -260,6 +285,11 @@ static func advance(
 	):
 		state.move_turn = direction
 		state.move_turn_ticks = 30
+	if lift and not Collision.overlaps(state, world, bounds, 0, -FLUTTER_LANDING_LIFT):
+		# After the landing step's other rules: the next move starts from the air.
+		state.y -= FLUTTER_LANDING_LIFT
+		support = Collision.floor_at(state, world, bounds)
+	Collision.settle_floor(state, world, bounds, support)
 	var dx := clampi(state.vx + acceleration / 2, -speed, speed) if state.vx else 0
 	var gravity := _gravity(state)
 	var dy := (
@@ -275,15 +305,18 @@ static func advance(
 	var vertical := dy + bob
 	var moved := Collision.vertical(state, world, bounds, vertical, support) if can_move else 0
 	var floor := Collision.floor_at(state, world, bounds)
-	state.on_floor = int(can_move and vertical >= 0 and (moved != vertical or floor != 0))
+	# Landed: the move hit the floor, or the body did not move vertically and stands on one.
+	# A free fall that ends just above a floor lands on the next step.
+	state.on_floor = int(
+		can_move and ((vertical > 0 and moved != vertical) or (vertical == 0 and floor != 0))
+	)
 	state.support_bridge = maxi(0, floor) if state.on_floor else 0
 	if moved != vertical and vertical < 0 and state.move_action == NORMAL:
 		_set_action(state, HEAD_BUMP)
 	if state.on_floor:
 		state.vy = 0
 		state.boosted_flutter = 0
-		state.flutter_remaining = 0
-		state.flutter_cooldown = 0
+		# A flutter that lands ends on the next step (_flutter); its delay timer keeps running.
 		state.move_gravity_tick = 0
 		if state.move_action == POUND_FALL:
 			_set_action(state, POUND_LAND)
@@ -292,7 +325,9 @@ static func advance(
 			state.move_impact_y = state.y
 		elif not was_grounded and state.move_action == NORMAL:
 			_set_action(state, LAND)
-	elif state.move_action != POUND_START:
+	elif state.move_action != POUND_START and (support == 0 or jumping):
+		# A step that starts on a floor adds no gravity unless it jumps, even when the
+		# body leaves the floor during the move (walking off a ledge, a ground knockback).
 		state.vy = mini(
 			state.vy + gravity, 2 * MAX_FALL if state.move_action == POUND_FALL else MAX_FALL
 		)
@@ -316,7 +351,9 @@ static func advance(
 	):
 		if not Collision.overlaps(state, world, NORMAL_BOX, 0, -S):
 			jump(state)
+			state.move_jump_carry = 1
 	state.x = clampi(state.x, 12 * S, world.width - 12 * S)
+	state.move_brake_vx = state.vx
 	Water.finish(state, world, player_box(state))
 	if state.move_action == TONGUE:
 		_tongue(state, world)
@@ -337,12 +374,15 @@ static func finish(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.movement = 0 if state.vx == 0 else (2 if absi(state.vx) >= 320 * 60 else 1)
 	if not state.on_floor:
 		state.movement = 3 if state.vy < 0 else 4
-	if state.flutter_remaining:
-		state.movement = 6
+		# A flutter that just landed ends on the next step and shows the ground pose.
+		if state.flutter_remaining:
+			state.movement = 6
 
 
 static func jump(state: Dictionary) -> void:
 	Sound.player(state)
+	# The jump pose does not support a flutter.
+	cancel_flutter(state)
 	state.vy = -JUMP_SPEED
 	state.on_floor = 0
 	state.jump_buffer = 0
@@ -372,6 +412,25 @@ static func bounce(state: Dictionary, velocity: int, input: int) -> bool:
 	state.boosted_flutter = 1
 	state.move_gravity_tick = 0
 	return true
+
+
+## How far below the map bottom the player's feet may fall before the pit takes it: the
+## height of the pose the player shows. Airborne poses use the original's frame heights
+## (fall, jump, flutter, hurt; empty or full mouth). Other poses keep the fixed 62 px.
+## Pack independent.
+static func pit_height(state: Dictionary) -> int:
+	if state.get("on_floor", 0) or state.get("swimming", 0):
+		return 62 * S
+	if state.get("move_action", NORMAL) not in [NORMAL, LAND]:
+		return 62 * S
+	var full: bool = state.get("move_held_id", 0) != 0 or state.get("move_ammo_count", 0) != 0
+	if state.get("hurt", 0):
+		return 64 * S
+	if state.get("flutter_remaining", 0):
+		return (70 if full else 68) * S
+	if state.get("vy", 0) < 0:
+		return (72 if full else 66) * S
+	return (64 if full else 66) * S
 
 
 static func player_box(state: Dictionary) -> Array:
@@ -455,7 +514,9 @@ static func _deceleration(state: Dictionary, input: int) -> int:
 		return state.hurt_deceleration
 	if not state.on_floor and not state.swimming:
 		return DECELERATION if input & InputBits.LEFT and input & InputBits.RIGHT else 0
-	if state.move_snow and state.facing * state.vx > 0:
+	# Snow brakes lightly while the body slides against its facing (a reversal or a
+	# shove). The brake is chosen from the speed before the last object contact.
+	if state.move_snow and state.facing * state.move_brake_vx < 0:
 		return 256
 	return DECELERATION
 
@@ -495,14 +556,20 @@ static func _gravity(state: Dictionary) -> int:
 
 static func cancel_flutter(state: Dictionary) -> void:
 	if state.flutter_remaining:
-		state.flutter_cooldown = 16
+		state.flutter_cooldown = FLUTTER_COOLDOWN
 	state.flutter_remaining = 0
 	state.move_flutter_flow = 0
 
 
-static func _flutter(state: Dictionary, input: int) -> void:
+## One flutter step. Returns true when a flutter that landed ends here; the caller then
+## lifts the body before the move.
+static func _flutter(state: Dictionary, input: int) -> bool:
 	if state.swimming or state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
-		return
+		return false
+	if state.flutter_remaining and state.on_floor:
+		state.vx = clampi(state.vx, -256 * 60, 256 * 60)
+		cancel_flutter(state)
+		return true
 	if (
 		not state.on_floor
 		and not state.flutter_remaining
@@ -511,13 +578,15 @@ static func _flutter(state: Dictionary, input: int) -> void:
 		and input & InputBits.JUMP
 		and state.vy > 192 * 60
 	):
-		state.flutter_remaining = 50 if state.boosted_flutter else 40
+		state.flutter_remaining = BOOSTED_FLUTTER_TICKS if state.boosted_flutter else FLUTTER_TICKS
 		state.flutter_ready = 0
 		Sound.player(state)
 		state.vy = mini(state.vy, 392 * 60)
 		state.move_gravity_tick = 0
+		if state.move_action == HEAD_BUMP:
+			_set_action(state, NORMAL)  # The flutter pose replaces the head bump pose.
 	if not state.flutter_remaining:
-		return
+		return false
 	if state.move_flow != state.move_flutter_flow:
 		state.flutter_remaining = maxi(
 			1, state.flutter_remaining + (21 if state.move_flow else -21)
@@ -529,9 +598,10 @@ static func _flutter(state: Dictionary, input: int) -> void:
 	state.vx = clampi(state.vx, -256 * 60, 256 * 60)
 	state.flutter_remaining -= 1
 	if state.flutter_remaining == 0:
-		state.flutter_cooldown = 16
+		state.flutter_cooldown = FLUTTER_COOLDOWN
 		state.move_gravity_tick = 1
 		state.move_flutter_flow = 0
+	return false
 
 
 static func _set_action(state: Dictionary, action: int) -> void:
@@ -907,6 +977,7 @@ static func valid_state(state: Dictionary) -> bool:
 		"move_dive",
 		"move_water_jump",
 		"move_snow",
+		"move_jump_carry",
 		"move_flow",
 		"move_flutter_flow"
 	]:

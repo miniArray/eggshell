@@ -15,6 +15,7 @@ var failures := 0
 
 func _initialize() -> void:
 	motion_checks()
+	platform_order_checks()
 	posture_checks()
 	pound_checks()
 	tongue_checks()
@@ -72,14 +73,14 @@ func motion_checks() -> void:
 	state = actor(world)
 	state.vy = 200 * 60
 	tick(state, Bits.JUMP, world)
-	check(state.flutter_remaining == 39, "ordinary flutter starts a forty-tick lift")
+	check(state.flutter_remaining == 40, "ordinary flutter starts a forty-one-step lift")
 	Moves.set_waterfall_contact(state, true)
 	tick(state, Bits.JUMP, world)
-	check(state.flutter_remaining == 59, "flow contact extends the remaining lift")
+	check(state.flutter_remaining == 60, "flow contact extends the remaining lift")
 	Moves.set_waterfall_contact(state, false)
 	tick(state, Bits.JUMP, world)
-	check(state.flutter_remaining == 37, "leaving flow removes its extension")
-	for count in 37:
+	check(state.flutter_remaining == 38, "leaving flow removes its extension")
+	for count in 38:
 		tick(state, Bits.JUMP, world)
 	check(state.move_gravity_tick > 0, "lift expiration starts gradual gravity recovery")
 	var checkpoint := state.duplicate(true)
@@ -90,6 +91,125 @@ func motion_checks() -> void:
 		state == checkpoint and state.move_gravity_tick == 0,
 		"gravity recovery has a saved exact future"
 	)
+
+
+## Step-order rules shared with the original's platform movement.
+func platform_order_checks() -> void:
+	var world := floor_world()
+	var state := actor(world)
+	state.x = (1024 + 11) * S
+	state.vx = 400 * 60
+	tick(state, Bits.RIGHT, world)
+	check(
+		state.on_floor == 0 and state.vy == 0,
+		"walking off a ledge adds no gravity on the step that leaves the floor"
+	)
+	var y: int = state.y
+	tick(state, Bits.RIGHT, world)
+	check(state.vy == Moves.GRAVITY and state.y == y, "the fall starts on the next step")
+	state = actor(world)
+	tick(state, 0, world)
+	y = state.y
+	state.vy = -384 * 60  # A ground knockback, as a damage contact sets it.
+	tick(state, 0, world)
+	check(
+		state.vy == -384 * 60 and state.y == y - 384 * 60 + Moves.GRAVITY / 2,
+		"a knockback from the floor keeps its speed for one step"
+	)
+	tick(state, 0, world)
+	check(state.vy == -384 * 60 + Moves.GRAVITY, "gravity starts once the body is airborne")
+	world = empty_world()
+	state = actor(world)
+	state.previous_input = Bits.JUMP
+	state.vy = 200 * 60
+	tick(state, Bits.JUMP, world)
+	var damped: int = state.vy
+	check(state.flutter_remaining == Moves.FLUTTER_TICKS - 1, "held jump starts the flutter")
+	tick(state, 0, world)
+	var expected := damped + (-264 * 60 - damped) * 37649 / 1000000 + Moves.GRAVITY
+	check(
+		state.vy == expected and state.flutter_remaining == 0,
+		"releasing jump damps the flutter once more before it ends"
+	)
+	check(state.flutter_cooldown == Moves.FLUTTER_COOLDOWN, "the release starts the delay")
+	var started := -1
+	for count in 20:
+		tick(state, Bits.JUMP, world)
+		if started < 0 and state.flutter_remaining:
+			started = count + 1
+	check(started == Moves.FLUTTER_COOLDOWN, "the next flutter starts 17 steps after a cancel")
+	state = actor(world)
+	state.previous_input = Bits.JUMP
+	state.move_action = Moves.HEAD_BUMP
+	state.vy = 200 * 60
+	tick(state, Bits.JUMP, world)
+	check(
+		state.flutter_remaining > 0 and state.move_action == Moves.NORMAL,
+		"a flutter may start during the head bump pose and replaces it"
+	)
+	world = floor_world()
+	state = actor(world)
+	state.y = 254 * S
+	state.vx = 300 * 60
+	state.vy = 200 * 60
+	state.previous_input = Bits.JUMP
+	state.flutter_remaining = 10
+	state.flutter_ready = 0
+	tick(state, Bits.JUMP, world)
+	var landed: int = state.y
+	check(
+		state.on_floor == 1 and state.flutter_remaining > 0 and state.movement != 6,
+		"a flutter that lands ends on the next step and shows the ground pose"
+	)
+	tick(state, Bits.JUMP, world)
+	check(
+		(
+			state.y == landed - Moves.FLUTTER_LANDING_LIFT
+			and state.vy == Moves.GRAVITY
+			and state.on_floor == 0
+			and state.flutter_remaining == 0
+			and state.flutter_cooldown == Moves.FLUTTER_COOLDOWN
+			and state.vx == 256 * 60 - 1296
+		),
+		"the landing step clamps vx, ends the flutter and lifts the body 2 px"
+	)
+	for count in 4:
+		tick(state, Bits.JUMP, world)
+	check(
+		state.on_floor == 1 and absi(state.y - landed) <= S / 8, "the lifted body lands again"
+	)
+	state = actor(world)
+	state.y = 255 * S
+	state.vy = 100 * 60
+	tick(state, Bits.JUMP, world)
+	check(
+		state.vy == -Moves.JUMP_SPEED and state.move_jump_carry == 1,
+		"a buffered jump starts when the fall settles on the floor"
+	)
+	tick(state, Bits.JUMP, world)
+	check(
+		state.vy == -Moves.JUMP_SPEED + Moves.GRAVITY,
+		"the next move still counts that jump and adds gravity"
+	)
+	state = actor(world)
+	state.x = 20 * S
+	for count in 40:
+		tick(state, Bits.LEFT, world)
+	check(
+		state.vx == 0 and state.x > 12 * S and state.x < 13 * S and state.move_push == 1,
+		"the map side edge stops the player like a wall"
+	)
+	state = actor(world)
+	state.on_floor = 1
+	state.vy = 300 * 60
+	check(Moves.pit_height(state) == 62 * S, "grounded poses keep the fixed pit height")
+	state.on_floor = 0
+	check(Moves.pit_height(state) == 66 * S, "a falling player uses the fall pose height")
+	state.flutter_remaining = 5
+	check(Moves.pit_height(state) == 68 * S, "a fluttering player uses the flutter pose height")
+	state.flutter_remaining = 0
+	state.move_held_id = 7
+	check(Moves.pit_height(state) == 64 * S, "a full mouth uses the full fall pose height")
 
 
 func posture_checks() -> void:
@@ -198,7 +318,7 @@ func pound_checks() -> void:
 	world = empty_world()
 	state.vy = 200 * 60
 	tick(state, Bits.JUMP, world)
-	check(state.flutter_remaining == 49, "bounce permits the extended flutter")
+	check(state.flutter_remaining == 50, "bounce permits the extended flutter")
 
 
 func tongue_checks() -> void:
@@ -586,7 +706,7 @@ func water_checks() -> void:
 	state.flutter_remaining = 20
 	tick(state, Bits.JUMP, world)
 	check(
-		state.flutter_remaining == 0 and state.flutter_cooldown == 16,
+		state.flutter_remaining == 0 and state.flutter_cooldown == Moves.FLUTTER_COOLDOWN,
 		"water entry cancels active flutter with its cooldown"
 	)
 	state = actor(world)
@@ -629,15 +749,31 @@ func water_checks() -> void:
 	check(state.move_snow == 1 and state.vx == 192, "snow contact selects its own acceleration")
 	state = actor(world)
 	state.vx = 100 * 60
+	state.move_brake_vx = state.vx
 	tick(state, Bits.LEFT, world)
 	check(
-		state.vx == 100 * 60 - 1488 and state.facing == -1,
-		"snow reversal faces input and uses stronger braking"
+		state.vx == 100 * 60 - 448 and state.facing == -1,
+		"snow reversal faces input and brakes lightly against the facing"
 	)
 	tick(state, 0, world)
 	check(
-		state.vx == 100 * 60 - 1488 - 1296 and state.facing == -1,
-		"snow release preserves reversal facing and braking"
+		state.vx == 100 * 60 - 448 - 256 and state.facing == -1,
+		"snow release keeps the light brake while sliding against the facing"
+	)
+	state = actor(world)
+	state.vx = 336 * 60
+	tick(state, Bits.RIGHT, world)
+	check(state.vx == 336 * 60 and state.facing == 1, "snow walking keeps its own cap")
+	state.vx = -224 * 60  # An object contact shoves the body back after the move.
+	tick(state, Bits.RIGHT, world)
+	check(
+		state.vx == -224 * 60 + 192 + 1296,
+		"snow brake for the step after a shove comes from the speed before the shove"
+	)
+	tick(state, Bits.RIGHT, world)
+	check(
+		state.vx == -224 * 60 + 192 + 1296 + 192 + 256,
+		"then the backward slide brakes lightly"
 	)
 
 

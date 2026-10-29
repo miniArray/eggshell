@@ -6,6 +6,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const World = preload("res://src/sim/world.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
+const Moves = preload("res://src/sim/moves.gd")
 const PLAY := 0
 const REJOIN := 1
 const DEAD := 2
@@ -151,8 +152,8 @@ static func blocks_step(state: Dictionary) -> bool:
 static func after_step(state: Dictionary, world: Dictionary) -> void:
 	if state.life_phase != PLAY:
 		return
-	# The fixed body height is independent of an animation or graphics pack.
-	if state.y > world.height + 62 * S:
+	# The pose height comes from fixed source metadata, never from a graphics pack.
+	if state.y > world.height + Moves.pit_height(state):
 		kill(state, PIT)
 		return
 	var left: int = state.x + PLAYER_BOX[0]
