@@ -60,6 +60,8 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 			else:
 				row = null
 			dispatching.append(entity)
+			var x: int = entity.x
+			var y: int = entity.y
 			# An object that wakes on screen first moves in the next step.
 			var awake: bool = entity.status == ACTIVE
 			# The lifecycle returns at once for an active entity that cannot despawn.
@@ -68,7 +70,9 @@ static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
 			if awake and entity.status == ACTIVE:
 				known.type.step(entity, state, world)
 			dispatching.pop_back()
-			dirty.append(entity)
+			# A row filed by a fixed box only needs a refile when the entity moved.
+			if not known.grid_fixed or entity.x != x or entity.y != y:
+				dirty.append(entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -106,9 +110,12 @@ static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
 				else:
 					row = null
 				dispatching.append(entity)
+				var x: int = entity.x
+				var y: int = entity.y
 				known.type.contact(entity, state, world, input)
 				dispatching.pop_back()
-				dirty.append(entity)
+				if not known.grid_fixed or entity.x != x or entity.y != y:
+					dirty.append(entity)
 				if row != null:
 					Collision.dispatch_end(world, row)
 

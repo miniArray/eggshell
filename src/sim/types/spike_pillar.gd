@@ -11,6 +11,8 @@ const SOLID := 1
 const STEP_PHASE := -1
 const FIELDS := [["turn", 0]]
 const HALF := 16 * S
+## The constant bounds, for the entity grid (EntityGrid files rows by it).
+const GRID_BOUNDS := {"o13": [-HALF, -HALF, HALF, HALF]}
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:

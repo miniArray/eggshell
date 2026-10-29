@@ -149,6 +149,10 @@ static var _ordered_level_fields := compose_level_schema()
 # answer exactly what a scan of TYPES and get_script_constant_map() would.
 static var _by_code := compose_lookup()
 static var _enemy_codes := {}
+## The table and its size at the last reindexing attach_views. While both are unchanged a
+## new attach would rebuild the same views and family indices, so compact skips it.
+static var _attached_entities: Variant = null
+static var _attached_count := -1
 # Each code's ordered schema is composed once and shared read-only.
 static var _fields_by_code := {}
 static var _facts_by_code := {}
@@ -176,6 +180,8 @@ static func facts(code: String) -> Dictionary:
 			"consume": type.has_method("consume_requests"),
 			"finished": type.has_method("finished"),
 			"toggle": type.has_method("toggle"),
+			# The entity grid files this code by a fixed box: only a move needs a refile.
+			"grid_fixed": (constant(type, "GRID_BOUNDS", {}) as Dictionary).has(code),
 		}
 		_facts_by_code[code] = cached
 	return cached
@@ -531,22 +537,36 @@ static func compact(state: Dictionary) -> void:
 	var captor_token := 0
 	if state.captured_by > 0 and state.captured_by <= state.enemies.size():
 		captor_token = state.enemies[state.captured_by - 1].token
-	var remaining := []
-	for entity: Dictionary in state.entities:
+	var entities: Array = state.entities
+	# Placed rows are a fixed prefix; only runtime rows (the suffix) can leave the table.
+	var first := entities.size()
+	while first > 0 and entities[first - 1].source_index == -1:
+		first -= 1
+	var held: int = state.get("move_held_id", 0)
+	var remaining: Variant = null
+	for index in range(first, entities.size()):
+		var entity: Dictionary = entities[index]
 		if (
-			entity.source_index == -1
-			and entity.status == DEFEATED
-			and entity.token != state.get("move_held_id", 0)
+			entity.status == DEFEATED
+			and entity.token != held
 			and entity.token != captor_token
 			and entity.get("held", 0) != 1
 			and (not facts(entity.code).finished or lookup(entity.code).finished(entity))
 		):
+			if remaining == null:
+				remaining = entities.slice(0, index)
 			continue
-		remaining.append(entity)
+		if remaining != null:
+			remaining.append(entity)
 	# Keep the table when nothing left it, so the entity grid needs no walk next step.
-	if remaining.size() != state.entities.size():
+	if remaining != null:
 		state.entities = remaining
-	attach_views(state)
+	if (
+		remaining != null
+		or not is_same(_attached_entities, state.entities)
+		or _attached_count != state.entities.size()
+	):
+		attach_views(state)
 	if state.captured_by:
 		var captor := find_token(state, captor_token)
 		state.captured_by = captor.family_index + 1 if not captor.is_empty() else 0
@@ -746,6 +766,8 @@ static func attach_views(state: Dictionary, reindex: bool = true) -> void:
 			if reindex:
 				entity.family_index = springs.size()
 			springs.append(entity)
+	_attached_entities = state.entities if reindex else null
+	_attached_count = state.entities.size() if reindex else -1
 
 
 static func is_enemy(code: String) -> bool:

@@ -23,12 +23,17 @@ const CELL := 128 * S
 const MAX_PROBE_CELLS := 64
 ## A region covering more cells than this is kept in a list every query reads.
 const MAX_ROW_CELLS := 256
-## Row layout: [entity, order, left cell, top cell, right cell, bottom cell, refile pass].
+## Row layout: [entity, order, left cell, top cell, right cell, bottom cell, refile pass,
+## filed x, filed y]. The filed position is kept for codes with a fixed grid box.
 const ENTITY := 0
 const ORDER := 1
 const UNFILED := -(1 << 62)
 ## Per code: the type when it has bounds, false when entities are points.
 static var _bounded := {}
+## Per code: a fixed box that holds the code's bounds in every state (the type's
+## GRID_BOUNDS entry), or false. Such rows are filed by that box, so a dispatch that did
+## not move the entity needs no refile. Queries still test the exact bounds.
+static var _grid_boxes := {}
 ## Keeping the grid costs about one refile per dispatched entity per step, and a scan costs
 ## about the same per query. The grid answers a step's queries only when the previous step
 ## asked at least this many; otherwise queries scan. Both give the same answers. Tests set
@@ -63,8 +68,10 @@ static func attach(state: Dictionary, world: Dictionary) -> Dictionary:
 		return grid
 	grid.use = grid.queries >= min_queries
 	grid.queries = 0
-	if not grid.use or not grid.built or grid.dirty.size() > grid.count + 64:
+	if not grid.use or not grid.built or grid.dirty.size() > 3 * grid.count + 64:
 		# Unused this step, or marks piled up: filing again costs less than replaying them.
+		# A step marks each dispatched entity up to three times (step, contact, requests);
+		# most refiles of unmoved rows return early, so replaying is cheaper up to there.
 		grid.built = false
 		grid.dirty.clear()
 	return grid
@@ -201,6 +208,14 @@ static func _bounds_type(code: String, types: Dictionary, fallback: Script) -> V
 	return result
 
 
+static func _grid_box(code: String, types: Dictionary, fallback: Script) -> Variant:
+	var type: Script = types.get(code, fallback)
+	var boxes: Variant = type.get_script_constant_map().get("GRID_BOUNDS")
+	var result: Variant = boxes.get(code, false) if boxes is Dictionary else false
+	_grid_boxes[code] = result
+	return result
+
+
 static func _cell(value: int) -> int:
 	return value / CELL if value >= 0 else -((-value + CELL - 1) / CELL)
 
@@ -273,7 +288,7 @@ static func _add(grid: Dictionary, entity: Dictionary, types: Dictionary, fallba
 	if grid.by_token.has(token):
 		# Tokens identify rows for dispatch marks; a repeated token makes them ambiguous.
 		grid.usable = false
-	var row := [entity, grid.next_order, UNFILED, 0, 0, 0, -1]
+	var row := [entity, grid.next_order, UNFILED, 0, 0, 0, -1, 0, 0]
 	grid.next_order += 1
 	grid.rows.append(row)
 	grid.by_token[token] = row
@@ -293,14 +308,29 @@ static func _file(grid: Dictionary, row: Array, types: Dictionary, fallback: Scr
 	var entity: Dictionary = row[ENTITY]
 	var x: int = entity.x
 	var y: int = entity.y
-	var type: Variant = _bounded.get(entity.code)
-	if type == null:
-		type = _bounds_type(entity.code, types, fallback)
+	var fixed: Variant = _grid_boxes.get(entity.code)
+	if fixed == null:
+		fixed = _grid_box(entity.code, types, fallback)
+	var type: Variant = false
+	if fixed is Array:
+		if row[2] != UNFILED and row[7] == x and row[8] == y:
+			return
+		row[7] = x
+		row[8] = y
+	else:
+		type = _bounded.get(entity.code)
+		if type == null:
+			type = _bounds_type(entity.code, types, fallback)
 	var left := x
 	var top := y
 	var right := x
 	var bottom := y
-	if not type is bool:
+	if fixed is Array:
+		left += fixed[0]
+		top += fixed[1]
+		right += fixed[2]
+		bottom += fixed[3]
+	elif not type is bool:
 		var b: Array = type.bounds(entity)
 		left += mini(b[0], b[2])
 		top += mini(b[1], b[3])
