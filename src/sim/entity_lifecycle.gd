@@ -19,6 +19,23 @@ static func registry() -> Script:
 	return _registry
 
 
+## Birth notification is separate from activation: inactive instances already exist.
+## Only opted-in types use the source's initial distance cull.
+static func created(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	var dispatch := registry()
+	var type: Script = dispatch.lookup(entity.code)
+	if type.has_method("created"):
+		type.created(entity, state, world)
+	if not dispatch.constant(type, "CREATION_CULL", false) or not entity.can_despawn:
+		return
+	if (
+		absi(entity.x - Screen.centre_x(state, world)) > entity.despawn_radius
+		or absi(entity.y - Screen.centre_y(state, world)) > entity.despawn_radius
+	):
+		entity.status = DEFEATED if entity.source_index == -1 else QUEUED
+		entity.offscreen = 0
+
+
 static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if entity.status == DEFEATED or entity.get("held", 0) == 1:
 		return
@@ -65,6 +82,7 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 			fresh.checkpoint_collected = entity.checkpoint_collected
 			for pair: Array in dispatch.fields(entity.code):
 				entity[pair[0]] = fresh[pair[0]]
+			created(entity, state, world)
 			if type.has_method("recreated"):
 				type.recreated(entity, state, world)
 	if entity.status == WAITING:

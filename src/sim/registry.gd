@@ -492,9 +492,10 @@ static func spawn_dynamic(
 	entity.spawn_mode = 0
 	entity.can_respawn = 0
 	entity.status = ACTIVE
+	EntityLifecycle.created(entity, state, world)
 	if not valid(entity):
 		return spawn_error("Runtime options produce invalid entity state")
-	if type.has_method("activate"):
+	if entity.status == ACTIVE and type.has_method("activate"):
 		type.activate(entity, state, world)
 	state.dynamic_serial = serial + 1
 	state.entities.append(entity)
@@ -744,6 +745,7 @@ static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = f
 		if previous.has(entity.id):
 			entity.collected = previous[entity.id]
 			entity.checkpoint_collected = previous[entity.id]
+		EntityLifecycle.created(entity, state, world)
 		state.entities.append(entity)
 	attach_views(state)
 
