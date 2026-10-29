@@ -252,6 +252,11 @@ static func modal_step(
 ) -> bool:
 	if not state.modal_token or entity.code != "o18":
 		return false
+	if state.message_stage == OPENING and entity.enabled:
+		# A message opened outside a step had no step-end request pass to disable the block.
+		entity.enabled = 0
+		entity.solid_ready = 0
+		Collision.refresh(world, entity)
 	var pressed: int = input & ~state.message_previous
 	state.message_previous = input
 	state.previous_input = input
@@ -387,8 +392,11 @@ static func valid_state(state: Dictionary) -> bool:
 		return (
 			not entity.is_empty()
 			and entity.code == "o18"
-			and not entity.enabled
-			and not entity.solid_ready
+			and (
+				not entity.enabled and not entity.solid_ready
+				# Opened in this step: the block stays solid until the step ends.
+				or state.message_stage == OPENING and state.message_ticks == 78
+			)
 			and not entity.collected
 			and (
 				state.message_stage == READING and state.message_ticks == 0
