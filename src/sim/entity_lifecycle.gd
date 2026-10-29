@@ -26,7 +26,10 @@ static func created(entity: Dictionary, state: Dictionary, world: Dictionary) ->
 	var type: Script = dispatch.lookup(entity.code)
 	if type.has_method("created"):
 		type.created(entity, state, world)
-	if not dispatch.constant(type, "CREATION_CULL", false) or not entity.can_despawn:
+	var cull: bool = dispatch.constant(type, "CREATION_CULL", false)
+	if type.has_method("creation_cull"):
+		cull = type.creation_cull(entity)
+	if not cull or not entity.can_despawn:
 		return
 	if (
 		absi(entity.x - Screen.centre_x(state, world)) > entity.despawn_radius

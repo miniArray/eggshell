@@ -26,8 +26,10 @@ const FIELDS := (
 		["roll_bounce", 0],
 		["ground_form", 0],
 		["creation_cull_checked", 0],
+		["birth_frame", -1],
 		["home_x", 0],
 		["fish_finish", 0],
+		["fish_turn_frame", -1],
 		["fish_dry", 0],
 		["rise_duration", 60],
 		["fish_jumps", 3],
@@ -78,6 +80,14 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 		# Initial placements run through the intro; runtime births start at zero.
 		values.timer = Motion.LEVEL_INTRO_TICKS - 2
 	return values
+
+
+static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
+	entity.birth_frame = state.frame
+
+
+static func creation_cull(entity: Dictionary) -> bool:
+	return entity.code in ["e20", "e21"]
 
 
 ## Airborne flyers keep moving while inactive. Only creation checks distance here;
@@ -223,6 +233,8 @@ static func valid(entity: Dictionary) -> bool:
 			or entity.roll_bounce not in [0, 1]
 			or entity.ground_form not in [0, 1]
 			or entity.creation_cull_checked not in [0, 1]
+			or entity.birth_frame < -1
+			or entity.fish_turn_frame < -1
 			or entity.fish_finish < 0
 			or entity.fish_finish > 3
 			or entity.fish_dry not in [0, 1]
