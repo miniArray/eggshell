@@ -25,6 +25,7 @@ const FIELDS := (
 		["roll_grace", 0],
 		["roll_bounce", 0],
 		["ground_form", 0],
+		["creation_cull_checked", 0],
 		["home_x", 0],
 		["fish_finish", 0],
 		["fish_dry", 0],
@@ -79,17 +80,22 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return values
 
 
-## Only airborne flyers keep moving and can despawn before their first activation.
+## Airborne flyers keep moving while inactive. Only creation checks distance here;
+## ordinary distance despawn requires activation.
 static func waiting_step(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> bool:
 	if entity.code != "e2" or entity.ground_form:
 		return false
+	var check_creation: bool = entity.creation_cull_checked == 0
+	entity.creation_cull_checked = 1
 	Behavior.bob(entity, {"y": entity.spawn_y})
-	return true
+	return check_creation
 
 
 static func recreated(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> void:
 	if entity.code == "e2":
 		entity.timer = 0
+		# Recreation already tested the anchor inside 624 px, within the 832 px cull.
+		entity.creation_cull_checked = 1
 
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
@@ -213,6 +219,7 @@ static func valid(entity: Dictionary) -> bool:
 			or entity.roll_grace > 15
 			or entity.roll_bounce not in [0, 1]
 			or entity.ground_form not in [0, 1]
+			or entity.creation_cull_checked not in [0, 1]
 			or entity.fish_finish < 0
 			or entity.fish_finish > 3
 			or entity.fish_dry not in [0, 1]

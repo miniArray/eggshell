@@ -15,6 +15,7 @@ var failures := 0
 
 func _initialize() -> void:
 	creation_relative_wave()
+	inactive_retreat()
 	picture_activation()
 	flight_frame_contacts()
 	runtime_birth()
@@ -74,6 +75,40 @@ func creation_relative_wave() -> void:
 	check(flyer.timer == 0 and flyer.phase == 0, "Recreation resets both independent motions")
 	Registry.advance(state, world, 0)
 	check(flyer.y == 512 * S + Motion.sine(1, 180, 12 * S), "New wave starts on the next tick")
+
+
+func inactive_retreat() -> void:
+	for recreated in [false, true]:
+		var world := course(1500 if recreated else 1200)
+		var state := State.create(world)
+		var flyer: Dictionary = state.entities[0]
+		if recreated:
+			state.camera_x = 1000 * S
+			Registry.advance(state, world, 0)
+		check(flyer.status == 0, "Retreat starts with a created but never activated flyer")
+		var age: int = flyer.timer
+		state.camera_x = 3000 * S
+		Registry.advance(state, world, 0)
+		check(flyer.status == 0, "Retreat beyond despawn distance does not cull an inactive flyer")
+		check(flyer.timer == (age + 1) % 180, "Inactive wave continues during retreat")
+		var restored := Save.decode(Save.encode(state), world.identity)
+		check(restored.ok, "Retreated inactive flyer restores")
+		state.camera_x = 700 * S
+		restored.state.camera_x = state.camera_x
+		Registry.advance(state, world, 0)
+		Registry.advance(restored.state, world, 0)
+		check(flyer.status == 0, "Returning camera keeps the same inactive instance")
+		check(
+			(
+				flyer.timer == (age + 2) % 180
+				and flyer.y == 512 * S + Motion.sine((age + 2) % 180, 180, 12 * S)
+			),
+			"Return preserves the creation-relative wave rather than recreating it"
+		)
+		check(
+			Save.encode(state) == Save.encode(restored.state),
+			"Retreat and return replay after restore"
+		)
 
 
 func picture_activation() -> void:

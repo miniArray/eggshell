@@ -27,7 +27,7 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 		return
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
-	# Some bodies move before activation and can be culled before their first wake.
+	# Passive motion may request a creation-only cull before the body's first wake.
 	var despawn_waiting := false
 	if entity.status == WAITING and type.has_method("waiting_step"):
 		despawn_waiting = type.waiting_step(entity, state, world)
