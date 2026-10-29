@@ -125,7 +125,9 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    apply acceleration, gravity or flutter damping, carry supports, move the body,
    run registry steps or contacts, or change the camera. Consume newly published
    player requests immediately, so repeated input cannot overflow their saved history.
-   Actors created by those events do not move or tick. Hurt locks still apply.
+   Actors created by those events do not move or tick. Held-enemy spit and consume
+   requests also run without enemy steps. A saved spit that has not moved yet keeps
+   its release transition for the first resumed step. Hurt locks still apply.
    The last restart step does not block, so it runs the world and moves the body
    without input.
 3. Sample input edges. Call `Collision.begin_step` immediately before

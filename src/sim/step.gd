@@ -81,7 +81,7 @@ static func _catch_events(state: Dictionary, input: int, world: Dictionary) -> v
 	if state.move_emit_serial != serial:
 		# Input events can create actors, but no actor takes a simulation step here.
 		# Consume now so repeated frozen inputs cannot overrun the saved request history.
-		Registry.consume_requests(state, world)
+		Registry.consume_requests(state, world, true)
 	Moves.finish(state, action, world)
 
 

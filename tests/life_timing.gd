@@ -9,6 +9,8 @@ const Damage = preload("res://src/sim/damage.gd")
 const Bits = preload("res://src/sim/move_input.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
+const Registry = preload("res://src/sim/registry.gd")
+const Body = preload("res://src/sim/enemy_body.gd")
 const Courses = preload("res://tests/moves.gd")
 const Fixtures = preload("res://tests/fixtures.gd")
 const S := 3600
@@ -28,6 +30,7 @@ func _initialize() -> void:
 	catch_water_checks()
 	catch_buffered_jump_checks()
 	catch_request_checks()
+	catch_held_enemy_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -509,6 +512,71 @@ func catch_request_checks() -> void:
 		Snapshot.decode(Snapshot.encode(state), world.identity).ok,
 		"actors created by frozen input events remain valid saved state"
 	)
+
+
+func catch_held_enemy_checks() -> void:
+	for sequence: Array in [["e3", Bits.USE], ["e1", Bits.USE], ["e3", Bits.DOWN]]:
+		var code: String = sequence[0]
+		var world := Courses.floor_world()
+		var state := Courses.actor(world)
+		var enemy := Registry.spawn_dynamic(
+			state, world, code, state.x + 24 * S, state.y - 24 * S, {}
+		)
+		state.move_action = Moves.TONGUE
+		state.move_tongue_phase = Moves.TONGUE_OUT
+		check(Body.tongue(enemy, state) == 1, "the player holds the synthetic " + code)
+		for count in 12:
+			Sim.advance(state, 0, world)
+		Moves.give_eggs(state, 6)
+		Life.separate(state, 0, true)
+		check(
+			Life.catch_companion(
+				state, state.x - 32 * S, state.y - 80 * S, state.x + 32 * S, state.y
+			),
+			"the player catches the companion while holding " + code
+		)
+		Sim.advance(state, sequence[1], world)
+		check(
+			not enemy.held and not state.move_held_id,
+			"a frozen spit or swallow immediately releases " + code
+		)
+		if sequence[1] == Bits.DOWN:
+			check(enemy.status == 3, "a frozen swallow removes the held enemy immediately")
+		var at := [enemy.x, enemy.y]
+		var decoded := Snapshot.decode(Snapshot.encode(state), world.identity)
+		check(decoded.ok, "a frozen enemy release restores from saved state")
+		var restored: Dictionary = decoded.get("state", {})
+		var restored_world := world.duplicate(true)
+		for count in 6:
+			for input: int in [0, Bits.THROW, 0, Bits.THROW]:
+				Sim.advance(state, input, world)
+				if decoded.ok:
+					Sim.advance(restored, input, restored_world)
+		check(
+			not enemy.held and [enemy.x, enemy.y] == at and enemy.spit_age == 0,
+			"frozen releases survive more than four later requests without enemy motion"
+		)
+		while state.life_phase == Life.REJOIN:
+			Sim.advance(state, 0, world)
+			if decoded.ok:
+				Sim.advance(restored, 0, restored_world)
+		check(not enemy.held, "resuming never strands the spat enemy in the mouth")
+		if code == "e1":
+			check(
+				enemy.roll != 0,
+				"the first resumed step preserves the enemy-specific release transition"
+			)
+		check(state == restored, "restoring a frozen enemy release preserves resumed behavior")
+		# A spit that hit a wall also resets its age, but must not replay its release.
+		var wall := enemy.duplicate(true)
+		wall.status = 1
+		wall.held = 0
+		wall.spat = 1
+		wall.spit_age = 0
+		wall.spit_wall = 1
+		check(
+			Body.process(wall, state) == Body.FREE, "a wall bounce is not a pending mouth release"
+		)
 
 
 func validation_checks() -> void:

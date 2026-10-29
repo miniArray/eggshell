@@ -60,6 +60,23 @@ static func process(entity: Dictionary, state: Dictionary) -> int:
 		entity.impact_cursor = int(state.get("move_impact", 0))
 		if entity.mirror == 2:
 			entity.facing = 1 if state.x > entity.x else -1
+	var released := consume_requests(entity, state)
+	if entity.status == 3:
+		return GONE
+	if entity.held:
+		entity.x = state.x + state.facing * 24 * S
+		entity.y = state.y - 24 * S
+		entity.vx = 0
+		entity.vy = 0
+		return HELD
+	# A frozen spit already consumed its request, but has not taken its first move.
+	# Wall bounces also reset the age; they are not new mouth releases.
+	var pending: bool = entity.spat and entity.spit_age == 0 and not entity.spit_wall
+	return RELEASED if released or pending else FREE
+
+
+## Apply saved input consequences without initializing or moving the enemy.
+static func consume_requests(entity: Dictionary, state: Dictionary) -> bool:
 	var result := Requests.since(state, entity.request_cursor)
 	var released := false
 	if result.ok:
@@ -82,15 +99,7 @@ static func process(entity: Dictionary, state: Dictionary) -> int:
 					entity.facing = signi(request.vx)
 				released = true
 	entity.request_cursor = int(state.get("move_emit_serial", 0))
-	if entity.status == 3:
-		return GONE
-	if entity.held:
-		entity.x = state.x + state.facing * 24 * S
-		entity.y = state.y - 24 * S
-		entity.vx = 0
-		entity.vy = 0
-		return HELD
-	return RELEASED if released else FREE
+	return released
 
 
 static func tongue(

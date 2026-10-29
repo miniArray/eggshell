@@ -2,6 +2,7 @@ extends RefCounted
 ## Object dispatch and ordered int64 schemas. Placement options stay in the world.
 
 const Actor = preload("res://src/sim/types/actor.gd")
+const EnemyBody = preload("res://src/sim/enemy_body.gd")
 const Pad = preload("res://src/sim/types/pad.gd")
 const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
@@ -278,7 +279,15 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 	return paused
 
 
-static func consume_requests(state: Dictionary, world: Dictionary) -> void:
+static func consume_requests(state: Dictionary, world: Dictionary, frozen := false) -> void:
+	if frozen:
+		# Enemy requests normally run inside their steps. Consume held-body events now,
+		# without AI, timers, travel or contacts, before later input expires the history.
+		for entity: Dictionary in state.enemies:
+			if entity.get("held", 0):
+				EnemyBody.consume_requests(entity, state)
+				Collision.refresh(world, entity)
+				EntityGrid.touch(world, entity)
 	for type: Script in _level_consumers:
 		type.consume_level_requests(state, world)
 	DispatchLoops.consume_requests(state, world)
