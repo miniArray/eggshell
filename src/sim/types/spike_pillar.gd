@@ -4,7 +4,6 @@ extends RefCounted
 
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
-const Hull = preload("res://src/sim/player_hull.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o13"]
@@ -59,10 +58,8 @@ static func spike_box(entity: Dictionary) -> Array:
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
 	if entity.status != 1 or state.get("captured_by", 0):
 		return
-	var spike := spike_box(entity)
-	if Hull.misses(state, spike[0], spike[1], spike[2], spike[3]):
-		return
 	var box := Moves.player_box(state)
+	var spike := spike_box(entity)
 	if (
 		state.x + box[2] > spike[0]
 		and state.x + box[0] < spike[2]

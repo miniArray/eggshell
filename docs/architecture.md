@@ -366,10 +366,6 @@ side effects. None of them enters snapshots.
   than the message block, falling spans). The grid files those entities by that
   box, and the step and contact loops mark them only when they moved. Queries
   still test the exact bounds. A type must not name a box its bounds can leave.
-- `src/sim/player_hull.gd` holds a hull around every box `Moves.player_box`
-  returns (`tests/player_hull.gd` checks it). Contact tests may return early
-  when the hull misses their area; a change to the player boxes must keep the
-  hull around them.
 - **Contract for types (all entities):** code that moves another entity, or
   changes a field its `bounds` read (a hit that changes its form, for example),
   must call `Collision.refresh(world, entity)` (`NearQuery.refresh_solid` in
