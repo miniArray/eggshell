@@ -35,7 +35,7 @@ static func advance(enemy: Dictionary, state: Dictionary, world: Dictionary, pre
 		enemy.phase += 1
 		enemy.timer -= 1
 		if enemy.phase == 30:
-			Damage.separate(state, -enemy.facing * 400 * 60)
+			Damage.separate(state, -enemy.facing * 400 * 60, world)
 		if enemy.phase > 60 and pressed & 4:
 			enemy.timer = maxi(0, enemy.timer - 30)
 		if enemy.timer == 0:

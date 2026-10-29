@@ -313,7 +313,7 @@ static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, in
 		and state.get("companion_mode", Life.ATTACHED) == Life.ATTACHED
 	):
 		# A touch from the side takes the companion straight into a bubble the thief carries.
-		Damage.separate(state, 0)
+		Damage.separate(state, 0, world)
 		if bubble_out(state):
 			_grab(entity, state)
 			entity.saw_bubble = 1

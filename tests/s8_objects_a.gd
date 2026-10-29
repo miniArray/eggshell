@@ -298,6 +298,15 @@ func thief_checks() -> void:
 		state.separated == 1 and state.companion_mode == Life.BUBBLE, "A touch takes the companion"
 	)
 	check(thief.carrying == 1 and thief.plan == type.EVADE, "The thief carries the bubble away")
+	var empty := _placed_state(world)
+	var robber := _by_id(empty, "thief")
+	robber.status = 1
+	robber.started = 1
+	empty.x = robber.x + 10 * S
+	empty.y = robber.y + 16 * S
+	empty.health = 0
+	type.contact(robber, empty, world, 0)
+	check(empty.rescue_active == 1, "A touch at zero summons the captors at once")
 	Collision.begin_step(state, world, Registry)
 	type.step(thief, state, world)
 	check(state.recovery_x == thief.x, "The bubble rides on the thief")

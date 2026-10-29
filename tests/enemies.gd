@@ -287,6 +287,15 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 	for tick in 20:
 		Sim.advance(player, 0, plant_world)
 	check(player.captured_by == 1, "Unfrozen plant head captures from above")
+	var emptied := player.duplicate(true)
+	emptied.health = 0
+	var summoned := false
+	for tick in 60:
+		Sim.advance(emptied, 0, plant_world)
+		if emptied.separated:
+			summoned = emptied.rescue_active == 1
+			break
+	check(summoned, "A plant capture at zero summons the captors in the separating step")
 	var captor: Dictionary = player.enemies[0]
 	check(captor.head_size == 15, "Head growth continues to native size during capture")
 	check(
