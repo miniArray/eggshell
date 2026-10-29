@@ -32,7 +32,8 @@ func damage_checks() -> void:
 		state.vx == -656 * 60 and state.vy == -384 * 60, "Damage reverses velocity before knockback"
 	)
 	check(
-		state.invulnerable == 120 and state.hurt == 36, "Damage starts immunity and first hurt lock"
+		state.invulnerable == 120 and state.hurt == Life.KNOCKED_LOCK,
+		"Damage starts immunity and first hurt lock"
 	)
 	check(
 		state.separated == 1 and state.companion_mode == Life.LAUNCH, "Hit separates the companion"
@@ -48,7 +49,10 @@ func damage_checks() -> void:
 	state.invulnerable = 0
 	state.health_wait = 17
 	Damage.hurt(state, state.x - 100 * S)
-	check(state.hurt == 60 and state.health_wait == 17, "Separated hit keeps countdown progress")
+	check(
+		state.hurt == Life.SPIN_LOCK and state.health_wait == 17,
+		"Separated hit keeps countdown progress"
+	)
 	check(state.hits == 1, "Separated hit is not a second companion loss")
 	state = player(world)
 	state.swimming = 1
@@ -61,7 +65,7 @@ func damage_checks() -> void:
 	check(state.hurt == 0, "First swimming hit separates without a dry-land hurt lock")
 	state.invulnerable = 0
 	Damage.hurt(state, state.x + S)
-	check(state.hurt == 60, "Already-separated swimming hit uses the spin lock")
+	check(state.hurt == Life.SPIN_LOCK, "Already-separated swimming hit uses the spin lock")
 	check(
 		state.hurt_deceleration == 128 and Life.valid_state(state),
 		"Swimming spin keeps the water deceleration in valid state"
