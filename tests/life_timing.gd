@@ -479,11 +479,20 @@ func catch_request_checks() -> void:
 	var world := Courses.empty_world()
 	var state := caught_player(world)
 	state.move_eggs = 6
+	var restored := {}
+	var restored_world := world.duplicate(true)
 	for count in 6:
-		Sim.advance(state, Bits.THROW, world)
-		Sim.advance(state, 0, world)
-		Sim.advance(state, Bits.THROW, world)
-		Sim.advance(state, 0, world)
+		if count == 3:
+			var decoded := Snapshot.decode(Snapshot.encode(state), world.identity)
+			check(decoded.ok, "a catch with pending future throws restores from a snapshot")
+			restored = decoded.get("state", {})
+		for input: int in [Bits.THROW, 0, Bits.THROW, 0]:
+			Sim.advance(state, input, world)
+			if not restored.is_empty():
+				Sim.advance(restored, input, restored_world)
+	check(
+		state == restored, "restoring during frozen throws preserves all subsequent input effects"
+	)
 	check(
 		(
 			state.entities.size() == 6
