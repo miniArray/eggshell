@@ -64,7 +64,7 @@ static func prepare(
 	if deep:
 		if not state.water_deep:
 			state.vy = 0
-			state.water_wait = 15
+			state.water_wait = 16
 		if state.water_wait:
 			state.water_wait -= 1
 		else:

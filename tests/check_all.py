@@ -33,6 +33,7 @@ def main():
         "terrain_memo",
         "collision_index",
         "moves",
+        "move_order",
         "move_input",
         "life",
         "life_timing",

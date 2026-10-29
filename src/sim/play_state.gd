@@ -165,7 +165,7 @@ static func valid(state: Dictionary) -> bool:
 		["jump_buffer", 0, 6],
 		["flutter_remaining", 0, 72],
 		["flutter_cooldown", 0, 17],
-		["water_wait", 0, 15],
+		["water_wait", 0, 16],
 		["water_phase", 0, 59]
 	]:
 		if state[limit[0]] < limit[1] or state[limit[0]] > limit[2]:

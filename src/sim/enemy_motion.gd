@@ -136,6 +136,10 @@ static func move(
 		return 0
 	var support := Collision.floor_at(enemy, world, bounds)
 	if horizontal:
+		if support != 0 and enemy.get("vy", 0) >= 0 and enemy.has("id"):
+			# A body that walks off its floor this step still started on it (see gravity_box).
+			var started: Dictionary = world.get_or_add("floor_at_start", {})
+			started[enemy.id] = true
 		return Collision.horizontal(enemy, world, bounds, distance, support, false, 640 * 60)
 	return Collision.vertical(enemy, world, bounds, distance, support)
 
@@ -170,6 +174,11 @@ static func gravity_box(
 	if support != 0 and enemy.vy >= 0:
 		enemy.vy = 0
 		return true
+	var started: Dictionary = world.get("floor_at_start", {})
+	if enemy.vy == 0 and started.has(enemy.get("id", "")):
+		# Walked off its floor during this step's horizontal move: no gravity yet.
+		started.erase(enemy.id)
+		return false
 	# Platform order: move by the mean of this step's old and new speed (only when the
 	# body already moves), then add gravity unless the step started on a floor.
 	var distance: int = mini(enemy.vy + acceleration / 2, cap) if enemy.vy else 0
