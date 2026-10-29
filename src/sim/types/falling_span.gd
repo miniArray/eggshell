@@ -5,6 +5,7 @@ const SOLID := 2
 const S := preload("res://src/sim/units.gd").SCALE
 const Collision = preload("res://src/sim/collision.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Screen = preload("res://src/sim/screen.gd")
 # Age tags: 0 idle, 1..72 arming, 73..125 falling (animation stops at 125).
 const FIELDS := [["age", 0], ["home_y", 0], ["respawns", 0]]
 const BOX := [-16 * S, -16 * S, 16 * S, 16 * S]
@@ -33,7 +34,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 				entity, world, BOX, entity.vy, Collision.floor_at(entity, world, BOX)
 			)
 		entity.vy = mini(192 * 60, entity.vy + 256)
-	if entity.y <= state.camera_y + 832 * S:
+	if entity.y <= Screen.centre_y(state, world) + 832 * S:
 		return
 	if entity.respawns:
 		entity.age = 0

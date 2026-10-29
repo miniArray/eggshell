@@ -58,7 +58,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	entity.phase += 1
 	if entity.phase < (30 if entity.fast_loop else 66):
 		return
-	var available := amount(entity, state)
+	var available := amount(entity, state, world)
 	var burst := mini(10 if entity.fast else 1, available)
 	entity.fast_loop = entity.fast
 	for index in burst:
@@ -69,10 +69,10 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	entity.phase = 0
 
 
-static func amount(entity: Dictionary, state: Dictionary) -> int:
+static func amount(entity: Dictionary, state: Dictionary, world: Dictionary) -> int:
 	if entity.payload in [0, 2]:
 		var eggs: Script = registry().lookup("o7")
-		return maxi(0, 6 - eggs.active_count(state))
+		return maxi(0, 6 - eggs.active_count(state, world))
 	if entity.payload == 1:
 		return maxi(0, 30 - state.health)
 	return 0

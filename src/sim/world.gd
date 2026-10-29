@@ -14,6 +14,10 @@ const MAX_CHUNKS := 16
 const MAX_TERRAIN_HITS := 1 << 16
 const LAVA_LAYERS := ["lava", "lava_1", "lava_2", "lava_3", "lava_4"]
 const SPIKE_LAYER := "ySSpikes"
+## Each side of a map has a solid border 32 px wide, from 480 px above the map down to
+## its bottom edge. It keeps bodies inside the map; below the map the sides are open.
+const BORDER_WIDTH := 32 * S
+const BORDER_ABOVE := 480 * S
 
 
 static func build(code: String, facts: Dictionary) -> Dictionary:
@@ -263,7 +267,18 @@ static func overlaps(world: Dictionary, x: int, y: int) -> bool:
 
 ## Terrain never changes after loading, so a map remembers recent answers per probe box.
 ## Bodies held inside terrain repeat the same push-out probes every step.
+## Solid terrain or a side border.
 static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
+	return (
+		border_overlaps(world, left, top, right, bottom)
+		or tiles_overlap_box(world, left, top, right, bottom)
+	)
+
+
+## Solid terrain tiles only, without the side borders.
+static func tiles_overlap_box(
+	world: Dictionary, left: int, top: int, right: int, bottom: int
+) -> bool:
 	var hits: Variant = world.get("terrain_hits")
 	var key := [left, top, right, bottom]
 	if hits != null:
@@ -280,6 +295,19 @@ static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bot
 			hits.clear()
 		hits[key] = hit
 	return hit
+
+
+## True when the box reaches into a side border: past the map's left or right edge, beside
+## the map or above it. A box that only touches an edge stays outside the border.
+static func border_overlaps(
+	world: Dictionary, left: int, top: int, right: int, bottom: int
+) -> bool:
+	if top >= world.get("height", 0) or bottom <= -BORDER_ABOVE:
+		return false
+	if left < 0 and right > -BORDER_WIDTH:
+		return true
+	var width: int = world.get("width", 0)
+	return width > 0 and right > width and left < width + BORDER_WIDTH
 
 
 ## Layers, in draw order, that can answer layer_overlaps() true for this probe: those with

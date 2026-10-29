@@ -7,6 +7,7 @@ const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const Elements = preload("res://src/sim/elements.gd")
+const Screen = preload("res://src/sim/screen.gd")
 ## Fire and ice breath opens the cloud at once, even while it is hidden.
 const ELEMENT_REACTIONS := Elements.OPENS
 const FIELDS := [
@@ -18,6 +19,9 @@ const REVEALED := 2
 const OPENING := 3
 const MAX_RELEASE := 1024
 const FLAP := [0, 1, 2, 3, 2, 1]
+## The original creates the cache at level load and its wave runs through the level
+## intro, so at the first step the wave has already run 152 steps.
+const INTRO_PHASE := 152
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -50,6 +54,7 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 		"content": int(source.cache_content),
 		"count": int(source.cache_count),
 		"phase": int(source.cache_phase),
+		"age": INTRO_PHASE,
 		"home_y": int(source.y)
 	}
 
@@ -67,7 +72,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	entity.age = (entity.age + 1) % 180
 	entity.y = entity.home_y + Motion.sine(entity.age, 180, 16 * S)
-	if entity.phase == REVEALED and not _on_screen(entity, state):
+	if entity.phase == REVEALED and not _on_screen(entity, state, world):
 		entity.phase = HIDDEN
 
 
@@ -84,16 +89,17 @@ static func _frame(entity: Dictionary) -> int:
 	return FLAP[entity.age * 16 / 60 % FLAP.size()]
 
 
-static func _on_screen(entity: Dictionary, state: Dictionary) -> bool:
+static func _on_screen(entity: Dictionary, state: Dictionary, world: Dictionary) -> bool:
 	var frame := _frame(entity)
 	var half: int = [30, 36, 42, 34][frame] * S
 	var top: int = [28, 18, 14, 12][frame] * S
 	var bottom: int = [14, 16, 18, 26][frame] * S
+	var screen := Screen.area(state, world)
 	return (
-		entity.x + half >= state.camera_x - 416 * S
-		and entity.x - half <= state.camera_x + 416 * S
-		and entity.y + bottom >= state.camera_y - 224 * S
-		and entity.y - top <= state.camera_y + 224 * S
+		entity.x + half >= screen[0]
+		and entity.x - half <= screen[2]
+		and entity.y + bottom >= screen[1]
+		and entity.y - top <= screen[3]
 	)
 
 

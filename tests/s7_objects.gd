@@ -772,17 +772,28 @@ func hound_checks() -> void:
 	check((dog.x - start) * dog.facing > 20 * S, "A rider makes it run the way the rider faces")
 	check(absi(state.x - dog.x) < 30 * S and state.y < dog.y - 30 * S, "The rider is carried")
 	var enemy_world := _hound_world(
-		{"dog": _place("o16", 1000, 284), "walker": _place("e7", 960, 284)}
+		{
+			"dog": _place("o16", 1000, 284),
+			"walker": _place("e7", 960, 284),
+			"stilts": _place("e35", 1000, 284, {"E1": "82", "F": 2, "M": 1}),
+			"giant": _place("e24", 990, 284, {"M": 2}),
+			"frozen": _place("e4", 1010, 284),
+		}
 	)
 	state = State.create(enemy_world)
 	dog = _by_id(state, "dog")
-	var walker := _by_id(state, "walker")
+	var touched := ["walker", "stilts", "giant", "frozen"]
+	for id: String in touched:
+		_by_id(state, id).status = 1
+	_by_id(state, "frozen").frozen = 1
 	dog.status = 1
-	walker.status = 1
 	dog.vx = -100 * 60
 	Collision.begin_step(state, enemy_world, Registry)
-	type._flatten(dog, state, enemy_world, type.bounds(dog))
-	check(walker.status == Registry.DEFEATED, "A moving runner defeats an enemy it touches")
+	type._destroy_enemies(dog, state, enemy_world, type.bounds(dog))
+	check(
+		touched.all(func(id: String) -> bool: return _by_id(state, id).status == Registry.DEFEATED),
+		"A moving runner destroys every enemy it touches, whatever its strike reactions"
+	)
 	var egg := {"code": "o7", "x": dog.x - 20 * S, "mode": 1, "token": 77, "vx": 1, "vy": 0}
 	dog.playing = 0
 	dog.ridden = 0
@@ -812,6 +823,93 @@ func hound_checks() -> void:
 	check(lowest < 260 * S and dog.y < 200 * S, "It floats with its back at the surface")
 	check(dog.x > 400 * S, "Paddle strokes carry it toward the player")
 	check(type.valid(dog), "Swimming state stays valid")
+	# Lava is a liquid to the runner too: it swims there instead of sinking through.
+	var hot := _world_for({"dog": _place("o16", 400, 200)})
+	var lava_layer := _tile_layer("lava", wet, 32, [0, 0, 32, 0, 32, 32, 0, 32], false)
+	lava_layer.solid = false
+	hot.layers = [lava_layer]
+	state = State.create(hot)
+	dog = _by_id(state, "dog")
+	dog.status = 1
+	state.x = 900 * S
+	state.y = 100 * S
+	lowest = dog.y
+	var fastest := 0
+	for tick in 240:
+		Collision.begin_step(state, hot, Registry)
+		type.step(dog, state, hot)
+		lowest = maxi(lowest, dog.y)
+		if dog.swimming:
+			fastest = maxi(fastest, dog.vy)
+	check(dog.swimming == 1 and dog.status == 1, "The runner swims in lava")
+	check(lowest < 260 * S and dog.y < 200 * S, "It floats in lava as in water")
+	check(fastest <= 704 * 60 / 4, "In a liquid it falls at most a quarter of its fall speed")
+	# An enemy standing on the back moves with the runner.
+	var ride_world := _hound_world(
+		{"dog": _place("o16", 1000, 284), "walker": _place("e4", 1000, 200)}
+	)
+	state = State.create(ride_world)
+	dog = _by_id(state, "dog")
+	var rider := _by_id(state, "walker")
+	dog.status = 1
+	rider.status = 1
+	Collision.begin_step(state, ride_world, Registry)
+	rider.y = dog.y - 48 * S
+	rider.vy = 0
+	dog.vy = -600 * 60
+	var dog_y: int = dog.y
+	var rider_y: int = rider.y
+	type.step(dog, state, ride_world)
+	check(
+		dog.y < dog_y and rider.y - rider_y == dog.y - dog_y,
+		"An enemy standing on the back rises with the runner"
+	)
+	check(rider.status == 1, "A rider on the back is not touched by the runner's body")
+	map_border_checks()
+
+
+func map_border_checks() -> void:
+	# Solid borders 32 px wide stand beside the map from 480 px above it to its bottom.
+	var world := _world_for(
+		{
+			"floor": _place("p2", 400, 316, {"E1": "800"}),
+			"walker": _place("e4", 40, 300),
+		}
+	)
+	var width: int = world.width
+	var height: int = world.height
+	check(World.border_overlaps(world, -S, 0, S, S), "The left border is solid beside the map")
+	check(
+		World.border_overlaps(world, width - S, -400 * S, width + S, -399 * S),
+		"The right border reaches above the map"
+	)
+	check(
+		not World.border_overlaps(world, 0, 0, 10 * S, 10 * S),
+		"A box that only touches the edge stays outside the border"
+	)
+	check(
+		not World.border_overlaps(world, -S, height, S, height + S),
+		"Below the map the sides are open"
+	)
+	check(
+		not World.border_overlaps(world, -S, -481 * S, S, -480 * S),
+		"Far above the map the sides are open"
+	)
+	var state := State.create(world)
+	var walker := _by_id(state, "walker")
+	walker.status = 1
+	walker.facing = -1
+	state.x = 700 * S
+	var type: Script = Registry.lookup("e4")
+	var leftmost: int = walker.x
+	for tick in 120:
+		Collision.begin_step(state, world, Registry)
+		type.step(walker, state, world)
+		leftmost = mini(leftmost, walker.x)
+	check(
+		leftmost + type.bounds(walker)[0] >= 0 and walker.facing == 1,
+		"A walker turns at the map's left edge instead of leaving the map"
+	)
 
 
 func snapshot_checks() -> void:

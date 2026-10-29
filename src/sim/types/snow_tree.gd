@@ -4,6 +4,7 @@ extends RefCounted
 const Decor = preload("res://src/sim/types/decor.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["d22"]
 const STEP_PHASE := -1
@@ -60,16 +61,17 @@ static func step(_entity: Dictionary, _state: Dictionary, _world: Dictionary) ->
 	pass
 
 
-static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
+static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, _input: int) -> void:
 	if state.frame % 6 != 0 or (state.vx == 0 and state.vy == 0):
 		return
 	var points := crown(entity)
 	var left: int = entity.x - (80 if entity.decor_variant == 1 else 48) * S
+	var screen := Screen.area(state, world)
 	if (
-		left + 160 * S < state.camera_x - 416 * S
-		or left > state.camera_x + 416 * S
-		or points[1] > state.camera_y + 224 * S
-		or points[1] + 316 * S < state.camera_y - 224 * S
+		left + 160 * S < screen[0]
+		or left > screen[2]
+		or points[1] > screen[3]
+		or points[1] + 316 * S < screen[1]
 	):
 		return
 	var body := Moves.player_box(state)

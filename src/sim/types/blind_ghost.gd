@@ -286,10 +286,14 @@ static func _floor_pixels(value: int) -> int:
 	return value / S if value >= 0 else -((-value + S - 1) / S)
 
 
+## Only terrain tiles stop it; solid objects, the map's side borders included, do not.
 static func _blocked(entity: Dictionary, world: Dictionary) -> bool:
 	if not world.has("layers"):
 		return false
-	return Motion.overlaps(entity, world, bounds(entity), 0, 0)
+	var box := bounds(entity)
+	return World.tiles_overlap_box(
+		world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
+	)
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:

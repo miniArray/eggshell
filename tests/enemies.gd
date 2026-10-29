@@ -324,6 +324,9 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 
 func lifecycle_checks(world: Dictionary) -> void:
 	var test_world := fixture(world, "e2")
+	# Wide enough that the map-clamped screen can move 832 px away from the actor.
+	test_world.width = 4096 * S
+	test_world.maps[1].width = test_world.width
 	var player := State.create(test_world)
 	Sim.advance(player, 0, test_world)
 	check(player.enemies[0].status == 1, "Enemy activates in reference view")

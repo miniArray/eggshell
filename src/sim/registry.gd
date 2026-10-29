@@ -7,6 +7,7 @@ const Bridge = preload("res://src/sim/types/bridge.gd")
 const Goal = preload("res://src/sim/types/goal.gd")
 const Checkpoint = preload("res://src/sim/types/checkpoint.gd")
 const Inert = preload("res://src/sim/types/inert.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const PLACEHOLDER_PREFIX := "?"
 const TYPES := [
 	Actor,
@@ -800,11 +801,10 @@ static func goal_convert(state: Dictionary, world: Dictionary, on_coin: Callable
 		):
 			continue
 		var bounds: Array = type.bounds(entity)
-		if (
-			entity.x + bounds[2] > state.camera_x - 416 * S
-			and entity.x + bounds[0] < state.camera_x + 416 * S
-			and entity.y + bounds[3] > state.camera_y - 224 * S
-			and entity.y + bounds[1] < state.camera_y + 224 * S
+		if Screen.overlaps(
+			state,
+			world,
+			[entity.x + bounds[0], entity.y + bounds[1], entity.x + bounds[2], entity.y + bounds[3]]
 		):
 			entity.status = DEFEATED
 			Collision.refresh(world, entity)

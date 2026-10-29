@@ -10,6 +10,7 @@ const InputBits = preload("res://src/sim/move_input.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const FIELDS := [
 	["home_x", 0],
 	["home_y", 0],
@@ -90,7 +91,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.y = entity.home_y - 32 * S * offset / 6
 		if entity.busy == 6:
 			var eggs: Script = registry().lookup("o7")
-			if eggs.has_method("active_count") and eggs.active_count(state) < 6:
+			if eggs.has_method("active_count") and eggs.active_count(state, world) < 6:
 				(
 					registry()
 					. spawn_dynamic(
@@ -173,14 +174,25 @@ static func open_message(entity: Dictionary, state: Dictionary, world: Dictionar
 	if state.modal_token or entity.busy or Life.blocks_step(state):
 		return
 	bump_above(entity, state, world)
-	entity.enabled = 0
-	entity.solid_ready = 0
+	# The block stays solid for the rest of this step, so the head bump that opened it
+	# stops the player like any ceiling. consume_level_requests disables it at step end.
 	state.modal_token = entity.token
 	state.message_stage = OPENING
 	state.message_ticks = 78
 	state.message_section = 0
 	state.message_scroll = 0
 	state.message_previous = state.previous_input
+
+
+static func consume_level_requests(state: Dictionary, world: Dictionary) -> void:
+	if state.message_stage != OPENING or state.message_ticks != 78:
+		return
+	var entity: Dictionary = registry().find_token(state, state.modal_token)
+	if entity.is_empty() or entity.code != "o18" or not entity.enabled:
+		return
+	entity.enabled = 0
+	entity.solid_ready = 0
+	Collision.refresh(world, entity)
 
 
 static func toggle(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
@@ -219,12 +231,7 @@ static func bump_above(entity: Dictionary, state: Dictionary, world: Dictionary)
 
 
 static func clear_area(state: Dictionary, world: Dictionary) -> void:
-	var probe := [
-		state.camera_x - 416 * S,
-		state.camera_y - 224 * S,
-		state.camera_x + 416 * S,
-		state.camera_y + 224 * S
-	]
+	var probe := Screen.area(state, world)
 	var dispatch := registry()
 	for entity: Dictionary in state.entities:
 		var type: Script = dispatch.lookup(entity.code)

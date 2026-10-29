@@ -1,12 +1,11 @@
 extends RefCounted
 ## A friendly runner with a top-only back. It follows the player, runs where its rider
-## faces, jumps at walls, plays with resting eggs and flattens enemies in its path.
+## faces, jumps at walls, plays with resting eggs and destroys enemies in its path.
 
 const Body = preload("res://src/sim/enemy_body.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Moves = preload("res://src/sim/moves.gd")
-const Hits = preload("res://src/sim/hits.gd")
 const World = preload("res://src/sim/world.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o16"]
@@ -32,8 +31,13 @@ const FAR := 128 * S
 const QUEUE_TICKS := 20
 const STROKE_TICKS := 24
 const SWIM_SPEED := 200 * 60
+const LIQUID_FALL := 704 * 60 / 4
+## Runtime projectiles that are not enemies to the runner: it passes through them.
+const NOT_DESTROYED := ["enemy_pellet", "enemy_spike", "enemy_mace"]
 # Body facing left, in pixels around the origin. The back is a 60 x 16 top-only strip.
 const BODY := [-34, -6, 20, 16]
+# Standing picture facing left, in pixels around the origin.
+const IMAGE := [-54, -38, 24, 16]
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -88,6 +92,15 @@ static func bounds(entity: Dictionary) -> Array:
 	return [-BODY[2] * S, BODY[1] * S, -BODY[0] * S, BODY[3] * S]
 
 
+## Waking on screen uses the whole standing picture (78 x 54 px), which reaches higher
+## and farther back than the body.
+static func activation_bounds(entity: Dictionary) -> Array:
+	var box: Array = IMAGE if entity.facing < 0 else [-IMAGE[2], IMAGE[1], -IMAGE[0], IMAGE[3]]
+	return [
+		entity.x + box[0] * S, entity.y + box[1] * S, entity.x + box[2] * S, entity.y + box[3] * S
+	]
+
+
 static func solid_box(entity: Dictionary) -> Array:
 	if entity.status != 1:
 		return []
@@ -129,10 +142,16 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.queue_turn -= 1
 		if entity.queue_turn == 0:
 			_pose(entity, TURN)
+	var riders := _enemy_riders(entity, state)
+	var start_x: int = entity.x
+	var start_y: int = entity.y
 	_move(entity, world, box, control)
+	if riders and (entity.x != start_x or entity.y != start_y):
+		Collision.refresh(world, entity)
+		_carry(riders, world, entity.x - start_x, entity.y - start_y)
 	box = bounds(entity)
-	if entity.vx != 0:
-		_flatten(entity, state, world, box)
+	if entity.vx != 0 or entity.vy != 0:
+		_destroy_enemies(entity, state, world, box)
 	if not entity.ridden and not entity.playing:
 		_kick_eggs(entity, state, box)
 	if entity.y > world.get("height", 0) + 1664 * S:
@@ -235,8 +254,12 @@ static func _decide(
 	return 0
 
 
+## Water and lava are both liquids the runner swims in.
 static func _wet(world: Dictionary, area: Array) -> bool:
-	return World.water_overlaps(world, area[0], area[1], area[2], area[3])
+	return (
+		World.water_overlaps(world, area[0], area[1], area[2], area[3])
+		or World.lava_overlaps(world, area[0], area[1], area[2], area[3])
+	)
 
 
 static func _move(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
@@ -289,6 +312,8 @@ static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: in
 		entity.vy = 0
 	if not _wet(world, [back[0], back[1] + 6 * S, back[2], back[3] + 6 * S]):
 		entity.y += 16 * 60
+	# Every body in a liquid falls at most a quarter of its normal fall speed.
+	entity.vy = mini(entity.vy, LIQUID_FALL)
 	var distance: int = entity.vx
 	if distance and Motion.move(entity, world, box, distance, true) != distance:
 		entity.vx = 0
@@ -298,7 +323,44 @@ static func _swim(entity: Dictionary, world: Dictionary, box: Array, control: in
 	entity.grounded = int(Collision.floor_at(entity, world, box) != 0)
 
 
-static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, box: Array) -> void:
+## Enemies standing on the back move with it, as on any moving support.
+static func _enemy_riders(entity: Dictionary, state: Dictionary) -> Array:
+	var back := solid_box(entity)
+	if back.is_empty():
+		return []
+	var dispatch := registry()
+	var riders := []
+	for other: Dictionary in state.entities:
+		if (
+			other.status != 1
+			or other.get("held", 0)
+			or other.get("hidden", 0)
+			or other.get("vy", 0) < 0
+			or not dispatch.is_enemy(other.code)
+		):
+			continue
+		# The body box the enemy moves with, not a wider contact box (a plant's head).
+		var box := Body.world_box(other, Motion.box(other, other.code))
+		if box[3] <= back[1] and box[3] >= back[1] - S and box[0] < back[2] and box[2] > back[0]:
+			riders.append(other)
+	return riders
+
+
+static func _carry(riders: Array, world: Dictionary, dx: int, dy: int) -> void:
+	for rider: Dictionary in riders:
+		var box := Motion.box(rider, rider.code)
+		if dy:
+			Motion.move(rider, world, box, dy, false)
+		if dx:
+			Motion.move(rider, world, box, dx, true)
+		Collision.refresh(world, rider)
+
+
+## A moving runner destroys every active enemy it touches, frozen or not, whatever the
+## enemy's own reaction to other strikes.
+static func _destroy_enemies(
+	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array
+) -> void:
 	var body := Body.world_box(entity, box)
 	var dispatch := registry()
 	for other: Dictionary in state.entities:
@@ -307,13 +369,14 @@ static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, b
 			or other.get("held", 0)
 			or other.get("hidden", 0)
 			or not dispatch.is_enemy(other.code)
+			or other.code in NOT_DESTROYED
 		):
 			continue
 		var type: Script = dispatch.lookup(other.code)
-		if not type.has_method("hit") or not type.has_method("bounds"):
+		if not type.has_method("bounds"):
 			continue
 		if Body.overlap(body, Body.world_box(other, type.bounds(other))):
-			type.hit(other, state, world, Hits.SHELL, entity.x)
+			Body.remove(other, state)
 			Collision.refresh(world, other)
 
 

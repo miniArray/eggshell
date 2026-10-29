@@ -40,6 +40,7 @@ func _initialize() -> void:
 		_block_checks()
 		_solid_tongue_check()
 		_message_checks()
+		_message_head_bump_check()
 		_clear_checks()
 		_egg_checks()
 		_projectile_completion_checks()
@@ -442,6 +443,12 @@ func _message_checks() -> void:
 		"A message becomes the single modal holder"
 	)
 	_check(
+		not type.solid_box(state.entities[0]).is_empty(),
+		"The opening block stays solid for the rest of its step"
+	)
+	Registry.consume_requests(state, world)
+	_check(type.solid_box(state.entities[0]).is_empty(), "The step's end disables the open block")
+	_check(
 		type.message(state, world) == "A short invented note.",
 		"The read-only message adapter reads immutable text"
 	)
@@ -477,8 +484,38 @@ func _message_checks() -> void:
 	type.bump(invalid.entities[0], invalid, world, 0)
 	invalid.entities[0].busy = 0
 	type.bump(invalid.entities[0], invalid, world, 0)
+	Registry.consume_requests(invalid, world)
 	invalid.message_ticks = 0
 	_check(not Snapshot.valid_state(invalid), "An opening message must have a remaining timer")
+
+
+func _message_head_bump_check() -> void:
+	# A rising player whose head reaches the block from below stops under it, like any
+	# ceiling, in the same step that opens the message.
+	var world := _world_for({"note": {"A": "o18", "X": 100, "Y": 200, "E1": "Invented."}})
+	var state := State.create(world)
+	var block: Dictionary = state.entities[0]
+	var bottom: int = block.y + 16 * S
+	state.x = block.x
+	state.y = bottom + 56 * S + 4 * S
+	state.vy = -10 * S
+	state.on_floor = 0
+	state.previous_input = InputBits.JUMP
+	Sim.advance(state, InputBits.JUMP, world)
+	_check(state.modal_token == block.token, "A head bump opens the message")
+	var gap: int = state.y - 56 * S - bottom
+	_check(gap >= 0 and gap < S, "The head stops within 1 px under the block, not inside it")
+	_check(state.vy >= 0, "The head bump ends the rise")
+	_check(Snapshot.valid_state(state), "The opened message leaves valid saved state")
+	for tick in 78:
+		Sim.advance(state, 0, world)
+	Sim.advance(state, InputBits.THROW, world)
+	for tick in 31:
+		Sim.advance(state, 0, world)
+	var top: int = state.y
+	for tick in 10:
+		Sim.advance(state, 0, world)
+	_check(state.modal_token == 0 and state.y > top, "After the message the player falls")
 
 
 func _clear_checks() -> void:

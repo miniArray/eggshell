@@ -391,6 +391,8 @@ func tongue_checks() -> void:
 	)
 	state = actor(world)
 	state.facing = -1
+	# Far enough from the map's left border that the full tongue fits.
+	state.x = 400 * S
 	tick(state, Bits.USE, world)
 	for count in 6:
 		tick(state, Bits.USE, world)
