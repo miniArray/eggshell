@@ -41,14 +41,16 @@ static func walker(enemy: Dictionary, state: Dictionary, world: Dictionary) -> v
 		enemy.facing *= -1
 
 
-static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary) -> void:
+## The horizontal swing starts when the flyer wakes; its vertical wave runs on the level
+## clock from level load, so every flyer of a level bobs in phase.
+static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary, frame: int) -> void:
 	enemy.phase = (enemy.phase + 1) % 360
 	var leg: int = enemy.phase if enemy.phase <= 180 else 360 - enemy.phase
 	enemy.vx = (-128 * 60 + 256 * 60 * leg / 180) * enemy.cycles
 	Motion.move(enemy, world, Motion.box(enemy, "e2"), enemy.vx, true)
 	if enemy.vx != 0:
 		enemy.facing = 1 if enemy.vx > 0 else -1
-	enemy.y = source.y + Motion.sine(enemy.phase, 180, 12 * S)
+	enemy.y = source.y + Motion.sine((frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 
 
 static func flower(enemy: Dictionary, world: Dictionary) -> void:

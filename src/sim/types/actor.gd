@@ -112,7 +112,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			else:
 				if not entity.cycles:
 					activate(entity, state, world)
-				Behavior.flyer(entity, source, world)
+				Behavior.flyer(entity, source, world, state.frame)
 		"e3":
 			Behavior.flower(entity, world)
 		"e5":

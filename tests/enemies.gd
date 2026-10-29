@@ -122,9 +122,11 @@ func movement_constants(world: Dictionary) -> void:
 	player = _placed_state(test_world)
 	for tick in 180:
 		Sim.advance(player, 0, test_world)
+	check(player.enemies[0].vx == 128 * 60, "Flyer reaches its horizontal tween endpoint")
+	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 	check(
-		player.enemies[0].y == 300 * S and player.enemies[0].vx == 128 * 60,
-		"Flyer completes its three-second vertical period at horizontal tween endpoint"
+		player.enemies[0].y == 300 * S + wave,
+		"Flyer bobs on the level clock, three seconds per period, from the level intro"
 	)
 	test_world = fixture(world, "e3")
 	player = _placed_state(test_world)
