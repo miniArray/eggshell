@@ -26,6 +26,9 @@ not change the step rate or retune physics constants.
 ## Entity model and schemas
 
 `src/sim/registry.gd` selects a module in `src/sim/types/` for each object code.
+Its per-step entity loops (lifecycle and step, contact, request consumption) live
+in `dispatch_loops.gd` and the camera lifecycle in `entity_lifecycle.gd`, behind the
+same `Registry` functions.
 Each type declares `CODES` and `FIELDS`, an ordered array of `[name, default]`
 int64 pairs. It supplies `create(source, world)`, `step(entity, state, world)`
 and `valid(entity)`. Creation returns declared field overrides, including common
