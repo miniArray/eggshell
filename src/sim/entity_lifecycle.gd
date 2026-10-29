@@ -27,6 +27,10 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 		return
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
+	# Some bodies move before activation and can be culled before their first wake.
+	var despawn_waiting := false
+	if entity.status == WAITING and type.has_method("waiting_step"):
+		despawn_waiting = type.waiting_step(entity, state, world)
 	var screen_x := Screen.centre_x(state, world)
 	var screen_y := Screen.centre_y(state, world)
 	# Despawning measures the origin, not the box, on each axis.
@@ -42,7 +46,7 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 			entity.status = DEFEATED
 		return
 	var source: Dictionary = dispatch.source_for(entity, world)
-	if entity.status == ACTIVE and entity.can_despawn and far:
+	if (entity.status == ACTIVE or despawn_waiting) and entity.can_despawn and far:
 		entity.status = QUEUED
 		entity.offscreen = 0
 	if entity.status == QUEUED and entity.can_respawn:
@@ -61,6 +65,8 @@ static func run(entity: Dictionary, state: Dictionary, world: Dictionary) -> voi
 			fresh.checkpoint_collected = entity.checkpoint_collected
 			for pair: Array in dispatch.fields(entity.code):
 				entity[pair[0]] = fresh[pair[0]]
+			if type.has_method("recreated"):
+				type.recreated(entity, state, world)
 	if entity.status == WAITING:
 		var box := activation_box(entity, type)
 		if (

@@ -120,8 +120,8 @@ func movement_constants(world: Dictionary) -> void:
 			break
 	check(absi(player.enemies[0].vx) == 48 * 60, "Walker assigns 48 px/s after its idle wait")
 	test_world = fixture(world, "e2")
-	player = _placed_state(test_world)
-	# The step that wakes an object does not move it; 180 moves follow.
+	player = State.create(test_world)
+	# This is an initial placement, including the two level-start world ticks.
 	for tick in 181:
 		Sim.advance(player, 0, test_world)
 	# The swing tweens -128 to 128 px/s, capped at the body's 48 px/s top speed.
@@ -129,10 +129,13 @@ func movement_constants(world: Dictionary) -> void:
 		player.enemies[0].vx == 48 * 60,
 		"Flyer swings at its capped top speed near the tween endpoint"
 	)
-	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
+	# This nearby initial placement survives the intro. Unlike a recreated flyer,
+	# its wave has already run 152 ticks when control starts (see flyer_contacts.gd).
+	var age := (Motion.LEVEL_INTRO_TICKS + 181) % 180
+	var wave := Motion.sine(age, 180, 12 * S)
 	check(
-		player.enemies[0].y == 300 * S + wave,
-		"Flyer bobs on the level clock, three seconds per period, from the level intro"
+		player.enemies[0].timer == age and player.enemies[0].y == 300 * S + wave,
+		"Flyer wave age starts at creation, including the intro for surviving placements"
 	)
 	test_world = fixture(world, "e3")
 	player = _placed_state(test_world)

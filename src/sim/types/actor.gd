@@ -73,7 +73,23 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var values := Body.create(source)
 	values.home_y = int(source.y)
 	values.home_x = int(source.x)
+	if source.code == "e2" and int(source.get("source_index", 0)) >= 0:
+		# Initial placements run through the intro; runtime births start at zero.
+		values.timer = Motion.LEVEL_INTRO_TICKS - 2
 	return values
+
+
+## Only airborne flyers keep moving and can despawn before their first activation.
+static func waiting_step(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> bool:
+	if entity.code != "e2" or entity.ground_form:
+		return false
+	Behavior.bob(entity, {"y": entity.spawn_y})
+	return true
+
+
+static func recreated(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> void:
+	if entity.code == "e2":
+		entity.timer = 0
 
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
@@ -112,7 +128,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			else:
 				if not entity.cycles:
 					activate(entity, state, world)
-				Behavior.flyer(entity, source, world, state.frame)
+				Behavior.flyer(entity, source, world)
 		"e3":
 			Behavior.flower(entity, world)
 		"e5":
@@ -146,6 +162,13 @@ static func bounds(entity: Dictionary) -> Array:
 
 
 static func activation_bounds(entity: Dictionary) -> Array:
+	if entity.code == "e2" and not entity.ground_form:
+		var picture := (
+			[-18 * S, -32 * S, 14 * S, 22 * S]
+			if entity.facing < 0
+			else [-14 * S, -32 * S, 18 * S, 22 * S]
+		)
+		return Body.world_box(entity, picture)
 	return Body.world_box(entity, Motion.box(entity, entity.code))
 
 

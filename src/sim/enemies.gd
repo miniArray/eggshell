@@ -41,13 +41,13 @@ static func walker(enemy: Dictionary, state: Dictionary, world: Dictionary) -> v
 		enemy.facing *= -1
 
 
-## The horizontal swing starts when the flyer wakes; its vertical wave runs on the level
-## clock from level load, so every flyer of a level bobs in phase.
-static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary, frame: int) -> void:
+## The horizontal swing starts on waking. The vertical wave starts at creation,
+## including time spent waiting off screen; recreation starts a new wave.
+static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary) -> void:
 	if enemy.phase == 0:
 		# The swing starts one step after the first step: only the wave moves it now.
 		enemy.phase = 360
-		bob(enemy, source, frame)
+		bob(enemy, source)
 		return
 	enemy.phase = enemy.phase % 360 + 1
 	var leg: int = enemy.phase if enemy.phase <= 180 else 360 - enemy.phase
@@ -56,12 +56,13 @@ static func flyer(enemy: Dictionary, source: Dictionary, world: Dictionary, fram
 	Motion.move(enemy, world, Motion.box(enemy, "e2"), enemy.vx, true)
 	if enemy.vx != 0:
 		enemy.facing = 1 if enemy.vx > 0 else -1
-	bob(enemy, source, frame)
+	bob(enemy, source)
 
 
-## The vertical wave alone, on the level clock.
-static func bob(enemy: Dictionary, source: Dictionary, frame: int) -> void:
-	enemy.y = source.y + Motion.sine((frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
+## Airborne e2 uses timer as its creation-relative wave age (grounded e2 uses idle time).
+static func bob(enemy: Dictionary, source: Dictionary) -> void:
+	enemy.timer = (enemy.timer + 1) % 180
+	enemy.y = source.y + Motion.sine(enemy.timer, 180, 12 * S)
 
 
 static func flower(enemy: Dictionary, world: Dictionary) -> void:

@@ -52,10 +52,13 @@ static func box(enemy: Dictionary, code: String) -> Array:
 		"e2":
 			if enemy.get("ground_form", 0):
 				return [-10 * S, -18 * S, 10 * S, 16 * S]
+			# Airborne timer is creation age. Only the first 24 fps frame is narrower.
+			var frame: int = int(enemy.get("timer", 0)) * 24 / 60 % 4
+			var right := (8 if frame == 0 else 10) * S
 			return (
-				[-12 * S, -16 * S, 8 * S, 22 * S]
+				[-12 * S, -16 * S, right, 22 * S]
 				if enemy.facing < 0
-				else [-8 * S, -16 * S, 12 * S, 22 * S]
+				else [-right, -16 * S, 12 * S, 22 * S]
 			)
 		"e3":
 			return [-14 * S, -34 * S, 14 * S, 16 * S]
