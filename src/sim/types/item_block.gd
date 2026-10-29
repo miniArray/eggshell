@@ -13,6 +13,7 @@ const GRID_BOUNDS := {
 }
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Hull = preload("res://src/sim/player_hull.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Hits = preload("res://src/sim/hits.gd")
@@ -209,6 +210,11 @@ static func toggle(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func overlaps_player(entity: Dictionary, state: Dictionary) -> bool:
+	var area := bounds(entity)
+	if Hull.misses(
+		state, entity.x + area[0], entity.y + area[1], entity.x + area[2], entity.y + area[3]
+	):
+		return false
 	var box := Moves.player_box(state)
 	return registry().overlaps_box(
 		entity,

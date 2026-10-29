@@ -33,6 +33,7 @@ def main():
         "terrain_memo",
         "collision_index",
         "moves",
+        "player_hull",
         "move_input",
         "life",
         "life_timing",

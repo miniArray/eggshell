@@ -4,6 +4,7 @@ extends RefCounted
 const Life = preload("res://src/sim/life.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Hull = preload("res://src/sim/player_hull.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
 const Motion = preload("res://src/sim/item_motion.gd")
@@ -32,10 +33,6 @@ const GRID_BOUNDS := {
 	"o2": [-12 * S, -16 * S, 12 * S, 16 * S],
 	"o3": [-32 * S, -32 * S, 32 * S, 32 * S]
 }
-## Distances beyond which a pickup cannot touch the player (contact skips it early).
-const NEAR_X := 64 * S
-const NEAR_ABOVE := 128 * S
-const NEAR_BELOW := 64 * S
 const FLOWER_POINTS := [-22, -22, 0, -32, 21, -22, 31, 0, 23, 23, 0, 31, -22, 21, -32, 0]
 
 
@@ -86,11 +83,11 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
-	# Every player box lies within 14 px of x and from 60 px above to 14 px below y, and a
-	# pickup's bounds within 32 px of its own position: a pickup farther away cannot touch.
-	var dx: int = entity.x - state.x
-	var dy: int = entity.y - state.y
-	if dx > NEAR_X or dx < -NEAR_X or dy > NEAR_BELOW or dy < -NEAR_ABOVE:
+	# The pickup's bounds lie inside its grid box: no player box reaches a far pickup.
+	var reach: Array = GRID_BOUNDS[entity.code]
+	if Hull.misses(
+		state, entity.x + reach[0], entity.y + reach[1], entity.x + reach[2], entity.y + reach[3]
+	):
 		return
 	var body := Moves.player_box(state)
 	if touches(

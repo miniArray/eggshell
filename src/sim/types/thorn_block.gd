@@ -3,6 +3,7 @@ extends RefCounted
 
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Hull = preload("res://src/sim/player_hull.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["o12"]
@@ -46,6 +47,14 @@ static func solid_box(entity: Dictionary) -> Array:
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
 	if entity.status != 1 or state.get("captured_by", 0):
+		return
+	if Hull.misses(
+		state,
+		entity.x - HALF - REACH,
+		entity.y - HALF - REACH,
+		entity.x + HALF + REACH,
+		entity.y + HALF + REACH_TOP
+	):
 		return
 	var box := Moves.player_box(state)
 	if (

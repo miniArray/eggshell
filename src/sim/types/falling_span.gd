@@ -5,6 +5,7 @@ const SOLID := 2
 const S := preload("res://src/sim/units.gd").SCALE
 const Collision = preload("res://src/sim/collision.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Hull = preload("res://src/sim/player_hull.gd")
 const Screen = preload("res://src/sim/screen.gd")
 # Age tags: 0 idle, 1..72 arming, 73..125 falling (animation stops at 125).
 const FIELDS := [["age", 0], ["home_y", 0], ["respawns", 0]]
@@ -49,15 +50,18 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
 	if entity.age >= 73:
 		return
-	var box := Moves.player_box(state)
 	var top: int = entity.y - 16 * S
-	var standing: bool = (
-		state.on_floor
-		and state.x + box[2] >= entity.x - 16 * S
-		and state.x + box[0] <= entity.x + 16 * S
-		and state.y + box[3] <= top
-		and state.y + box[3] + 2 * S >= top
-	)
+	var standing := false
+	# The feet must be at most 2 px above the top: a far player box cannot stand here.
+	if not Hull.misses(state, entity.x - 16 * S, top - 2 * S, entity.x + 16 * S, top):
+		var box := Moves.player_box(state)
+		standing = (
+			state.on_floor
+			and state.x + box[2] >= entity.x - 16 * S
+			and state.x + box[0] <= entity.x + 16 * S
+			and state.y + box[3] <= top
+			and state.y + box[3] + 2 * S >= top
+		)
 	if standing and entity.age == 0:
 		entity.age = 1
 	elif not standing:
