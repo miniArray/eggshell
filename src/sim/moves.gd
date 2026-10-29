@@ -11,6 +11,7 @@ const Sound = preload("res://src/sim/sound_events.gd")
 const Flutter = preload("res://src/sim/move_flutter.gd")
 const Facing = preload("res://src/sim/move_facing.gd")
 const Pose = preload("res://src/sim/move_pose.gd")
+const Flow = preload("res://src/sim/water_flow.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -121,11 +122,9 @@ const PLAYER_FIELDS := [
 	["move_emit_3_vx", 0],
 	["move_emit_3_vy", 0],
 	["move_spread", 0],
-	# Horizontal speed after the player's own move, before object contacts change it. The
-	# snow brake for the next step is chosen from it.
+	# Speed after the player's own move, before object contacts: picks the next snow brake.
 	["move_brake_vx", 0],
-	# A jump that started after the move (landing with a buffered jump) still counts as a
-	# jump for the next move, which therefore adds gravity.
+	# A buffered jump started after a landing still counts as a jump for the next move.
 	["move_jump_carry", 0],
 	["move_bounce", 0],
 ]
@@ -187,6 +186,16 @@ static func advance(
 	var carried_jump: bool = state.move_jump_carry != 0
 	state.move_jump_carry = 0
 	_snow(state, world, bounds)
+	var flow_x: int = state.x
+	var flow := Flow.apply(
+		state, world, bounds, pressed, state.move_action in [POUND_START, POUND_FALL]
+	)
+	if state.x != flow_x:  # The move starts from where the flow pushed the body.
+		support = Collision.floor_at(state, world, bounds)
+		state.on_floor = int(support != 0 and state.vy == 0)
+	if flow:
+		jump(state)
+		state.vx = flow * 400 * 60
 	state.jump_buffer = 6 if pressed & InputBits.JUMP else maxi(0, state.jump_buffer - 1)
 	if state.frame <= 1:
 		state.flutter_ready = 1
@@ -258,8 +267,7 @@ static func advance(
 	if state.move_action == POUND_START:
 		state.vx = 0
 		state.vy = 0
-	# Liquid: any body overlap with water halves the cap and slows acceleration and
-	# braking, before the swimming test (head point) starts.
+	# Liquid: any water overlap sets the water cap and braking, before swimming starts.
 	var liquid: bool = state.swimming != 0 or Water.body_overlaps(state, world, bounds)
 	var speed := 200 * 60 if liquid else (336 * 60 if state.move_snow else MAX_SPEED)
 	var deceleration := _deceleration(state, input, liquid)
@@ -305,8 +313,7 @@ static func advance(
 	var vertical := dy + bob
 	var moved := Collision.vertical(state, world, bounds, vertical, support) if can_move else 0
 	var floor := Collision.floor_at(state, world, bounds)
-	# Landed: the move hit the floor, or the body did not move vertically and stands on one.
-	# A free fall that ends just above a floor lands on the next step.
+	# Landed: the move hit a floor, or no vertical move on a floor (else: lands next step).
 	state.on_floor = int(
 		can_move and ((vertical > 0 and moved != vertical) or (vertical == 0 and floor != 0))
 	)
@@ -332,8 +339,7 @@ static func advance(
 		elif not was_grounded and state.move_action == NORMAL:
 			_set_action(state, LAND)
 	elif state.move_action != POUND_START and (support == 0 or jumping):
-		# A step that starts on a floor adds no gravity unless it jumps, even when the
-		# body leaves the floor during the move (walking off a ledge, a ground knockback).
+		# A step that starts on a floor adds no gravity unless it jumps (ledge, knockback).
 		state.vy = mini(
 			state.vy + gravity, 2 * MAX_FALL if state.move_action == POUND_FALL else MAX_FALL
 		)

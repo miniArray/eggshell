@@ -731,6 +731,16 @@ func request_checks() -> void:
 
 
 func water_checks() -> void:
+	var flowing := floor_world()
+	var stream := layer("flowWater", false, false, [])
+	for column in 32:
+		stream.cells[7 * 32 + column] = 8  # A flat flow to the right just above the floor.
+	flowing.layers.append(stream)
+	var swept := actor(flowing)
+	tick(swept, 0, flowing)
+	var start: int = swept.x
+	tick(swept, 0, flowing)
+	check(swept.x == start + 96 * S / 60, "a flat flow pushes the player 96 px/s")
 	var wet := water_world()
 	var falling := actor(wet)
 	falling.y = 330 * S
