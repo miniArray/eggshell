@@ -865,6 +865,51 @@ func hound_checks() -> void:
 		"An enemy standing on the back rises with the runner"
 	)
 	check(rider.status == 1, "A rider on the back is not touched by the runner's body")
+	map_border_checks()
+
+
+func map_border_checks() -> void:
+	# Solid borders 32 px wide stand beside the map from 480 px above it to its bottom.
+	var world := _world_for(
+		{
+			"floor": _place("p2", 400, 316, {"E1": "800"}),
+			"walker": _place("e4", 40, 300),
+		}
+	)
+	var width: int = world.width
+	var height: int = world.height
+	check(World.border_overlaps(world, -S, 0, S, S), "The left border is solid beside the map")
+	check(
+		World.border_overlaps(world, width - S, -400 * S, width + S, -399 * S),
+		"The right border reaches above the map"
+	)
+	check(
+		not World.border_overlaps(world, 0, 0, 10 * S, 10 * S),
+		"A box that only touches the edge stays outside the border"
+	)
+	check(
+		not World.border_overlaps(world, -S, height, S, height + S),
+		"Below the map the sides are open"
+	)
+	check(
+		not World.border_overlaps(world, -S, -481 * S, S, -480 * S),
+		"Far above the map the sides are open"
+	)
+	var state := State.create(world)
+	var walker := _by_id(state, "walker")
+	walker.status = 1
+	walker.facing = -1
+	state.x = 700 * S
+	var type: Script = Registry.lookup("e4")
+	var leftmost: int = walker.x
+	for tick in 120:
+		Collision.begin_step(state, world, Registry)
+		type.step(walker, state, world)
+		leftmost = mini(leftmost, walker.x)
+	check(
+		leftmost + type.bounds(walker)[0] >= 0 and walker.facing == 1,
+		"A walker turns at the map's left edge instead of leaving the map"
+	)
 
 
 func snapshot_checks() -> void:
