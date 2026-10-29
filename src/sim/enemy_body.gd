@@ -5,6 +5,7 @@ const Constants = preload("res://src/sim/script_constants.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Life = preload("res://src/sim/life.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
@@ -229,6 +230,15 @@ static func pounding(state: Dictionary) -> bool:
 
 
 static func bounce(entity: Dictionary, state: Dictionary, input: int) -> void:
+	# Enemy bounce callbacks inherit the player's movement/pose gate, not damage
+	# immunity. The contact edge and the actor's own reaction still run while hurt.
+	if (
+		Life.locks_input(state)
+		or int(state.get("life_phase", Life.PLAY)) != Life.PLAY
+		or state.get("captured_by", 0)
+		or state.get("modal_token", 0)
+	):
+		return
 	Moves.bounce(state, -absi(entity.vy / 2) - 320 * 60, input)
 
 
