@@ -127,7 +127,7 @@ func mixed_checks() -> void:
 	check(
 		restored.ok and Snapshot.encode(restored.state) == bytes, "All families round trip together"
 	)
-	check(bytes.decode_u32(8) == 10, "Combined layout has version ten")
+	check(bytes.decode_u32(8) == 11, "Combined layout has version eleven")
 	var old := bytes.duplicate()
 	old.encode_u32(8, 9)
 	check(

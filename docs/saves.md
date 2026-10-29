@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 10 stores the complete integer play state in little-endian
+Snapshot version 11 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 9 and all other versions are rejected with a log line;
+object families. Version 10 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -45,7 +45,7 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 10 state
+## Composed version 11 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
@@ -58,7 +58,9 @@ pages and shared switch timer/sound state. Sound events own `sound_serial`,
 [architecture](architecture.md#sound-events)). All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 10 adds the player field `move_bounce` (the flutter tail after an enemy
+Version 11 adds the actor field `creation_cull_checked`, which keeps a never-activated
+flyer's creation-only distance check separate from ordinary active despawn.
+Version 10 added the player field `move_bounce` (the flutter tail after an enemy
 bounce) and widens `water_wait` to 0–16 steps. Version 9 added the player fields `hurt_phase` (after `hurt`: none, knock-back pose or
 look-around), `move_brake_vx` and `move_jump_carry`, and widens three validation
 limits: `hurt` up to 63 steps, `flutter_remaining` up to 72 and `flutter_cooldown` up

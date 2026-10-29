@@ -36,6 +36,12 @@ fields when needed. Type modules can also supply `prepare(source, world)` for
 placement validation, plus `bounds`, `activate` and `contact` hooks. Optional phase constants preserve movement and contact order;
 a type without them steps in phase 0 and contacts in phase 1.
 
+An optional `created(entity, state, world)` hook runs at map creation, runtime
+birth and camera recreation, before activation. It does not run during placement
+validation or snapshot restoration. Types can stamp saved birth metadata here.
+`CREATION_CULL = true` opts into a distance check at birth, even before activation;
+ordinary distance despawn still requires an active entity.
+
 `state.entities` is the single ordered saved entity table. Every placement,
 including an unknown code, gets its original string `id`, its code, common
 int64 lifecycle fields and type fields. A placed row's `source_index` selects its immutable
@@ -57,7 +63,11 @@ and it draws as the diagnostic square.
 
 Actors activate by collision bounds in the fixed 832 by 448 reference area.
 Walkers that declare `activation_bounds` use their picture box to wake, even
-when their contact body has not reached the area.
+when their contact body has not reached the area. Flyers and flowers use their
+reference walking or flying picture footprint, not the narrower contact body.
+A flyer's vertical wave starts at creation and advances while it waits off screen.
+Only creation checks an inactive flyer's distance. Ordinary despawn requires
+activation; recreation starts a new wave.
 The shared lifecycle can queue distant actors and recreate them after their
 placement anchor leaves and returns. The distances and flags are common saved
 fields. Load-active pads and static sensors keep their previous timing.
@@ -96,7 +106,7 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 10 writes these schemas and the registry's entity schemas.
+Snapshot version 11 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 
@@ -393,8 +403,10 @@ side effects. None of them enters snapshots.
 
 ## Limits
 
-Enemy collision boxes stay fixed. The player collider follows actions and
-posture. Movement tests endpoints and pushes out; it is not a continuous sweep.
+Most enemy collision boxes stay fixed; airborne flyer bounds follow the flight
+frame. Flower activation uses a reference picture, not each frame's changing
+height. The player collider follows actions and posture. Movement tests endpoints
+and pushes out; it is not a continuous sweep.
 Curved motion uses integer approximations. The companion launches, floats and
 returns through saved phases. A lost companion leads through capture, death,
 fade and respawn phases rather than an immediate reset at countdown zero.
