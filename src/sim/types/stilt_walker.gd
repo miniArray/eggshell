@@ -74,7 +74,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	var grounded := Collision.floor_at(entity, world, box) != 0
 	if entity.phase == KNOCKED:
-		entity.timer -= 1
+		# A finished knock timer stops at zero; the walker walks again once it lands.
+		entity.timer = maxi(entity.timer - 1, 0)
 		if entity.timer > 0:
 			var distance: int = entity.vx
 			Motion.move(entity, world, box, distance, true)

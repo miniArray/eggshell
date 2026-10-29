@@ -27,6 +27,7 @@ def main():
         "terrain_edges",
         "level_format",
         "registry",
+        "valid_states",
         "nearby",
         "entity_grid",
         "terrain_memo",

@@ -472,7 +472,9 @@ static func enter_liquid(entity: Dictionary, state: Dictionary, world: Dictionar
 	if entity.vx == 0 and entity.vy == 0:
 		return
 	var angle := Math.angle_to(entity.vx, entity.vy)
-	var speed := Math.root(entity.vx * entity.vx + entity.vy * entity.vy)
+	# A thrown egg's speed is a constant SPEED. Turned integer vectors can measure a few
+	# units above it; the skip starts from SPEED / 2 at most, like the original's.
+	var speed := mini(Math.root(entity.vx * entity.vx + entity.vy * entity.vy), SPEED)
 	if angle > 0 and angle < 30000:
 		start_skip(entity, speed / 2, angle / 400 + 120)
 	elif angle > 150000 and angle < 180000:
