@@ -125,6 +125,9 @@ static func create(world: Dictionary) -> Dictionary:
 	Life.initialize(state, world)
 	var registry := entity_registry()
 	registry.spawn_map(state, world)
+	# The state starts at the first step that reads input, after the level-start ticks.
+	var simulation: Script = load("res://src/sim/step.gd")
+	simulation.begin_level(state, world)
 	return state
 
 

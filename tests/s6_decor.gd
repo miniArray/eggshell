@@ -267,6 +267,9 @@ func snow_checks() -> void:
 	var tree: Dictionary = state.entities[0]
 	state.x = 512 * S
 	state.y = 450 * S
+	# A level starts with the body already falling; this check needs it still.
+	state.vx = 0
+	state.vy = 0
 	state.camera_x = state.x
 	state.camera_y = state.y
 	state.frame = 6

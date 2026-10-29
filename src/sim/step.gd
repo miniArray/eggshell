@@ -66,6 +66,18 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		Moves.finish(state, action, world)
 
 
+static func begin_level(state: Dictionary, world: Dictionary) -> void:
+	## Level start. Before the first step that reads input the player's body runs for two
+	## steps without input. Step counters and the world stay at the first step.
+	for tick in 2:
+		Collision.begin_step(state, world, Registry)
+		Moves.advance(state, 0, world, 0, 0)
+		Life.after_step(state, world)
+		Moves.finish(state, 0, world)
+	state.camera_x = state.x
+	state.camera_y = state.y - 28 * S
+
+
 static func _dead_body(state: Dictionary, input: int, world: Dictionary) -> void:
 	# The world waits; the body keeps falling and sliding with the braking it had.
 	var steer := 0

@@ -19,6 +19,7 @@ func _initialize() -> void:
 	spin_lock_checks()
 	restart_checks()
 	dead_body_checks()
+	level_start_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -212,6 +213,27 @@ func dead_body_checks() -> void:
 	for count in 20:
 		Sim.advance(held, Bits.RIGHT, world)
 	check(held.x == at[0] and held.y == at[1], "a hazard holds the body where it died")
+
+
+func level_start_checks() -> void:
+	var air := Courses.empty_world()
+	var state := State.create(air)
+	check(
+		state.vy == 2 * Sim.GRAVITY and state.y == air.spawn_y + Sim.GRAVITY * 3 / 2,
+		"a level starts after two body steps without input"
+	)
+	check(
+		state.frame == 0 and state.play_ticks == 0 and state.attempt_ticks == 0,
+		"the level-start steps are not counted"
+	)
+	check(state.camera_y == state.y - 28 * S, "the camera starts on the settled body")
+	var ground := Courses.floor_world()
+	var standing := State.create(ground)
+	check(standing.on_floor == 1 and standing.vy == 0, "a start on the ground settles on it")
+	check(
+		first_input_step(standing, ground, 10) == 1,
+		"input works on the first step after the level start"
+	)
 
 
 func validation_checks() -> void:
