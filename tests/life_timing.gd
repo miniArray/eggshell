@@ -8,6 +8,7 @@ const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Bits = preload("res://src/sim/move_input.gd")
 const Courses = preload("res://tests/moves.gd")
+const Snapshot = preload("res://src/save/snapshot.gd")
 const S := 3600
 var checks := 0
 var failures := 0
@@ -78,9 +79,16 @@ func knocked_lock_checks() -> void:
 	check(probe.hurt_phase == Life.HURT_KNOCKED, "the pose lasts while two lock steps remain")
 	Sim.advance(probe, 0, world)
 	check(
-		probe.hurt_phase == Life.HURT_NONE and probe.hurt == 1,
+		probe.hurt_phase == Life.HURT_RECOVERED and probe.hurt == 1,
 		"the pose ends one step before the input lock"
 	)
+	var restored := Snapshot.decode(Snapshot.encode(probe), probe.identity, world)
+	check(
+		restored.ok and restored.state.hurt_phase == Life.HURT_RECOVERED,
+		"the pose-clear boundary survives a snapshot"
+	)
+	Sim.advance(probe, 0, world)
+	check(probe.hurt_phase == Life.HURT_NONE, "recovery clears when the movement lock ends")
 
 
 func look_around_checks() -> void:
@@ -104,7 +112,7 @@ func look_around_checks() -> void:
 	var late := state.duplicate(true)
 	late.hurt = 2
 	Sim.advance(late, 0, world)
-	check(late.hurt_phase == Life.HURT_NONE, "an expired pose cannot start the look-around")
+	check(late.hurt_phase == Life.HURT_RECOVERED, "an expired pose cannot start the look-around")
 	for count in 40:
 		Sim.advance(late, 0, world)
 	check(late.hurt == 0 and late.on_floor == 1, "landing after the pose keeps control")
@@ -251,7 +259,11 @@ func validation_checks() -> void:
 	state.hurt = Life.MAX_HURT + 1
 	check(not Life.valid_state(state), "a lock beyond the longest is invalid")
 	state.hurt = 5
-	state.hurt_phase = 3
+	state.hurt_phase = Life.HURT_RECOVERED
+	check(not Life.valid_state(state), "the recovered pose cannot outlast its boundary tick")
+	state.hurt = 1
+	check(Life.valid_state(state), "the recovered pose is valid at the final input-lock tick")
+	state.hurt_phase = Life.HURT_RECOVERED + 1
 	check(not Life.valid_state(state), "an unknown hurt phase is invalid")
 
 

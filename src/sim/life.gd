@@ -33,6 +33,9 @@ const QUICK := 5
 const HURT_NONE := 0
 const HURT_KNOCKED := 1
 const HURT_LOOK_AROUND := 2
+# The knocked pose clears after movement input, before enemy callbacks. Its final
+# input-lock tick must remain distinct from the final tick of Spin.
+const HURT_RECOVERED := 3
 # Lock lengths in steps, counted from the step that sets them. The reference game ends each
 # pose with an event that runs after it has read input for that frame, and its hit events run
 # after input in the frame the hit lands, so each lock is longer than its nominal time:
@@ -448,9 +451,10 @@ static func start_hurt(state: Dictionary, lock: int, knocked: bool) -> void:
 
 static func _hurt_step(state: Dictionary) -> void:
 	state.hurt = maxi(0, state.hurt - 1)
-	# The knock-back pose ends one step before its input lock does.
-	if state.hurt == 0 or (state.hurt == 1 and state.hurt_phase == HURT_KNOCKED):
+	if state.hurt == 0:
 		state.hurt_phase = HURT_NONE
+	elif state.hurt == 1 and state.hurt_phase == HURT_KNOCKED:
+		state.hurt_phase = HURT_RECOVERED
 
 
 static func _look_around_on_landing(state: Dictionary) -> void:
@@ -820,8 +824,9 @@ static func valid_state(state: Dictionary) -> bool:
 		return false
 	if (
 		state.hurt_phase < HURT_NONE
-		or state.hurt_phase > HURT_LOOK_AROUND
+		or state.hurt_phase > HURT_RECOVERED
 		or (state.hurt_phase != HURT_NONE and state.hurt == 0)
+		or (state.hurt_phase == HURT_RECOVERED and state.hurt != 1)
 	):
 		return false
 	if (

@@ -230,10 +230,13 @@ static func pounding(state: Dictionary) -> bool:
 
 
 static func bounce(entity: Dictionary, state: Dictionary, input: int) -> void:
-	# Enemy bounce callbacks inherit the player's movement/pose gate, not damage
-	# immunity. The contact edge and the actor's own reaction still run while hurt.
+	# Enemy callbacks run after the knocked pose clears, but before its last input
+	# lock ends. Spin still blocks at hurt == 1; damage immunity is a separate rule.
+	var recovered: bool = (
+		state.get("hurt", 0) == 1 and state.get("hurt_phase", Life.HURT_NONE) == Life.HURT_RECOVERED
+	)
 	if (
-		Life.locks_input(state)
+		(Life.locks_input(state) and not recovered)
 		or int(state.get("life_phase", Life.PLAY)) != Life.PLAY
 		or state.get("captured_by", 0)
 		or state.get("modal_token", 0)

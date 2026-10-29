@@ -17,6 +17,8 @@ func _initialize() -> void:
 			_hurt_entry(code, phase)
 		_recovered_immunity(code)
 		_continuous_contact(code)
+		_knock_boundary(code)
+		_spin_boundary(code)
 	# Flower contacts share the callback but keep their own defeat reaction.
 	_hurt_entry("e3", Life.HURT_NONE)
 	_controllability()
@@ -127,6 +129,36 @@ func _continuous_contact(code: String) -> void:
 		scene.state.vy == expected,
 		"%s a new entry after recovery can bounce: %d/%d" % [code, scene.state.vy, expected]
 	)
+
+
+func _knock_boundary(code: String) -> void:
+	var scene := _scene(code)
+	Life.start_hurt(scene.state, 3, true)
+	Life.before_step(scene.state, scene.world)
+	_touch(scene)
+	check(scene.state.vy == 160 * 60, "The last knocked pose still blocks a bounce")
+	Life.before_step(scene.state, scene.world)
+	check(
+		scene.state.hurt == 1 and Life.locks_input(scene.state),
+		"The pose-clear tick still blocks movement input"
+	)
+	_touch(scene)
+	check(scene.state.vy == 160 * 60, "Pose recovery does not retrigger continuous overlap")
+	scene.state.x += 200 * S
+	_touch(scene)
+	scene.state.x = scene.actor.x
+	var expected: int = -absi(scene.actor.vy / 2) - 704 * 60
+	_touch(scene)
+	check(scene.state.vy == expected, code + " pose-clear tick permits a new enemy bounce")
+
+
+func _spin_boundary(code: String) -> void:
+	var scene := _scene(code)
+	Life.start_hurt(scene.state, 2, false)
+	Life.before_step(scene.state, scene.world)
+	check(scene.state.hurt == 1, "The spin is on its final movement-lock tick")
+	_touch(scene)
+	check(scene.state.vy == 160 * 60, code + " final spin tick still blocks the enemy bounce")
 
 
 func _controllability() -> void:
