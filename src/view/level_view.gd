@@ -275,7 +275,14 @@ func render(state: Dictionary) -> void:
 	_root.position = plan.offset.round()
 	_background.render(plan, state.frame)
 	for child: Node in _root.get_children():
-		if child is Sprite2D and child != _player and not child.get_meta("stateful", false):
+		if (
+			child is Sprite2D
+			and child != _player
+			and not child.get_meta("stateful", false)
+			and not child.has_meta("placed_id")
+		):
+			# Placed rows select their final animation below. Applying a default first
+			# repeats sampling and can upload a texture that is immediately replaced.
 			Frames.apply(child, state.frame)
 	_player.position = Vector2(state.x, state.y) / State.SCALE
 	for entity: Dictionary in state.entities:
