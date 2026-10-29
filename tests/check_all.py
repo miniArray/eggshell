@@ -28,6 +28,8 @@ def main():
         "level_format",
         "registry",
         "nearby",
+        "entity_grid",
+        "terrain_memo",
         "collision_index",
         "moves",
         "move_input",

@@ -104,7 +104,7 @@ static func _player_box(state: Dictionary) -> Array:
 
 
 static func _bodies(entity: Dictionary, state: Dictionary, world: Dictionary, area: Array) -> Array:
-	var registry: Script = load("res://src/sim/registry.gd")
+	var registry: Script = Near.registry()
 	var result := []
 	var probe := [area[0], area[1] - 4 * S, area[2], area[3] + 4 * S]
 	for other: Dictionary in Near.nearby(state, world, probe):

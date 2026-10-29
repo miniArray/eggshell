@@ -314,6 +314,7 @@ static func _flatten(entity: Dictionary, state: Dictionary, world: Dictionary, b
 			continue
 		if Body.overlap(body, Body.world_box(other, type.bounds(other))):
 			type.hit(other, state, world, Hits.SHELL, entity.x)
+			Collision.refresh(world, other)
 
 
 static func _egg(entity: Dictionary, state: Dictionary) -> Dictionary:

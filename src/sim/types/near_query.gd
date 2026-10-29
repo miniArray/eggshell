@@ -34,9 +34,10 @@ static func strike(
 			continue
 		if dispatch.overlaps_box(other, type, box):
 			type.hit(other, state, world, kind, from_x)
+			Collision.refresh(world, other)
 
 
-## Refile another entity's solid boxes after this code moved or enlarged them.
-## The solid index refiles the dispatched entity itself.
+## Refile another entity after this code moved it, changed a field its bounds read, or
+## moved or enlarged its solid boxes. The indexes refile the dispatched entity itself.
 static func refresh_solid(world: Dictionary, entity: Dictionary) -> void:
 	Collision.refresh(world, entity)

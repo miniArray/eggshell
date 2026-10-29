@@ -273,6 +273,7 @@ static func hit_others(
 			elif type.has_method("hit"):
 				type.hit(other, state, world, kind, entity.x)
 				reaction = 3
+			Collision.refresh(world, other)
 			if entity.status != 1:
 				return
 			if reaction == 1 or (self_breaks and reaction == 3):
@@ -327,6 +328,7 @@ static func strike_wall(
 			continue
 		if overlap(box, type.solid_box(other)):
 			type.hit(other, state, world, kind, entity.x)
+			Collision.refresh(world, other)
 
 
 static func valid(entity: Dictionary) -> bool:

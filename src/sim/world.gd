@@ -10,6 +10,8 @@ const S := preload("res://src/sim/units.gd").SCALE
 const CHUNK := 256 * S
 ## A probe covering more chunks than this reads every layer, as before the cache.
 const MAX_CHUNKS := 16
+## Remembered terrain probe answers per map before the memory starts over.
+const MAX_TERRAIN_HITS := 1 << 16
 const LAVA_LAYERS := ["lava", "lava_1", "lava_2", "lava_3", "lava_4"]
 const SPIKE_LAYER := "ySSpikes"
 
@@ -51,8 +53,10 @@ static func build(code: String, facts: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "%s: %s" % [map_name, compiled.error]}
 		compiled.world.map_index = index + 1
 		compiled.world.map_name = map_name
-		# Transient lookup cache for this map's static terrain; never saved.
+		# Transient lookup caches for this map's static terrain; never saved.
 		compiled.world.terrain_chunks = {}
+		compiled.world.terrain_hits = {}
+		compiled.world.terrain_escapes = {}
 		world.maps[index + 1] = compiled.world
 	Maps.select_map(world, world.initial_map)
 	return {"ok": true, "world": world}
@@ -257,11 +261,25 @@ static func overlaps(world: Dictionary, x: int, y: int) -> bool:
 	return overlaps_box(world, x - 12 * S, y - 56 * S, x + 12 * S, y)
 
 
+## Terrain never changes after loading, so a map remembers recent answers per probe box.
+## Bodies held inside terrain repeat the same push-out probes every step.
 static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
+	var hits: Variant = world.get("terrain_hits")
+	var key := [left, top, right, bottom]
+	if hits != null:
+		var known: Variant = hits.get(key)
+		if known != null:
+			return known
+	var hit := false
 	for layer: Dictionary in layers_near(world, left, top, right, bottom):
 		if layer.solid and layer_overlaps(layer, left, top, right, bottom):
-			return true
-	return false
+			hit = true
+			break
+	if hits != null:
+		if hits.size() >= MAX_TERRAIN_HITS:
+			hits.clear()
+		hits[key] = hit
+	return hit
 
 
 ## Layers, in draw order, that can answer layer_overlaps() true for this probe: those with

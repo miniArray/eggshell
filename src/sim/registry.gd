@@ -100,6 +100,9 @@ const TYPES := [
 ]
 const Moves = preload("res://src/sim/moves.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const EntityGrid = preload("res://src/sim/entity_grid.gd")
+const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
+const DispatchLoops = preload("res://src/sim/dispatch_loops.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0]]
 const TOKEN_BASE := 1_000_000
@@ -143,6 +146,9 @@ static var _enemy_codes := {}
 # Each code's ordered schema is composed once and shared read-only.
 static var _fields_by_code := {}
 static var _facts_by_code := {}
+static var _level_consumers := TYPES.filter(
+	func(type: Script) -> bool: return type.has_method("consume_level_requests")
+)
 
 
 static func lookup(code: String) -> Script:
@@ -254,25 +260,16 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 	var paused: bool = (
 		type.has_method("modal_step") and type.modal_step(holder, state, world, input)
 	)
+	EntityGrid.touch(world, holder)
 	if not paused:
 		state.modal_token = 0
 	return paused
 
 
 static func consume_requests(state: Dictionary, world: Dictionary) -> void:
-	for type: Script in TYPES:
-		if type.has_method("consume_level_requests"):
-			type.consume_level_requests(state, world)
-	var solids := Collision.solid_rows(world)
-	for entity: Dictionary in state.entities:
-		var known: Dictionary = facts(entity.code)
-		if known.consume:
-			var row: Variant = _solid_row(solids, entity)
-			if row != null:
-				Collision.dispatch_begin(world, row)
-			known.type.consume_requests(entity, state, world)
-			if row != null:
-				Collision.dispatch_end(world, row)
+	for type: Script in _level_consumers:
+		type.consume_level_requests(state, world)
+	DispatchLoops.consume_requests(state, world)
 
 
 static func codes() -> Array[String]:
@@ -530,18 +527,19 @@ static func compact(state: Dictionary) -> void:
 		captor_token = state.enemies[state.captured_by - 1].token
 	var remaining := []
 	for entity: Dictionary in state.entities:
-		var known: Dictionary = facts(entity.code)
 		if (
 			entity.source_index == -1
 			and entity.status == DEFEATED
 			and entity.token != state.get("move_held_id", 0)
 			and entity.token != captor_token
 			and entity.get("held", 0) != 1
-			and (not known.finished or known.type.finished(entity))
+			and (not facts(entity.code).finished or lookup(entity.code).finished(entity))
 		):
 			continue
 		remaining.append(entity)
-	state.entities = remaining
+	# Keep the table when nothing left it, so the entity grid needs no walk next step.
+	if remaining.size() != state.entities.size():
+		state.entities = remaining
 	attach_views(state)
 	if state.captured_by:
 		var captor := find_token(state, captor_token)
@@ -562,7 +560,10 @@ static func tongue_contact(state: Dictionary, world: Dictionary, box: Array) -> 
 			var row: Variant = _solid_row(Collision.solid_rows(world), entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			var grid: Variant = EntityGrid.current(world)
+			EntityGrid.begin(grid, entity)
 			result = type.tongue(entity, state, world)
+			EntityGrid.end(grid, entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 		elif phase_for(type, "SOLID", 0) == 1:
@@ -594,13 +595,16 @@ static func solid_boxes(entity: Dictionary, type: Script) -> Array:
 static func toggle_switch(state: Dictionary, world: Dictionary) -> void:
 	# Switch links are map-wide, not limited to the camera or active entities.
 	var solids := Collision.solid_rows(world)
+	var grid: Variant = EntityGrid.current(world)
 	for entity: Dictionary in state.entities:
 		var known: Dictionary = facts(entity.code)
 		if known.toggle:
 			var row: Variant = _solid_row(solids, entity)
 			if row != null:
 				Collision.dispatch_begin(world, row)
+			EntityGrid.begin(grid, entity)
 			known.type.toggle(entity, state, world)
+			EntityGrid.end(grid, entity)
 			if row != null:
 				Collision.dispatch_end(world, row)
 
@@ -616,30 +620,21 @@ static func _solid_row(solids: Dictionary, entity: Dictionary) -> Variant:
 ## Entities whose bounds may overlap `box` ([left, top, right, bottom], simulation units),
 ## in entity order. Touching edges count, so the result is a superset of strict overlap.
 ## It includes every status; callers keep their own status, held and hidden checks.
-## Use it instead of iterating state.entities for an area query.
-static func nearby(state: Dictionary, _world: Dictionary, box: Array) -> Array:
-	var result := []
-	var left: int = box[0]
-	var top: int = box[1]
-	var right: int = box[2]
-	var bottom: int = box[3]
-	for entity: Dictionary in state.entities:
-		var type: Script = _by_code.get(entity.code, Inert)
-		var x: int = entity.x
-		var y: int = entity.y
-		if not type.has_method("bounds"):
-			if x >= left and x <= right and y >= top and y <= bottom:
-				result.append(entity)
-			continue
-		var bounds: Array = type.bounds(entity)
-		if (
-			x + bounds[2] >= left
-			and x + bounds[0] <= right
-			and y + bounds[3] >= top
-			and y + bounds[1] <= bottom
-		):
-			result.append(entity)
-	return result
+## Use it instead of iterating state.entities for an area query. The entity grid answers
+## it during steps (see entity_grid.gd); the result always equals scan_nearby().
+static func nearby(state: Dictionary, world: Dictionary, box: Array) -> Array:
+	var indexed: Variant = EntityGrid.query(state, world, box, _by_code, Inert)
+	if indexed == null:
+		return scan_nearby(state, box)
+	if Collision.verify_index and not EntityGrid.same(indexed, scan_nearby(state, box)):
+		Collision.verify_failures += 1
+		push_error("Entity grid differs from a full scan at %s" % [box])
+	return indexed
+
+
+## The reference answer of nearby(): a scan of every entity.
+static func scan_nearby(state: Dictionary, box: Array) -> Array:
+	return EntityGrid.scan(state.entities, box, _by_code, Inert)
 
 
 static func overlaps_box(entity: Dictionary, type: Script, box: Array) -> bool:
@@ -729,17 +724,22 @@ static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = f
 
 static func attach_views(state: Dictionary, reindex: bool = true) -> void:
 	# Transitional read views share dictionaries; they are not separate saved state.
-	state.enemies = []
-	state.springs = []
+	var enemies := []
+	var springs := []
+	state.enemies = enemies
+	state.springs = springs
 	for entity: Dictionary in state.entities:
-		if is_enemy(entity.code):
+		var enemy: Variant = _enemy_codes.get(entity.code)
+		if enemy == null:
+			enemy = is_enemy(entity.code)
+		if enemy:
 			if reindex:
-				entity.family_index = state.enemies.size()
-			state.enemies.append(entity)
+				entity.family_index = enemies.size()
+			enemies.append(entity)
 		elif entity.code == "o11":
 			if reindex:
-				entity.family_index = state.springs.size()
-			state.springs.append(entity)
+				entity.family_index = springs.size()
+			springs.append(entity)
 
 
 static func is_enemy(code: String) -> bool:
@@ -767,106 +767,19 @@ static func phase_for(type: Script, key: String, fallback: int) -> int:
 
 
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
-	state.pressed_input = pressed
-	# Preserve actor movement before pad gravity, including capture's early exit.
-	for phase in [0, 1]:
-		if phase == 1 and state.captured_by:
-			break
-		var solids := Collision.solid_rows(world)
-		for entity: Dictionary in state.entities:
-			var known: Dictionary = facts(entity.code)
-			if known.step_phase != phase:
-				continue
-			var type: Script = known.type
-			var row: Variant = _solid_row(solids, entity)
-			if row != null:
-				Collision.dispatch_begin(world, row)
-			lifecycle(entity, state, world)
-			if entity.status == ACTIVE:
-				type.step(entity, state, world)
-			if row != null:
-				Collision.dispatch_end(world, row)
+	DispatchLoops.advance(state, world, pressed)
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	if entity.status == DEFEATED or entity.get("held", 0) == 1:
-		return
-	# An active entity that cannot despawn has no transition below; skip the box work.
-	if entity.status == ACTIVE and not entity.can_despawn:
-		return
-	var type := lookup(entity.code)
-	var box := activation_box(entity, type)
-	var far: bool = (
-		box[0] > state.camera_x + entity.despawn_radius
-		or box[2] < state.camera_x - entity.despawn_radius
-		or box[1] > state.camera_y + entity.despawn_radius
-		or box[3] < state.camera_y - entity.despawn_radius
-	)
-	if entity.source_index == -1:
-		# A runtime entity has no immutable camera-respawn anchor.
-		if entity.status == ACTIVE and entity.can_despawn and far:
-			if type.has_method("deactivate"):
-				type.deactivate(entity, state, world)
-			entity.status = DEFEATED
-		return
-	var source := source_for(entity, world)
-	if entity.status == ACTIVE and entity.can_despawn and far:
-		entity.status = QUEUED
-		entity.offscreen = 0
-	if entity.status == QUEUED and entity.can_respawn:
-		if (
-			absi(source.x - state.camera_x) > entity.activation_x
-			or absi(source.y - state.camera_y) > entity.activation_y
-		):
-			entity.offscreen = 1
-		if (
-			entity.offscreen
-			and absi(source.x - state.camera_x) < entity.respawn_radius
-			and absi(source.y - state.camera_y) < entity.respawn_radius
-		):
-			var fresh := create(source, world)
-			fresh.collected = entity.collected
-			fresh.checkpoint_collected = entity.checkpoint_collected
-			for pair: Array in fields(entity.code):
-				entity[pair[0]] = fresh[pair[0]]
-	if entity.status == WAITING:
-		box = activation_box(entity, type)
-		if (
-			box[2] > state.camera_x - entity.activation_x
-			and box[0] < state.camera_x + entity.activation_x
-			and box[3] > state.camera_y - entity.activation_y
-			and box[1] < state.camera_y + entity.activation_y
-		):
-			entity.status = ACTIVE
-			if source.mirror == 2:
-				entity.facing = -1 if state.x < entity.x else 1
-			if type.has_method("activate"):
-				type.activate(entity, state, world)
+	EntityLifecycle.run(entity, state, world)
 
 
 static func activation_box(entity: Dictionary, type: Script) -> Array:
-	if type.has_method("activation_bounds"):
-		return type.activation_bounds(entity)
-	var box: Array = type.bounds(entity) if type.has_method("bounds") else [0, 0, 0, 0]
-	return [entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
+	return EntityLifecycle.activation_box(entity, type)
 
 
 static func contact(state: Dictionary, input: int, world: Dictionary) -> void:
-	for phase in [0, 1, 2]:
-		for entity: Dictionary in state.entities:
-			var known: Dictionary = facts(entity.code)
-			if (
-				known.contact_phase == phase
-				and entity.status == ACTIVE
-				and entity.get("held", 0) != 1
-				and entity.get("hidden", 0) != 1
-			):
-				var row: Variant = _solid_row(Collision.solid_rows(world), entity)
-				if row != null:
-					Collision.dispatch_begin(world, row)
-				known.type.contact(entity, state, world, input)
-				if row != null:
-					Collision.dispatch_end(world, row)
+	DispatchLoops.contact(state, input, world)
 
 
 static func goal_convert(state: Dictionary, world: Dictionary, on_coin: Callable) -> void:

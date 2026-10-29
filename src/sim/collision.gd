@@ -4,6 +4,7 @@ extends RefCounted
 ## Per-step bindings are rebuilt before object motion, never saved as play facts.
 
 const World = preload("res://src/sim/world.gd")
+const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const DEFAULT_JUMP := 776 * 60
@@ -12,24 +13,45 @@ const POUND_FALL := 2
 const CELL := 128 * S
 ## A probe covering more cells than this scans every row, as the unindexed path did.
 const MAX_PROBE_CELLS := 64
+const NO_CONTEXT := {}
 ## Tests and the identity proof set this to compare every indexed query with a full scan.
 static var verify_index := false
 static var verify_failures := 0
+## Per type: which solid box hook it has (2 solid_boxes, 1 solid_box, 0 none).
+static var _box_hooks := {}
+## Box checks are assertions; release builds skip the loop that holds them.
+static var _debug := OS.is_debug_build()
 
 
 static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -> void:
-	var solids := []
-	for entity: Dictionary in state.get("entities", []):
-		var type: Script = registry.lookup(entity.code)
-		var mode := _solid_mode(type)
-		if mode in [1, 2]:
-			solids.append([entity, type, mode])
+	var entities: Array = state.get("entities", [])
 	var previous: Dictionary = world.get("solids_step", {})
+	# A table changes only by replacement or by appending, so the same array with the same
+	# size holds the same solid rows as last step. Verify runs check that with a scan.
+	var same_table: bool = (
+		not previous.is_empty()
+		and is_same(previous.state, state)
+		and previous.registry == registry
+		and is_same(previous.entities, entities)
+		and previous.count == entities.size()
+	)
+	var solids := []
+	if not same_table or verify_index:
+		for entity: Dictionary in entities:
+			var type: Script = registry.lookup(entity.code)
+			var mode := _solid_mode(type)
+			if mode in [1, 2]:
+				solids.append([entity, type, mode])
+	if same_table and verify_index and not _same_rows(previous, state, registry, solids):
+		verify_failures += 1
+		push_error("Solid rows changed in a table that kept its identity and size")
 	# The same table keeps its index: rows were refiled after every dispatch last step.
-	var reuse := _same_rows(previous, state, registry, solids)
+	var reuse := same_table or _same_rows(previous, state, registry, solids)
 	var context := {
 		"state": state,
 		"registry": registry,
+		"entities": entities,
+		"count": entities.size(),
 		"frame": int(state.get("frame", 0)),
 		"rows": previous.rows if reuse else [],
 		"shapes": [],
@@ -40,20 +62,24 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 		"dispatching": []
 	}
 	var rows: Array = context.rows
-	for index in solids.size():
-		var entity: Dictionary = solids[index][0]
-		var boxes := _boxes(solids[index][1], entity)
-		if reuse:
-			var row: Dictionary = rows[index]
+	if reuse:
+		for row: Dictionary in rows:
+			var entity: Dictionary = row.entity
+			# Types build their box arrays fresh and nothing writes into them, so the old
+			# boxes can share the arrays.
+			var boxes := _boxes(row.type, entity)
 			var moved: bool = row.x != entity.x or row.y != entity.y or row.status != entity.status
 			row.x = entity.x
 			row.y = entity.y
 			row.status = entity.status
-			row.old_boxes = boxes.duplicate(true)
+			row.old_boxes = boxes
 			row.handles = []
 			if moved or not _inside(row.region, boxes):
 				_place(context, row, boxes)
-			continue
+		solids = []
+	for index in solids.size():
+		var entity: Dictionary = solids[index][0]
+		var boxes := _boxes(solids[index][1], entity)
 		var fresh := {
 			"index": index,
 			"entity": entity,
@@ -62,10 +88,11 @@ static func begin_step(state: Dictionary, world: Dictionary, registry: Script) -
 			"x": entity.x,
 			"y": entity.y,
 			"status": entity.status,
-			"old_boxes": boxes.duplicate(true),
+			"old_boxes": boxes,
 			"handles": [],
 			"cells": [],
-			"region": []
+			"region": [],
+			"bounded": solids[index][1].has_method("bounds")
 		}
 		rows.append(fresh)
 		context.by_token[entity.get("token", -1 - index)] = fresh
@@ -116,7 +143,10 @@ static func _solid_mode(type: Script) -> int:
 ## registry also refiles). Code that moves or enlarges another entity's solid boxes must
 ## call refresh(). Every query evaluates candidate boxes live, so results, their order and
 ## side effects equal a scan of every row.
+## It also marks the entity for the entity grid behind Registry.nearby, so code that moves
+## another entity or changes a field its bounds read calls it too.
 static func refresh(world: Dictionary, entity: Dictionary) -> void:
+	EntityGrid.touch(world, entity)
 	var context := _context(world)
 	if context.is_empty():
 		return
@@ -151,7 +181,7 @@ static func _place(context: Dictionary, row: Dictionary, boxes: Array) -> void:
 	var right := -1
 	var bottom := -1
 	var empty := true
-	if row.type.has_method("bounds"):
+	if row.bounded:
 		var b: Array = row.type.bounds(entity)
 		left = entity.x + mini(b[0], b[2])
 		top = entity.y + mini(b[1], b[3])
@@ -170,17 +200,27 @@ static func _place(context: Dictionary, row: Dictionary, boxes: Array) -> void:
 			top = mini(top, box[1])
 			right = maxi(right, box[2])
 			bottom = maxi(bottom, box[3])
-	var cells: Array = []
-	if not empty:
-		cells = [
-			World.floor_div(left, CELL),
-			World.floor_div(top, CELL),
-			World.floor_div(right, CELL),
-			World.floor_div(bottom, CELL)
-		]
-	row.region = [left, top, right, bottom] if not empty else []
-	if cells == row.cells:
+	if empty:
+		row.region = []
+		if row.cells.is_empty():
+			return
+	row.region = [left, top, right, bottom]
+	# World.floor_div() inlined: rows are refiled after every dispatch on a solid.
+	var c0: int = left / CELL if left >= 0 else -((-left + CELL - 1) / CELL)
+	var c1: int = top / CELL if top >= 0 else -((-top + CELL - 1) / CELL)
+	var c2: int = right / CELL if right >= 0 else -((-right + CELL - 1) / CELL)
+	var c3: int = bottom / CELL if bottom >= 0 else -((-bottom + CELL - 1) / CELL)
+	var filed: Array = row.cells
+	if (
+		not empty
+		and not filed.is_empty()
+		and filed[0] == c0
+		and filed[1] == c1
+		and filed[2] == c2
+		and filed[3] == c3
+	):
 		return
+	var cells: Array = [] if empty else [c0, c1, c2, c3]
 	var grid: Dictionary = context.grid
 	if not row.cells.is_empty():
 		for cy in range(row.cells[1], row.cells[3] + 1):
@@ -209,6 +249,14 @@ static func _candidates(context: Dictionary, left: int, top: int, right: int, bo
 	var cy1 := World.floor_div(bottom, CELL)
 	if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > MAX_PROBE_CELLS or right < left or bottom < top:
 		return range(context.rows.size())
+	if cx0 == cx1 and cy0 == cy1 and context.dispatching.is_empty():
+		# One cell: its bucket holds each row once, so sorting a copy is the whole answer.
+		var only: Variant = context.grid.get(_cell_key(cx0, cy0))
+		if only == null:
+			return []
+		var sorted: Array = only.duplicate()
+		sorted.sort()
+		return sorted
 	var found := {}
 	var grid: Dictionary = context.grid
 	for cy in range(cy0, cy1 + 1):
@@ -358,16 +406,62 @@ static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 	_carry(body, world, bounds)
 	if not overlaps(body, world, bounds):
 		return true
+	# Without solid rows near the body, the search below only reads static terrain, so its
+	# outcome for this position and box is remembered per map. Bodies held inside terrain
+	# repeat the same search every step.
+	var memo: Variant = world.get("terrain_escapes")
+	var key: Array = []
+	if memo != null and _no_solids_near(world, body, bounds):
+		key = [body.x, body.y, bounds[0], bounds[1], bounds[2], bounds[3]]
+		var known: Variant = memo.get(key)
+		if known != null:
+			body.x = known[1]
+			body.y = known[2]
+			if known[0] == 2:
+				body.vy = 0
+			return known[0] != 0
+	var outcome := _escape(body, world, bounds)
+	if not key.is_empty():
+		if memo.size() >= World.MAX_TERRAIN_HITS:
+			memo.clear()
+		memo[key] = [outcome, body.x, body.y]
+	if outcome == 2:
+		body.vy = 0
+	return outcome != 0
+
+
+## The push-out search of prepare(): 0 when no free place was found (the body is back at
+## its start), 1 when it moved to one, 2 when it moved up and its vertical speed stops.
+static func _escape(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	var width: int = bounds[2] - bounds[0]
 	var height: int = bounds[3] - bounds[1]
 	if push_out(body, world, bounds, 0, -1, height / 8):
-		body.vy = 0
-		return true
+		return 2
 	if push_axis(body, world, bounds, true, width / 2):
-		return true
+		return 1
 	if push_axis(body, world, bounds, false, height / 2):
+		return 1
+	return 1 if push_nearest(body, world, bounds, maxi(width, height) / 2) else 0
+
+
+## Whether no solid row can take part in _escape(): none filed near any position it
+## probes (the body box grown by its largest push distance plus refinement), and none
+## dispatching. Then every probe there reads terrain only.
+static func _no_solids_near(world: Dictionary, body: Dictionary, bounds: Array) -> bool:
+	var context := _context(world)
+	if context.is_empty():
 		return true
-	return push_nearest(body, world, bounds, maxi(width, height) / 2)
+	var reach: int = maxi(bounds[2] - bounds[0], bounds[3] - bounds[1]) + 4 * S
+	return (
+		_candidates(
+			context,
+			body.x + bounds[0] - reach,
+			body.y + bounds[1] - reach,
+			body.x + bounds[2] + reach,
+			body.y + bounds[3] + reach
+		)
+		. is_empty()
+	)
 
 
 static func horizontal(
@@ -477,21 +571,28 @@ static func vertical(
 	return body.y - start_y
 
 
+## This step's solid context, or a shared read-only empty one (callers only read it).
 static func _context(world: Dictionary) -> Dictionary:
-	var context: Dictionary = world.get("solids_step", {})
-	if context.is_empty() or context.frame != context.state.get("frame", 0):
-		return {}
+	var context: Variant = world.get("solids_step")
+	if context == null or context.is_empty() or context.frame != context.state.get("frame", 0):
+		return NO_CONTEXT
 	return context
 
 
 static func _boxes(type: Script, entity: Dictionary) -> Array:
 	var boxes: Array = []
-	if type.has_method("solid_boxes"):
+	var kind: Variant = _box_hooks.get(type)
+	if kind == null:
+		kind = 2 if type.has_method("solid_boxes") else (1 if type.has_method("solid_box") else 0)
+		_box_hooks[type] = kind
+	if kind == 2:
 		boxes = type.solid_boxes(entity)
-	elif type.has_method("solid_box"):
+	elif kind == 1:
 		var box: Array = type.solid_box(entity)
 		if not box.is_empty():
 			boxes = [box]
+	if not _debug:
+		return boxes
 	for box: Array in boxes:
 		assert(box.size() == 4 and box[0] < box[2] and box[1] < box[3], "Invalid solid box")
 		for value: Variant in box:
@@ -692,8 +793,11 @@ static func _bump(
 		if context.bumps.has(key) or row.entity.status != 1:
 			continue
 		context.bumps[key] = true
+		var grid: Variant = EntityGrid.current(world)
 		dispatch_begin(world, row)
+		EntityGrid.begin(grid, row.entity)
 		row.type.bump(row.entity, context.state, world, side)
+		EntityGrid.end(grid, row.entity)
 		dispatch_end(world, row)
 
 
