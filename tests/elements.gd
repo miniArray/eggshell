@@ -147,7 +147,7 @@ func _melon_checks() -> void:
 			"target": _place("e4", 650, 284)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 400)
 	var melon := _by_id(state, "melon")
 	var target := _by_id(state, "target")
@@ -172,7 +172,7 @@ func _melon_checks() -> void:
 
 func _shot_checks() -> void:
 	var world := _world_for({"floor": _floor()})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 300)
 	var shot := Shot.spawn(state, world, Elements.ICE, 400 * S, 200 * S, 0)
 	check(not shot.is_empty() and shot.code == "ice_shot", "An ice request becomes an ice shot")
@@ -190,7 +190,7 @@ func _shot_checks() -> void:
 
 func _freeze_checks() -> void:
 	var world := _world_for({"floor": _floor(), "walker": _place("e4", 500, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 300)
 	var walker := _by_id(state, "walker")
 	check(walker.status == Registry.ACTIVE, "The walker activates")
@@ -216,7 +216,7 @@ func _freeze_checks() -> void:
 	check(state.invulnerable == 0, "A frozen body does not hurt")
 	# A stomp on a frozen body bounces the player and shatters it.
 	var world2 := _world_for({"floor": _floor(), "walker": _place("e4", 500, 284)})
-	var state2 := State.create(world2)
+	var state2 := _placed_state(world2)
 	_stand(state2, world2, 300)
 	var other := _by_id(state2, "walker")
 	type.hit(other, state2, world2, Hits.ICE, other.x)
@@ -231,7 +231,7 @@ func _freeze_checks() -> void:
 	check(state2.vy < 0, "A stomp on a frozen body bounces the player")
 	# Fire on a frozen body burns it.
 	var world3 := _world_for({"floor": _floor(), "walker": _place("e4", 500, 284)})
-	var state3 := State.create(world3)
+	var state3 := _placed_state(world3)
 	_stand(state3, world3, 300)
 	var third := _by_id(state3, "walker")
 	type.hit(third, state3, world3, Hits.ICE, third.x)
@@ -241,7 +241,7 @@ func _freeze_checks() -> void:
 
 func _thaw_checks() -> void:
 	var world := _world_for({"floor": _floor(), "flyer": _place("e14", 500, 200, {"F": 1})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 300)
 	var flyer := _by_id(state, "flyer")
 	check(flyer.status == Registry.ACTIVE, "The hanging flyer activates")
@@ -268,7 +268,7 @@ func _immune_checks() -> void:
 			"petal_stem": _place("e18", 900, 284)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 600)
 	var thief := _by_id(state, "thief")
 	var giant := _by_id(state, "giant")
@@ -297,7 +297,7 @@ func _bubble_checks() -> void:
 			"cold": _place("e16", 900, 400, {"E1": "2", "E2": "0", "E3": "1", "E4": "0", "F": 3})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 600 * S
 	state.y = 300 * S
 	var bubble := _by_id(state, "bubble")
@@ -324,7 +324,7 @@ func _bubble_checks() -> void:
 	)
 	check(hidden_again, "It drops home and hides again")
 	# Swallowing a burning bubble loads three fire shots.
-	var ammo_state := State.create(world)
+	var ammo_state := _placed_state(world)
 	var target := _by_id(ammo_state, "bubble")
 	target.status = Registry.ACTIVE
 	target.hidden = 0
@@ -335,7 +335,7 @@ func _bubble_checks() -> void:
 		ammo_state.move_ammo == Moves.HEAT and ammo_state.move_ammo_count == 3,
 		"A burning bubble loads three fire shots"
 	)
-	var cold_state := State.create(world)
+	var cold_state := _placed_state(world)
 	var cold_target := _by_id(cold_state, "cold")
 	cold_target.status = Registry.ACTIVE
 	cold_target.hidden = 0
@@ -358,7 +358,7 @@ func _bubble_checks() -> void:
 			"bubble": _place("e16", 500, 300, options)
 		}
 	)
-	var land_state := State.create(land_world)
+	var land_state := _placed_state(land_world)
 	land_state.x = 600 * S
 	land_state.y = 200 * S
 	var lander := _by_id(land_state, "bubble")
@@ -377,7 +377,7 @@ func _lamp_checks() -> void:
 	var world := _world_for(
 		{"fire_lamp": _place("d25", 500, 200, {"F": 2}), "ice_lamp": _place("d26", 700, 200)}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 600 * S
 	state.y = 300 * S
 	var fire_lamp := _by_id(state, "fire_lamp")
@@ -403,7 +403,7 @@ func _lamp_checks() -> void:
 
 func _cloud_checks() -> void:
 	var world := _world_for({"cloud": _place("o8", 500, 200, {"E1": "1", "E2": "3", "E3": "1"})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 400 * S
 	state.y = 300 * S
 	var cloud := _by_id(state, "cloud")
@@ -411,7 +411,7 @@ func _cloud_checks() -> void:
 	Registry.lookup("o8").hit(cloud, state, world, Hits.EGG, 0)
 	check(cloud.phase == 2, "An egg only reveals a hidden cloud")
 	var world2 := _world_for({"cloud": _place("o8", 500, 200, {"E1": "1", "E2": "3", "E3": "1"})})
-	var state2 := State.create(world2)
+	var state2 := _placed_state(world2)
 	state2.x = 400 * S
 	state2.y = 300 * S
 	var hidden := _by_id(state2, "cloud")
@@ -423,7 +423,7 @@ func _cloud_checks() -> void:
 
 func _launcher_checks() -> void:
 	var world := _world_for({"floor": _floor(), "launcher": _place("e37", 500, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 300)
 	var launcher := _by_id(state, "launcher")
 	check(launcher.status == Registry.ACTIVE, "The launcher activates")
@@ -463,7 +463,7 @@ func _snapshot_checks() -> void:
 			"bubble": _place("e16", 700, 400, {"E1": "3", "E2": "4", "E3": "2", "E4": "0"})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_stand(state, world, 300)
 	var walker := _by_id(state, "walker")
 	Registry.lookup("e4").hit(walker, state, world, Hits.ICE, walker.x)
@@ -505,7 +505,7 @@ func _every_type_checks() -> void:
 			var world := _world_for(
 				{"floor": _floor(), "it": _place(code, 500, 270, TYPE_OPTIONS.get(code, {}))}
 			)
-			var state := State.create(world)
+			var state := _placed_state(world)
 			_stand(state, world, 380, 4)
 			var entity := _by_id(state, "it")
 			if entity.status != Registry.ACTIVE:
@@ -547,3 +547,11 @@ func check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		push_error("FAIL: " + message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

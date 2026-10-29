@@ -213,7 +213,7 @@ func span_type_checks() -> void:
 	if not Registry.implemented("p3"):
 		return
 	var world := typed_world({"span": {"A": "p3", "X": 200, "Y": 160, "E1": "96.9"}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	check(
@@ -245,7 +245,7 @@ func crumble_type_checks() -> void:
 	if not Registry.implemented("o20"):
 		return
 	var world := typed_world({"fall": {"A": "o20", "X": 160, "Y": 160, "F": 1}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	state.x = 160 * S
@@ -279,7 +279,7 @@ func crumble_type_checks() -> void:
 	type.step(entity, state, world)
 	check(entity.status == 3, "ordinary crumble is removed below the reference region")
 	world = typed_world({"ride": {"A": "o20", "X": 160, "Y": 160}})
-	state = State.create(world)
+	state = _placed_state(world)
 	state.entities[0].age = 73
 	state.entities[0].vy = 192 * 60
 	state.x = 160 * S
@@ -303,7 +303,7 @@ func block_type_checks() -> void:
 	if not Registry.implemented("o28"):
 		return
 	var world := typed_world({"block": {"A": "o28", "X": 160, "Y": 160, "F": 4}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	check(
@@ -339,7 +339,7 @@ func redirect_type_checks() -> void:
 			{"A": "o19", "X": 160, "Y": 160, "R": 90, "E1": "-45", "E2": "0.25", "E3": "1"}
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	var projectile := {
@@ -427,7 +427,7 @@ func gate_type_checks() -> void:
 	if not Registry.implemented("o31"):
 		return
 	var world := typed_world({"gate": {"A": "o31", "X": 200, "Y": 200}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	Collision.begin_step(state, world, Registry)
@@ -469,7 +469,7 @@ func gate_type_checks() -> void:
 		"rotated barrier retains its central volume"
 	)
 	world = typed_world({"fractional": {"A": "o31", "X": 200, "Y": 200, "R": 103.125}})
-	state = State.create(world)
+	state = _placed_state(world)
 	entity = state.entities[0]
 	Collision.begin_step(state, world, Registry)
 	probe.x = 229 * S
@@ -487,7 +487,7 @@ func gate_type_checks() -> void:
 	world = typed_world(
 		{"gate": {"A": "o31", "X": 200, "Y": 200}, "walker": {"A": "e1", "X": 200, "Y": 230}}
 	)
-	state = State.create(world)
+	state = _placed_state(world)
 	state.x = 400 * S
 	state.entities[1].status = 1
 	Collision.begin_step(state, world, Registry)
@@ -503,7 +503,7 @@ func post_type_checks() -> void:
 	if not Registry.implemented("o23"):
 		return
 	var world := typed_world({"post": {"A": "o23", "X": 160, "Y": 224, "E1": "96", "E2": "9"}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	check(
@@ -537,7 +537,7 @@ func post_type_checks() -> void:
 	world = typed_world(
 		{"spiked": {"A": "o23", "X": 160, "Y": 224, "E1": "96", "E2": "16", "E3": "1"}}
 	)
-	state = State.create(world)
+	state = _placed_state(world)
 	entity = state.entities[0]
 	state.x = 160 * S
 	state.y = 128 * S - GAP
@@ -561,7 +561,7 @@ func cache_type_checks() -> void:
 	# Wide enough that the map-clamped screen can leave the cache.
 	world.width = 4096 * S
 	world.maps[1].width = world.width
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	Collision.begin_step(state, world, Registry)
@@ -646,7 +646,7 @@ func cache_type_checks() -> void:
 		world = typed_world(
 			{"release": {"A": "o8", "X": 200, "Y": 160, "E1": str(content), "E2": "3"}}
 		)
-		state = State.create(world)
+		state = _placed_state(world)
 		entity = state.entities[0]
 		entity.phase = 3
 		entity.age = 29
@@ -703,7 +703,7 @@ func switch_type_checks() -> void:
 			"fall": {"A": "o20", "X": 500, "Y": 500}
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)
 	entity.status = 1
@@ -784,7 +784,7 @@ func switch_type_checks() -> void:
 	world = typed_world(
 		{"first": {"A": "o14", "X": 200, "Y": 200}, "second": {"A": "o14", "X": 300, "Y": 200}}
 	)
-	state = State.create(world)
+	state = _placed_state(world)
 	state.switch_ticks = 100
 	for trigger: Dictionary in state.entities:
 		trigger.status = 1
@@ -810,7 +810,7 @@ func shared_interaction_checks() -> void:
 				"coin": {"A": "o1", "X": 300, "Y": 200, "F": 1}
 			}
 		)
-		var state := State.create(world)
+		var state := _placed_state(world)
 		var trigger: Dictionary = state.entities[0]
 		trigger.status = 1
 		state.x = 200 * S
@@ -832,7 +832,7 @@ func shared_interaction_checks() -> void:
 	if not Registry.implemented("o7"):
 		return
 	var world := typed_world({"rock": {"A": "o28", "X": 200, "Y": 200}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 20 * S
 	state.y = 20 * S
 	var egg := Registry.spawn_dynamic(
@@ -865,7 +865,7 @@ func shared_interaction_checks() -> void:
 		"final real projectile strike retains its pre-destruction bounce and colour change"
 	)
 	world = typed_world({"arrow": {"A": "o19", "X": 200, "Y": 200, "R": 0, "E3": "1"}})
-	state = State.create(world)
+	state = _placed_state(world)
 	state.x = 20 * S
 	state.y = 20 * S
 	egg = Registry.spawn_dynamic(
@@ -940,3 +940,11 @@ func check(condition: bool, label: String) -> void:
 	if not condition:
 		failures += 1
 		printerr("FAIL: " + label)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

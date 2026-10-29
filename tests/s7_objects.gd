@@ -98,13 +98,13 @@ func registration_checks() -> void:
 
 func thorn_checks() -> void:
 	var world := _world_for({"thorn": _place("o12", 200, 200, {"F": 1})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var thorn := _by_id(state, "thorn")
 	check(thorn.form == 1, "Thorn keeps its second form")
 	_stand_on(state, 184 * S, 200 * S)
 	Sim.advance(state, 0, world)
 	check(state.life_phase == Life.DEAD, "Touching a thorn from above is fatal")
-	state = State.create(world)
+	state = _placed_state(world)
 	state.x = 200 * S
 	state.y = 330 * S
 	state.vy = 0
@@ -124,7 +124,7 @@ func thorn_checks() -> void:
 
 func colour_block_checks() -> void:
 	var world := _world_for({"block": _place("o29", 300, 200, {"F": 1})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var block := _by_id(state, "block")
 	var type: Script = Registry.lookup("o29")
 	check(type.solid_box(block) == [268 * S, 184 * S, 332 * S, 216 * S], "Colour block is 64x32")
@@ -146,7 +146,7 @@ func colour_block_checks() -> void:
 	check(block.form == 1, "A travelling egg that reaches the block edge hits it")
 	check(flying.vx < 0 and flying.bounces == 4, "The egg still bounces; the block refunds the hit")
 	var rock_world := _world_for({"rock": _place("o28", 300, 200)})
-	var rock_state := State.create(rock_world)
+	var rock_state := _placed_state(rock_world)
 	var rock := _by_id(rock_state, "rock")
 	var thrown := Registry.spawn_dynamic(
 		rock_state, rock_world, "o7", 250 * S, 200 * S, {"mode": 1, "vx": 16 * S, "bounces": 4}
@@ -159,7 +159,7 @@ func colour_block_checks() -> void:
 
 func grow_block_checks() -> void:
 	var world := _world_for({"grow": _place("o10", 400, 200)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var block := _by_id(state, "grow")
 	var type: Script = Registry.lookup("o10")
 	check(type.solid_box(block) == [384 * S, 184 * S, 416 * S, 216 * S], "Small block is 32x32")
@@ -200,7 +200,7 @@ func bridge_checks() -> void:
 	var world := _world_for(
 		{"bridge": _place("p2", 600, 300, {"E1": "160"}), "plain": _place("p2", 900, 300)}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var bridge := _by_id(state, "bridge")
 	var type: Script = Registry.lookup("p2")
 	check(type.SOLID == 2, "Bridge is top-only")
@@ -229,7 +229,7 @@ func runner_checks() -> void:
 	var world := _world_for(
 		{"plain": _place("e7", 200, 200), "careful": _place("e9", 400, 200, {"M": 1})}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var plain := _by_id(state, "plain")
 	var careful := _by_id(state, "careful")
 	var walker: Script = Registry.lookup("e6")
@@ -264,7 +264,7 @@ func _rest_player(state: Dictionary) -> void:
 
 func hopper_checks() -> void:
 	var world := _ledge_world({"spike": _place("e40", 500, 200)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_rest_player(state)
 	var spike := _by_id(state, "spike")
 	var landed := -1
@@ -286,14 +286,14 @@ func hopper_checks() -> void:
 	check(spike.y > 316 * S or spike.status != 1, "A sinking body falls through the support")
 	check(state.life_phase == Life.PLAY and before < spike.y, "Player was never touched")
 	var yellow_world := _ledge_world({"spike": _place("e40", 500, 200, {"F": 1})})
-	state = State.create(yellow_world)
+	state = _placed_state(yellow_world)
 	_rest_player(state)
 	spike = _by_id(state, "spike")
 	for tick in 120:
 		Sim.advance(state, 0, yellow_world)
 	check(spike.status == Registry.DEFEATED, "The second form breaks on landing")
 	check(_degrades("e40", {"F": 2}), "Unknown form becomes a placeholder")
-	state = State.create(world)
+	state = _placed_state(world)
 	spike = _by_id(state, "spike")
 	spike.status = Registry.ACTIVE
 	state.x = spike.x
@@ -311,7 +311,7 @@ func hopper_checks() -> void:
 
 func producer_checks() -> void:
 	var world := _ledge_world({"plant": _place("o17", 500, 284, {"E1": "e40"})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_rest_player(state)
 	var released := {}
 	for tick in 80:
@@ -333,7 +333,7 @@ func spine_checks() -> void:
 	var world := _ledge_world(
 		{"fast": _place("e25", 450, 284), "slow": _place("e25", 560, 284, {"F": 1, "M": 1})}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_rest_player(state)
 	state.x = 2000 * S
 	var fast := _by_id(state, "fast")
@@ -353,6 +353,8 @@ func spine_checks() -> void:
 	state.y = fast.y
 	Collision.begin_step(state, world, Registry)
 	type.step(fast, state, world)
+	# The attack tests positions after both moves, with the contacts.
+	type.contact(fast, state, world, 0)
 	check(fast.mode == type.SPIKE and fast.vx == 0, "A near player raises the spines")
 	check(fast.facing == 1, "Raised spines face the player")
 	for tick in 20:
@@ -388,7 +390,7 @@ func flyer_checks() -> void:
 			"low": _place("e30", 600, 200, {"F": 1, "E1": "1", "M": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 3000 * S
 	state.y = 900 * S
 	var calm := _by_id(state, "calm")
@@ -454,7 +456,7 @@ func _petals_of(state: Dictionary, stem: Dictionary) -> Array:
 
 func petal_checks() -> void:
 	var world := _ledge_world({"stem": _place("e18", 500, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_rest_player(state)
 	var stem := _by_id(state, "stem")
 	var type: Script = Registry.lookup("e18")
@@ -494,7 +496,7 @@ func petal_checks() -> void:
 			var speed: int = entity.vx * entity.vx + entity.vy * entity.vy
 			check(absi(speed - 15360 * 15360) < 15360 * 400, "Petals fly at 256 px/s")
 	check(flying == 5 and stem.phase == type.REGAIN, "All petals fly out and the face is gone")
-	state = State.create(world)
+	state = _placed_state(world)
 	_rest_player(state)
 	stem = _by_id(state, "stem")
 	for tick in 40:
@@ -521,7 +523,7 @@ func petal_checks() -> void:
 
 func juggler_checks() -> void:
 	var world := _ledge_world({"head": _place("e42", 500, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_rest_player(state)
 	var head := _by_id(state, "head")
 	var type: Script = Registry.lookup("e42")
@@ -558,7 +560,7 @@ func juggler_checks() -> void:
 	check(type.tongue(head, state, world) == 0, "The head cannot be eaten")
 	var egg := {"code": "o7", "x": head.x}
 	check(type.projectile_contact(head, egg, state, world) == 0, "Eggs pass the head")
-	state = State.create(world)
+	state = _placed_state(world)
 	_rest_player(state)
 	head = _by_id(state, "head")
 	for tick in 3:
@@ -627,7 +629,7 @@ func egg_terrain_checks() -> void:
 		cells.append(-1)
 	cells[4 * 8 + 4] = 0
 	world.layers = [_tile_layer("slope", cells, 8, [0, 32, 32, 0, 32, 32], false)]
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 2000 * S
 	var egg := _thrown_egg(state, world, 100 * S, 140 * S, 1024 * 60, 0)
 	for tick in 2:
@@ -644,7 +646,7 @@ func egg_terrain_checks() -> void:
 	for index in 64:
 		wall.append(0 if index % 8 == 4 else -1)
 	wall_world.layers = [_tile_layer("wall", wall, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
-	state = State.create(wall_world)
+	state = _placed_state(wall_world)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, wall_world, 100 * S, 100 * S, 1024 * 60, 0)
 	for tick in 2:
@@ -656,7 +658,7 @@ func egg_terrain_checks() -> void:
 	for index in 64:
 		ground.append(0 if index >= 48 else -1)
 	ground_world.layers = [_tile_layer("ground", ground, 8, [0, 0, 32, 0, 32, 32, 0, 32], false)]
-	state = State.create(ground_world)
+	state = _placed_state(ground_world)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, ground_world, 60 * S, 160 * S, 724 * 60, 724 * 60)
 	for tick in 3:
@@ -671,7 +673,7 @@ func egg_terrain_checks() -> void:
 	for index in 64:
 		water.append(0 if index >= 32 else -1)
 	pool.layers = [_tile_layer("pool", water, 8, [0, 0, 32, 0, 32, 32, 0, 32], true)]
-	state = State.create(pool)
+	state = _placed_state(pool)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, pool, 40 * S, 120 * S, 1000 * 60, 200 * 60)
 	for tick in 3:
@@ -689,7 +691,7 @@ func egg_terrain_checks() -> void:
 	check(rose, "A skipping egg is pushed up while it touches water")
 	check(egg.mode == type.STATIONARY and egg.vx == 0, "The skip ends as a resting egg")
 	check(type.valid(egg), "Skip fields stay valid")
-	state = State.create(pool)
+	state = _placed_state(pool)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, pool, 100 * S, 100 * S, 200 * 60, 1000 * 60)
 	for tick in 3:
@@ -706,7 +708,7 @@ func egg_terrain_checks() -> void:
 	var lava := _tile_layer("lava", molten, 64, [0, 0, 32, 0, 32, 32, 0, 32], true)
 	lava.water = false
 	hot.layers = [lava]
-	state = State.create(hot)
+	state = _placed_state(hot)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, hot, 40 * S, 120 * S, 1000 * 60, 200 * 60)
 	for tick in 3:
@@ -718,7 +720,7 @@ func egg_terrain_checks() -> void:
 			Collision.begin_step(state, hot, Registry)
 			type.step(egg, state, hot)
 	check(egg.status == Registry.DEFEATED and egg.loot_created == 0, "The skip ends by burning")
-	state = State.create(hot)
+	state = _placed_state(hot)
 	state.x = 2000 * S
 	egg = _thrown_egg(state, hot, 100 * S, 100 * S, 200 * 60, 1000 * 60)
 	for tick in 3:
@@ -738,7 +740,7 @@ func hound_checks() -> void:
 	var world := _hound_world(
 		{"dog": _place("o16", 1000, 284), "stay": _place("o16", 1400, 284, {"E1": "1"})}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var dog := _by_id(state, "dog")
 	var type: Script = Registry.lookup("o16")
 	check(type.SOLID == 2, "The runner's back is top-only")
@@ -780,7 +782,7 @@ func hound_checks() -> void:
 			"frozen": _place("e4", 1010, 284),
 		}
 	)
-	state = State.create(enemy_world)
+	state = _placed_state(enemy_world)
 	dog = _by_id(state, "dog")
 	var touched := ["walker", "stilts", "giant", "frozen"]
 	for id: String in touched:
@@ -808,7 +810,7 @@ func hound_checks() -> void:
 	for index in 32 * 16:
 		wet.append(0 if index >= 32 * 5 else -1)
 	pond.layers = [_tile_layer("pond", wet, 32, [0, 0, 32, 0, 32, 32, 0, 32], true)]
-	state = State.create(pond)
+	state = _placed_state(pond)
 	dog = _by_id(state, "dog")
 	dog.status = 1
 	dog.started = 1
@@ -828,7 +830,7 @@ func hound_checks() -> void:
 	var lava_layer := _tile_layer("lava", wet, 32, [0, 0, 32, 0, 32, 32, 0, 32], false)
 	lava_layer.solid = false
 	hot.layers = [lava_layer]
-	state = State.create(hot)
+	state = _placed_state(hot)
 	dog = _by_id(state, "dog")
 	dog.status = 1
 	state.x = 900 * S
@@ -848,7 +850,7 @@ func hound_checks() -> void:
 	var ride_world := _hound_world(
 		{"dog": _place("o16", 1000, 284), "walker": _place("e4", 1000, 200)}
 	)
-	state = State.create(ride_world)
+	state = _placed_state(ride_world)
 	dog = _by_id(state, "dog")
 	var rider := _by_id(state, "walker")
 	dog.status = 1
@@ -895,7 +897,7 @@ func map_border_checks() -> void:
 		not World.border_overlaps(world, -S, -481 * S, S, -480 * S),
 		"Far above the map the sides are open"
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var walker := _by_id(state, "walker")
 	walker.status = 1
 	walker.facing = -1
@@ -930,7 +932,7 @@ func snapshot_checks() -> void:
 			"m": _place("o16", 1300, 100, {"E1": "1"})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var bytes := Snapshot.encode(state)
 	var decoded := Snapshot.decode(bytes, world.identity, world)
 	check(decoded.ok and Snapshot.encode(decoded.state) == bytes, "Slice 7 objects round trip")
@@ -941,3 +943,11 @@ func check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		push_error("FAIL: " + message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state
