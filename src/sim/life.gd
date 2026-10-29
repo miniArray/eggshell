@@ -172,6 +172,26 @@ static func blocks_step(state: Dictionary) -> bool:
 	return phase != PLAY and not (phase == FADE_IN and int(state.get("life_ticks", 0)) == 1)
 
 
+static func body_moves(state: Dictionary) -> bool:
+	# After a fall, a countdown or a quick restart the body keeps its motion without
+	# control until the restart. A hazard holds it.
+	return (
+		int(state.get("life_phase", PLAY)) in [DEAD, FADE_OUT]
+		and int(state.get("death_cause", NONE)) in [PIT, COUNTDOWN, QUICK]
+	)
+
+
+static func first_dead_step(state: Dictionary) -> bool:
+	# Input read in the frame of the death still steers the body for one step.
+	var ticks := int(state.get("life_ticks", 0))
+	if int(state.get("life_phase", PLAY)) == DEAD:
+		return ticks == DEATH_WAIT - 1
+	var quick: bool = (
+		int(state.get("death_cause", NONE)) == QUICK or int(state.get("quick_death", 0)) != 0
+	)
+	return quick and ticks == QUICK_FADE - 1
+
+
 static func locks_input(state: Dictionary) -> bool:
 	# Movement input is ignored in a hurt pose and on the last restart step.
 	return int(state.get("hurt", 0)) != 0 or int(state.get("life_phase", PLAY)) == FADE_IN
@@ -280,8 +300,10 @@ static func kill(state: Dictionary, cause: int = HAZARD, fast: bool = false) -> 
 	state.death_cause = cause
 	state.life_phase = FADE_OUT if fast or state.quick_death else DEAD
 	state.life_ticks = QUICK_FADE if fast or state.quick_death else DEATH_WAIT
-	state.vx = 0
-	state.vy = 0
+	if cause == HAZARD:
+		# A hazard holds the body where it died.
+		state.vx = 0
+		state.vy = 0
 	state.hurt = 0
 	state.hurt_phase = HURT_NONE
 	state.invulnerable = 0

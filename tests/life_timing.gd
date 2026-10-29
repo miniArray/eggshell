@@ -18,6 +18,7 @@ func _initialize() -> void:
 	look_around_checks()
 	spin_lock_checks()
 	restart_checks()
+	dead_body_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -140,8 +141,13 @@ func restart_checks() -> void:
 	Life.kill(state, Life.PIT)
 	var ordinary := Life.DEATH_WAIT + Life.DEATH_FADE + Life.RESTART_STEPS
 	check(ordinary == 304, "an ordinary death returns control 304 steps later")
+	var steered := state.duplicate(true)
+	Sim.advance(steered, Bits.RIGHT, world)
+	var coasting := state.duplicate(true)
+	Sim.advance(coasting, 0, world)
+	check(steered.vx > coasting.vx, "input of the death frame still steers the body once")
 	check(
-		first_input_step(state, world, 400) == ordinary,
+		first_input_step(coasting, world, 400) + 1 == ordinary,
 		"input works again on the 304th step after an ordinary death"
 	)
 	var probe := state.duplicate(true)
@@ -156,8 +162,9 @@ func restart_checks() -> void:
 	var quick := Courses.actor(world)
 	Sim.advance(quick, 0, world)
 	Life.quick_restart(quick)
+	Sim.advance(quick, 0, world)
 	check(
-		first_input_step(quick, world, 100) == Life.QUICK_FADE + Life.RESTART_STEPS,
+		first_input_step(quick, world, 100) + 1 == Life.QUICK_FADE + Life.RESTART_STEPS,
 		"input works again on the 35th step after a quick death"
 	)
 	# A respawn point in the air: the body falls one step before input works.
@@ -171,6 +178,40 @@ func restart_checks() -> void:
 		falling.vy > 0 and falling.vx == 0 and falling.life_phase == Life.FADE_IN,
 		"the last restart step moves the body without input"
 	)
+
+
+func dead_body_checks() -> void:
+	var world := Courses.empty_world()
+	var state := Courses.actor(world)
+	for count in 60:
+		Sim.advance(state, Bits.RIGHT, world)
+	var x: int = state.x
+	var y: int = state.y
+	var vx: int = state.vx
+	var camera := [state.camera_x, state.camera_y]
+	Life.kill(state, Life.PIT)
+	check(state.vx == vx and state.vy > 0, "a fall keeps the body's motion")
+	Sim.advance(state, Bits.RIGHT, world)
+	Sim.advance(state, Bits.RIGHT, world)
+	check(state.y > y and state.x > x, "the body keeps falling after the death")
+	check(state.vx == vx - Sim.DECELERATION, "a direction held at death leaves the air braking on")
+	for count in 40:
+		Sim.advance(state, Bits.RIGHT, world)
+	check(
+		state.vx == 0 and state.vy == Sim.MAX_FALL, "the body stops sliding and falls at full speed"
+	)
+	check(
+		state.camera_x == camera[0] and state.camera_y == camera[1],
+		"the camera does not follow the body"
+	)
+	var held := Courses.actor(world)
+	for count in 40:
+		Sim.advance(held, Bits.RIGHT, world)
+	Life.kill(held, Life.HAZARD)
+	var at := [held.x, held.y]
+	for count in 20:
+		Sim.advance(held, Bits.RIGHT, world)
+	check(held.x == at[0] and held.y == at[1], "a hazard holds the body where it died")
 
 
 func validation_checks() -> void:
