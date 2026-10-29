@@ -263,6 +263,11 @@ static func _wet(world: Dictionary, area: Array) -> bool:
 
 
 static func _move(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
+	if entity.swimming:
+		_swim(entity, world, box, control)
+	else:
+		_run(entity, world, box, control)
+	# Entering or leaving a liquid is seen after the move and rules the next step.
 	var body := Body.world_box(entity, box)
 	if not entity.swimming and _wet(world, body):
 		entity.swimming = 1
@@ -271,9 +276,9 @@ static func _move(entity: Dictionary, world: Dictionary, box: Array, control: in
 	elif entity.swimming and not _wet(world, body):
 		entity.swimming = 0
 		entity.stroke = 0
-	if entity.swimming:
-		_swim(entity, world, box, control)
-		return
+
+
+static func _run(entity: Dictionary, world: Dictionary, box: Array, control: int) -> void:
 	if control != 0:
 		entity.vx = clampi(entity.vx + control * ACCELERATION, -MAX_SPEED, MAX_SPEED)
 	elif entity.vx > 0:
