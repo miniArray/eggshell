@@ -9,6 +9,7 @@ const Tongue = preload("res://src/sim/move_tongue.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Flutter = preload("res://src/sim/move_flutter.gd")
+const Facing = preload("res://src/sim/move_facing.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -212,6 +213,11 @@ static func advance(
 		state.move_aim = 0
 		if not was_swimming and state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 			_set_action(state, NORMAL)
+	Facing.update(
+		state,
+		input,
+		state.move_action in [POUND_START, POUND_FALL, POUND_LAND, TONGUE, SPIT, LAY, EMIT]
+	)
 	if not state.hurt:
 		_actions(state, input, pressed, world)
 	_posture(state, input, world)
@@ -251,18 +257,6 @@ static func advance(
 	# braking, before the swimming test (head point) starts.
 	var liquid: bool = state.swimming != 0 or Water.body_overlaps(state, world, bounds)
 	var speed := 200 * 60 if liquid else (336 * 60 if state.move_snow else MAX_SPEED)
-	var facing_locked: bool = (
-		state.move_aim
-		or state.move_duck
-		or state.move_action in [TONGUE, SPIT, EMIT, POUND_START, POUND_FALL, POUND_LAND]
-	)
-	if (
-		was_grounded
-		and state.move_snow
-		and not facing_locked
-		and input & (InputBits.LEFT | InputBits.RIGHT)
-	):
-		state.facing = 1 if input & InputBits.RIGHT else -1
 	var deceleration := _deceleration(state, input, liquid)
 	var acceleration := 256 if liquid else (192 if state.move_snow else ACCELERATION)
 	if state.move_action in [TONGUE, SPIT, EMIT, LAY]:
@@ -341,8 +335,8 @@ static func advance(
 		state.vx = state.move_turn * 96 * 60
 		state.move_turn = 0
 		state.move_turn_ticks = 0
-	if (was_grounded or state.swimming) and not facing_locked and not state.move_snow and state.vx:
-		state.facing = 1 if state.vx > 0 else -1
+	if state.swimming and not state.move_aim and state.move_action not in [TONGUE, SPIT, EMIT]:
+		state.facing = 1 if state.vx > 0 else (-1 if state.vx < 0 else state.facing)
 	if (
 		state.on_floor
 		and state.jump_buffer
