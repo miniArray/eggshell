@@ -10,7 +10,9 @@ are bundled. Source images and prompts: [art/pantry/README.md](../art/pantry/REA
 Select an external pack with `--pack=/absolute/path` after `--`, or with the
 `EGGSHELL_PACK` environment variable. The command line wins. An invalid pack
 logs the problem and uses placeholders. `--placeholder` bypasses pack loading.
-Graphics never select or supply the level. Pass `--level-code=PATH` separately.
+Graphics never select or supply the level. Pass `--level-code=PATH` or
+`--levels=DIR` separately. Packs do not style the pause menu or the play timer;
+they use the default font. See [menus](ui.md).
 
 `tools/device.py pack PATH` uploads either supported manifest version, including
 dense packs. The remote directory stays `/tmp/eggshell/packs/external-v2` for

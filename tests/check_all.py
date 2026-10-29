@@ -55,6 +55,8 @@ def main():
         "audio",
         "view_motion",
         "view_invariance",
+        "menus",
+        "menu_pause",
         "core",
         "objects",
         "enemies",

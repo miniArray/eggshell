@@ -1,17 +1,22 @@
 class_name PlaySettings
 extends RefCounted
-## Player preferences in `settings.json`. Missing volume and zoom keys use defaults.
+## Player preferences in `settings.json`. Missing volume, zoom and option keys use
+## defaults. Settings are never part of a snapshot.
 
 const DEFAULT_VOLUME := 80
 const VOLUME_KEYS := ["music_volume", "effects_volume"]
+## Optional on/off preferences and their defaults.
+const FLAG_KEYS := {"quick_death": false, "play_timer": false}
 ## Saved zoom steps stay within this many steps of the container fit.
 const ZOOM_LIMIT := 16
 
 
 static func defaults() -> Dictionary:
-	return {
+	var values := {
 		"resume": true, "music_volume": DEFAULT_VOLUME, "effects_volume": DEFAULT_VOLUME, "zoom": 0
 	}
+	values.merge(FLAG_KEYS)
+	return values
 
 
 static func read_or_create(directory: String) -> Dictionary:
@@ -48,6 +53,13 @@ static func read_or_create(directory: String) -> Dictionary:
 				messages.append("Invalid zoom; using 0")
 			else:
 				result.zoom = zoom
+		for key: String in FLAG_KEYS:
+			if not parsed.has(key):
+				continue
+			if parsed[key] is bool:
+				result[key] = parsed[key]
+			else:
+				messages.append("Invalid %s; using %s" % [key, str(FLAG_KEYS[key]).to_lower()])
 		result.error = "; ".join(PackedStringArray(messages))
 		return result
 	if DirAccess.make_dir_recursive_absolute(directory) != OK:
@@ -60,6 +72,31 @@ static func read_or_create(directory: String) -> Dictionary:
 ## Store a new zoom step and keep every other saved preference. Returns an error
 ## message, or an empty string.
 static func save_zoom(directory: String, zoom: int) -> String:
+	return save_values(directory, {"zoom": zoom})
+
+
+## Store changed preferences and keep every other saved one. `changes` uses the
+## keys of `defaults()`. Invalid values are rejected. Returns an error message,
+## or an empty string.
+static func save_values(directory: String, changes: Dictionary) -> String:
+	var checked := {}
+	for key: String in changes:
+		var value: Variant = changes[key]
+		match key:
+			"zoom":
+				if value is bool or not (value is int or value is float) or not is_finite(value):
+					return "Invalid zoom"
+				checked.zoom = clampi(int(value), -ZOOM_LIMIT, ZOOM_LIMIT)
+			"music_volume", "effects_volume":
+				if volume_value(value) < 0:
+					return "Invalid %s" % key
+				checked[key] = volume_value(value)
+			"resume", "quick_death", "play_timer":
+				if not value is bool:
+					return "Invalid %s" % key
+				checked[key] = value
+			_:
+				return "Unknown setting %s" % key
 	var path := directory.path_join("settings.json")
 	var current := read_or_create(directory)
 	if current.error.begins_with("Cannot"):
@@ -67,7 +104,8 @@ static func save_zoom(directory: String, zoom: int) -> String:
 	var stored: Dictionary = {}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	stored = parsed if parsed is Dictionary and current.error.is_empty() else _stored(current)
-	stored.zoom = clampi(zoom, -ZOOM_LIMIT, ZOOM_LIMIT)
+	for key: String in checked:
+		stored["resume_where_i_left_off" if key == "resume" else key] = checked[key]
 	return _write(path, stored)
 
 
@@ -90,13 +128,16 @@ static func zoom_value(value: Variant) -> Variant:
 
 
 static func _stored(values: Dictionary) -> Dictionary:
-	return {
+	var stored := {
 		"version": 1,
 		"resume_where_i_left_off": values.resume,
 		"music_volume": values.music_volume,
 		"effects_volume": values.effects_volume,
 		"zoom": values.zoom
 	}
+	for key: String in FLAG_KEYS:
+		stored[key] = values.get(key, FLAG_KEYS[key])
+	return stored
 
 
 static func _write(path: String, values: Dictionary) -> String:

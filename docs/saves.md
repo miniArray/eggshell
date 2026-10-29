@@ -92,13 +92,20 @@ references before reusing placed tokens.
 `resume_where_i_left_off`, `music_volume`, `effects_volume` and `zoom`. The volumes are
 whole numbers from 0 to 100 and default to 80; a missing volume key uses its
 default, and an invalid one logs a warning and uses 80. `zoom` is a whole number
-of steps from -16 to 16 (default 0). Settings are never part of a snapshot, and
-audio, zoom and smooth drawing never write play state.
+of steps from -16 to 16 (default 0). The optional `quick_death` and `play_timer`
+are true or false (default false); an invalid one logs a warning and uses false.
+The pause menu writes each changed key and keeps the others. Settings are never
+part of a snapshot, and audio, zoom, smooth drawing and the menu never write
+play state. The one exception is quick death: the game copies it into the saved
+player field `quick_death` just before a step (see [menus](ui.md#settings)).
 
 The setting `resume_where_i_left_off` defaults to true. The player loads its
 autosave at startup and writes a new one during play and on orderly shutdown.
 F5 writes a manual slot and F9 restores it. On a controller, hold the back
-button and press the left shoulder to save or the right shoulder to load.
+button and press the left shoulder to save or the right shoulder to load. The
+pause menu has the same two slot actions. With a level folder (`--levels`), the
+autosave and the slot of each level are in `levels/<level identity>/` instead
+of the top of the save directory.
 
 Invalid state encodes to an empty payload. Save callers skip that payload, so a
 failed validation cannot replace a valid slot with empty bytes.
