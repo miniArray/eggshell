@@ -267,9 +267,18 @@ static func overlaps(world: Dictionary, x: int, y: int) -> bool:
 
 ## Terrain never changes after loading, so a map remembers recent answers per probe box.
 ## Bodies held inside terrain repeat the same push-out probes every step.
+## Solid terrain or a side border.
 static func overlaps_box(world: Dictionary, left: int, top: int, right: int, bottom: int) -> bool:
-	if border_overlaps(world, left, top, right, bottom):
-		return true
+	return (
+		border_overlaps(world, left, top, right, bottom)
+		or tiles_overlap_box(world, left, top, right, bottom)
+	)
+
+
+## Solid terrain tiles only, without the side borders.
+static func tiles_overlap_box(
+	world: Dictionary, left: int, top: int, right: int, bottom: int
+) -> bool:
 	var hits: Variant = world.get("terrain_hits")
 	var key := [left, top, right, bottom]
 	if hits != null:
