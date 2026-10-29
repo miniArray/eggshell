@@ -58,6 +58,7 @@ def main():
         "objects",
         "enemies",
         "damage",
+        "elements",
     ]:
         run("godot", "--headless", "--path", ".", "--script", f"tests/{name}.gd")
     for blocked in [False, True]:

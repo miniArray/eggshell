@@ -2,14 +2,18 @@ extends RefCounted
 ## A solid launcher that fires one shot at a time: straight, bouncing or homing.
 ## Fixed launchers fire level toward the player's side; aiming launchers fire
 ## straight at the player. It fires again five seconds after a shot, once that
-## shot is gone.
+## shot is gone. Ice freezes it for good: it stops firing, stops being solid and
+## shatters when the player touches it.
 
 const S := preload("res://src/sim/units.gd").SCALE
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Shot = preload("res://src/sim/types/launcher_shot.gd")
+const Moves = preload("res://src/sim/moves.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const CODES := ["e37"]
 const SOLID := 1
-const CONTACT_PHASE := -1
+const CONTACT_PHASE := 1
+const ELEMENT_REACTIONS := Elements.FREEZES | Elements.ANCHORED
 const FIELDS := [
 	["aim", 0],
 	["form", 0],
@@ -18,7 +22,8 @@ const FIELDS := [
 	["charge", 0],
 	["side", 1],
 	["heading", 180000],
-	["shot_token", 0]
+	["shot_token", 0],
+	["frozen", 0]
 ]
 const CHARGE_TICKS := 30  # 0.5 s between the cue and the shot.
 const DELAY_TICKS := 300  # 5 s after a shot before the next.
@@ -61,12 +66,14 @@ static func bounds(_entity: Dictionary) -> Array:
 
 
 static func solid_box(entity: Dictionary) -> Array:
-	if entity.status != 1:
+	if entity.status != 1 or entity.frozen:
 		return []
 	return [entity.x - 16 * S, entity.y - 16 * S, entity.x + 16 * S, entity.y + 16 * S]
 
 
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	if entity.frozen:
+		return
 	if entity.charge:
 		entity.charge -= 1
 		if entity.charge == 0:
@@ -108,8 +115,40 @@ static func fire(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	entity.delay = DELAY_TICKS
 
 
+## Ice breath freezes it. Every other projectile keeps meeting only its solid box.
+static func projectile_contact(
+	entity: Dictionary, projectile: Dictionary, _state: Dictionary, _world: Dictionary
+) -> int:
+	if projectile.get("code", "") == "ice_shot" and entity.status == 1:
+		entity.frozen = 1
+		entity.charge = 0
+	return 0
+
+
+## Only a frozen launcher reacts to touch: it shatters, and a stomp also bounces.
+static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if not entity.frozen or entity.status != 1 or state.get("captured_by", 0):
+		return
+	var player := Moves.player_box(state)
+	if (
+		state.x + player[2] > entity.x - 16 * S
+		and state.x + player[0] < entity.x + 16 * S
+		and state.y + player[3] > entity.y - 16 * S
+		and state.y + player[1] < entity.y + 16 * S
+	):
+		if (
+			entity.y > state.y - 8 * S
+			and state.move_action not in [Moves.POUND_FALL, Moves.POUND_LAND]
+		):
+			Moves.bounce(state, -320 * 60, input)
+		entity.status = 3
+		entity.can_respawn = 0
+
+
 static func view_state(entity: Dictionary, _state: Dictionary) -> Dictionary:
 	var result := {"visible": entity.status == 1, "animation": str(entity.form)}
+	if entity.frozen:
+		result.alpha = 0.6
 	if entity.aim:
 		result.rotation = float(entity.heading) / 1000.0
 	return result
@@ -128,4 +167,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.heading >= 0
 		and entity.heading < 360000
 		and entity.shot_token >= 0
+		and entity.frozen in [0, 1]
 	)

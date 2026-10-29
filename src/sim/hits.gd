@@ -6,3 +6,5 @@ const SHELL := 3
 const CLEAR := 4
 const SPIT := 5
 const BUMP := 6
+const FIRE := 7
+const ICE := 8

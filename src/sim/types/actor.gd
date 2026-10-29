@@ -5,12 +5,16 @@ const Motion = preload("res://src/sim/enemy_motion.gd")
 const Plant = preload("res://src/sim/enemy_plant.gd")
 const Fish = preload("res://src/sim/enemy_fish.gd")
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const CODES := ["e1", "e2", "e3", "e5", "e20", "e21"]
 const ENEMY := true
+## Every code reacts; `element_reactions` gives each code's own flags.
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES | Elements.THAWS | Elements.ANCHORED
 const DYNAMIC := true
 const FIELDS := (
 	Body.FIELDS
@@ -81,6 +85,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		Plant.attach(entity, world)
 	if action in [Body.HELD, Body.GONE]:
 		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), element_reactions(entity)):
+		return
 	if action == Body.RELEASED and entity.code in ["e1", "e2"]:
 		start_roll(entity, state.facing, entity.vy, entity.vx == 0)
 		entity.spat = 0
@@ -149,6 +155,8 @@ static func head_box(entity: Dictionary) -> Array:
 
 static func contact(entity: Dictionary, state: Dictionary, world: Dictionary, input: int) -> void:
 	if entity.held or entity.spat or entity.fish_exhausted:
+		return
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
 		return
 	if entity.roll:
 		if (
@@ -229,14 +237,26 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, kind: int, from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, element_reactions(entity), bounds(entity)):
+		return
 	if entity.held or entity.status != 1:
 		return
 	if kind == Hits.EGG and entity.code in ["e1", "e2"]:
 		start_roll(entity, 1 if entity.x > from_x else -1, 0, false)
 	else:
 		Body.remove(entity, state)
+
+
+## Plants keep their place when frozen; fish thaw after eight seconds.
+static func element_reactions(entity: Dictionary) -> int:
+	var reactions := Elements.BURNS | Elements.FREEZES
+	if entity.code == "e5":
+		reactions |= Elements.ANCHORED
+	elif entity.code in ["e20", "e21"]:
+		reactions |= Elements.THAWS
+	return reactions
 
 
 static func on_remove(entity: Dictionary, state: Dictionary) -> void:

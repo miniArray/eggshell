@@ -2,6 +2,8 @@ extends RefCounted
 ## A rooted, three-hit actor with a rotating head and three-shot cycles.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
@@ -9,6 +11,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e41"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES | Elements.ANCHORED
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -109,6 +112,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var fresh: bool = entity.started == 0
 	if Body.process(entity, state) in [Body.HELD, Body.GONE]:
 		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
+		return
 	Motion.gravity_box(entity, world, body_bounds())
 	if Body.hazards(entity, state, world, body_bounds()):
 		return
@@ -186,7 +191,9 @@ static func _shoot(entity: Dictionary, state: Dictionary, world: Dictionary) -> 
 	)
 
 
-static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _input: int) -> void:
+static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	if (
 		entity.mode != DEFEAT
 		and not entity.held
@@ -202,8 +209,10 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, kind: int, from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	if kind == Hits.CLEAR:
 		Body.remove(entity, state)
 	elif kind in [Hits.EGG, Hits.SPIT, Hits.SHELL] and entity.mode != DEFEAT:

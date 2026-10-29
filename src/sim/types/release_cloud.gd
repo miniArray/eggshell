@@ -5,6 +5,10 @@ const S := preload("res://src/sim/units.gd").SCALE
 const Collision = preload("res://src/sim/collision.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Hits = preload("res://src/sim/hits.gd")
+const Elements = preload("res://src/sim/elements.gd")
+## Fire and ice breath opens the cloud at once, even while it is hidden.
+const ELEMENT_REACTIONS := Elements.OPENS
 const FIELDS := [
 	["content", 0], ["count", 0], ["phase", 1], ["age", 0], ["home_y", 0], ["release_failures", 0]
 ]
@@ -110,9 +114,14 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, _
 static func hit(
 	entity: Dictionary, _state: Dictionary, _world: Dictionary, kind: int, _from_x: int
 ) -> void:
-	if kind not in [1, 3, 5] or entity.status != 1 or entity.collected or entity.phase == OPENING:
+	if (
+		kind not in [1, 3, 5, Hits.FIRE, Hits.ICE]
+		or entity.status != 1
+		or entity.collected
+		or entity.phase == OPENING
+	):
 		return
-	if entity.phase == HIDDEN:
+	if entity.phase == HIDDEN and kind not in [Hits.FIRE, Hits.ICE]:
 		entity.phase = REVEALED
 	else:
 		entity.phase = OPENING

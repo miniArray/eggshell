@@ -2,6 +2,8 @@ extends RefCounted
 ## A flyer that hangs from a ceiling, dives at a player below, loops once and flies on.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Reactions = preload("res://src/sim/element_reactions.gd")
+const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Moves = preload("res://src/sim/moves.gd")
@@ -10,6 +12,7 @@ const World = preload("res://src/sim/world.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e14"]
 const ENEMY := true
+const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES | Elements.THAWS
 const DYNAMIC := true
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -58,6 +61,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var fresh: bool = entity.started == 0
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
+		return
+	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if fresh and entity.mode == HANG:
 		# Without a ceiling within 4 px it starts flying straight away.
@@ -140,6 +145,8 @@ static func _ping_pong(distance: int, tick: int, ticks: int, in_out: bool) -> in
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
+	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
 	var touching := Body.player_overlap(entity, state, bounds(entity))
 	if touching and entity.y > state.y - 8 * S:
 		if not entity.contact:
@@ -156,8 +163,10 @@ static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) ->
 
 
 static func hit(
-	entity: Dictionary, state: Dictionary, _world: Dictionary, _kind: int, _from_x: int
+	entity: Dictionary, state: Dictionary, world: Dictionary, kind: int, _from_x: int
 ) -> void:
+	if Reactions.hit(entity, state, world, kind, ELEMENT_REACTIONS, bounds(entity)):
+		return
 	Body.remove(entity, state)
 
 
