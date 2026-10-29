@@ -33,7 +33,7 @@ func damage_checks() -> void:
 		state.vx == -656 * 60 and state.vy == -384 * 60, "Damage reverses velocity before knockback"
 	)
 	check(
-		state.invulnerable == 120 and state.hurt == Life.KNOCKED_LOCK,
+		state.invulnerable == Life.IMMUNITY and state.hurt == Life.KNOCKED_LOCK,
 		"Damage starts immunity and first hurt lock"
 	)
 	check(
@@ -41,7 +41,7 @@ func damage_checks() -> void:
 	)
 	check(state.companion_dx == 164 * S, "Launch distance uses final knockback velocity")
 	check(
-		state.health == 10 and state.health_wait == 45,
+		state.health == 10 and state.health_wait == Life.COUNTDOWN_STEPS,
 		"Damage starts a countdown without consuming health"
 	)
 	check(state.hits == 1, "A separation counts once")
@@ -198,13 +198,13 @@ func countdown_checks() -> void:
 	var world := course()
 	var state := player(world)
 	Life.separate(state, 0)
-	for tick in 44:
+	for tick in Life.COUNTDOWN_STEPS - 1:
 		step(state, world)
 	check(state.health == 10, "Countdown waits the full first interval")
 	step(state, world)
 	check(
-		state.health == 9 and state.health_wait == 45,
-		"Countdown consumes one unit per forty-five ticks"
+		state.health == 9 and state.health_wait == Life.COUNTDOWN_STEPS,
+		"Countdown consumes one unit per forty-six ticks"
 	)
 	var item := {"collected": 0}
 	check(Life.collect(state, Life.STAR, item), "Star pickup is accepted")
@@ -273,10 +273,10 @@ func rescue_checks() -> void:
 		"The companion can be caught at zero"
 	)
 	check(
-		state.life_phase == Life.REJOIN and state.life_ticks == 48,
+		state.life_phase == Life.REJOIN and state.life_ticks == Life.REJOIN_STEPS,
 		"Catch starts the two-leg return sequence"
 	)
-	for tick in 47:
+	for tick in Life.REJOIN_STEPS - 1:
 		step(state, world)
 	check(
 		state.separated == 1 and state.health == 0, "Countdown and play pause during reattachment"
@@ -303,7 +303,11 @@ func rescue_checks() -> void:
 	Life.collect(state, Life.STAR)
 	step(state, world)
 	check(
-		state.health == 1 and state.health_wait == 44 and state.rescue_active == 1,
+		(
+			state.health == 1
+			and state.health_wait == Life.COUNTDOWN_STEPS - 1
+			and state.rescue_active == 1
+		),
 		"Refill at zero restarts the interval, not the capture helpers"
 	)
 	state = player(world)
@@ -572,7 +576,7 @@ func checkpoint_checks() -> void:
 	)
 	step(state, world)
 	check(
-		state.health == 29 and state.health_wait == 45,
+		state.health == 29 and state.health_wait == Life.COUNTDOWN_STEPS,
 		"Separated checkpoint meter returns to ordinary countdown intervals"
 	)
 

@@ -41,6 +41,17 @@ const KNOCKED_LOCK := 38
 const SPIN_LOCK := 63
 const LOOK_AROUND_LOCK := 43
 const MAX_HURT := 63
+# Contact immunity after a hit: the reference game counts its 2 s flash down by the frame
+# time and ends it when the remainder is no longer positive; 120 frame-time subtractions
+# leave a rounding remainder, so a new hit is possible on the 121st step.
+const IMMUNITY := 121
+# The countdown loses one unit every 46 steps while separated: its 0.75 s timer fires
+# after 45 frames and is restarted on the following frame.
+const COUNTDOWN_STEPS := 46
+# A catch freezes the world while the companion rises 96 px over 24 steps and drops to
+# the saddle over 24 more; each of the two moves ends one step late, and play resumes
+# on the step after the second ends: 51 steps.
+const REJOIN_STEPS := 51
 # Death and restart timing in steps. An ordinary death waits 240 steps, then fades for 61:
 # the reference game restarts on the step after its 60-step fade completes. A quick death
 # fades for 32. After the respawn the first step holds the body, the second moves it
@@ -238,7 +249,7 @@ static func separate(
 	_attach_position(state)
 	state.separated = 1
 	state.hits = _plus_one(state.hits)
-	state.health_wait = 45
+	state.health_wait = COUNTDOWN_STEPS
 	state.companion_mode = BUBBLE if instant else LAUNCH
 	state.companion_age = 0
 	state.recovery_delay = 0 if instant else 36
@@ -283,7 +294,7 @@ static func catch_companion(
 	):
 		return false
 	state.life_phase = REJOIN
-	state.life_ticks = 48
+	state.life_ticks = REJOIN_STEPS
 	state.companion_mode = RETURNING
 	state.companion_from_x = state.recovery_x
 	state.companion_from_y = state.recovery_y
@@ -445,11 +456,11 @@ static func _countdown_step(state: Dictionary, world: Dictionary) -> void:
 	if state.separated:
 		if state.health > 0:
 			if state.health_wait <= 0:
-				state.health_wait = 45
+				state.health_wait = COUNTDOWN_STEPS
 			state.health_wait -= 1
 			if state.health_wait <= 0:
 				state.health -= 1
-				state.health_wait = 45 if state.health else 0
+				state.health_wait = COUNTDOWN_STEPS if state.health else 0
 				if state.health == 0 and state.companion_mode == BUBBLE:
 					_start_rescue(state, world)
 	elif state.health < 10:
@@ -612,14 +623,16 @@ static func _phase_step(
 	state.life_ticks = maxi(0, state.life_ticks - 1)
 	match state.life_phase:
 		REJOIN:
-			var age: int = 48 - state.life_ticks
+			var age: int = REJOIN_STEPS - state.life_ticks
+			var across := mini(age, 48)
 			state.recovery_x = (
-				state.companion_from_x + (_anchor_x(state) - state.companion_from_x) * age / 48
+				state.companion_from_x + (_anchor_x(state) - state.companion_from_x) * across / 48
 			)
 			if age <= 24:
 				state.recovery_y = state.companion_from_y - 96 * S * age * (48 - age) / 576
 			else:
-				var leg := age - 24
+				# The drop starts one step after the rise ends and holds at the saddle.
+				var leg := clampi(age - 25, 0, 24)
 				state.recovery_y = (
 					state.companion_from_y
 					- 96 * S
@@ -777,7 +790,7 @@ static func valid_state(state: Dictionary) -> bool:
 		state.hurt < 0
 		or state.hurt > MAX_HURT
 		or state.invulnerable < 0
-		or state.invulnerable > 120
+		or state.invulnerable > IMMUNITY
 	):
 		return false
 	if (

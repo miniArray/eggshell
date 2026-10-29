@@ -17,7 +17,7 @@ static func hurt(state: Dictionary, damager_x: int) -> void:
 	if state.invulnerable or state.get("captured_by", 0) or state.life_phase != Life.PLAY:
 		return
 	var already_separated: bool = state.separated == 1
-	state.invulnerable = 120
+	state.invulnerable = Life.IMMUNITY
 	Sound.player(state)
 	if already_separated:
 		Life.start_hurt(state, Life.SPIN_LOCK, false)
