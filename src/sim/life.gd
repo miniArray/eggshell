@@ -7,6 +7,7 @@ const World = preload("res://src/sim/world.gd")
 const Polygon = preload("res://src/sim/polygon.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const PLAY := 0
 const REJOIN := 1
 const DEAD := 2
@@ -162,7 +163,7 @@ static func before_step(
 	state.invulnerable = maxi(0, state.invulnerable - 1)
 	_hurt_step(state)
 	state.separation_grace = maxi(0, state.separation_grace - 1)
-	_countdown_step(state)
+	_countdown_step(state, world)
 	_companion_step(state, world)
 	return false
 
@@ -228,7 +229,9 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 		_attach_position(state)
 
 
-static func separate(state: Dictionary, velocity: int, instant: bool = false) -> void:
+static func separate(
+	state: Dictionary, velocity: int, instant: bool = false, world: Dictionary = {}
+) -> void:
 	ensure_fields(state)
 	if state.separated or state.life_phase != PLAY:
 		return
@@ -250,8 +253,9 @@ static func separate(state: Dictionary, velocity: int, instant: bool = false) ->
 	state.companion_vy = 0
 	if instant:
 		state.companion_direction = 1 if state.recovery_x >= state.x else -1
-	if state.health == 0 and instant:
-		_start_rescue(state)
+	# Without the world the next companion step summons the captors.
+	if state.health == 0 and instant and not world.is_empty():
+		_start_rescue(state, world)
 
 
 static func catch_companion(
@@ -437,7 +441,7 @@ static func _look_around_on_landing(state: Dictionary) -> void:
 		state.hurt = LOOK_AROUND_LOCK
 
 
-static func _countdown_step(state: Dictionary) -> void:
+static func _countdown_step(state: Dictionary, world: Dictionary) -> void:
 	if state.separated:
 		if state.health > 0:
 			if state.health_wait <= 0:
@@ -447,7 +451,7 @@ static func _countdown_step(state: Dictionary) -> void:
 				state.health -= 1
 				state.health_wait = 45 if state.health else 0
 				if state.health == 0 and state.companion_mode == BUBBLE:
-					_start_rescue(state)
+					_start_rescue(state, world)
 	elif state.health < 10:
 		if state.health_wait <= 0:
 			state.health_wait = 120
@@ -470,8 +474,10 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 				state.companion_mode = BUBBLE
 				state.companion_age = 0
 				if state.health == 0:
-					_start_rescue(state)
+					_start_rescue(state, world)
 		BUBBLE:
+			if state.health == 0 and not state.rescue_active:
+				_start_rescue(state, world)
 			if state.rescue_active:
 				# Contact still wins while the capture agents have not taken the companion.
 				if catch_companion(
@@ -548,7 +554,7 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		state.companion_vx = 0
 
 
-static func _start_rescue(state: Dictionary) -> void:
+static func _start_rescue(state: Dictionary, world: Dictionary) -> void:
 	if state.rescue_active or state.companion_mode != BUBBLE:
 		return
 	state.rescue_active = 1
@@ -557,10 +563,13 @@ static func _start_rescue(state: Dictionary) -> void:
 	state.bubble_bound_ticks = 0
 	state.companion_vx = 0
 	state.companion_vy = 0
-	# Use the saved follow point, never a display-sized viewport.
+	# The captors start above the reference screen's centre, which stays inside the map;
+	# never a display-sized viewport.
+	var centre_x := Screen.centre_x(state, world)
+	var centre_y := Screen.centre_y(state, world)
 	for index in 4:
-		state["rescue_%d_x" % (index + 1)] = state.camera_x + [-120, -24, 24, 120][index] * S
-		state["rescue_%d_y" % (index + 1)] = state.camera_y - 304 * S
+		state["rescue_%d_x" % (index + 1)] = centre_x + [-120, -24, 24, 120][index] * S
+		state["rescue_%d_y" % (index + 1)] = centre_y - 304 * S
 
 
 static func _rescue_step(state: Dictionary) -> void:

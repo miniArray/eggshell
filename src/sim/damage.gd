@@ -5,9 +5,11 @@ const Life = preload("res://src/sim/life.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 
 
-static func separate(state: Dictionary, velocity_at_separation: int) -> void:
+static func separate(
+	state: Dictionary, velocity_at_separation: int, world: Dictionary = {}
+) -> void:
 	# Captures release the companion directly into a bubble.
-	Life.separate(state, velocity_at_separation, true)
+	Life.separate(state, velocity_at_separation, true, world)
 
 
 static func hurt(state: Dictionary, damager_x: int) -> void:
