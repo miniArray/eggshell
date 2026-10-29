@@ -75,22 +75,16 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var values := Body.create(source)
 	values.home_y = int(source.y)
 	values.home_x = int(source.x)
-	if source.code == "e2" and int(source.get("source_index", 0)) >= 0:
-		# Initial placements run through the intro; runtime births start at zero.
-		values.timer = Motion.LEVEL_INTRO_TICKS - 2
 	return values
 
 
-static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
+static func created(
+	entity: Dictionary, state: Dictionary, _world: Dictionary, initial_map: bool = false
+) -> void:
 	entity.birth_frame = state.frame
-	if (
-		entity.code == "e2"
-		and entity.source_index >= 0
-		and state.frame > 0
-		and not entity.ground_form
-	):
-		# Only the initial map ran the hidden intro ticks before play began.
-		entity.timer = 0
+	if entity.code == "e2" and entity.source_index >= 0 and not entity.ground_form:
+		# The initial map alone ran the hidden intro ticks before play began.
+		entity.timer = Motion.LEVEL_INTRO_TICKS - 2 if initial_map else 0
 
 
 static func creation_cull(entity: Dictionary) -> bool:

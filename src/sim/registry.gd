@@ -711,7 +711,9 @@ static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 	return entity
 
 
-static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = false) -> void:
+static func spawn_map(
+	state: Dictionary, world: Dictionary, keep_flags: bool = false, initial_map: bool = false
+) -> void:
 	var previous := {}
 	if keep_flags:
 		for entity: Dictionary in state.get("entities", []):
@@ -745,7 +747,7 @@ static func spawn_map(state: Dictionary, world: Dictionary, keep_flags: bool = f
 		if previous.has(entity.id):
 			entity.collected = previous[entity.id]
 			entity.checkpoint_collected = previous[entity.id]
-		EntityLifecycle.created(entity, state, world)
+		EntityLifecycle.created(entity, state, world, initial_map)
 		state.entities.append(entity)
 	attach_views(state)
 

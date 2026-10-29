@@ -36,7 +36,7 @@ fields when needed. Type modules can also supply `prepare(source, world)` for
 placement validation, plus `bounds`, `activate` and `contact` hooks. Optional phase constants preserve movement and contact order;
 a type without them steps in phase 0 and contacts in phase 1.
 
-An optional `created(entity, state, world)` hook runs at map creation, runtime
+An optional `created(entity, state, world, initial_map)` hook runs at map creation, runtime
 birth and camera recreation, before activation. It does not run during placement
 validation or snapshot restoration. Types can stamp saved birth metadata here.
 `CREATION_CULL = true` opts into a distance check at birth, even before activation;
@@ -71,7 +71,8 @@ reference walking or flying picture footprint, not the narrower contact body.
 A flyer's vertical wave starts at creation and advances while it waits off screen.
 Only creation checks an inactive flyer's distance. Ordinary despawn requires
 activation; recreation starts a new wave. Only the initial map includes the
-hidden intro ticks; a later map reset starts a new wave at zero.
+hidden intro ticks; a later map reset starts a new wave at zero. `PlayState.create`
+passes the initial-map context explicitly; the replay frame is not a birth kind.
 The shared lifecycle can queue distant actors and recreate them after their
 placement anchor leaves and returns. The distances and flags are common saved
 fields. Load-active pads and static sensors keep their previous timing.

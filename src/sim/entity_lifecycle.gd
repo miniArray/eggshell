@@ -21,11 +21,13 @@ static func registry() -> Script:
 
 ## Birth notification is separate from activation: inactive instances already exist.
 ## Only opted-in types use the source's initial distance cull.
-static func created(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+static func created(
+	entity: Dictionary, state: Dictionary, world: Dictionary, initial_map: bool = false
+) -> void:
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
 	if type.has_method("created"):
-		type.created(entity, state, world)
+		type.created(entity, state, world, initial_map)
 	var cull: bool = dispatch.constant(type, "CREATION_CULL", false)
 	if type.has_method("creation_cull"):
 		cull = type.creation_cull(entity)

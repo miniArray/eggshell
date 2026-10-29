@@ -91,6 +91,7 @@ func map_birth_reference_checks() -> void:
 		state.entities[0].status == Registry.WAITING,
 		"Birth culling uses the destination reference, not the old map camera"
 	)
+	check(state.entities[0].timer == 0, "Travel at frame zero is not the initial map intro")
 	var before := Snapshot.encode(state)
 	check(
 		not Maps.change(state, world, 2, 3000 * S, 100 * S, Registry.spawn_map),
