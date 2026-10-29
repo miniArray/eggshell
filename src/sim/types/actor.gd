@@ -76,6 +76,13 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return values
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	if entity.code not in ["e1", "e2"]:
+		return
+	start_roll(entity, state.facing, entity.vy, entity.vx == 0)
+	entity.spat = 0
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var fresh: bool = entity.started == 0
 	var action := Body.process(entity, state)
@@ -87,9 +94,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	if Reactions.frozen_step(entity, state, world, bounds(entity), element_reactions(entity)):
 		return
-	if action == Body.RELEASED and entity.code in ["e1", "e2"]:
-		start_roll(entity, state.facing, entity.vy, entity.vx == 0)
-		entity.spat = 0
+	if action == Body.RELEASED:
+		on_spit_release(entity, state)
 	if entity.roll:
 		roll_step(entity, state, world)
 		return

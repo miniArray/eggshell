@@ -143,6 +143,10 @@ static func spine_hull(entity: Dictionary) -> Array:
 	return result
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	_reset(entity)
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -150,7 +154,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		_reset(entity)
+		on_spit_release(entity, state)
 	if Body.spit_step(entity, state, world, BOX) or Body.hazards(entity, state, world, BOX):
 		return
 	entity.cooldown = maxi(0, entity.cooldown - 1)
