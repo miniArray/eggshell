@@ -14,6 +14,8 @@ const CELL := 128 * S
 ## A probe covering more cells than this scans every row, as the unindexed path did.
 const MAX_PROBE_CELLS := 64
 const NO_CONTEXT := {}
+const MAP_BORDER_WIDTH := 32 * S
+const MAP_BORDER_ABOVE := 480 * S
 ## Tests and the identity proof set this to compare every indexed query with a full scan.
 static var verify_index := false
 static var verify_failures := 0
@@ -287,6 +289,18 @@ static func overlaps(
 		body.y + bounds[3] + dy
 	):
 		return true
+	if (
+		(body.x + bounds[0] + dx <= 0 or body.x + bounds[2] + dx >= world.get("width", 0))
+		and map_border_overlaps(
+			body,
+			world,
+			body.x + bounds[0] + dx,
+			body.y + bounds[1] + dy,
+			body.x + bounds[2] + dx,
+			body.y + bounds[3] + dy
+		)
+	):
+		return true
 	for shape: Dictionary in _shapes(
 		world,
 		body.x + bounds[0] + dx,
@@ -310,6 +324,22 @@ static func overlaps(
 			and _shape_overlap(body, bounds, selected, dx, dy)
 		)
 	return false
+
+
+## The two map border walls the player collides with: 32 px wide outside each side edge,
+## from 480 px above the map down to its bottom. Below the map there is no border, so a
+## pit stays open. Other bodies pass the borders.
+static func map_border_overlaps(
+	body: Dictionary, world: Dictionary, left: int, top: int, right: int, bottom: int
+) -> bool:
+	if not is_same(body, _context(world).get("state")) or not world.has("width"):
+		return false
+	if top > world.height or bottom < -MAP_BORDER_ABOVE:
+		return false
+	return (
+		(left <= 0 and right >= -MAP_BORDER_WIDTH)
+		or (right >= world.width and left <= world.width + MAP_BORDER_WIDTH)
+	)
 
 
 static func bridge_overlap(
@@ -381,7 +411,11 @@ static func floor_at(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	return 0
 
 
-static func track_floor(body: Dictionary, world: Dictionary, bounds: Array) -> int:
+## The floor under the body at the start of its move. With settle, a body that falls onto
+## that floor stops there now; without it the caller settles later (settle_floor).
+static func track_floor(
+	body: Dictionary, world: Dictionary, bounds: Array, settle: bool = true
+) -> int:
 	var support := floor_at(body, world, bounds)
 	var top: int = world.bridges[support - 1].top if support > 0 else 0
 	if support <= -2:
@@ -389,10 +423,17 @@ static func track_floor(body: Dictionary, world: Dictionary, bounds: Array) -> i
 	if _one_way(world, support) and body.y + bounds[3] == top:
 		# Exact top contact can occur at spawn or restoration.
 		push_out(body, world, bounds, 0, -1, 2 * S, support)
+	if settle:
+		settle_floor(body, world, bounds, support)
+	return support
+
+
+## A body that still falls onto the floor found at the start of its move touches it and
+## stops falling.
+static func settle_floor(body: Dictionary, world: Dictionary, bounds: Array, support: int) -> void:
 	if support != 0 and body.vy > 0:
 		refine(body, world, bounds, 0, -1, support if _one_way(world, support) else 0)
 		body.vy = 0
-	return support
 
 
 static func by_wall(body: Dictionary, world: Dictionary, bounds: Array, direction: int) -> bool:

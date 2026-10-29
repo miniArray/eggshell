@@ -187,15 +187,15 @@ func validation_checks() -> void:
 	state.previous_input = 255
 	state.pressed_input = 255
 	state.jump_buffer = 6
-	state.flutter_remaining = 71
+	state.flutter_remaining = 72
 	state.hurt_deceleration = 128
 	check(not Snapshot.encode(state).is_empty(), "Widened base fields are accepted")
 	for example: Array in [
 		["previous_input", 256],
 		["pressed_input", 256],
 		["jump_buffer", 7],
-		["flutter_remaining", 72],
-		["flutter_cooldown", 17],
+		["flutter_remaining", 73],
+		["flutter_cooldown", 18],
 		["water_phase", 60],
 		["swimming", 2]
 	]:

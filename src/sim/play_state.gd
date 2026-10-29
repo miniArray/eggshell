@@ -160,8 +160,8 @@ static func valid(state: Dictionary) -> bool:
 	for limit: Array in [
 		["movement", 0, 6],
 		["jump_buffer", 0, 6],
-		["flutter_remaining", 0, 71],
-		["flutter_cooldown", 0, 16],
+		["flutter_remaining", 0, 72],
+		["flutter_cooldown", 0, 17],
 		["water_wait", 0, 15],
 		["water_phase", 0, 59]
 	]:

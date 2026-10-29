@@ -10,6 +10,7 @@ const Life = preload("res://src/sim/life.gd")
 const Registry = preload("res://src/sim/registry.gd")
 const Fixtures = preload("res://tests/fixtures.gd")
 const Collision = preload("res://src/level/collision_table.gd")
+const Motion = preload("res://src/sim/enemy_motion.gd")
 const S := State.SCALE
 var assertions := 0
 var failures := 0
@@ -24,6 +25,7 @@ func _initialize() -> void:
 	for code: String in ["e1", "e2", "e3", "e5", "e20"]:
 		movement_and_contact(world, code)
 	movement_constants(world)
+	fall_integration_checks()
 	bounce_checks(world)
 	damage_checks(world)
 	leap_and_capture_checks(world)
@@ -147,6 +149,19 @@ func movement_constants(world: Dictionary) -> void:
 	)
 
 
+func fall_integration_checks() -> void:
+	# Platform order: a body at rest that loses its floor gains speed before it moves,
+	# and each move uses the mean of the step's old and new speed.
+	var open_air := {"layers": [], "bridges": [], "width": 4096 * S, "height": 4096 * S}
+	var body := {"code": "e3", "x": 512 * S, "y": 512 * S, "vx": 0, "vy": 0}
+	var box := [-14 * S, -34 * S, 14 * S, 16 * S]
+	var y: int = body.y
+	Motion.gravity_box(body, open_air, box)
+	check(body.y == y and body.vy == 2048, "Falling enemy does not move on its first step")
+	Motion.gravity_box(body, open_air, box)
+	check(body.y == y + 2048 + 1024 and body.vy == 4096, "Fall moves by the mean speed")
+
+
 func bounce_checks(world: Dictionary) -> void:
 	for code: String in ["e1", "e2", "e3", "e20"]:
 		for held: bool in [false, true]:
@@ -174,7 +189,7 @@ func bounce_checks(world: Dictionary) -> void:
 	empty.enemies.clear()
 	Sim.advance(boosted, Sim.JUMP, empty)
 	check(
-		boosted.flutter_remaining == 49 and boosted.vy < 300 * 60, "Boosted flutter lasts 50 ticks"
+		boosted.flutter_remaining == 50 and boosted.vy < 300 * 60, "Boosted flutter lasts 51 steps"
 	)
 
 

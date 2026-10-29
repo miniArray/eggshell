@@ -1,8 +1,43 @@
 extends RefCounted
-## Buoyancy and posture are integer state. Bobbing uses a fixed quadratic path.
+## Buoyancy and posture are integer state. Bobbing follows a fixed per-step table.
 const World = preload("res://src/sim/world.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
 const S := preload("res://src/sim/units.gd").SCALE
+## Floating bob: 4 px down over 0.5 s and back, along the source's sine ease-out curve,
+## sampled per step (fixed units of 1/3600 px).
+const BOB := [
+	0,
+	604,
+	1372,
+	2154,
+	2931,
+	3695,
+	4441,
+	5168,
+	5874,
+	6558,
+	7219,
+	7856,
+	8469,
+	9057,
+	9619,
+	10154,
+	10662,
+	11142,
+	11594,
+	12016,
+	12407,
+	12767,
+	13094,
+	13388,
+	13647,
+	13871,
+	14057,
+	14204,
+	14312,
+	14378,
+	14400
+]
 
 
 static func prepare(
@@ -64,9 +99,16 @@ static func prepare(
 	return {"bob": bob, "jump": false}
 
 
+## Whether the body box overlaps water anywhere (the source's liquid contact).
+static func body_overlaps(state: Dictionary, world: Dictionary, bounds: Array) -> bool:
+	return World.water_overlaps(
+		world, state.x + bounds[0], state.y + bounds[1], state.x + bounds[2], state.y + bounds[3]
+	)
+
+
 static func bob_position(phase: int) -> int:
 	var tick := phase if phase <= 30 else 60 - phase
-	return 4 * S * (60 * tick - tick * tick) / 900
+	return BOB[tick]
 
 
 static func finish(state: Dictionary, world: Dictionary, bounds: Array) -> void:
