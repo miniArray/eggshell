@@ -168,6 +168,23 @@ func platform_order_checks() -> void:
 	var before: int = state.vy
 	tick(state, Bits.JUMP, world)
 	check(state.vy - before == 1080, "then gravity recovers along the source ease-out curve")
+	var roofed := empty_world()
+	var roof := []
+	for column in 32:
+		roof.append([column, 4])
+	roofed.layers.append(layer("terrain", true, false, roof))
+	state = actor(roofed)
+	state.y = 220 * S
+	state.vy = -100 * 60
+	state.previous_input = Bits.JUMP
+	state.flutter_remaining = 20
+	state.flutter_ready = 0
+	for count in 8:
+		tick(state, Bits.JUMP, roofed)
+	check(
+		state.move_action == Moves.NORMAL and state.flutter_remaining > 0 and state.y < 220 * S,
+		"a flutter that rises into a ceiling does not start the head bump pose"
+	)
 	state = actor(world)
 	state.previous_input = Bits.JUMP
 	state.move_action = Moves.HEAD_BUMP
