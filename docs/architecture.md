@@ -104,10 +104,11 @@ Before a step, and never while the pause menu is open, the game copies the quick
 death setting into the saved player field `quick_death`. Nothing else outside the
 simulation writes play state.
 
-`PlayState.create` ends with `Simulation.begin_level`: the player's body runs two
-steps without input (movement, `Life.after_step` and the pose finish, no world step
-and no counted frame), so a level that starts in mid-air is already falling at
-step 0.
+`PlayState.create` ends with `Simulation.begin_level`: two level-start ticks run
+without input and without a counted frame. Each runs the registry step, movement,
+request consumers, `Life.after_step`, compaction and the pose finish (no contacts).
+Objects on screen wake in the first tick and first move in the second, so the world
+is one tick in and a level that starts in mid-air is already falling at step 0.
 
 1. Synchronize the selected map and increment the simulation frame. Dispatch
    `Registry.modal_step`; return while a message or switch holds the world.
@@ -123,7 +124,8 @@ step 0.
    `Registry.advance` runs `dispatch_loops.gd`: the lifecycle on the reference
    screen (`entity_lifecycle.gd`, see [reference screen](#reference-screen-and-map-borders))
    and the step of every entity, in table order and phase order, including rows
-   appended during the loop.
+   appended during the loop. An object that wakes in this pass first moves in the
+   next step.
 4. `Life.locks_input` holds during a hurt lock (`hurt` above 0) and on the last
    restart step: movement and contacts then see no input and no edges. Unless
    captured, advance Moves. Its `Collision.prepare` carries the player
@@ -290,7 +292,8 @@ audio view still derives its cues from state and does not read these fields.
 saved follow point (the player 64 px up) and stops at the map edges; on a map
 smaller than the screen the right and bottom limits win. Every simulation
 "on screen" rule uses it: activation, despawn and respawn distances, goal coins,
-area clears and the on-screen egg count. Despawn measures an object's origin, more
+area clears, the on-screen egg count and where the capture agents start (304 px
+above the centre). Despawn measures an object's origin, more
 than 832 px from the screen centre on either axis. The screen never depends on
 the real view; the view clamps the follow point for its own size.
 
