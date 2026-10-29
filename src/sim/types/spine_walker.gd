@@ -27,6 +27,58 @@ const COOLDOWN := 60
 const REACH := 96 * S
 const SMALL := [32, 28]
 const LARGE := [64, 62]
+## The raise and fold tweens run 0.33 s with the runtime's "easeoutback" and "easeinback"
+## curves (cubic Beziers (0.34, 1.579)-(0.65, 1) and (0.35, 0)-(0.66, -0.579)), so the
+## spines overshoot. Progress per tick, in millionths, at tick / 19.8.
+const EASE_ONE := 1_000_000
+const RAISE_EASE := [
+	0,
+	219874,
+	411136,
+	575029,
+	712976,
+	826562,
+	917532,
+	987775,
+	1039303,
+	1074234,
+	1094765,
+	1103152,
+	1101682,
+	1092645,
+	1078311,
+	1060908,
+	1042596,
+	1025449,
+	1011443,
+	1002436,
+	1000000
+]
+const FOLD_EASE := [
+	0,
+	-3753,
+	-13902,
+	-28689,
+	-46230,
+	-64529,
+	-81494,
+	-94948,
+	-102654,
+	-102337,
+	-91703,
+	-68471,
+	-30395,
+	24710,
+	98941,
+	194288,
+	312612,
+	455626,
+	624885,
+	821775,
+	1000000
+]
+## Largest raised size in whole pixels, with the overshoot.
+const MOST := [68, 66]
 # Spine hull at full size, relative to the bottom centre, facing left.
 const HULL := [[-32, -18], [0, -62], [32, -46], [32, 0], [-32, 0]]
 const BOX := [-14 * S, -10 * S, 14 * S, 16 * S]
@@ -58,17 +110,36 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 static func bounds(entity: Dictionary) -> Array:
 	if entity.mode == WALK:
 		return BOX
-	var half: int = entity.spine_w * S / 2
-	return [-half, 16 * S - entity.spine_h * S, half, 16 * S]
+	var size := spine_size(entity)
+	return [-size[0] / 2, 16 * S - size[1], size[0] / 2, 16 * S]
+
+
+## The spines' width and height in 1/S px, from the tween tick.
+static func spine_size(entity: Dictionary) -> Array:
+	var tick := mini(entity.timer, TWEEN)
+	if entity.mode == SPIKE:
+		var raise: int = RAISE_EASE[tick]
+		return [
+			SMALL[0] * S + (LARGE[0] - SMALL[0]) * S * raise / EASE_ONE,
+			SMALL[1] * S + (LARGE[1] - SMALL[1]) * S * raise / EASE_ONE
+		]
+	if entity.mode == SHRINK:
+		var fold: int = FOLD_EASE[tick]
+		return [
+			entity.from_w * S + (SMALL[0] - entity.from_w) * S * fold / EASE_ONE,
+			entity.from_h * S + (SMALL[1] - entity.from_h) * S * fold / EASE_ONE
+		]
+	return [SMALL[0] * S, SMALL[1] * S]
 
 
 static func spine_hull(entity: Dictionary) -> Array:
+	var size := spine_size(entity)
 	var result := []
 	for point: Array in HULL:
-		var x: int = point[0] * entity.spine_w * S / 64
+		var x: int = point[0] * size[0] / 64
 		if entity.facing > 0:
 			x = -x
-		result.append([entity.x + x, entity.y + 16 * S + point[1] * entity.spine_h * S / 62])
+		result.append([entity.x + x, entity.y + 16 * S + point[1] * size[1] / 62])
 	return result
 
 
@@ -89,17 +160,13 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.vx = 0
 		entity.timer += 1
 		face_player(entity, state)
+		var size := spine_size(entity)
+		entity.spine_w = size[0] / S
+		entity.spine_h = size[1] / S
 		if entity.mode == SPIKE:
-			var tick := mini(entity.timer, TWEEN)
-			var part := TWEEN * TWEEN * TWEEN * TWEEN - (TWEEN - tick) ** 4
-			entity.spine_w = SMALL[0] + (LARGE[0] - SMALL[0]) * part / TWEEN ** 4
-			entity.spine_h = SMALL[1] + (LARGE[1] - SMALL[1]) * part / TWEEN ** 4
 			if entity.timer >= SPIKE_TICKS:
 				shrink(entity)
 		else:
-			var part: int = entity.timer ** 4
-			entity.spine_w = entity.from_w + (SMALL[0] - entity.from_w) * part / TWEEN ** 4
-			entity.spine_h = entity.from_h + (SMALL[1] - entity.from_h) * part / TWEEN ** 4
 			if entity.timer >= TWEEN:
 				_reset(entity)
 				entity.cooldown = COOLDOWN
@@ -229,11 +296,11 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.cooldown >= 0
 		and entity.cooldown <= COOLDOWN
 		and entity.spine_w >= SMALL[0]
-		and entity.spine_w <= LARGE[0]
+		and entity.spine_w <= MOST[0]
 		and entity.spine_h >= SMALL[1]
-		and entity.spine_h <= LARGE[1]
+		and entity.spine_h <= MOST[1]
 		and entity.from_w >= SMALL[0]
-		and entity.from_w <= LARGE[0]
+		and entity.from_w <= MOST[0]
 		and entity.from_h >= SMALL[1]
-		and entity.from_h <= LARGE[1]
+		and entity.from_h <= MOST[1]
 	)
