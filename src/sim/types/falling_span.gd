@@ -9,6 +9,8 @@ const Screen = preload("res://src/sim/screen.gd")
 # Age tags: 0 idle, 1..72 arming, 73..125 falling (animation stops at 125).
 const FIELDS := [["age", 0], ["home_y", 0], ["respawns", 0]]
 const BOX := [-16 * S, -16 * S, 16 * S, 16 * S]
+## The constant bounds, for the entity grid (EntityGrid files rows by it).
+const GRID_BOUNDS := {"o20": BOX}
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:

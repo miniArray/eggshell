@@ -22,6 +22,7 @@ const PlayTimer = preload("res://src/view/play_timer.gd")
 const CollisionTable = preload("res://src/level/collision_table.gd")
 const Pack = preload("res://src/level/asset_pack.gd")
 const FrameLogger = preload("res://src/diag/frame_log.gd")
+const AUTOSAVE_TICKS := 60
 ## Options to use instead of the command line, for tests. Set before `_ready`.
 var launch_options := {}
 var state: Dictionary
@@ -52,6 +53,8 @@ var _sim_usec := 0
 var _slot_bytes := PackedByteArray()
 ## The last logged reason the encoder refused a save; each refusal is logged once.
 var _save_refusal := ""
+## True after a refused autosave: autosave is tried every step until one is written.
+var _autosave_retry := false
 var _loop := FrameLoop.new()
 var _levels: Array = []
 var _level_folder := ""
@@ -224,6 +227,7 @@ func _start_level(built: Dictionary, path: String) -> void:
 	)
 	_slot_bytes = PackedByteArray()
 	_save_refusal = ""
+	_autosave_retry = false
 	_goal_menu_shown = false
 	if _resume:
 		load_slot("autosave")
@@ -285,8 +289,10 @@ func _physics_process(_delta: float) -> void:
 		_sim_usec += Time.get_ticks_usec() - began
 	if _options.has("trace"):
 		print("EGGSHELL_TICK ", state.frame)
-	if state.frame % 60 == 0 and not state.goal_reached and _resume:
-		save_slot("autosave")
+	if autosave_due(state.frame, _autosave_retry) and not state.goal_reached and _resume:
+		# The refusal reason is worked out on the regular cadence only, not every step.
+		var regular: bool = state.frame % AUTOSAVE_TICKS == 0
+		_autosave_retry = not save_slot("autosave", regular or not _autosave_retry)
 	if state.goal_reached:
 		print("EGGSHELL_GOAL ", state.frame)
 		set_physics_process(false)
@@ -607,19 +613,31 @@ func _menu_values() -> Dictionary:
 	return values
 
 
-func save_slot(slot: String) -> void:
+## Whether an autosave is due after this step: every AUTOSAVE_TICKS steps, and every step
+## while the last autosave was refused, so autosave resumes as soon as the state is valid.
+static func autosave_due(frame: int, retrying: bool) -> bool:
+	return retrying or frame % AUTOSAVE_TICKS == 0
+
+
+## Write a slot of the open level; false when the encoder refused the state. A refusal is
+## logged once per reason (`explain` false skips working out the reason); the first save
+## after a refusal logs that saving resumed.
+func save_slot(slot: String, explain := true) -> bool:
 	var bytes := Snapshot.encode(state)
 	if bytes.is_empty():
 		# Play goes on; the older slot file stays. Log each refusal once, not every second.
-		var reason := Snapshot.refusal(state)
+		var reason := Snapshot.refusal(state) if explain else _save_refusal
 		if reason != _save_refusal:
 			_save_refusal = reason
 			printerr("Save skipped: invalid snapshot state: ", reason)
-		return
+		return false
+	if not _save_refusal.is_empty():
+		print("Save resumed at frame ", state.frame)
 	_save_refusal = ""
 	if slot == "slot":
 		_slot_bytes = bytes
 	_store.submit(_slot_dir.path_join(slot + ".egg"), bytes, state.frame)
+	return true
 
 
 ## Restore a slot of the open level. Returns true when the state was replaced.

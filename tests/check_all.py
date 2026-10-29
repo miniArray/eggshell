@@ -60,6 +60,7 @@ def main():
         "view_invariance",
         "menus",
         "menu_pause",
+        "autosave_retry",
         "core",
         "objects",
         "enemies",

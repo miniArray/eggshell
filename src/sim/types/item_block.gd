@@ -4,6 +4,13 @@ extends RefCounted
 const CODES := ["o9", "o15", "o18", "o24"]
 const SOLID := 1
 const S := preload("res://src/sim/units.gd").SCALE
+## Constant bounds per code, for the entity grid (EntityGrid files rows by them). The
+## message block's bounds follow its height, so it has none.
+const GRID_BOUNDS := {
+	"o9": [-16 * S, -16 * S, 16 * S, 16 * S],
+	"o15": [-16 * S, -16 * S, 16 * S, 16 * S],
+	"o18": [-16 * S, -16 * S, 16 * S, 16 * S]
+}
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
