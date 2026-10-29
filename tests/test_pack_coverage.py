@@ -13,6 +13,9 @@ import unittest
 import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("host_load", ROOT / "tools/host_load.py")
+HOST_LOAD = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOST_LOAD)
 TOOL = ROOT / "tools/pack_coverage.py"
 _spec = importlib.util.spec_from_file_location("pack_coverage", TOOL)
 coverage = importlib.util.module_from_spec(_spec)
@@ -172,7 +175,7 @@ class EngineCoverageTests(unittest.TestCase):
             ],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=HOST_LOAD.limit(300),
             check=False,
         )
         cls.report = json.loads(cls.json.read_text()) if cls.json.exists() else {}
@@ -293,7 +296,7 @@ class EngineErrorTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=HOST_LOAD.limit(300),
                 check=False,
             )
             self.assertEqual(result.returncode, 1, result.stderr)

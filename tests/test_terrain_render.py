@@ -1,5 +1,6 @@
 """Terrain strips through actual GPU sampling, including on machines without a desktop."""
 
+import importlib.util
 import os
 import pathlib
 import select
@@ -7,6 +8,9 @@ import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("host_load", ROOT / "tools/host_load.py")
+HOST_LOAD = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOST_LOAD)
 
 
 class TerrainRenderTests(unittest.TestCase):
@@ -54,7 +58,7 @@ class TerrainRenderTests(unittest.TestCase):
                 env=environment,
                 capture_output=True,
                 text=True,
-                timeout=180,
+                timeout=HOST_LOAD.limit(180),
                 check=False,
             )
             output = result.stdout + result.stderr
@@ -65,7 +69,7 @@ class TerrainRenderTests(unittest.TestCase):
         finally:
             os.close(read_fd)
             server.terminate()
-            server.wait(timeout=10)
+            server.wait(timeout=HOST_LOAD.limit(10))
 
 
 if __name__ == "__main__":

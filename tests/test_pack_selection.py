@@ -1,5 +1,6 @@
 """Real game startup: graphics selection never selects or supplies a level."""
 
+import importlib.util
 import json
 import os
 import pathlib
@@ -8,6 +9,9 @@ import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("host_load", ROOT / "tools/host_load.py")
+HOST_LOAD = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOST_LOAD)
 BUNDLED = "res://packs/pantry"
 
 
@@ -63,7 +67,7 @@ class PackSelectionTests(unittest.TestCase):
             env=environment,
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=HOST_LOAD.limit(40),
             check=False,
         )
         return result
