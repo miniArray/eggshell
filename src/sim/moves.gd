@@ -255,7 +255,10 @@ static func advance(
 	if state.move_action == POUND_START:
 		state.vx = 0
 		state.vy = 0
-	var speed := 200 * 60 if state.swimming else (336 * 60 if state.move_snow else MAX_SPEED)
+	# Liquid: any body overlap with water halves the cap and slows acceleration and
+	# braking, before the swimming test (head point) starts.
+	var liquid: bool = state.swimming != 0 or Water.body_overlaps(state, world, bounds)
+	var speed := 200 * 60 if liquid else (336 * 60 if state.move_snow else MAX_SPEED)
 	var facing_locked: bool = (
 		state.move_aim
 		or state.move_duck
@@ -268,8 +271,8 @@ static func advance(
 		and input & (InputBits.LEFT | InputBits.RIGHT)
 	):
 		state.facing = 1 if input & InputBits.RIGHT else -1
-	var deceleration := _deceleration(state, input)
-	var acceleration := 192 if state.move_snow else ACCELERATION
+	var deceleration := _deceleration(state, input, liquid)
+	var acceleration := 256 if liquid else (192 if state.move_snow else ACCELERATION)
 	if state.move_action in [TONGUE, SPIT, EMIT, LAY]:
 		state.vx = clampi(state.vx, -200 * 60, 200 * 60)
 	if (
@@ -513,9 +516,11 @@ static func _posture(state: Dictionary, input: int, world: Dictionary) -> void:
 		state.move_posture_tick = 0
 
 
-static func _deceleration(state: Dictionary, input: int) -> int:
+static func _deceleration(state: Dictionary, input: int, liquid := false) -> int:
 	if state.hurt or state.swimming:
 		return state.hurt_deceleration
+	if liquid:
+		return 128
 	if not state.on_floor and not state.swimming:
 		return DECELERATION if input & InputBits.LEFT and input & InputBits.RIGHT else 0
 	# Snow brakes lightly while the body slides against its facing (a reversal or a

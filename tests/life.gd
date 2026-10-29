@@ -323,7 +323,7 @@ func death_checks() -> void:
 	var world := course()
 	var state := player(world)
 	state.invulnerable = 120
-	state.y = world.height + 63 * S
+	state.y = world.height + 67 * S  # Past the 66 px line of a falling body.
 	Life.after_step(state, world)
 	check(
 		state.life_phase == Life.DEAD and state.deaths == 1, "Pit death bypasses contact immunity"

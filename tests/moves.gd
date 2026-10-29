@@ -684,6 +684,19 @@ func request_checks() -> void:
 
 
 func water_checks() -> void:
+	var wet := water_world()
+	var falling := actor(wet)
+	falling.y = 330 * S
+	falling.vx = 400 * 60
+	falling.vy = 300 * 60
+	tick(falling, Bits.RIGHT, wet)
+	check(
+		falling.swimming == 0 and falling.vx == 200 * 60,
+		"a body that touches water takes the water cap before it swims"
+	)
+	falling.vx = 100 * 60
+	tick(falling, 0, wet)
+	check(falling.vx == 100 * 60 - 128, "water contact brakes lightly")
 	check(
 		(
 			Water.bob_position(15) == 3 * S

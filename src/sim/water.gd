@@ -64,6 +64,17 @@ static func prepare(
 	return {"bob": bob, "jump": false}
 
 
+## Whether the body box overlaps water anywhere (the source's liquid contact).
+static func body_overlaps(state: Dictionary, world: Dictionary, bounds: Array) -> bool:
+	return World.water_overlaps(
+		world,
+		state.x + bounds[0],
+		state.y + bounds[1],
+		state.x + bounds[2],
+		state.y + bounds[3]
+	)
+
+
 static func bob_position(phase: int) -> int:
 	var tick := phase if phase <= 30 else 60 - phase
 	return 4 * S * (60 * tick - tick * tick) / 900
