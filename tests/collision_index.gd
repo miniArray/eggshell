@@ -131,7 +131,8 @@ func solid_index_checks() -> void:
 func compare_queries(state: Dictionary, world: Dictionary, entities: Array, label: String) -> void:
 	var same := true
 	for probe in 400:
-		var body := {"x": next(3200) * S, "y": next(900) * S, "vx": 0, "vy": 0}
+		# Probes stay inside the map, clear of its side borders.
+		var body := {"x": (64 + next(3200)) * S, "y": next(900) * S, "vx": 0, "vy": 0}
 		var dx := (next(5) - 2) * S
 		var dy := (next(5) - 2) * S
 		same = (
