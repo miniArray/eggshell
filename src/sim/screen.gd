@@ -18,7 +18,9 @@ const BOTTOM_FOLLOW := 160 * S
 
 static func centre_x(state: Dictionary, world: Dictionary) -> int:
 	var x: int = state.camera_x
-	# The right limit wins on a map narrower than the screen.
+	# The left limit applies below 416 px, then the right limit above width - 416 px.
+	# On a map narrower than the screen both can apply, and then the later right limit
+	# wins; a point at or left of width - 416 px keeps the left limit.
 	if x > world.width - HALF_WIDTH:
 		return world.width - HALF_WIDTH
 	if x < HALF_WIDTH:
@@ -28,7 +30,9 @@ static func centre_x(state: Dictionary, world: Dictionary) -> int:
 
 static func centre_y(state: Dictionary, world: Dictionary) -> int:
 	var y: int = state.camera_y + FOLLOW_LIFT
-	# The bottom limit wins on a map shorter than the screen.
+	# The top limit applies above TOP_FOLLOW, then the bottom limit below height -
+	# BOTTOM_FOLLOW. On a map shorter than the screen both can apply, and then the later
+	# bottom limit wins; a point at or above height - BOTTOM_FOLLOW keeps the top limit.
 	if y > world.height - BOTTOM_FOLLOW:
 		return world.height - HALF_HEIGHT
 	if y < TOP_FOLLOW:

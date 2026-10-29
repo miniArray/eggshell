@@ -467,6 +467,11 @@ func screen_checks() -> void:
 	)
 	state.camera_x = 300 * S
 	check(Screen.centre_x(state, narrow) == 184 * S, "Past the right limit the right edge wins")
+	state.camera_y = (100 - 28) * S
+	check(
+		Screen.centre_y(state, narrow) == 224 * S,
+		"On a short map a point above the bottom follow line keeps the top limit"
+	)
 	# A walker on screen near the map's left edge wakes while the player stands at x 64.
 	world = world_for({"near": {"A": "e2", "X": 700, "Y": 100}})
 	state = State.create(world)
