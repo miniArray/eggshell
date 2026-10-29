@@ -32,7 +32,8 @@ func damage_checks() -> void:
 		state.vx == -656 * 60 and state.vy == -384 * 60, "Damage reverses velocity before knockback"
 	)
 	check(
-		state.invulnerable == 120 and state.hurt == 36, "Damage starts immunity and first hurt lock"
+		state.invulnerable == 120 and state.hurt == Life.KNOCKED_LOCK,
+		"Damage starts immunity and first hurt lock"
 	)
 	check(
 		state.separated == 1 and state.companion_mode == Life.LAUNCH, "Hit separates the companion"
@@ -48,7 +49,10 @@ func damage_checks() -> void:
 	state.invulnerable = 0
 	state.health_wait = 17
 	Damage.hurt(state, state.x - 100 * S)
-	check(state.hurt == 60 and state.health_wait == 17, "Separated hit keeps countdown progress")
+	check(
+		state.hurt == Life.SPIN_LOCK and state.health_wait == 17,
+		"Separated hit keeps countdown progress"
+	)
 	check(state.hits == 1, "Separated hit is not a second companion loss")
 	state = player(world)
 	state.swimming = 1
@@ -61,7 +65,7 @@ func damage_checks() -> void:
 	check(state.hurt == 0, "First swimming hit separates without a dry-land hurt lock")
 	state.invulnerable = 0
 	Damage.hurt(state, state.x + S)
-	check(state.hurt == 60, "Already-separated swimming hit uses the spin lock")
+	check(state.hurt == Life.SPIN_LOCK, "Already-separated swimming hit uses the spin lock")
 	check(
 		state.hurt_deceleration == 128 and Life.valid_state(state),
 		"Swimming spin keeps the water deceleration in valid state"
@@ -334,11 +338,13 @@ func death_checks() -> void:
 	check(state.life_phase == Life.DEAD, "Ordinary death waits four seconds")
 	step(state, world)
 	check(
-		state.life_phase == Life.FADE_OUT and state.life_ticks == 60,
+		state.life_phase == Life.FADE_OUT and state.life_ticks == Life.DEATH_FADE,
 		"Ordinary death fades for one second"
 	)
-	for tick in 60:
+	for tick in Life.DEATH_FADE - 1:
 		step(state, world)
+	check(state.life_phase == Life.FADE_OUT, "The fade holds until its last step")
+	step(state, world)
 	check(
 		state.life_phase == Life.FADE_IN and state.x == world.spawn_x and state.y == world.spawn_y,
 		"Respawn rebuilds and places the player"
@@ -346,15 +352,26 @@ func death_checks() -> void:
 	check(
 		state.health == 10 and state.deaths == 1, "Respawn resets countdown but keeps death count"
 	)
-	for tick in 30:
-		step(state, world)
-	check(state.life_phase == Life.PLAY, "Respawn fade finishes in half a second")
+	check(Life.blocks_step(state) and Life.locks_input(state), "The respawn step holds the body")
+	step(state, world)
+	check(Life.blocks_step(state), "The first restart step holds the body")
+	step(state, world)
+	check(
+		not Life.blocks_step(state) and Life.locks_input(state),
+		"The second restart step moves the body without input"
+	)
+	step(state, world)
+	check(
+		state.life_phase == Life.PLAY and not Life.locks_input(state),
+		"Input works on the third step after the respawn"
+	)
 	state = player(world)
 	state.hits = 4
 	state.quick_death = 1
 	check(Life.kill(state, Life.HAZARD), "Lethal hazard bypasses the ordinary damage path")
 	check(not Life.kill(state, Life.HAZARD), "One death cannot be counted twice")
-	for tick in 30:
+	check(state.life_ticks == Life.QUICK_FADE, "Quick death fades for half a second")
+	for tick in Life.QUICK_FADE:
 		step(state, world)
 	check(
 		state.life_phase == Life.FADE_IN and state.hits == 4 and state.quick_death == 1,
@@ -362,7 +379,7 @@ func death_checks() -> void:
 	)
 	state = player(world)
 	Life.quick_restart(state)
-	for tick in 30:
+	for tick in Life.QUICK_FADE:
 		Life.before_step(state, world)
 	check(
 		state.life_phase == Life.RESPAWN,
@@ -429,7 +446,7 @@ func checkpoint_checks() -> void:
 	Life.collect(state, Life.COIN)
 	Life.collect(state, Life.FLOWER)
 	Life.quick_restart(state)
-	for tick in 30:
+	for tick in Life.QUICK_FADE:
 		step(state, world)
 	check(
 		state.x == 350 * S and state.y == 300 * S and state.health == 18,
@@ -455,7 +472,7 @@ func checkpoint_checks() -> void:
 	state.map_index = 2
 	state.checkpoint_map = 1
 	Life.quick_restart(state)
-	for tick in 30:
+	for tick in Life.QUICK_FADE:
 		step(state, world)
 	check(
 		state.map_index == 1 and state.x == 350 * S,
@@ -569,7 +586,7 @@ func clock_checks() -> void:
 	for tick in 7:
 		step(state, world)
 	Life.quick_restart(state)
-	for tick in 60:
+	for tick in Life.QUICK_FADE + Life.RESTART_STEPS:
 		step(state, world)
 	check(
 		state.attempt_ticks == 0 and state.play_ticks == 5 and state.total_play_ticks == 12,

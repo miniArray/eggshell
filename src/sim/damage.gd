@@ -17,7 +17,11 @@ static func hurt(state: Dictionary, damager_x: int) -> void:
 	var already_separated: bool = state.separated == 1
 	state.invulnerable = 120
 	Sound.player(state)
-	state.hurt = 60 if already_separated else (0 if state.swimming else 36)
+	if already_separated:
+		Life.start_hurt(state, Life.SPIN_LOCK, false)
+	else:
+		# A first hit in water separates the companion without a knock-back pose.
+		Life.start_hurt(state, 0 if state.swimming else Life.KNOCKED_LOCK, true)
 	state.hurt_deceleration = 128 if state.swimming else 1296
 	if state.swimming:
 		state.vx = -state.facing * 200 * 60

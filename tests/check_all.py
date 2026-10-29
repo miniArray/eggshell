@@ -34,6 +34,7 @@ def main():
         "moves",
         "move_input",
         "life",
+        "life_timing",
         "lava_family",
         "life_hud",
         "hud_backing",

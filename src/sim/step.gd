@@ -32,6 +32,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 		return
 	if Life.before_step(state, world, Registry.spawn_map, Maps.change.bind(Registry.spawn_map)):
 		Moves.reset(state)
+	if Life.body_moves(state):
+		_dead_body(state, input, world)
 	if Life.blocks_step(state):
 		return
 	var pressed: int = input & ~state.previous_input
@@ -39,9 +41,10 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.previous_input = input
 	Collision.begin_step(state, world, Registry)
 	Registry.advance(state, world, pressed)
-	var action := 0 if state.hurt else input
+	var locked := Life.locks_input(state)
+	var action := 0 if locked else input
 	if not state.captured_by:
-		if state.hurt:
+		if locked:
 			pressed = 0
 			released = 0
 		Moves.advance(state, action, world, pressed, released)
@@ -61,6 +64,31 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.camera_y = state.y - 28 * S
 	if not state.captured_by and not Life.blocks_step(state):
 		Moves.finish(state, action, world)
+
+
+static func begin_level(state: Dictionary, world: Dictionary) -> void:
+	## Level start. Before the first step that reads input the player's body runs for two
+	## steps without input. Step counters and the world stay at the first step.
+	for tick in 2:
+		Collision.begin_step(state, world, Registry)
+		Moves.advance(state, 0, world, 0, 0)
+		Life.after_step(state, world)
+		Moves.finish(state, 0, world)
+	state.camera_x = state.x
+	state.camera_y = state.y - 28 * S
+
+
+static func _dead_body(state: Dictionary, input: int, world: Dictionary) -> void:
+	# The world waits; the body keeps falling and sliding with the braking it had.
+	var steer := 0
+	if Life.first_dead_step(state):
+		steer = input & (LEFT | RIGHT)
+		state.previous_input = input
+	Collision.begin_step(state, world, Registry)
+	Moves.advance(state, steer, world, 0, 0)
+	if not steer and not state.on_floor and state.previous_input & (LEFT | RIGHT):
+		# Holding a direction in the air left the airborne braking on.
+		state.vx = approach(state.vx, 0, DECELERATION)
 
 
 static func approach(value: int, target: int, amount: int) -> int:

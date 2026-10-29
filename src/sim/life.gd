@@ -27,6 +27,27 @@ const COUNTDOWN := 2
 const HAZARD := 3
 const CRUSH := 4
 const QUICK := 5
+# Hurt phases. KNOCKED is the knock-back pose of a first dry-land hit; landing in it starts
+# LOOK_AROUND. `hurt` counts the steps that ignore movement input in either phase.
+const HURT_NONE := 0
+const HURT_KNOCKED := 1
+const HURT_LOOK_AROUND := 2
+# Lock lengths in steps, counted from the step that sets them. The reference game ends each
+# pose with an event that runs after it has read input for that frame, and its hit events run
+# after input in the frame the hit lands, so each lock is longer than its nominal time:
+# 0.6 s knock-back = 38, 1 s spin = 63, 42-frame look-around after landing = 43.
+const KNOCKED_LOCK := 38
+const SPIN_LOCK := 63
+const LOOK_AROUND_LOCK := 43
+const MAX_HURT := 63
+# Death and restart timing in steps. An ordinary death waits 240 steps, then fades for 61:
+# the reference game restarts on the step after its 60-step fade completes. A quick death
+# fades for 32. After the respawn the first step holds the body, the second moves it
+# without input, and input works from the third.
+const DEATH_WAIT := 240
+const DEATH_FADE := 61
+const QUICK_FADE := 32
+const RESTART_STEPS := 3
 const COIN := 0
 const RED_COIN := 1
 const FLOWER := 2
@@ -40,6 +61,7 @@ const RESCUE_OFFSETS := [[-32, -22], [-16, -14], [32, -22], [16, -14]]
 const RESCUER_POINTS := [-4, -12, 0, -24, 3, -12, 13, 0, 11, 19, 0, 23, -10, 17, -12, 0]
 const PLAYER_FIELDS := [
 	["hurt", 0],
+	["hurt_phase", HURT_NONE],
 	["invulnerable", 0],
 	["health", 10],
 	["health_wait", 0],
@@ -138,7 +160,7 @@ static func before_step(
 	state.attempt_ticks = _plus_one(state.attempt_ticks)
 	state.total_play_ticks = _plus_one(state.total_play_ticks)
 	state.invulnerable = maxi(0, state.invulnerable - 1)
-	state.hurt = maxi(0, state.hurt - 1)
+	_hurt_step(state)
 	state.separation_grace = maxi(0, state.separation_grace - 1)
 	_countdown_step(state)
 	_companion_step(state, world)
@@ -146,7 +168,34 @@ static func before_step(
 
 
 static func blocks_step(state: Dictionary) -> bool:
-	return int(state.get("life_phase", PLAY)) != PLAY
+	# The last restart step runs the world and moves the body, without input.
+	var phase := int(state.get("life_phase", PLAY))
+	return phase != PLAY and not (phase == FADE_IN and int(state.get("life_ticks", 0)) == 1)
+
+
+static func body_moves(state: Dictionary) -> bool:
+	# After a fall, a countdown or a quick restart the body keeps its motion without
+	# control until the restart. A hazard holds it.
+	return (
+		int(state.get("life_phase", PLAY)) in [DEAD, FADE_OUT]
+		and int(state.get("death_cause", NONE)) in [PIT, COUNTDOWN, QUICK]
+	)
+
+
+static func first_dead_step(state: Dictionary) -> bool:
+	# Input read in the frame of the death still steers the body for one step.
+	var ticks := int(state.get("life_ticks", 0))
+	if int(state.get("life_phase", PLAY)) == DEAD:
+		return ticks == DEATH_WAIT - 1
+	var quick: bool = (
+		int(state.get("death_cause", NONE)) == QUICK or int(state.get("quick_death", 0)) != 0
+	)
+	return quick and ticks == QUICK_FADE - 1
+
+
+static func locks_input(state: Dictionary) -> bool:
+	# Movement input is ignored in a hurt pose and on the last restart step.
+	return int(state.get("hurt", 0)) != 0 or int(state.get("life_phase", PLAY)) == FADE_IN
 
 
 static func after_step(state: Dictionary, world: Dictionary) -> void:
@@ -166,6 +215,7 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 	):
 		kill(state, HAZARD)
 		return
+	_look_around_on_landing(state)
 	if state.companion_mode == BUBBLE and not state.get("captured_by", 0):
 		catch_companion(
 			state,
@@ -250,10 +300,13 @@ static func kill(state: Dictionary, cause: int = HAZARD, fast: bool = false) -> 
 	state.deaths = _plus_one(int(state.get("deaths", 0)))
 	state.death_cause = cause
 	state.life_phase = FADE_OUT if fast or state.quick_death else DEAD
-	state.life_ticks = 30 if fast or state.quick_death else 240
-	state.vx = 0
-	state.vy = 0
+	state.life_ticks = QUICK_FADE if fast or state.quick_death else DEATH_WAIT
+	if cause == HAZARD:
+		# A hazard holds the body where it died.
+		state.vx = 0
+		state.vy = 0
 	state.hurt = 0
+	state.hurt_phase = HURT_NONE
 	state.invulnerable = 0
 	state.captured_by = 0
 	if state.life_phase == DEAD:
@@ -362,6 +415,26 @@ static func score(state: Dictionary) -> int:
 	if int(state.flowers) > remaining / 10:
 		return MAX_COUNT
 	return int(state.health) + int(state.redcoins) + 10 * int(state.flowers)
+
+
+static func start_hurt(state: Dictionary, lock: int, knocked: bool) -> void:
+	## Start a movement-input lock. A knocked pose turns into the look-around on landing.
+	ensure_fields(state)
+	state.hurt = clampi(lock, 0, MAX_HURT)
+	state.hurt_phase = HURT_KNOCKED if knocked and state.hurt else HURT_NONE
+
+
+static func _hurt_step(state: Dictionary) -> void:
+	state.hurt = maxi(0, state.hurt - 1)
+	# The knock-back pose ends one step before its input lock does.
+	if state.hurt == 0 or (state.hurt == 1 and state.hurt_phase == HURT_KNOCKED):
+		state.hurt_phase = HURT_NONE
+
+
+static func _look_around_on_landing(state: Dictionary) -> void:
+	if state.hurt_phase == HURT_KNOCKED and state.get("on_floor", 0):
+		state.hurt_phase = HURT_LOOK_AROUND
+		state.hurt = LOOK_AROUND_LOCK
 
 
 static func _countdown_step(state: Dictionary) -> void:
@@ -553,7 +626,7 @@ static func _phase_step(
 		DEAD:
 			if state.life_ticks == 0:
 				state.life_phase = FADE_OUT
-				state.life_ticks = 60
+				state.life_ticks = DEATH_FADE
 		FADE_OUT:
 			if state.life_ticks == 0:
 				state.life_phase = RESPAWN
@@ -640,7 +713,7 @@ static func _respawn(
 	state.health = state.checkpoint_health if state.checkpoint_id else 10
 	state.play_ticks = state.checkpoint_play_ticks
 	state.life_phase = FADE_IN
-	state.life_ticks = 30
+	state.life_ticks = RESTART_STEPS
 	_attach_position(state)
 	return true
 
@@ -691,7 +764,18 @@ static func valid_state(state: Dictionary) -> bool:
 			return false
 	if state.health < 0 or state.health > 30 or state.health_wait < 0 or state.health_wait > 120:
 		return false
-	if state.hurt < 0 or state.hurt > 60 or state.invulnerable < 0 or state.invulnerable > 120:
+	if (
+		state.hurt < 0
+		or state.hurt > MAX_HURT
+		or state.invulnerable < 0
+		or state.invulnerable > 120
+	):
+		return false
+	if (
+		state.hurt_phase < HURT_NONE
+		or state.hurt_phase > HURT_LOOK_AROUND
+		or (state.hurt_phase != HURT_NONE and state.hurt == 0)
+	):
 		return false
 	if (
 		state.hurt_deceleration not in [0, 128, 648, 1296]
