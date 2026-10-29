@@ -130,6 +130,48 @@ func _flat_walker_ledge_checks() -> void:
 	check(air_x < edge_x, "The leap carries it off the ledge the way it walks")
 
 
+## Enemies 1281-1285 and Global Events 98-107: a burst knocks a nearby soft walker
+## aside at 448 px/s, eased to zero over 1 s, with a hop when it stands.
+func _soft_walker_knock_checks() -> void:
+	var world := _ledge_world({"milde": _place("e23", 400, 284), "other": _place("e23", 480, 284)})
+	var state := _placed_state(world)
+	state.x = 900 * S
+	state.y = 100 * S
+	var milde := _by_id(state, "milde")
+	var other := _by_id(state, "other")
+	var type: Script = Registry.lookup("e23")
+	_activate(milde)
+	_activate(other)
+	Sim.advance(state, 0, world)
+	milde.mode = type.SQUASH
+	milde.timer = 1
+	milde.pin_dx = 0
+	Collision.begin_step(state, world, Registry)
+	type.step(milde, state, world)
+	check(
+		milde.status == Registry.DEFEATED and other.mode == type.KNOCKED,
+		"A burst knocks a soft walker within 128 px aside"
+	)
+	Collision.begin_step(state, world, Registry)
+	type.step(other, state, world)
+	check(other.vy == -384 * 60, "A standing knocked walker hops at -(448 / 2 + 160)")
+	var before: int = other.x
+	Collision.begin_step(state, world, Registry)
+	type.step(other, state, world)
+	check(other.x - before == 448 * 60, "It first moves away from the burst at 448 px/s")
+	before = other.x
+	Collision.begin_step(state, world, Registry)
+	type.step(other, state, world)
+	check(other.x - before == 448 * 60 * 59 / 60, "The knock speed eases linearly over 1 s")
+	for _tick in 70:
+		Collision.begin_step(state, world, Registry)
+		type.step(other, state, world)
+	check(
+		other.mode == type.WALK and other.facing == 1,
+		"After the knock-back it walks toward the player again"
+	)
+
+
 func _soft_walker_checks() -> void:
 	var world := _ledge_world({"milde": _place("e23", 400, 284)})
 	var state := _placed_state(world)
@@ -174,6 +216,7 @@ func _soft_walker_checks() -> void:
 	for _tick in 3:
 		type.step(milde, state, world)
 	check(milde.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
+	_soft_walker_knock_checks()
 	state = _placed_state(world)
 	milde = _by_id(state, "milde")
 	_activate(milde)

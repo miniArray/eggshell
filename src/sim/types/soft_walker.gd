@@ -22,6 +22,12 @@ const CONTACT_PHASE := 1
 const WALK := 0
 const SQUASH := 1
 const TUMBLE := 2
+## Knocked aside by a nearby burst: the speed eases to zero, with a hop on each landing.
+const KNOCKED := 3
+const KNOCK_SPEED := 448 * 60
+const KNOCK_TICKS := 60  # 1 s
+const KNOCK_RANGE := 128
+const KNOCK_PAUSE := 2  # Standing ticks before it walks again.
 const SQUASH_TICKS := 15  # Two frames at 8 per second.
 const FIELDS := (
 	Body.FIELDS
@@ -87,11 +93,18 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		Motion.gravity_box(entity, world, bounds(entity))
 		pin(entity, state)
 		return
+	# A body knocked in this step's earlier burst still takes its own step now.
+	var pending: bool = entity.mode == KNOCKED and entity.timer > 0 and entity.slide_ticks > 0
+	if entity.mode == KNOCKED and not pending:
+		_knocked_step(entity, state, world, box)
+		return
+	if pending:
+		entity.timer = 0
 	var grounded := Collision.floor_at(entity, world, box) != 0
-	if entity.slide_ticks > 0:
+	if entity.slide_ticks > 0 and not pending:
 		entity.vx = entity.slide_from * entity.slide_ticks / entity.slide_total
 		entity.slide_ticks -= 1
-	elif entity.mode == WALK:
+	elif entity.mode == WALK or pending:
 		var wet := int(
 			World.water_overlaps(
 				world, entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]
@@ -110,6 +123,45 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var landed := Motion.gravity_box(entity, world, box)
 	if landed and entity.mode == TUMBLE:
 		entity.mode = WALK
+	if pending:
+		_hop(entity, landed)
+
+
+## Knock-back (Global Events 98-107, `knockBackEnemy`): the Platform speed follows a
+## linear 1 s tween from the knock speed to 0. Each landing while it is faster than 24
+## px/s hops at -(speed / 2 + 160). Against a wall faster than 64 px/s the tween restarts
+## at 48 px/s away from the wall over 1.5 s. When the tween ends the body stands, then
+## turns toward the player and walks.
+static func _knocked_step(
+	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array
+) -> void:
+	if entity.slide_ticks == 0:
+		entity.vx = 0
+		Motion.gravity_box(entity, world, box)
+		entity.timer -= 1
+		if entity.timer <= 0:
+			entity.timer = 0
+			entity.mode = WALK
+			if entity.x != state.x:
+				entity.facing = -1 if entity.x > state.x else 1
+		return
+	var speed: int = entity.slide_from * entity.slide_ticks / entity.slide_total
+	entity.slide_ticks -= 1
+	entity.vx = speed
+	if speed and Motion.move(entity, world, box, speed, true) != speed and absi(speed) > 64 * 60:
+		entity.facing = -signi(speed)
+		entity.slide_from = entity.facing * 48 * 60
+		entity.slide_total = 90
+		entity.slide_ticks = 89
+	_hop(entity, Motion.gravity_box(entity, world, box))
+	if entity.slide_ticks == 0:
+		entity.timer = KNOCK_PAUSE
+
+
+static func _hop(entity: Dictionary, landed: bool) -> void:
+	var speed: int = absi(entity.slide_from * entity.slide_ticks / entity.slide_total)
+	if landed and speed > 24 * 60:
+		entity.vy = -(speed / 2 + 160 * 60)
 
 
 ## Hold the player on the squashed body, keeping the landing offset. Only the position
@@ -119,9 +171,41 @@ static func pin(entity: Dictionary, state: Dictionary) -> void:
 	state.y = entity.y
 
 
-## The source also knocks enemies within 128 px aside; that reaction is not ported.
-static func burst(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
+## Enemies 1281-1285: the burst knocks soft walkers within 128 px aside (vx -448 left
+## of it, +448 right of it), then removes the body. Other enemy kinds are not knocked
+## yet (not ported).
+static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	var later := false
+	for other: Dictionary in state.entities:
+		if is_same(other, entity):
+			later = true
+			continue
+		if not _knockable(other) or other.x == entity.x:
+			continue
+		if absi(other.y - entity.y) >= KNOCK_RANGE * S:
+			continue
+		if absi(other.x - entity.x) >= KNOCK_RANGE * S:
+			continue
+		other.mode = KNOCKED
+		other.slide_from = KNOCK_SPEED * (1 if other.x > entity.x else -1)
+		other.slide_total = KNOCK_TICKS
+		other.slide_ticks = KNOCK_TICKS
+		other.timer = int(later)
+		if not later:
+			_hop(other, Collision.floor_at(other, world, bounds(other)) != 0)
 	Body.remove(entity, state)
+
+
+static func _knockable(other: Dictionary) -> bool:
+	return (
+		other.get("code", "") in CODES
+		and other.status == 1
+		and other.mode in [WALK, TUMBLE, KNOCKED]
+		and not other.held
+		and not other.spat
+		and not other.hidden
+		and not other.get("frozen", 0)
+	)
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
@@ -131,7 +215,7 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 		# The hold puts the player back after its own move in this step.
 		pin(entity, state)
 		return
-	if entity.mode != WALK:
+	if entity.mode not in [WALK, KNOCKED]:
 		entity.contact = 0
 		return
 	var touching := Body.player_overlap(entity, state, bounds(entity))
@@ -183,7 +267,7 @@ static func valid(entity: Dictionary) -> bool:
 	return (
 		Body.valid(entity)
 		and entity.variant == 0
-		and entity.mode in [WALK, SQUASH, TUMBLE]
+		and entity.mode in [WALK, SQUASH, TUMBLE, KNOCKED]
 		and entity.timer >= 0
 		and entity.timer <= SQUASH_TICKS
 		and entity.contact in [0, 1]
