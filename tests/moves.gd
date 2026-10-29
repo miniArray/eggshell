@@ -3,6 +3,7 @@ extends SceneTree
 const State = preload("res://src/sim/play_state.gd")
 const Sim = preload("res://src/sim/step.gd")
 const Moves = preload("res://src/sim/moves.gd")
+const Flutter = preload("res://src/sim/move_flutter.gd")
 const Bits = preload("res://src/sim/move_input.gd")
 const Water = preload("res://src/sim/water.gd")
 const World = preload("res://src/sim/world.gd")
@@ -124,20 +125,32 @@ func platform_order_checks() -> void:
 	state.vy = 200 * 60
 	tick(state, Bits.JUMP, world)
 	var damped: int = state.vy
-	check(state.flutter_remaining == Moves.FLUTTER_TICKS - 1, "held jump starts the flutter")
+	check(state.flutter_remaining == Flutter.TICKS - 1, "held jump starts the flutter")
 	tick(state, 0, world)
 	var expected := damped + (-264 * 60 - damped) * 37649 / 1000000 + Moves.GRAVITY
 	check(
 		state.vy == expected and state.flutter_remaining == 0,
 		"releasing jump damps the flutter once more before it ends"
 	)
-	check(state.flutter_cooldown == Moves.FLUTTER_COOLDOWN, "the release starts the delay")
+	check(state.flutter_cooldown == Flutter.COOLDOWN, "the release starts the delay")
 	var started := -1
 	for count in 20:
 		tick(state, Bits.JUMP, world)
 		if started < 0 and state.flutter_remaining:
 			started = count + 1
-	check(started == Moves.FLUTTER_COOLDOWN, "the next flutter starts 17 steps after a cancel")
+	check(started == Flutter.COOLDOWN, "the next flutter starts 17 steps after a cancel")
+	state = actor(world)
+	state.previous_input = Bits.JUMP
+	state.vy = 200 * 60
+	for count in Flutter.TICKS:
+		tick(state, Bits.JUMP, world)
+	check(
+		state.flutter_remaining == 0 and state.move_gravity_tick == 2,
+		"the lift damps on 41 steps; its last step falls with full gravity"
+	)
+	var before: int = state.vy
+	tick(state, Bits.JUMP, world)
+	check(state.vy - before == 1080, "then gravity recovers along the source ease-out curve")
 	state = actor(world)
 	state.previous_input = Bits.JUMP
 	state.move_action = Moves.HEAD_BUMP
@@ -164,20 +177,18 @@ func platform_order_checks() -> void:
 	tick(state, Bits.JUMP, world)
 	check(
 		(
-			state.y == landed - Moves.FLUTTER_LANDING_LIFT
+			state.y == landed - Flutter.LANDING_LIFT
 			and state.vy == Moves.GRAVITY
 			and state.on_floor == 0
 			and state.flutter_remaining == 0
-			and state.flutter_cooldown == Moves.FLUTTER_COOLDOWN
+			and state.flutter_cooldown == Flutter.COOLDOWN
 			and state.vx == 256 * 60 - 1296
 		),
 		"the landing step clamps vx, ends the flutter and lifts the body 2 px"
 	)
 	for count in 4:
 		tick(state, Bits.JUMP, world)
-	check(
-		state.on_floor == 1 and absi(state.y - landed) <= S / 8, "the lifted body lands again"
-	)
+	check(state.on_floor == 1 and absi(state.y - landed) <= S / 8, "the lifted body lands again")
 	state = actor(world)
 	state.y = 255 * S
 	state.vy = 100 * 60
@@ -735,7 +746,7 @@ func water_checks() -> void:
 	state.flutter_remaining = 20
 	tick(state, Bits.JUMP, world)
 	check(
-		state.flutter_remaining == 0 and state.flutter_cooldown == Moves.FLUTTER_COOLDOWN,
+		state.flutter_remaining == 0 and state.flutter_cooldown == Flutter.COOLDOWN,
 		"water entry cancels active flutter with its cooldown"
 	)
 	state = actor(world)
@@ -800,10 +811,7 @@ func water_checks() -> void:
 		"snow brake for the step after a shove comes from the speed before the shove"
 	)
 	tick(state, Bits.RIGHT, world)
-	check(
-		state.vx == -224 * 60 + 192 + 1296 + 192 + 256,
-		"then the backward slide brakes lightly"
-	)
+	check(state.vx == -224 * 60 + 192 + 1296 + 192 + 256, "then the backward slide brakes lightly")
 
 
 func schema_checks() -> void:

@@ -67,11 +67,7 @@ static func prepare(
 ## Whether the body box overlaps water anywhere (the source's liquid contact).
 static func body_overlaps(state: Dictionary, world: Dictionary, bounds: Array) -> bool:
 	return World.water_overlaps(
-		world,
-		state.x + bounds[0],
-		state.y + bounds[1],
-		state.x + bounds[2],
-		state.y + bounds[3]
+		world, state.x + bounds[0], state.y + bounds[1], state.x + bounds[2], state.y + bounds[3]
 	)
 
 

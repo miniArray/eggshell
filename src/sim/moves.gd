@@ -8,6 +8,7 @@ const InputBits = preload("res://src/sim/move_input.gd")
 const Tongue = preload("res://src/sim/move_tongue.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
+const Flutter = preload("res://src/sim/move_flutter.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -16,15 +17,6 @@ const GRAVITY := 2048
 const MAX_SPEED := 400 * 60
 const MAX_FALL := 704 * 60
 const JUMP_SPEED := 776 * 60
-## Flutter lift: the end timer (0.66 s, 0.82 s boosted) is checked after the frame's
-## damping, so the lift damps on one more step than its whole-step length.
-const FLUTTER_TICKS := 41
-const BOOSTED_FLUTTER_TICKS := 51
-## Flutter delay after a cancel: a 0.266 s timer still counts as running on the step it
-## expires, so the next flutter can start 17 steps after the cancel.
-const FLUTTER_COOLDOWN := 17
-## A flutter that lands lifts the body this far before the next move.
-const FLUTTER_LANDING_LIFT := 2 * S
 const NORMAL_BOX := [-12 * S, -56 * S, 12 * S, 0]
 const NORMAL := 0
 const POUND_START := 1
@@ -245,7 +237,7 @@ static func advance(
 			state.vy = -JUMP_SPEED
 	if release_flutter:
 		state.flutter_remaining = 0
-		state.flutter_cooldown = FLUTTER_COOLDOWN
+		state.flutter_cooldown = Flutter.COOLDOWN
 		state.move_flutter_flow = 0
 		state.move_gravity_tick = 0
 		state.boosted_flutter = 0
@@ -294,9 +286,9 @@ static func advance(
 	):
 		state.move_turn = direction
 		state.move_turn_ticks = 30
-	if lift and not Collision.overlaps(state, world, bounds, 0, -FLUTTER_LANDING_LIFT):
+	if lift and not Collision.overlaps(state, world, bounds, 0, -Flutter.LANDING_LIFT):
 		# After the landing step's other rules: the next move starts from the air.
-		state.y -= FLUTTER_LANDING_LIFT
+		state.y -= Flutter.LANDING_LIFT
 		support = Collision.floor_at(state, world, bounds)
 	Collision.settle_floor(state, world, bounds, support)
 	var dx := clampi(state.vx + acceleration / 2, -speed, speed) if state.vx else 0
@@ -557,60 +549,22 @@ static func _gravity(state: Dictionary) -> int:
 	if state.move_gravity_tick and (state.move_action != NORMAL or state.move_aim):
 		state.move_gravity_tick = 0
 	if state.move_gravity_tick:
-		var tick: int = state.move_gravity_tick - 1
-		state.move_gravity_tick = tick + 2 if tick < 23 else 0
-		return 1024 + 1024 * (48 * tick - tick * tick) / (24 * 24)
+		return Flutter.recovery_gravity(state)
 	return GRAVITY
 
 
 static func cancel_flutter(state: Dictionary) -> void:
-	if state.flutter_remaining:
-		state.flutter_cooldown = FLUTTER_COOLDOWN
-	state.flutter_remaining = 0
-	state.move_flutter_flow = 0
+	Flutter.cancel(state)
 
 
-## One flutter step. Returns true when a flutter that landed ends here; the caller then
-## lifts the body before the move.
+## One flutter step; true when a flutter that landed ends here and the body lifts.
 static func _flutter(state: Dictionary, input: int) -> bool:
 	if state.swimming or state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 		return false
-	if state.flutter_remaining and state.on_floor:
-		state.vx = clampi(state.vx, -256 * 60, 256 * 60)
-		cancel_flutter(state)
-		return true
-	if (
-		not state.on_floor
-		and not state.flutter_remaining
-		and state.flutter_ready
-		and state.flutter_cooldown == 0
-		and input & InputBits.JUMP
-		and state.vy > 192 * 60
-	):
-		state.flutter_remaining = BOOSTED_FLUTTER_TICKS if state.boosted_flutter else FLUTTER_TICKS
-		state.flutter_ready = 0
-		Sound.player(state)
-		state.vy = mini(state.vy, 392 * 60)
-		state.move_gravity_tick = 0
-		if state.move_action == HEAD_BUMP:
-			_set_action(state, NORMAL)  # The flutter pose replaces the head bump pose.
-	if not state.flutter_remaining:
-		return false
-	if state.move_flow != state.move_flutter_flow:
-		state.flutter_remaining = maxi(
-			1, state.flutter_remaining + (21 if state.move_flow else -21)
-		)
-		state.move_flutter_flow = state.move_flow
-	# Fixed rational coefficients for the two supported contact states at 60 Hz.
-	var coefficient := 50569 if state.move_flutter_flow else 37649
-	state.vy += ((-424 if state.boosted_flutter else -264) * 60 - state.vy) * coefficient / 1000000
-	state.vx = clampi(state.vx, -256 * 60, 256 * 60)
-	state.flutter_remaining -= 1
-	if state.flutter_remaining == 0:
-		state.flutter_cooldown = FLUTTER_COOLDOWN
-		state.move_gravity_tick = 1
-		state.move_flutter_flow = 0
-	return false
+	var result := Flutter.step(state, input)
+	if result == Flutter.STARTED and state.move_action == HEAD_BUMP:
+		_set_action(state, NORMAL)  # The flutter pose replaces the head bump pose.
+	return result == Flutter.LANDED
 
 
 static func _set_action(state: Dictionary, action: int) -> void:
