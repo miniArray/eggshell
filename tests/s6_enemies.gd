@@ -123,7 +123,39 @@ func runtime_option_checks() -> void:
 	)
 
 
+## Oracle 66c4880e: a hop moves sideways from its first step, and after a fall the
+## landing pause is 17 ticks (0.25 s plus two ticks).
+func _hop_timing_checks() -> void:
+	var unit := _fixture("e6", {"F": 1})
+	var hop_x := 0
+	var landed_at := -1
+	var hopped_again := -1
+	for tick: int in 400:
+		var before: int = unit.entity.x
+		var mode: int = unit.entity.mode
+		var fell: bool = unit.entity.vy > 0
+		unit.type.step(unit.entity, unit.state, unit.world)
+		if mode == unit.type.HOP_LAND and unit.entity.mode == unit.type.HOP:
+			if hop_x == 0:
+				hop_x = absi(unit.entity.x - before)
+			elif landed_at >= 0 and hopped_again < 0:
+				hopped_again = tick
+		if (
+			mode == unit.type.HOP
+			and unit.entity.mode == unit.type.HOP_LAND
+			and fell
+			and landed_at < 0
+		):
+			landed_at = tick
+	_check(hop_x == 64 * 60, "A winged hop moves sideways from its first step")
+	_check(
+		landed_at >= 0 and hopped_again - landed_at == 17,
+		"After a fall the winged hopper waits 17 ticks before it hops again"
+	)
+
+
 func movement_checks() -> void:
+	_hop_timing_checks()
 	for code: String in ["e4", "e6", "e8", "e31"]:
 		var unit := _fixture(code, {"M": 1})
 		if code == "e31":

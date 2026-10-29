@@ -145,6 +145,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			if entity.timer == 0:
 				entity.mode = HOP
 				entity.vy = (-448 if entity.colour else -280) * 60
+				# The hop moves sideways from its first step.
+				entity.vx = entity.facing * 64 * 60 / ((wet + 1) * (wet + 1))
 		SHAKE:
 			entity.vx = 0
 			entity.timer -= 1
@@ -185,13 +187,16 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		elif entity.mode in [WALK, BARE]:
 			_turn(entity)
 	var hopped: bool = entity.mode in [HOP, HOP_LAND]
+	var falling: bool = entity.vy > 0
 	var landed := Motion.gravity_box(
 		entity, world, box, 512 if hopped else 2048, (176 if hopped else 704) * 60
 	)
 	if landed:
 		if entity.mode == HOP:
 			entity.mode = HOP_LAND
-			entity.timer = 15
+			# 0.25 s, plus two ticks after a fall: the landing is seen a tick late and the
+			# jump starts on the next tick (oracle 66c4880e). Placed on a floor: 0.25 s.
+			entity.timer = 17 if falling else 15
 		elif entity.mode == RETURN_AIR:
 			entity.mode = RETURN_LAND
 			entity.timer = 15
