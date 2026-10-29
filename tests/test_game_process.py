@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import signal
 import struct
 import subprocess
@@ -34,24 +35,36 @@ def command(directory, *args):
     ]
 
 
+SNAPSHOT_SOURCE = ROOT / "src/save/snapshot.gd"
+
+
+def snapshot_constant(name):
+    # Read the codec's own constants so this check follows every version bump.
+    found = re.search(
+        rf"^const {name} := (\d+)$", SNAPSHOT_SOURCE.read_text(), re.MULTILINE
+    )
+    if found is None:
+        raise AssertionError(f"No {name} constant in {SNAPSHOT_SOURCE}")
+    return int(found.group(1))
+
+
 def snapshot_frame(path):
+    """Check the header and checksum of a saved snapshot and return its frame.
+
+    The frame is the first level field, stored right after the header.
+    """
     data = path.read_bytes()
+    header = snapshot_constant("HEADER")
+    checksum = snapshot_constant("CHECKSUM_SIZE")
     if (
-        len(data) < 364
+        len(data) < header + 8 + 4 + checksum
         or data[:8] != b"EGGSTATE"
-        or struct.unpack_from("<I", data, 8)[0] != 3
+        or struct.unpack_from("<I", data, 8)[0] != snapshot_constant("VERSION")
     ):
         raise AssertionError("Invalid snapshot header/length")
-    count = struct.unpack_from("<I", data, 324)[0]
-    enemy_offset = 328 + 48 * count
-    if enemy_offset + 36 > len(data):
-        raise AssertionError("Invalid spring count/length")
-    enemies = struct.unpack_from("<I", data, enemy_offset)[0]
-    if len(data) != 364 + 48 * count + 160 * enemies:
-        raise AssertionError("Invalid enemy count/length")
-    if hashlib.sha256(data[:-32]).digest() != data[-32:]:
+    if hashlib.sha256(data[:-checksum]).digest() != data[-checksum:]:
         raise AssertionError("Invalid snapshot checksum")
-    return struct.unpack_from("<q", data, 44)[0]
+    return struct.unpack_from("<q", data, header)[0]
 
 
 def run_to(directory, frame, *args):

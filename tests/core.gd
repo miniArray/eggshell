@@ -160,7 +160,8 @@ func movement_checks() -> void:
 		Sim.advance(walk, Sim.RIGHT, world)
 		Sim.advance(run, Sim.RIGHT | Sim.RUN, world)
 	check(walk.vx == Sim.WALK_SPEED and run.vx == Sim.RUN_SPEED, "Walk and run caps")
-	check(run.x > walk.x, "Running travels farther")
+	# The old run bit is the use action now; there is no run modifier, so it adds no speed.
+	check(run.x <= walk.x, "The legacy run bit adds no speed")
 	var jump := State.create(world)
 	Sim.advance(jump, 0, world)
 	var minimum: int = jump.y
@@ -168,6 +169,11 @@ func movement_checks() -> void:
 		Sim.advance(jump, Sim.JUMP, world)
 		minimum = mini(minimum, jump.y)
 	check(minimum < world.spawn_y - 140 * State.SCALE, "Jump clears 140 pixels")
+	# A held jump flutters, so the landing comes after the button is released.
+	for tick in 120:
+		if jump.on_floor == 1:
+			break
+		Sim.advance(jump, 0, world)
 	check(jump.on_floor == 1, "Jump lands")
 	var flutter := State.create(world)
 	Sim.advance(flutter, 0, world)

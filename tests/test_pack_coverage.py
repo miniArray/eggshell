@@ -105,6 +105,7 @@ def dry_level(path):
             "walker": {"A": "e1", "X": 200, "Y": 300},
             "bubble": {"A": "e16", "X": 260, "Y": 300},
             "melon": {"A": "o25", "X": 300, "Y": 300, "F": 3},
+            "unknown": {"A": "e999", "X": 340, "Y": 300},
             "goal": {"A": "o5", "X": 480, "Y": 300},
         },
         {
@@ -205,13 +206,16 @@ class EngineCoverageTests(unittest.TestCase):
         self.assertIn(("o2", "fallback"), objects)
         self.assertIn(("e1", "fallback"), objects)
         self.assertIn(("o5", "fallback"), objects)
+        # The bubble and the fire melon are built now; without pack art they are squares.
         self.assertEqual(
-            objects[("e16", "engine-missing")]["details"],
-            {"unregistered code; not drawn": 1},
+            objects[("e16", "fallback")]["details"], {"diagnostic square": 1}
         )
-        self.assertIn(
-            "fire or ice melon F=3; diagnostic square",
-            objects[("o25", "engine-missing")]["details"],
+        self.assertEqual(
+            objects[("o25", "fallback")]["details"], {"diagnostic square": 1}
+        )
+        self.assertEqual(
+            objects[("e999", "engine-missing")]["details"],
+            {"unregistered code; not drawn": 1},
         )
         # Actor walkers never show a separate head, so no head slot is listed.
         self.assertNotIn(("e1_head", "fallback"), objects)
@@ -247,7 +251,7 @@ class EngineCoverageTests(unittest.TestCase):
         missing = {(e["kind"], e["id"]) for e in summary["missing"]}
         self.assertNotIn(("tileset", "water3"), missing)
         engine = {e["id"] for e in summary["engine_missing"]}
-        self.assertEqual(engine, {"e16", "o25"})
+        self.assertEqual(engine, {"e999"})
 
     def test_pack_wide_hud_and_runtime_slots(self):
         hud = {s["id"]: s["status"] for s in self.report["facts"]["hud"]}
