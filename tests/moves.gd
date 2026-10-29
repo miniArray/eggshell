@@ -168,6 +168,26 @@ func platform_order_checks() -> void:
 	var before: int = state.vy
 	tick(state, Bits.JUMP, world)
 	check(state.vy - before == 1080, "then gravity recovers along the source ease-out curve")
+	state = actor(world)
+	state.previous_input = Bits.JUMP
+	state.vy = 300 * 60
+	tick(state, Bits.JUMP, world)
+	check(state.flutter_remaining > 0, "the flutter runs before the stomp")
+	Moves.bounce(state, -320 * 60, Bits.JUMP)  # An enemy contact after the move.
+	tick(state, Bits.JUMP, world)
+	var bounced: int = state.vy
+	check(
+		bounced == -704 * 60 + Moves.GRAVITY and state.flutter_remaining > 0,
+		"after a stomp the flutter lasts one more move under normal gravity"
+	)
+	tick(state, Bits.JUMP, world)
+	check(
+		(
+			state.vy == bounced + (-424 * 60 - bounced) * 37649 / 1000000 + Moves.GRAVITY
+			and state.flutter_remaining == 0
+		),
+		"then it damps once more toward the boosted target and ends"
+	)
 	var roofed := empty_world()
 	var roof := []
 	for column in 32:
