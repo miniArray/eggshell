@@ -8,8 +8,8 @@ static func camera(viewport: Vector2, offset: Vector2, scale: float) -> Rect2:
 	return Rect2(-offset / scale, viewport / scale).grow(MARGIN)
 
 
-static func needed(envelope: Variant, origin: Vector2, camera_rect: Rect2) -> bool:
-	if not envelope is Rect2:
+static func needed(envelope: Variant, origin: Vector2, camera_rect: Variant) -> bool:
+	if not envelope is Rect2 or not camera_rect is Rect2:
 		return true
 	var bounds: Rect2 = envelope
 	return camera_rect.intersects(Rect2(bounds.position + origin, bounds.size), true)

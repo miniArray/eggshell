@@ -786,10 +786,14 @@ static func view_sample(art: Dictionary, tick: int, look: Dictionary, variant :=
 	return Frames.sample(art, tick, animation, variant)
 
 
-static func update_placed(node: Sprite2D, entity: Dictionary, state: Dictionary) -> void:
+static func update_placed(
+	node: Sprite2D, entity: Dictionary, state: Dictionary, prepared_look: Variant = null
+) -> void:
 	var type: Script = Registry.lookup(entity.code)
 	var look: Dictionary = (
-		type.call("view_state", entity, state) if type.has_method("view_state") else {}
+		prepared_look
+		if prepared_look is Dictionary
+		else (type.call("view_state", entity, state) if type.has_method("view_state") else {})
 	)
 	var base: Dictionary = node.get_meta("base_look", {})
 	if base.is_empty():

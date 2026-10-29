@@ -88,7 +88,13 @@ static func placed(node: Sprite2D, code: String) -> Variant:
 
 
 static func enemy(node: Sprite2D, code: String) -> Variant:
-	if not fixed_look(code) or Registry.lookup(code).has_method("head_box"):
+	if not fixed_look(code):
+		return null
+	# Actor's other codes expose head_box too, but it is always empty for them.
+	if (
+		Registry.lookup(code).has_method("head_box")
+		and code not in ["e1", "e2", "e3", "e20", "e21"]
+	):
 		return null
 	var art: Dictionary = node.get_meta("entity_art", {})
 	if art.is_empty():
@@ -113,6 +119,100 @@ static func at_body(envelope: Variant, art: Dictionary, box: Array) -> Variant:
 	return (envelope as Rect2).grow(maxf(reach.x, reach.y))
 
 
+## Art geometry independent of frame selection. Sized looks use each frame's own
+## denominator, so an origin/size ratio is required as well as the raw extent.
+static func geometry(node: Sprite2D) -> Dictionary:
+	var art: Dictionary = node.get_meta("pack_art", {})
+	if art.is_empty() or node.get_meta("diagnostic_body", false) or node.get_meta("decor", false):
+		return {}
+	var raw := Vector2.ZERO
+	var ratio := Vector2.ZERO
+	var largest := Vector2.ZERO
+	for animation: Dictionary in art.animations.values():
+		for frame: Dictionary in animation.frames:
+			var size: Vector2 = frame.texture.get_size()
+			var extent: Vector2 = frame.origin.abs().max((size - frame.origin).abs())
+			raw = raw.max(extent)
+			ratio = ratio.max(extent / size)
+			largest = largest.max(size)
+	var parts := Vector2.ZERO
+	var body_min := Vector2.ZERO
+	for child: Node in node.get_children():
+		if child.has_meta("span_part"):
+			var rect: Rect2 = child.get_meta("span_part")
+			# follow() cancels the parent's pre-snap scale. The part's contents
+			# may exceed the requested box (for example nine-patch end margins).
+			for piece: Node in child.get_children():
+				var bound: Variant = tree(piece)
+				if not bound is Rect2:
+					return {}
+				var local: Rect2 = bound
+				local.position += rect.position
+				parts = parts.max(local.position.abs().max(local.end.abs()))
+		elif child.has_meta("span_body") and child.get_child_count() == 1:
+			var patch := child.get_child(0) as NinePatchRect
+			if patch == null:
+				return {}
+			body_min = body_min.max(
+				(
+					Vector2(
+						patch.patch_margin_left + patch.patch_margin_right,
+						patch.patch_margin_top + patch.patch_margin_bottom
+					)
+					/ int(child.get_meta("span_body"))
+				)
+			)
+		else:
+			return {}
+	return {
+		"raw": raw,
+		"ratio": ratio,
+		"largest": largest,
+		"scale": node.get_meta("base_look", {}).get("scale", node.scale),
+		"density": int(art.get("density", 1)),
+		"parts": parts,
+		"body_min": body_min
+	}
+
+
+## Pure upper bound for the actual look_plan contract. No texture is sampled and
+## no node is changed. Span parts remain at world size before pixel snapping.
+static func with_look(shape: Dictionary, look: Dictionary) -> Variant:
+	if shape.is_empty():
+		return null
+	var scale: Vector2 = shape.scale.abs()
+	var extent: Vector2 = shape.raw * scale
+	var minimum_scale := scale
+	for axis in 2:
+		var key := "size_x" if axis == 0 else "size_y"
+		var size: Variant = look.get(key)
+		if size is int or size is float:
+			if is_finite(float(size)) and size >= 0:
+				extent[axis] = shape.ratio[axis] * float(size)
+				minimum_scale[axis] = float(size) / shape.largest[axis]
+	var density: int = shape.density
+	var snap_ratio := Vector2.ONE
+	if density > 1:
+		for axis in 2:
+			# The minimum nonzero art-pixel multiple may enlarge very thin spans.
+			extent[axis] = maxf(
+				extent[axis] + shape.raw[axis] * 0.5 / density, shape.raw[axis] / density
+			)
+			if minimum_scale[axis] > 0.0001:
+				snap_ratio[axis] = maxf(
+					1 + 0.5 / (density * minimum_scale[axis]), 1.0 / (density * minimum_scale[axis])
+				)
+	var extra: Vector2 = (shape.parts as Vector2).max(shape.body_min) * snap_ratio
+	# A sliced body's minimum size extends from the image corner, not its origin.
+	var radius := (extent + extra).length() + 1.0 / density
+	var offset := Vector2.ZERO
+	for axis in 2:
+		var value: Variant = look.get("offset_x" if axis == 0 else "offset_y")
+		if (value is int or value is float) and is_finite(float(value)):
+			offset[axis] = float(value)
+	return Rect2(offset - Vector2.ONE * radius, Vector2.ONE * radius * 2)
+
+
 ## Union a static subtree in its parent's coordinates. Invisible children still
 ## count: visibility and frame selection may change before the next drawn frame.
 static func tree(node: Node, include_position := true) -> Variant:
@@ -132,7 +232,7 @@ static func tree(node: Node, include_position := true) -> Variant:
 	if not result is Rect2:
 		# Empty sprite parents are used for composed decorations.
 		return Rect2() if node is Sprite2D and node.texture == null else null
-	var transform: Transform2D = node.transform
+	var transform: Transform2D = node.get_transform()
 	if not include_position:
 		transform.origin = Vector2.ZERO
 	var bounds: Rect2 = transform * (result as Rect2)

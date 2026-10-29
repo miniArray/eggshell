@@ -59,6 +59,8 @@ def main():
         "audio",
         "view_motion",
         "view_invariance",
+        "view_bounds",
+        "view_visibility",
         "menus",
         "menu_pause",
         "autosave_retry",

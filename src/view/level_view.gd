@@ -26,6 +26,8 @@ const INACTIVE_TINT := Color(0.6, 0.6, 0.6, 0.55)
 var audio := AudioMap.new()
 ## Whole-number zoom step on top of the container fit. ScreenPlan clamps it.
 var zoom := 0
+## Drawing-only reference mode for pixel parity checks. Gameplay always uses culling.
+var viewport_aware := true
 ## The camera plan used for the last rendered frame.
 var plan: Dictionary = {}
 var _world: Dictionary
@@ -46,8 +48,11 @@ var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
 var _placed_nodes: Dictionary = {}
 var _placed_bounds: Dictionary = {}
+var _placed_geometry: Dictionary = {}
 var _enemy_bounds: Array = []
-var _static_frames: Array[Dictionary] = []
+var _enemy_types: Array[Script] = []
+var _enemy_body_bounds: Array[Array] = []
+var _static_nodes: Array[Dictionary] = []
 var _snapped: Array[Sprite2D] = []
 var _runtime := Runtime.new()
 
@@ -76,8 +81,11 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	_head_nodes.clear()
 	_placed_nodes.clear()
 	_placed_bounds.clear()
+	_placed_geometry.clear()
 	_enemy_bounds.clear()
-	_static_frames.clear()
+	_enemy_types.clear()
+	_enemy_body_bounds.clear()
+	_static_nodes.clear()
 	_snapped.clear()
 	_animations = {}
 	_world = world
@@ -182,6 +190,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			var id: String = node.get_meta("placed_id")
 			_placed_nodes[id] = node
 			_placed_bounds[id] = VisualBounds.placed(node, node.get_meta("placed_code"))
+			_placed_geometry[id] = VisualBounds.geometry(node)
 	# Packs without object art keep the diagnostic flat textures.
 	var spring_art := Dressing.object_art(manifest, pack, "o11")
 	for spring: Dictionary in world.springs:
@@ -232,10 +241,13 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		_enemy_nodes[-1].set_meta("entity_art", art)
 		_enemy_nodes[-1].set_meta("pack_variant", int(enemy.variant))
 		_enemy_bounds.append(VisualBounds.enemy(_enemy_nodes[-1], enemy.code))
+		var type := Registry.lookup(enemy.code)
+		_enemy_types.append(type)
+		_enemy_body_bounds.append(type.body_bounds() if type.has_method("body_bounds") else [])
 		_head_nodes.append(
 			(
 				Head.create(enemy.code, _root, manifest, pack, placeholder)
-				if Registry.lookup(enemy.code).has_method("head_box")
+				if type.has_method("head_box")
 				else actor_node(head_art, _enemy_nodes[-1].texture)
 			)
 		)
@@ -271,7 +283,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			and not child.get_meta("stateful", false)
 			and not child.has_meta("placed_id")
 		):
-			_static_frames.append({"node": child, "bounds": VisualBounds.tree(child, false)})
+			_static_nodes.append({"node": child, "bounds": VisualBounds.tree(child, false)})
 
 
 func render(state: Dictionary) -> void:
@@ -295,9 +307,11 @@ func render(state: Dictionary) -> void:
 	_root.set_meta("hud_scale", plan.base_scale)
 	# Half-pixel translations can put nearest samples on texel boundaries.
 	_root.position = plan.offset.round()
-	var camera := Visibility.camera(viewport, _root.position, plan.scale)
+	var camera: Variant = (
+		Visibility.camera(viewport, _root.position, plan.scale) if viewport_aware else null
+	)
 	_background.render(plan, state.frame)
-	for entry: Dictionary in _static_frames:
+	for entry: Dictionary in _static_nodes:
 		var child: Sprite2D = entry.node
 		child.visible = Visibility.needed(entry.bounds, child.position, camera)
 		if child.visible:
@@ -306,14 +320,18 @@ func render(state: Dictionary) -> void:
 	for entity: Dictionary in state.entities:
 		if _placed_nodes.has(entity.id):
 			var node: Sprite2D = _placed_nodes[entity.id]
-			if not Visibility.needed(
-				_placed_bounds[entity.id], Vector2(entity.x, entity.y) / State.SCALE, camera
-			):
+			var envelope: Variant = _placed_bounds[entity.id]
+			var look: Variant = null
+			if envelope == null and not (_placed_geometry[entity.id] as Dictionary).is_empty():
+				var type := Registry.lookup(entity.code)
+				look = type.view_state(entity, state) if type.has_method("view_state") else {}
+				envelope = VisualBounds.with_look(_placed_geometry[entity.id], look)
+			if not Visibility.needed(envelope, Vector2(entity.x, entity.y) / State.SCALE, camera):
 				node.visible = false
 				continue
 			node.position = Vector2(entity.x, entity.y) / State.SCALE
 			node.visible = not entity.collected
-			Dressing.update_placed(node, entity, state)
+			Dressing.update_placed(node, entity, state, look)
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
 		var node := _spring_nodes[index]
@@ -329,27 +347,31 @@ func render(state: Dictionary) -> void:
 	for index in _enemy_nodes.size():
 		var enemy: Dictionary = state.enemies[index]
 		var code: String = _world.enemies[index].code
-		var type := Registry.lookup(code)
-		var bounds: Array = (
-			type.body_bounds() if type.has_method("body_bounds") else type.bounds(enemy)
-		)
+		var type := _enemy_types[index]
+		var bounds: Array = _enemy_body_bounds[index]
 		var node := _enemy_nodes[index]
 		var art: Dictionary = node.get_meta("entity_art", {})
 		var head := _head_nodes[index]
 		var origin := Vector2(enemy.x, enemy.y) / State.SCALE
-		if inactive_shown(enemy):
+		var inactive := inactive_shown(enemy)
+		if inactive:
 			var source: Dictionary = Registry.source_for(enemy, _world)
 			origin = Vector2(source.get("x", enemy.x), source.get("y", enemy.y)) / State.SCALE
-		if not Visibility.needed(
-			VisualBounds.at_body(_enemy_bounds[index], art, bounds), origin, camera
-		):
+		var envelope: Variant = _enemy_bounds[index]
+		if envelope is Rect2 and art.get("anchor", "box") != "position":
+			if bounds.is_empty():
+				bounds = type.bounds(enemy)
+			envelope = VisualBounds.at_body(envelope, art, bounds)
+		if not Visibility.needed(envelope, origin, camera):
 			node.visible = false
 			head.visible = false
 			continue
+		if bounds.is_empty():
+			bounds = type.bounds(enemy)
 		# Keep any tint another view helper gave the node while it is active.
 		if not node.has_meta("active_tint"):
 			node.set_meta("active_tint", node.self_modulate)
-		if inactive_shown(enemy):
+		if inactive:
 			present_inactive(node, enemy, type, art)
 			head.visible = false
 			continue
