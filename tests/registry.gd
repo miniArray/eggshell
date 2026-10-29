@@ -479,6 +479,22 @@ func screen_checks() -> void:
 	state.camera_y = state.y - 28 * S
 	Registry.advance(state, world, 0)
 	check(state.entities[0].status == 0, "An object below the map stays outside the screen")
+	# Despawning measures the origin: an egg whose origin is 833 px from the screen centre
+	# goes, although its body still reaches within 832 px.
+	world = world_for()
+	state = State.create(world)
+	var centre := Screen.centre_x(state, world)
+	var egg: Dictionary = Registry.spawn_dynamic(
+		state, world, "o7", centre + 833 * S, Screen.centre_y(state, world), {}
+	)
+	var near: Dictionary = Registry.spawn_dynamic(
+		state, world, "o7", centre + 831 * S, Screen.centre_y(state, world), {}
+	)
+	Registry.advance(state, world, 0)
+	check(
+		egg.status == Registry.DEFEATED and near.status == Registry.ACTIVE,
+		"Runtime objects despawn when their origin is more than 832 px from the screen centre"
+	)
 
 
 func contact_checks() -> void:
