@@ -447,7 +447,7 @@ static func player_box(state: Dictionary) -> Array:
 		height = (54 if state.move_action_wet else 56) if state.move_tongue_axis else 50
 	elif action == EMIT:
 		height = 56 if state.move_tongue_axis else (50 if state.swimming else 54)
-	elif action == HEAD_BUMP and tick * 24 / 60 == 1:
+	elif action == HEAD_BUMP and tick >= 3 and tick <= 5:  # Frame 1 (frames restart timing).
 		return [-14 * S, -56 * S, 10 * S, 0]
 	elif action == NORMAL and state.swimming:
 		if state.get("move_water_transition", 0):
