@@ -69,6 +69,13 @@ the span, turning with it; the entry `<code>_spikes` may pick the strip through
 `variants` and keeps 36-pixel end caps while its middle repeats. Without an entry,
 each part draws as a diagnostic box of the same size. The parts have no collision.
 
+The body of a fixed resizable span (`p6` to `p21`) with pack art is drawn in
+slices, not as one image stretched to the span's width. The entry may carry
+`slices: {left, right, top, bottom, fill}`: margins in the entry image's pixels,
+kept at their size, and `fill` (`tile`, the default, or `stretch`) for the
+part between them. Without `slices` the whole image repeats across the width.
+Spans without pack art keep their diagnostic box.
+
 The view reads `bg1`, `bg2`, `bg3`, `gradient` and `bgcolor` from the selected
 map. A background setting is `id,frame`, with frame 0 as the default. Entries
 may supply `slots.bg1`, `slots.bg2` and `slots.bg3` scroll overrides and
@@ -248,7 +255,9 @@ The manifest may carry three optional dictionaries. Packs without them keep the 
   them for simulated objects (enemies, spring, bridge, goal) and draws every
   other placed object as a static sprite at its level position, with its
   rotation and mirror fields. Static objects have no behaviour yet. `e5_head`
-  and `recovery` name the plant head and the recovery marker.
+  and `recovery` name the plant head and the recovery marker. `companion`
+  names the companion on the player's back, with states `idle` (attached) and
+  `cry` (in the bubble); a pack without it draws a diagnostic box.
 - `background`: `wall`, `counter` and `cabinet` textures. The wall repeats
   over the whole map and scrolls 1:1 with the terrain, because supports are
   fixed to it. There is no parallax. The counter runs along the map bottom and
