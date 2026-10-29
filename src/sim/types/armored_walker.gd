@@ -14,7 +14,6 @@ const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e11"]
 const ENEMY := true
 const CREATION_CULL := true
-static var _registry: Script = null
 const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
@@ -33,6 +32,7 @@ const FIELDS := (
 	Body.FIELDS
 	+ [["mode", WALK], ["timer", 0], ["roll_direction", -1], ["knock_ticks", 0], ["birth_frame", 0]]
 )
+static var _registry: Script = null
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -120,10 +120,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	elif entity.variant % 2 == 1 and entity.mode == AIR and landed:
 		entity.mode = PREPARE
 		entity.timer = 5
-	if entity.knock_ticks:
-		if entity.knock_ticks == 61:
-			entity.knock_ticks = 60
-		_knock_events(entity, state, world)
+	if entity.knock_ticks == 61:
+		entity.knock_ticks = 60
 
 
 ## Burst knockback is independent of the jumping animation and its queued jump.
@@ -136,9 +134,20 @@ static func knockback(
 	entity.knock_ticks = 61 if later else 60
 
 
-static func finish_knockback(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
-	if entity.knock_ticks:
-		_knock_events(entity, state, world)
+static func after_advance(state: Dictionary, world: Dictionary) -> void:
+	var first_speed := _first_knock_velocity(state)
+	for entity: Dictionary in state.entities:
+		if (
+			entity.code in CODES
+			and entity.status == 1
+			and entity.knock_ticks
+			and not entity.held
+			and not entity.spat
+			and not entity.hidden
+			and not entity.frozen
+		):
+			_knock_events(entity, world, first_speed)
+			Collision.refresh(world, entity)
 
 
 static func knockback_velocity(entity: Dictionary) -> int:
@@ -168,7 +177,7 @@ static func _first_knock_velocity(state: Dictionary) -> int:
 	return velocity
 
 
-static func _knock_events(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+static func _knock_events(entity: Dictionary, world: Dictionary, first_speed: int) -> void:
 	var speed := absi(knockback_velocity(entity))
 	entity.vx = entity.roll_direction * speed
 	var box := bounds(entity)
@@ -176,7 +185,6 @@ static func _knock_events(entity: Dictionary, state: Dictionary, world: Dictiona
 	# condition filters the group. A body can rebound from the wall behind it.
 	# The native wall probe tests 2 px sideways, then again 3 px upward.
 	# One fixed-point unit includes a wall edge exactly 2 px away.
-	var first_speed := _first_knock_velocity(state)
 	var wall_direction := signi(first_speed)
 	if (
 		absi(first_speed) > 64 * 60

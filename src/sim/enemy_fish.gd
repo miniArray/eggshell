@@ -3,10 +3,11 @@ extends RefCounted
 
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const World = preload("res://src/sim/world.gd")
+const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
-## A turn: the 0.15 s wait and the 0.4 s turn picture (33 ticks), plus one tick because
-## a simulated control press reaches the Platform movement on the next tick.
-const TURN_TICKS := 34
+## A turn includes the pause, turn picture, zero-duration event wait and the final
+## queued control press. The mirror changes one tick after the picture returns to swim.
+const TURN_TICKS := 35
 
 
 static func advance(
@@ -29,11 +30,19 @@ static func advance(
 		world, enemy.x + bounds[0], enemy.y + bounds[1], enemy.x + bounds[2], enemy.y + bounds[3]
 	)
 	if enemy.mode in [3, 4]:
-		# Platform integrates the mean velocity, not the end-of-tick velocity.
-		var dy: int = mini(enemy.vy + 1024, 704 * 60) if enemy.vy else 0
-		enemy.vy = mini(enemy.vy + 2048, 704 * 60)
+		# Water checks run after the body. An arc retains zero water gravity and its
+		# float wave until the event sees its origin leave the water.
+		var floating: bool = enemy.mode == 4 and enemy.water != 0
+		var gravity := 0 if floating else 2048
+		var dy: int = mini(enemy.vy + gravity / 2, 704 * 60) if enemy.vy else 0
+		enemy.vy = mini(enemy.vy + gravity, 704 * 60)
 		var falling: bool = enemy.vy > 0
 		_translate(enemy, world, bounds, enemy.vx, dy)
+		if floating:
+			var previous_wave := Motion.sine(enemy.phase, 60, 6 * S)
+			enemy.phase = (enemy.phase + 1) % 60
+			_translate(enemy, world, bounds, 0, Motion.sine(enemy.phase, 60, 6 * S) - previous_wave)
+			enemy.water = int(origin_wet)
 		if origin_wet and falling:
 			enemy.mode = 0
 			enemy.phase = 0
@@ -121,33 +130,32 @@ static func advance(
 				enemy.water = 0
 				enemy.timer = 10
 				enemy.vx = 0
-		elif enemy.variant >= 2 and enemy.water and enemy.fish_ready:
-			var jump: bool = enemy.variant == 3 and enemy.fish_jumps > 0
-			if enemy.variant == 2:
-				if enemy.facing < 0:
-					jump = enemy.x < enemy.home_x + (-64 if enemy.fish_left > 0 else 192) * S
-				else:
-					jump = enemy.x > enemy.home_x + (-192 if enemy.fish_left > 0 else 64) * S
-			if jump:
-				enemy.mode = 4
-				enemy.water = 0
-				enemy.vy = -800 * 60
-				enemy.vx = enemy.facing * 128 * 60
-				if enemy.variant == 2:
-					enemy.fish_ready = 0
-				else:
-					enemy.fish_jumps -= 1
 	var dx: int = enemy.vx
 	if braking:
 		dx = old_vx
 	elif enemy.mode in [0, 1]:
 		dx = (old_vx + enemy.vx) / 2 if old_vx else 0
 	_translate(enemy, world, bounds, dx, 0)
+	if enemy.mode == 0 and enemy.variant >= 2 and enemy.water and enemy.fish_ready:
+		var jump: bool = enemy.variant == 3 and enemy.fish_jumps > 0
+		if enemy.variant == 2:
+			if enemy.facing < 0:
+				jump = enemy.x < enemy.home_x + (-64 if enemy.fish_left > 0 else 192) * S
+			else:
+				jump = enemy.x > enemy.home_x + (-192 if enemy.fish_left > 0 else 64) * S
+		if jump:
+			enemy.mode = 4
+			enemy.vy = -800 * 60
+			enemy.vx = enemy.facing * 128 * 60
+			if enemy.variant == 2:
+				enemy.fish_ready = 0
+			else:
+				enemy.fish_jumps -= 1
 
 
 ## Each direction's event selects all crossing fish, but its function action receives
 ## only the first picked UID. Selection runs after every fish has finished moving.
-static func finish_advance(state: Dictionary, _world: Dictionary) -> void:
+static func finish_advance(state: Dictionary, world: Dictionary) -> void:
 	var left := {}
 	var right := {}
 	for enemy: Dictionary in state.entities:
@@ -173,6 +181,7 @@ static func finish_advance(state: Dictionary, _world: Dictionary) -> void:
 		if not enemy.is_empty():
 			enemy.mode = 1
 			enemy.timer = TURN_TICKS
+			Collision.refresh(world, enemy)
 
 
 static func _translate(

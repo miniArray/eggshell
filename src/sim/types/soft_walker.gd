@@ -188,7 +188,6 @@ static func pin(entity: Dictionary, state: Dictionary) -> void:
 ## other kinds opt in through a source-backed knockback hook.
 static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var later := false
-	var finish := []
 	for other: Dictionary in state.entities:
 		if is_same(other, entity):
 			later = true
@@ -205,8 +204,6 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 			var type: Script = _registry.lookup(other.code)
 			if type.has_method("knockback"):
 				type.knockback(other, state, world, entity.x, later)
-				if not later:
-					finish.append([type, other])
 				Collision.refresh(world, other)
 			continue
 		other.mode = KNOCKED
@@ -217,10 +214,6 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 		if not later:
 			_hop(other, Collision.floor_at(other, world, bounds(other)) != 0)
 		Collision.refresh(world, other)
-	# Every target must be picked before the group's signed comparison runs.
-	for entry: Array in finish:
-		entry[0].finish_knockback(entry[1], state, world)
-		Collision.refresh(world, entry[1])
 	Body.remove(entity, state)
 
 

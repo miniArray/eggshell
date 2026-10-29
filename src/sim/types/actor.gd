@@ -28,7 +28,6 @@ const FIELDS := (
 		["birth_frame", -1],
 		["home_x", 0],
 		["fish_finish", 0],
-		["fish_turn_frame", -1],
 		["fish_dry", 0],
 		["rise_duration", 60],
 		["fish_jumps", 3],
@@ -147,6 +146,10 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			Fish.advance(entity, source, state, world)
 
 
+static func after_advance(state: Dictionary, world: Dictionary) -> void:
+	Fish.finish_advance(state, world)
+
+
 static func activate(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
 	if entity.code == "e2":
 		entity.cycles = 1 if entity.facing < 0 else -1
@@ -227,7 +230,6 @@ static func valid(entity: Dictionary) -> bool:
 			or entity.roll_bounce not in [0, 1]
 			or entity.ground_form not in [0, 1]
 			or entity.birth_frame < -1
-			or entity.fish_turn_frame < -1
 			or entity.fish_finish < 0
 			or entity.fish_finish > 3
 			or entity.fish_dry not in [0, 1]
