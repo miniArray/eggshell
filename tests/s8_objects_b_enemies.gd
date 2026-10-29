@@ -131,26 +131,26 @@ func _flat_walker_ledge_checks() -> void:
 
 
 func _soft_walker_checks() -> void:
-	var world := _ledge_world({"milde": _place("e23", 400, 284)})
+	var world := _ledge_world({"soft": _place("e23", 400, 284)})
 	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 100 * S
-	var milde := _by_id(state, "milde")
+	var soft := _by_id(state, "soft")
 	var type: Script = Registry.lookup("e23")
-	_activate(milde)
+	_activate(soft)
 	Sim.advance(state, 0, world)
-	check(milde.vx == -48 * 60, "The soft walker walks left at 48 px/s")
-	check(absi(milde.y - 284 * S) < S, "The soft walker stands on the span")
+	check(soft.vx == -48 * 60, "The soft walker walks left at 48 px/s")
+	check(absi(soft.y - 284 * S) < S, "The soft walker stands on the span")
 	for _tick in 120:
 		Sim.advance(state, 0, world)
-	check(milde.facing == 1 and milde.x > 340 * S, "The soft walker turns at the ledge")
-	state.x = milde.x
-	state.y = milde.y - 10 * S
+	check(soft.facing == 1 and soft.x > 340 * S, "The soft walker turns at the ledge")
+	state.x = soft.x
+	state.y = soft.y - 10 * S
 	state.vx = 400 * 60
 	state.vy = 300 * 60
-	type.contact(milde, state, world, 0)
-	check(milde.mode == type.SQUASH, "Landing on the soft walker squashes it")
-	check(state.y == milde.y, "The squashed walker holds the player on top")
+	type.contact(soft, state, world, 0)
+	check(soft.mode == type.SQUASH, "Landing on the soft walker squashes it")
+	check(state.y == soft.y, "The squashed walker holds the player on top")
 	check(
 		state.vx == 400 * 60 and state.vy == 300 * 60,
 		"The hold keeps the player's own speed running underneath"
@@ -158,24 +158,23 @@ func _soft_walker_checks() -> void:
 	var held_x: int = state.x
 	state.x += 6 * S
 	state.y += 5 * S
-	type.contact(milde, state, world, 0)
+	type.contact(soft, state, world, 0)
 	check(
-		state.x == held_x and state.y == milde.y,
-		"After the player's own move the hold puts it back"
+		state.x == held_x and state.y == soft.y, "After the player's own move the hold puts it back"
 	)
 	for _tick in 15:
-		type.step(milde, state, world)
-	check(milde.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
+		type.step(soft, state, world)
+	check(soft.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
 	state = _placed_state(world)
-	milde = _by_id(state, "milde")
-	_activate(milde)
-	state.x = milde.x - 10 * S
-	state.y = milde.y + 16 * S
-	type.contact(milde, state, world, 0)
-	check(state.invulnerable > 0 and milde.status == Registry.ACTIVE, "Side contact hurts")
-	var egg := {"code": "o7", "x": milde.x, "fall_on_terrain": 0}
-	check(type.projectile_contact(milde, egg, state, world) == 3, "An egg passes through")
-	check(milde.status == Registry.DEFEATED, "An egg defeats the soft walker")
+	soft = _by_id(state, "soft")
+	_activate(soft)
+	state.x = soft.x - 10 * S
+	state.y = soft.y + 16 * S
+	type.contact(soft, state, world, 0)
+	check(state.invulnerable > 0 and soft.status == Registry.ACTIVE, "Side contact hurts")
+	var egg := {"code": "o7", "x": soft.x, "fall_on_terrain": 0}
+	check(type.projectile_contact(soft, egg, state, world) == 3, "An egg passes through")
+	check(soft.status == Registry.DEFEATED, "An egg defeats the soft walker")
 
 
 func _soft_giant_checks() -> void:
