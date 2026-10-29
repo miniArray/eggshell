@@ -474,6 +474,11 @@ func screen_checks() -> void:
 		state.entities[0].status == 1 and state.entities[0].phase != 0 and state.frame == 0,
 		"At level start an object on screen wakes and runs one tick before the first step"
 	)
+	# A shelled walker wakes when its picture (28 px ahead of a left-facing origin) is on
+	# screen, although its collision box is not yet.
+	var edge := world_for({"shell": {"A": "e6", "X": 852, "Y": 100}})
+	var edge_state := State.create(edge)
+	check(edge_state.entities[0].status == 1, "An object wakes when its picture reaches the screen")
 	var later := world_for({"later": {"A": "e2", "X": 2000, "Y": 100}})
 	var waking := State.create(later)
 	var sleeper: Dictionary = waking.entities[0]
