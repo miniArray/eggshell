@@ -710,7 +710,8 @@ func water_checks() -> void:
 	check(falling.vx == 100 * 60 - 128, "water contact brakes lightly")
 	check(
 		(
-			Water.bob_position(15) == 3 * S
+			Water.bob_position(1) == 604
+			and Water.bob_position(15) == Water.bob_position(45)
 			and Water.bob_position(30) == 4 * S
 			and Water.bob_position(60) == 0
 		),
