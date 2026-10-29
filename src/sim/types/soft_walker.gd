@@ -14,6 +14,7 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e23"]
 const ENEMY := true
+const CREATION_CULL := true
 const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
@@ -38,13 +39,15 @@ const FIELDS := (
 		["pin_dx", 0],
 		["slide_from", 0],
 		["slide_ticks", 0],
-		["slide_total", 0]
+		["slide_total", 0],
+		["birth_frame", 0]
 	]
 )
 const WALK_BOX := [-14 * S, -14 * S, 14 * S, 16 * S]
 const SQUASH_BOX := [-14 * S, 2 * S, 14 * S, 16 * S]
 const SQUASH_LOW_BOX := [-14 * S, 6 * S, 14 * S, 14 * S]
 const MAX_SLIDE := 1024 * 60
+static var _registry: Script = null
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -53,6 +56,16 @@ static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
 
 static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return Body.create(source)
+
+
+static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
+	entity.birth_frame = state.frame
+
+
+static func knockback_velocity(entity: Dictionary) -> int:
+	if entity.mode != KNOCKED or entity.slide_ticks <= 0:
+		return 0
+	return entity.slide_from * entity.slide_ticks / entity.slide_total
 
 
 static func bounds(entity: Dictionary) -> Array:
@@ -171,20 +184,30 @@ static func pin(entity: Dictionary, state: Dictionary) -> void:
 	state.y = entity.y
 
 
-## The burst knocks soft walkers within 128 px aside (vx -448 left
-## of it, +448 right of it), then removes the body. Other enemy kinds are not knocked
-## yet (not ported).
+## The burst reaches bodies within 128 px. Soft walkers keep their own reaction;
+## other kinds opt in through a source-backed knockback hook.
 static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var later := false
+	var finish := []
 	for other: Dictionary in state.entities:
 		if is_same(other, entity):
 			later = true
 			continue
-		if not _knockable(other) or other.x == entity.x:
+		if other.x == entity.x:
 			continue
 		if absi(other.y - entity.y) >= KNOCK_RANGE * S:
 			continue
 		if absi(other.x - entity.x) >= KNOCK_RANGE * S:
+			continue
+		if not _knockable(other):
+			if _registry == null:
+				_registry = load("res://src/sim/registry.gd")
+			var type: Script = _registry.lookup(other.code)
+			if type.has_method("knockback"):
+				type.knockback(other, state, world, entity.x, later)
+				if not later:
+					finish.append([type, other])
+				Collision.refresh(world, other)
 			continue
 		other.mode = KNOCKED
 		other.slide_from = KNOCK_SPEED * (1 if other.x > entity.x else -1)
@@ -193,6 +216,11 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 		other.timer = int(later)
 		if not later:
 			_hop(other, Collision.floor_at(other, world, bounds(other)) != 0)
+		Collision.refresh(world, other)
+	# Every target must be picked before the group's signed comparison runs.
+	for entry: Array in finish:
+		entry[0].finish_knockback(entry[1], state, world)
+		Collision.refresh(world, entry[1])
 	Body.remove(entity, state)
 
 
@@ -277,4 +305,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_total <= 600
 		and entity.slide_ticks >= 0
 		and entity.slide_ticks <= entity.slide_total
+		and entity.birth_frame >= 0
 	)

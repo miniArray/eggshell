@@ -29,9 +29,11 @@ static func advance(
 		world, enemy.x + bounds[0], enemy.y + bounds[1], enemy.x + bounds[2], enemy.y + bounds[3]
 	)
 	if enemy.mode in [3, 4]:
+		# Platform integrates the mean velocity, not the end-of-tick velocity.
+		var dy: int = mini(enemy.vy + 1024, 704 * 60) if enemy.vy else 0
 		enemy.vy = mini(enemy.vy + 2048, 704 * 60)
 		var falling: bool = enemy.vy > 0
-		_translate(enemy, world, bounds, enemy.vx, enemy.vy)
+		_translate(enemy, world, bounds, enemy.vx, dy)
 		if origin_wet and falling:
 			enemy.mode = 0
 			enemy.phase = 0
@@ -141,17 +143,36 @@ static func advance(
 	elif enemy.mode in [0, 1]:
 		dx = (old_vx + enemy.vx) / 2 if old_vx else 0
 	_translate(enemy, world, bounds, dx, 0)
-	# The patrol turn is tested in the events, after this frame's move.
-	if (
-		enemy.mode == 0
-		and enemy.variant <= 2
-		and (
-			(enemy.x < enemy.home_x - enemy.fish_left and enemy.facing < 0)
-			or (enemy.x > enemy.home_x + enemy.fish_right and enemy.facing > 0)
-		)
-	):
-		enemy.mode = 1
-		enemy.timer = TURN_TICKS
+
+
+## Each direction's event selects all crossing fish, but its function action receives
+## only the first picked UID. Selection runs after every fish has finished moving.
+static func finish_advance(state: Dictionary, _world: Dictionary) -> void:
+	var left := {}
+	var right := {}
+	for enemy: Dictionary in state.entities:
+		if (
+			enemy.code not in ["e20", "e21"]
+			or enemy.status != 1
+			or enemy.held
+			or enemy.spat
+			or enemy.hidden
+			or enemy.frozen
+			or not enemy.water
+			or enemy.variant > 2
+			or enemy.mode != 0
+		):
+			continue
+		if enemy.facing < 0 and enemy.x < enemy.home_x - enemy.fish_left:
+			if left.is_empty() or enemy.birth_frame < left.birth_frame:
+				left = enemy
+		elif enemy.facing > 0 and enemy.x > enemy.home_x + enemy.fish_right:
+			if right.is_empty() or enemy.birth_frame < right.birth_frame:
+				right = enemy
+	for enemy: Dictionary in [left, right]:
+		if not enemy.is_empty():
+			enemy.mode = 1
+			enemy.timer = TURN_TICKS
 
 
 static func _translate(

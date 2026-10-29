@@ -13,6 +13,8 @@ const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e11"]
 const ENEMY := true
+const CREATION_CULL := true
+static var _registry: Script = null
 const ELEMENT_REACTIONS := Elements.BURNS | Elements.FREEZES
 const DYNAMIC := true
 const GOAL_COIN := true
@@ -25,7 +27,12 @@ const AIR := 2
 const PUSH := 3
 const ROLL := 4
 const RECOVER := 5
-const FIELDS := Body.FIELDS + [["mode", WALK], ["timer", 0], ["roll_direction", -1]]
+## Positive: the 60-tick burst tween; negative: the 90-tick wall rebound.
+## 61 defers a burst until this body's normal motion has finished this tick.
+const FIELDS := (
+	Body.FIELDS
+	+ [["mode", WALK], ["timer", 0], ["roll_direction", -1], ["knock_ticks", 0], ["birth_frame", 0]]
+)
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -36,6 +43,10 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	var values := Body.create(source)
 	values.mode = AIR if int(source.get("variant", 0)) % 2 == 1 else WALK
 	return values
+
+
+static func created(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:
+	entity.birth_frame = state.frame
 
 
 static func bounds(_entity: Dictionary) -> Array:
@@ -52,6 +63,10 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	var box := bounds(entity)
 	var grounded := Collision.floor_at(entity, world, box) != 0
+	var knocked: bool = entity.knock_ticks != 0 and entity.knock_ticks != 61
+	var old_vx: int = entity.vx
+	if knocked:
+		entity.knock_ticks -= signi(entity.knock_ticks)
 	match entity.mode:
 		ROLL:
 			entity.vx = entity.roll_direction * 256 * 60 * entity.timer * entity.timer / 8100
@@ -65,9 +80,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		PREPARE:
 			entity.vx = 0
 			entity.timer -= 1
-			if entity.timer == 0:
-				entity.mode = AIR
-				entity.vy = -536 * 60
+			entity.timer = maxi(entity.timer, 0)
 		WALK:
 			var wet := int(
 				World.water_overlaps(
@@ -84,6 +97,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 				entity.vx = -entity.vx
 		AIR:
 			entity.vx = 0
+	if knocked:
+		entity.vx = old_vx
 	var distance: int = entity.vx
 	if Motion.move(entity, world, box, distance, true) != distance:
 		if entity.mode == WALK:
@@ -98,9 +113,82 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			entity.timer = 158 if entity.variant < 2 else 275
 	elif entity.mode in [RECOVER, PUSH] and entity.timer == 0:
 		entity.mode = AIR if entity.variant % 2 == 1 else WALK
-	if entity.variant % 2 == 1 and entity.mode == AIR and landed:
+	if entity.mode == PREPARE and entity.timer == 0 and landed:
+		# The animation queues a jump; the event launches only when standing.
+		entity.mode = AIR
+		entity.vy = -536 * 60
+	elif entity.variant % 2 == 1 and entity.mode == AIR and landed:
 		entity.mode = PREPARE
 		entity.timer = 5
+	if entity.knock_ticks:
+		if entity.knock_ticks == 61:
+			entity.knock_ticks = 60
+		_knock_events(entity, state, world)
+
+
+## Burst knockback is independent of the jumping animation and its queued jump.
+static func knockback(
+	entity: Dictionary, _state: Dictionary, _world: Dictionary, from_x: int, later: bool
+) -> void:
+	if entity.held or entity.spat or entity.hidden or entity.frozen or entity.status != 1:
+		return
+	entity.roll_direction = 1 if entity.x > from_x else -1
+	entity.knock_ticks = 61 if later else 60
+
+
+static func finish_knockback(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	if entity.knock_ticks:
+		_knock_events(entity, state, world)
+
+
+static func knockback_velocity(entity: Dictionary) -> int:
+	var ticks: int = mini(entity.knock_ticks, 60)
+	return (
+		entity.roll_direction * 448 * 60 * ticks / 60
+		if ticks > 0
+		else entity.roll_direction * 48 * 60 * -ticks / 90
+	)
+
+
+static func _first_knock_velocity(state: Dictionary) -> int:
+	if _registry == null:
+		_registry = load("res://src/sim/registry.gd")
+	var first := {}
+	var velocity := 0
+	for other: Dictionary in state.entities:
+		if other.status != 1:
+			continue
+		var type: Script = _registry.lookup(other.code)
+		if not type.has_method("knockback_velocity"):
+			continue
+		var candidate: int = type.knockback_velocity(other)
+		if candidate and (first.is_empty() or other.birth_frame < first.birth_frame):
+			first = other
+			velocity = candidate
+	return velocity
+
+
+static func _knock_events(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+	var speed := absi(knockback_velocity(entity))
+	entity.vx = entity.roll_direction * speed
+	var box := bounds(entity)
+	# The signed comparison reads the family's first picked body, before the wall
+	# condition filters the group. A body can rebound from the wall behind it.
+	# The native wall probe tests 2 px sideways, then again 3 px upward.
+	# One fixed-point unit includes a wall edge exactly 2 px away.
+	var first_speed := _first_knock_velocity(state)
+	var wall_direction := signi(first_speed)
+	if (
+		absi(first_speed) > 64 * 60
+		and Collision.overlaps(entity, world, box, wall_direction * (2 * S + 1), 0)
+		and Collision.overlaps(entity, world, box, wall_direction * (2 * S + 1), -3 * S)
+	):
+		entity.roll_direction = -wall_direction
+		entity.facing = entity.roll_direction
+		entity.knock_ticks = -90
+		speed = 48 * 60
+	if speed > 24 * 60 and Collision.floor_at(entity, world, box) != 0:
+		entity.vy = -speed / 2 - 160 * 60
 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
@@ -111,6 +199,7 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 
 
 static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) -> int:
+	entity.knock_ticks = 0
 	entity.mode = PUSH
 	entity.timer = 30
 	entity.vx = state.facing * 128 * 60
@@ -130,6 +219,7 @@ static func hit(
 
 
 static func start_roll(entity: Dictionary, direction: int) -> void:
+	entity.knock_ticks = 0
 	entity.mode = ROLL
 	entity.timer = 90
 	entity.roll_direction = direction
@@ -165,4 +255,7 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.timer >= 0
 		and entity.timer <= 275
 		and entity.roll_direction in [-1, 1]
+		and entity.knock_ticks >= -90
+		and entity.knock_ticks <= 61
+		and entity.birth_frame >= 0
 	)
