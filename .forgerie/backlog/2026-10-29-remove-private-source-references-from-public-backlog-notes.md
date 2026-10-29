@@ -1,7 +1,7 @@
 ---
 id: 2026-10-29-remove-private-source-references-from-public-backlog-notes
 title: Remove private-source references from public backlog notes
-status: To Do
+status: Done
 created: 2026-10-29
 source: forgerie-suggestion
   01a188f3-34da-70e1-a56d-7d6155bc7ec4/86c0b7f7-b2ed-4757-8035-ac0a5b9fe92c
@@ -28,4 +28,8 @@ High: the current public tree fails its publication gate, independently of the p
 - Preserve the backlog tasks and their intent; put private provenance outside the public repository.
 - This is separate from the unresolved plant episode parity work.
 
-Suggested in This is backlog item (01a188f3-34da-70e1-a56d-7d6155bc7ec4), 2026-10-29
+## Completion
+
+Preserved the three tasks and moved their source identifiers, evidence paths, and suggestion provenance to private reports. The complete tracked-tree check found another affected note added after the original report. Renamed that task to `2026-10-29-eggshell-isolate-remaining-oracle-differences-after-catch-input` and preserved its measurements and open status.
+
+The private publication gate scans all 404 tracked files with zero findings. Only backlog notes changed. No simulation behavior changed. Plant episode parity remains unresolved. Publication must rerun the gate on its final tracked tree.
