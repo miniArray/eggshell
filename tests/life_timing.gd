@@ -27,12 +27,12 @@ func _initialize() -> void:
 
 ## Number of steps after `state` until input RIGHT first changes the result,
 ## compared with the same state stepped without input. -1 when it never does.
-func first_input_step(state: Dictionary, world: Dictionary, limit: int) -> int:
+func first_input_step(state: Dictionary, world: Dictionary, limit: int, shared := 0) -> int:
 	var held := state.duplicate(true)
 	var idle := state.duplicate(true)
 	for count in range(1, limit + 1):
 		Sim.advance(held, Bits.RIGHT, world)
-		Sim.advance(idle, 0, world)
+		Sim.advance(idle, Bits.RIGHT if count <= shared else 0, world)
 		if held.vx != idle.vx or held.x != idle.x or held.facing != idle.facing:
 			return count
 	return -1
@@ -65,7 +65,11 @@ func knocked_lock_checks() -> void:
 	var state := hurt_player(world, 0)
 	check(state.hurt_phase == Life.HURT_KNOCKED, "a first dry hit starts the knock-back pose")
 	check(
-		first_input_step(state, world, 80) == Life.KNOCKED_LOCK,
+		first_input_step(state, world, 80) == 1,
+		"the direction held when the hit lands still pushes on the next step"
+	)
+	check(
+		first_input_step(state, world, 80, 1) == Life.KNOCKED_LOCK,
 		"airborne knock-back ignores input for 37 steps and accepts it on the 38th"
 	)
 	var probe := state.duplicate(true)
@@ -85,7 +89,7 @@ func look_around_checks() -> void:
 	var landing := first_floor_step(state, world, 60)
 	check(landing > 0 and landing < 36, "the synthetic knock-back lands inside the pose")
 	check(
-		first_input_step(state, world, 120) == landing + Life.LOOK_AROUND_LOCK,
+		first_input_step(state, world, 120, 1) == landing + Life.LOOK_AROUND_LOCK,
 		"landing in the knock-back pose locks input for the 42-step look-around"
 	)
 	var probe := state.duplicate(true)
@@ -115,7 +119,7 @@ func spin_lock_checks() -> void:
 	Damage.hurt(state, state.x + S)
 	check(state.hurt_phase == Life.HURT_NONE, "a hit while separated spins instead")
 	check(
-		first_input_step(state, world, 100) == Life.SPIN_LOCK,
+		first_input_step(state, world, 100, 1) == Life.SPIN_LOCK,
 		"the spin ignores input for 62 steps and accepts it on the 63rd"
 	)
 	var floor_world := Courses.floor_world()

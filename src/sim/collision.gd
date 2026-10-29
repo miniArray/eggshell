@@ -414,10 +414,14 @@ static func settle_floor(body: Dictionary, world: Dictionary, bounds: Array, sup
 		body.vy = 0
 
 
-static func by_wall(body: Dictionary, world: Dictionary, bounds: Array, direction: int) -> bool:
+## A wall `reach` px to the `direction` side that is still there `lift` px higher (so not
+## a slope).
+static func by_wall(
+	body: Dictionary, world: Dictionary, bounds: Array, direction: int, reach := 1, lift := 1
+) -> bool:
 	return (
-		overlaps(body, world, bounds, direction * S, 0)
-		and overlaps(body, world, bounds, direction * S, -S)
+		overlaps(body, world, bounds, direction * reach * S, 0)
+		and overlaps(body, world, bounds, direction * reach * S, -lift * S)
 	)
 
 

@@ -526,24 +526,21 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		# The swing starts one step after the ramp ends (the ramp reports its end late).
 		var leg := (age - 61) % 240
 		state.companion_vy = -192 * 60 + 384 * 60 * mini(leg, 240 - leg) / 120
-	var previous_vx: int = state.companion_vx
-	state.companion_vx = clampi(
-		state.companion_vx + state.companion_direction * 512, -48 * 60, 48 * 60
-	)
 	if state.bubble_bound_ticks:
 		state.bubble_bound_ticks -= 1
-		state.recovery_x = (
-			state.bubble_bound_from_x
-			+ (
-				(state.bubble_bound_to_x - state.bubble_bound_from_x)
-				* (6 - state.bubble_bound_ticks)
-				/ 6
-			)
-		)
+		var span: int = state.bubble_bound_to_x - state.bubble_bound_from_x
+		state.recovery_x = state.bubble_bound_from_x + span * (6 - state.bubble_bound_ticks) / 6
 		state.recovery_y += state.companion_vy
 		return
 	var bubble_body := _bubble_body()
-	if Collision.overlaps({"x": state.recovery_x, "y": state.recovery_y}, world, bubble_body):
+	var here := {"x": state.recovery_x, "y": state.recovery_y}
+	# This step's push uses the direction before the wall checks turn it.
+	var control: int = state.companion_direction
+	if state.companion_direction < 0 and Collision.by_wall(here, world, bubble_body, -1, 2, 3):
+		state.companion_direction = 1
+	if state.companion_direction > 0 and Collision.by_wall(here, world, bubble_body, 1, 2, 3):
+		state.companion_direction = -1
+	if Collision.overlaps(here, world, bubble_body):
 		# An embedded bubble drifts toward the player on both axes.
 		state.recovery_x += signi(state.x - state.recovery_x) * 96 * 60
 		state.recovery_y += signi(state.y - state.recovery_y) * 96 * 60
@@ -553,13 +550,20 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 		"vx": state.companion_vx,
 		"vy": state.companion_vy
 	}
+	# A body that cannot get out of terrain does not move or speed up this step.
 	if Collision.prepare(body, world, bubble_body):
+		var previous: int = body.vx
+		var next := clampi(previous + control * 512, -48 * 60, 48 * 60)
 		# The body moves by the mean of the old and new speed, and not at all from rest.
-		var distance: int = (previous_vx + body.vx) / 2 if previous_vx else 0
-		var actual := Collision.horizontal(body, world, bubble_body, distance, 0, false, 640 * 60)
-		if actual != distance or body.vx == 0:
-			state.companion_direction *= -1
+		var distance: int = (previous + next) / 2 if previous else 0
+		Collision.horizontal(body, world, bubble_body, distance, 0, false, 640 * 60)
 		Collision.vertical(body, world, bubble_body, body.vy)
+		# A blocked body restarts from rest; a wall right ahead stops the new speed.
+		body.vx = (
+			clampi(body.vx + control * 512, -48 * 60, 48 * 60) if body.vx != previous else next
+		)
+		if body.vx != 0 and Collision.by_wall(body, world, bubble_body, signi(body.vx)):
+			body.vx = 0
 	state.recovery_x = body.x
 	state.recovery_y = body.y
 	state.companion_vx = body.vx
@@ -575,9 +579,13 @@ static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
 
 
 static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
-	# The new bubble's first body step: no speed yet, only the push out of terrain.
+	# The new bubble's first body step: no speed yet, only the push out of terrain; one
+	# still embedded then drifts toward the player at once.
 	var body := {"x": state.recovery_x, "y": state.recovery_y, "vx": 0, "vy": 0}
 	Collision.prepare(body, world, _bubble_body())
+	if Collision.overlaps(body, world, _bubble_body()):
+		body.x += signi(state.x - body.x) * 96 * 60
+		body.y += signi(state.y - body.y) * 96 * 60
 	state.recovery_x = body.x
 	state.recovery_y = body.y
 
