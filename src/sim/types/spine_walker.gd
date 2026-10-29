@@ -84,7 +84,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	entity.cooldown = maxi(0, entity.cooldown - 1)
 	if entity.mode == WALK:
-		_walk(entity, state, world)
+		_walk(entity, world)
 	else:
 		entity.vx = 0
 		entity.timer += 1
@@ -106,7 +106,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	Motion.gravity_box(entity, world, BOX)
 
 
-static func _walk(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
+static func _walk(entity: Dictionary, world: Dictionary) -> void:
 	var wet := int(
 		World.water_overlaps(
 			world, entity.x + BOX[0], entity.y + BOX[1], entity.x + BOX[2], entity.y + BOX[3]
@@ -119,8 +119,15 @@ static func _walk(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 		entity.facing *= -1
 	elif Collision.floor_at(entity, world, BOX) != 0 and Motion.edge(entity, world, BOX):
 		entity.facing *= -1
+
+
+## The attack tests where both bodies are after this step's moves, so it runs with the
+## contacts, after the player has moved.
+static func _attack(entity: Dictionary, state: Dictionary) -> void:
 	if (
-		entity.cooldown == 0
+		entity.mode == WALK
+		and entity.cooldown == 0
+		and not entity.held
 		and not state.get("captured_by", 0)
 		and absi(entity.x - state.x) < REACH
 		and absi(entity.y - state.y) < REACH
@@ -159,11 +166,13 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 		return
 	if Body.player_overlap(entity, state, BOX):
 		Body.hurt(entity, state)
+		_attack(entity, state)
 		return
 	if entity.mode != WALK and not entity.held and entity.status == 1:
 		var player := Body.world_box(state, Moves.player_box(state))
 		if not state.get("captured_by", 0) and Body.polygon_overlap(spine_hull(entity), player):
 			Body.hurt(entity, state)
+	_attack(entity, state)
 
 
 static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) -> int:

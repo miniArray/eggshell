@@ -82,13 +82,13 @@ func fixture(world: Dictionary, code: String) -> Dictionary:
 
 func movement_and_contact(world: Dictionary, code: String) -> void:
 	var test_world := fixture(world, code)
-	var state := State.create(test_world)
+	var state := _placed_state(test_world)
 	var first: Dictionary = state.enemies[0].duplicate()
 	for tick in 180:
 		Sim.advance(state, 0, test_world)
 	check(state.enemies[0].status == 1, code + " activates near the saved camera")
 	check(state.enemies[0].x != first.x or state.enemies[0].y != first.y, code + " moves")
-	state = State.create(test_world)
+	state = _placed_state(test_world)
 	state.x = 400 * S
 	state.y = 330 * S
 	Sim.advance(state, 0, test_world)
@@ -112,26 +112,31 @@ func movement_and_contact(world: Dictionary, code: String) -> void:
 
 func movement_constants(world: Dictionary) -> void:
 	var test_world := fixture(world, "e1")
-	var player := State.create(test_world)
+	var player := _placed_state(test_world)
 	for tick in 150:
 		Sim.advance(player, 0, test_world)
 		if player.enemies[0].mode == 1:
 			break
 	check(absi(player.enemies[0].vx) == 48 * 60, "Walker assigns 48 px/s after its idle wait")
 	test_world = fixture(world, "e2")
-	player = State.create(test_world)
-	for tick in 180:
+	player = _placed_state(test_world)
+	# The step that wakes an object does not move it; 180 moves follow.
+	for tick in 181:
 		Sim.advance(player, 0, test_world)
+	check(player.enemies[0].vx == 128 * 60, "Flyer reaches its horizontal tween endpoint")
+	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 	check(
-		player.enemies[0].y == 300 * S and player.enemies[0].vx == 128 * 60,
-		"Flyer completes its three-second vertical period at horizontal tween endpoint"
+		player.enemies[0].y == 300 * S + wave,
+		"Flyer bobs on the level clock, three seconds per period, from the level intro"
 	)
 	test_world = fixture(world, "e3")
-	player = State.create(test_world)
+	player = _placed_state(test_world)
+	# It wakes in the first step and first moves in the second.
+	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(player.enemies[0].vx == -48 * 60, "Flower starts walking at 48 px/s")
 	test_world = fixture(world, "e20")
-	player = State.create(test_world)
+	player = _placed_state(test_world)
 	var reached_cap := false
 	var within_cap := true
 	for tick in 90:
@@ -140,7 +145,7 @@ func movement_constants(world: Dictionary) -> void:
 		within_cap = within_cap and absi(player.enemies[0].vx) <= 128 * 60
 	check(reached_cap and within_cap, "Fish accelerates to, but never exceeds, swim cap")
 	test_world = fixture(world, "e5")
-	player = State.create(test_world)
+	player = _placed_state(test_world)
 	for tick in 22:
 		Sim.advance(player, 0, test_world)
 	check(
@@ -166,7 +171,7 @@ func bounce_checks(world: Dictionary) -> void:
 	for code: String in ["e1", "e2", "e3", "e20"]:
 		for held: bool in [false, true]:
 			var test_world := fixture(world, code)
-			var state := State.create(test_world)
+			var state := _placed_state(test_world)
 			state.x = 400 * S
 			state.y = 291 * S
 			state.vy = 100 * 60
@@ -180,7 +185,7 @@ func bounce_checks(world: Dictionary) -> void:
 			check(
 				state.boosted_flutter == 1, code + " release guard preserves a fresh bounce boost"
 			)
-	var boosted := State.create(fixture(world, "e1"))
+	var boosted := _placed_state(fixture(world, "e1"))
 	boosted.boosted_flutter = 1
 	boosted.flutter_ready = 1
 	boosted.vy = 300 * 60
@@ -195,7 +200,7 @@ func bounce_checks(world: Dictionary) -> void:
 
 func damage_checks(world: Dictionary) -> void:
 	var test_world := fixture(world, "e1")
-	var state := State.create(test_world)
+	var state := _placed_state(test_world)
 	state.x = 400 * S
 	state.y = 330 * S
 	Sim.advance(state, 0, test_world)
@@ -267,7 +272,7 @@ func damage_checks(world: Dictionary) -> void:
 func leap_and_capture_checks(world: Dictionary) -> void:
 	var fish_world := fixture(world, "e20")
 	fish_world.enemies[0].variant = 1
-	var fish := State.create(fish_world)
+	var fish := _placed_state(fish_world)
 	var leaped := false
 	var floated := false
 	for tick in 720:
@@ -276,7 +281,7 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 		floated = floated or fish.enemies[0].water == 1
 	check(leaped and floated, "Vertical fish floats, waits, prepares and leaps at configured speed")
 	var plant_world := fixture(world, "e5")
-	var player := State.create(plant_world)
+	var player := _placed_state(plant_world)
 	player.x = 430 * S
 	player.y = 290 * S
 	for tick in 20:
@@ -331,7 +336,7 @@ func lifecycle_checks(world: Dictionary) -> void:
 	# Wide enough that the map-clamped screen can move 832 px away from the actor.
 	test_world.width = 4096 * S
 	test_world.maps[1].width = test_world.width
-	var player := State.create(test_world)
+	var player := _placed_state(test_world)
 	Sim.advance(player, 0, test_world)
 	check(player.enemies[0].status == 1, "Enemy activates in reference view")
 	player.x = 2000 * S
@@ -343,6 +348,8 @@ func lifecycle_checks(world: Dictionary) -> void:
 	)
 	player.x = 200 * S
 	player.camera_x = player.x
+	# The recreated actor wakes in this step and first moves in the next.
+	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(
 		player.enemies[0].status == 1 and player.enemies[0].phase == 1,
@@ -394,7 +401,7 @@ func boundary_checks(code: String) -> void:
 		"An unbuilt mirror mode becomes a placeholder, not a guessed plant"
 	)
 	var real_world: Dictionary = World.build(code, Collision.read()).world
-	var player := State.create(real_world)
+	var player := _placed_state(real_world)
 	var bytes := Save.encode(player)
 	check(
 		bytes.size() > Save.minimum_size() and bytes.decode_u32(8) == 9,
@@ -405,13 +412,13 @@ func boundary_checks(code: String) -> void:
 		Save.decode(Save.encode(player), real_world.identity).ok,
 		"Zero countdown remains valid while attached"
 	)
-	player = State.create(real_world)
+	player = _placed_state(real_world)
 	player.separated = 1
 	check(
 		not Save.decode(Save.encode(player), real_world.identity).ok,
 		"A separated companion cannot restore in attached mode"
 	)
-	player = State.create(real_world)
+	player = _placed_state(real_world)
 	player.enemies[0].status = 4
 	check(
 		not Save.decode(Save.encode(player), real_world.identity).ok,
@@ -424,3 +431,11 @@ func check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
 		printerr("FAIL: ", message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

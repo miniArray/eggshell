@@ -82,7 +82,7 @@ func _sound_field_checks() -> void:
 	var names := State.level_fields().map(func(pair: Array) -> String: return pair[0])
 	for name: String in ["sound_serial", "sound_kind", "sound_x", "sound_y"]:
 		check(names.has(name), "Level schema declares " + name)
-	var state := State.create(_ghost_world())
+	var state := _placed_state(_ghost_world())
 	check(state.sound_serial == 0 and state.sound_kind == Sound.NONE, "Play starts silent")
 	Sound.emit(state, Sound.PICKUP, 5 * S, 6 * S)
 	check(
@@ -102,7 +102,7 @@ func _sound_field_checks() -> void:
 
 func _emitter_checks() -> void:
 	var world := _world_for({"coin": _place("o1", 64, 90)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	Moves.initialize(state)
 	Moves.jump(state)
 	check(state.sound_kind == Sound.PLAYER and state.sound_serial == 1, "A jump is a player sound")
@@ -123,11 +123,11 @@ func _emitter_checks() -> void:
 	serial = state.sound_serial
 	Registry.lookup("o1").collect(coin, state)
 	check(state.sound_serial == serial, "A coin collected twice sounds once")
-	var quiet := State.create(world)
+	var quiet := _placed_state(world)
 	quiet.quick_death = 1
 	Life.kill(quiet)
 	check(quiet.sound_serial == 0, "A quick restart is silent to listeners")
-	var slow := State.create(world)
+	var slow := _placed_state(world)
 	slow.quick_death = 0
 	Life.kill(slow)
 	check(slow.sound_serial == 1 and slow.sound_kind == Sound.PLAYER, "A slow death is heard")
@@ -135,7 +135,7 @@ func _emitter_checks() -> void:
 
 func _quiet_ghost_checks() -> void:
 	var world := _ghost_world()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var ghost := _by_id(state, "ghost")
 	Sound.emit(state, Sound.PLAYER, 0, 0)
 	_tick(state, world)
@@ -143,6 +143,8 @@ func _quiet_ghost_checks() -> void:
 	check(ghost.heard == state.sound_serial, "A sound before it woke is not news")
 	check(ghost.mode == Ghost.FOCUSING and ghost.anim == Ghost.FOCUS, "It wakes up listening")
 	var facing: int = ghost.facing
+	# The step that wakes it does not run it; its listening time starts in the next.
+	_tick(state, world)
 	_tick(state, world, Ghost.LISTEN_TICKS)
 	check(ghost.mode == Ghost.CONFUSED, "Two quiet seconds of listening confuse it")
 	var flips := 0
@@ -173,11 +175,11 @@ func _quiet_ghost_checks() -> void:
 
 func _listening_ghost_checks() -> void:
 	var world := _ghost_world()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var ghost := _by_id(state, "ghost")
 	_tick(state, world)
 	var early := _ghost_world()
-	var early_state := State.create(early)
+	var early_state := _placed_state(early)
 	_tick(early_state, early)
 	Sound.emit(early_state, Sound.PLAYER, 100 * S, 300 * S)
 	_tick(early_state, early)
@@ -223,7 +225,7 @@ func _listening_ghost_checks() -> void:
 
 func _ghost_contact_checks() -> void:
 	var world := _ghost_world()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var ghost := _by_id(state, "ghost")
 	_tick(state, world)
 	state.x = ghost.x
@@ -240,7 +242,7 @@ func _ghost_contact_checks() -> void:
 
 func _restore_checks() -> void:
 	var world := _ghost_world()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var ghost := _by_id(state, "ghost")
 	_tick(state, world)
 	Sound.emit(state, Sound.PLAYER, 700 * S, 200 * S)
@@ -271,7 +273,7 @@ func _empty_code_checks() -> void:
 		"An empty code is not a placeholder"
 	)
 	check(Registry.lookup("") == Blank, "An empty code is the blank editor form")
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var blank := _by_id(state, "blank")
 	check(blank.code == "", "It keeps its empty code")
 	check(not Blank.view_state(blank, state).visible, "It draws nothing")
@@ -391,3 +393,11 @@ func check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		push_error("FAIL: " + message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

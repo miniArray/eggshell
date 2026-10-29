@@ -68,7 +68,7 @@ func _fixture(code: String, options: Dictionary = {}, floor: bool = true) -> Dic
 	var source := {"A": code, "X": 128, "Y": 136 if code == "e28" else 144}
 	source.merge(options, true)
 	var world := _world_for({"unit": source}, floor)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var entity: Dictionary = state.entities[0]
 	entity.status = 1
 	Collision.begin_step(state, world, Registry)
@@ -686,3 +686,11 @@ func _check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		printerr("FAIL: ", message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

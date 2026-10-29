@@ -63,6 +63,9 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Body.spit_step(entity, state, world, box) or Body.hazards(entity, state, world, box):
 		return
 	var grounded := Collision.floor_at(entity, world, box) != 0
+	# Only a fall lands: settling onto the floor at the placement is not a landing.
+	var falling: bool = entity.vy > 0
+	var leaping := false
 	if entity.mode in [PREPARE, IDLE, FLATTEN, RECOVER]:
 		entity.vx = 0
 		entity.timer = maxi(0, entity.timer - 1)
@@ -71,6 +74,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 				PREPARE:
 					entity.mode = AIR
 					entity.vy = -384 * 60
+					leaping = true
 				IDLE, RECOVER:
 					entity.mode = WALK
 				FLATTEN:
@@ -83,7 +87,9 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			)
 		)
 		entity.vx = entity.facing * 48 * 60 / (wet + 1)
-		if grounded and Motion.edge(entity, world, box):
+		# The leap leaves the ledge walking; only a body that stood on the floor
+		# before this step can stop at its edge again.
+		if grounded and not leaping and Motion.edge(entity, world, box):
 			if entity.mode == FLAT:
 				entity.facing *= -1
 				entity.vx = -entity.vx
@@ -95,7 +101,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		if Motion.move(entity, world, box, distance, true) != distance:
 			entity.facing *= -1
 	var landed := Motion.gravity_box(entity, world, box)
-	if landed and not grounded and entity.mode < FLATTEN:
+	if landed and not grounded and falling and entity.mode < FLATTEN:
 		entity.mode = IDLE
 		entity.timer = 60
 		entity.vx = 0

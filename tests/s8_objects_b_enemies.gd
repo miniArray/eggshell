@@ -15,6 +15,7 @@ var failures := 0
 
 func _initialize() -> void:
 	_check_solid_index()
+	_flat_walker_ledge_checks()
 	_soft_walker_checks()
 	_soft_giant_checks()
 	_gust_checks()
@@ -102,9 +103,36 @@ func _activate(entity: Dictionary) -> void:
 	entity.started = 1
 
 
+func _flat_walker_ledge_checks() -> void:
+	var world := _ledge_world({"walker": _place("e4", 400, 284)})
+	var state := _placed_state(world)
+	state.x = 900 * S
+	state.y = 100 * S
+	var walker := _by_id(state, "walker")
+	var type: Script = Registry.lookup("e4")
+	_activate(walker)
+	Collision.begin_step(state, world, Registry)
+	type.step(walker, state, world)
+	check(
+		walker.mode == type.WALK and walker.vx == -48 * 60,
+		"Settling onto the floor at its placement is not a landing: it walks at once"
+	)
+	var edge_x := 0
+	var air_x := 0
+	for _tick in 200:
+		Collision.begin_step(state, world, Registry)
+		type.step(walker, state, world)
+		if walker.mode == type.PREPARE:
+			edge_x = walker.x
+		if walker.mode == type.AIR and walker.vy < 0:
+			air_x = walker.x
+	check(edge_x != 0 and air_x != 0, "At the ledge it prepares, then leaps")
+	check(air_x < edge_x, "The leap carries it off the ledge the way it walks")
+
+
 func _soft_walker_checks() -> void:
 	var world := _ledge_world({"milde": _place("e23", 400, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 100 * S
 	var milde := _by_id(state, "milde")
@@ -118,13 +146,27 @@ func _soft_walker_checks() -> void:
 	check(milde.facing == 1 and milde.x > 340 * S, "The soft walker turns at the ledge")
 	state.x = milde.x
 	state.y = milde.y - 10 * S
+	state.vx = 400 * 60
+	state.vy = 300 * 60
 	type.contact(milde, state, world, 0)
 	check(milde.mode == type.SQUASH, "Landing on the soft walker squashes it")
-	check(state.y == milde.y and state.vy == 0, "The squashed walker holds the player on top")
+	check(state.y == milde.y, "The squashed walker holds the player on top")
+	check(
+		state.vx == 400 * 60 and state.vy == 300 * 60,
+		"The hold keeps the player's own speed running underneath"
+	)
+	var held_x: int = state.x
+	state.x += 6 * S
+	state.y += 5 * S
+	type.contact(milde, state, world, 0)
+	check(
+		state.x == held_x and state.y == milde.y,
+		"After the player's own move the hold puts it back"
+	)
 	for _tick in 15:
 		type.step(milde, state, world)
 	check(milde.status == Registry.DEFEATED, "The squashed walker bursts after 15 ticks")
-	state = State.create(world)
+	state = _placed_state(world)
 	milde = _by_id(state, "milde")
 	_activate(milde)
 	state.x = milde.x - 10 * S
@@ -138,7 +180,7 @@ func _soft_walker_checks() -> void:
 
 func _soft_giant_checks() -> void:
 	var world := _ledge_world({"big": _place("e24", 500, 268)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var big := _by_id(state, "big")
 	var type: Script = Registry.lookup("e24")
 	check(big.y == 300 * S, "The large walker stands on its placement's lower edge")
@@ -172,7 +214,7 @@ func _soft_giant_checks() -> void:
 			"The copies tumble outward"
 		)
 		check(copies[1].vy == -480 * 60, "The inner copies launch at 480 px/s")
-	state = State.create(world)
+	state = _placed_state(world)
 	big = _by_id(state, "big")
 	_activate(big)
 	var egg := {"code": "o7", "x": big.x - 20 * S, "vx": 300 * 60, "fall_on_terrain": 0}
@@ -198,7 +240,7 @@ func _gust_checks() -> void:
 			"up": _place("e33", 900, 300)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var type: Script = Registry.lookup("e33")
 	var left := _by_id(state, "left")
 	check(left.heading == 180000, "R 270 flies left")
@@ -244,7 +286,7 @@ func _gust_checks() -> void:
 	check(_degrades("e33", {"M": 3}), "An unknown mirror becomes a placeholder")
 	var tilted := _world_for({"tilt": _place("e33", 300, 300, {"R": 240.0220428328622})})
 	check(
-		_by_id(State.create(tilted), "tilt").heading == 150022,
+		_by_id(_placed_state(tilted), "tilt").heading == 150022,
 		"A fractional placement angle loads and keeps its millidegrees"
 	)
 
@@ -257,7 +299,7 @@ func _spore_checks() -> void:
 			"sprout": _place("e12", 800, 284)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 1100 * S
 	state.y = 300 * S - S / 16
 	var spore := _by_id(state, "spore")
@@ -294,7 +336,7 @@ func _spore_checks() -> void:
 	sprout_type.contact(sprout, state, world, 0)
 	check(sprout.status == Registry.DEFEATED and state.vy < 0, "Landing on a sprout defeats it")
 	var hurt_world := _world_for({"spore": _place("e13", 500, 100)})
-	var hurt := State.create(hurt_world)
+	var hurt := _placed_state(hurt_world)
 	var touch := _by_id(hurt, "spore")
 	_activate(touch)
 	hurt.x = touch.x
@@ -316,7 +358,7 @@ func _launcher_checks() -> void:
 			"aimed": _place("e37", 600, 600, {"E1": "Aim", "F": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 300 * S
 	state.y = 216 * S
 	var type: Script = Registry.lookup("e37")
@@ -353,7 +395,7 @@ func _launcher_checks() -> void:
 
 func _shot_checks() -> void:
 	var world := _world_for({"wall": _place("o28", 300, 200)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 600 * S
 	var shot := Registry.spawn_dynamic(
@@ -393,7 +435,7 @@ func _shot_checks() -> void:
 	check(plain.falling == 1 and state.vy < 0, "Landing on a shot stops it and it drops")
 	type.step(plain, state, world)
 	check(plain.vy == 1024 and plain.x == 500 * S - 296 * 60, "A stopped shot falls")
-	state = State.create(world)
+	state = _placed_state(world)
 	var side := Registry.spawn_dynamic(
 		state, world, "enemy_shot", 700 * S, 400 * S, {"vx": -296 * 60, "facing": -1}
 	)
@@ -412,7 +454,7 @@ func _leaper_checks() -> void:
 			"coins": _place("e17", 1200, 284, {"F": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 850 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e17")
@@ -467,7 +509,7 @@ func _bumper_checks() -> void:
 			"flyer": _place("e19", 1300, 150, {"F": 2})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 700 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e19")
@@ -488,7 +530,7 @@ func _bumper_checks() -> void:
 	check(flyer.phase == type.FLY and flyer.y < 200 * S, "The flying bumper stays aloft")
 	check(type.sweep_speed(0, 150, -144, 144) == -144, "A sweep starts at its first speed")
 	check(type.sweep_speed(150, 150, -144, 144) == 144, "A sweep reaches the other speed")
-	state = State.create(world)
+	state = _placed_state(world)
 	walker = _by_id(state, "walker")
 	_activate(walker)
 	state.x = walker.x - 20 * S
@@ -516,7 +558,7 @@ func _stilt_checks() -> void:
 			"tall": _place("e35", 600, 284, {"E1": "82", "F": 2})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 890 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e35")
@@ -535,7 +577,7 @@ func _stilt_checks() -> void:
 		Sim.advance(state, 0, world)
 		turned = turned or tall.facing == 1
 	check(turned and tall.x >= 500 * S, "It turns at the ledge")
-	state = State.create(world)
+	state = _placed_state(world)
 	tall = _by_id(state, "tall")
 	_activate(tall)
 	state.x = tall.x
@@ -552,7 +594,7 @@ func _stilt_checks() -> void:
 		func(entity: Dictionary) -> bool: return entity.code == "e1" and entity.source_index == -1
 	)
 	check(riders.size() == 1 and riders[0].variant == 2, "The rider walks on in its colour")
-	state = State.create(world)
+	state = _placed_state(world)
 	tall = _by_id(state, "tall")
 	_activate(tall)
 	var low_egg := {"code": "o7", "x": tall.x - 30 * S, "y": tall.y - 10 * S, "fall_on_terrain": 0}
@@ -574,7 +616,7 @@ func _helmet_checks() -> void:
 			"runner": _place("e29", 900, 284, {"F": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 1300 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e29")
@@ -621,7 +663,7 @@ func _slime_checks() -> void:
 			"drip": _place("e15", 600, 168, {"F": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e15")
@@ -668,7 +710,7 @@ func _ghost_checks() -> void:
 	var world := _world_for(
 		{"ghost": _place("e26", 600, 300), "pink": _place("e26", 200, 300, {"F": 3})}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 400 * S
 	state.y = 300 * S
 	state.facing = -1
@@ -718,7 +760,7 @@ func _disc_checks() -> void:
 			"block": _place("e38", 600, 300, {"E1": "2", "E2": "96", "E3": "96"})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 1000 * S
 	state.y = 600 * S - S / 16
 	var block := _by_id(state, "block")
@@ -744,7 +786,7 @@ func _disc_checks() -> void:
 		check(reach > 90 * S, "The discs reach out to the E3 radius")
 		check(discs[1].offset == 180000, "Discs are spread evenly around the block")
 		var disc_type: Script = Registry.lookup("enemy_disc")
-		var victim := State.create(world)
+		var victim := _placed_state(world)
 		victim.x = discs[0].x
 		victim.y = discs[0].y + 20 * S
 		disc_type.contact(discs[0], victim, world, 0)
@@ -766,7 +808,7 @@ func _sack_checks() -> void:
 			"big": _place("e34", 900, 300)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 700 * S
 	state.y = 700 * S
 	var type: Script = Registry.lookup("e34")
@@ -798,7 +840,7 @@ func _bush_checks() -> void:
 	var world := _ledge_world(
 		{"green": _place("e36", 450, 250), "red": _place("e36", 550, 288, {"F": 1})}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 900 * S
 	state.y = 300 * S - S / 16
 	var type: Script = Registry.lookup("e36")
@@ -817,7 +859,7 @@ func _bush_checks() -> void:
 	check(
 		type.spikes_out(green, state) and not type.spikes_out(red, state), "Every second they swap"
 	)
-	var touch := State.create(world)
+	var touch := _placed_state(world)
 	touch.x = green.x
 	touch.y = green.y + 20 * S
 	type.contact(green, touch, world, 0)
@@ -840,7 +882,7 @@ func _bee_checks() -> void:
 			"right": _place("e43", 600, 500, {"E1": "2", "E2": "0.5", "E3": "128", "M": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 100 * S
 	state.y = 900 * S
 	var type: Script = Registry.lookup("e43")
@@ -859,7 +901,7 @@ func _bee_checks() -> void:
 	state.vy = 100 * 60
 	type.contact(bee, state, world, 0)
 	check(bee.status == Registry.DEFEATED and state.vy < 0, "Landing on it defeats it")
-	state = State.create(world)
+	state = _placed_state(world)
 	right = _by_id(state, "right")
 	_activate(right)
 	state.x = right.x
@@ -867,3 +909,11 @@ func _bee_checks() -> void:
 	type.contact(right, state, world, 0)
 	check(state.invulnerable > 0, "Touching it from below hurts")
 	check(_degrades("e43", {"E3": "5000"}), "An extreme flyer speed becomes a placeholder")
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

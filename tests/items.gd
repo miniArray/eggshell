@@ -78,7 +78,7 @@ func _world_for(objects: Dictionary = {}) -> Dictionary:
 
 func _dynamic_checks() -> void:
 	var world := _world_for({"placed": {"A": "o1", "X": 12, "Y": 20}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_check(state.entities[0].token == 1, "Placed token follows its immutable source slot")
 	var item: Dictionary = registry.call("spawn_dynamic", state, world, "o1", 120 * S, 80 * S, {})
 	_check(not item.is_empty(), "A registered dynamic type can be created")
@@ -145,7 +145,7 @@ func _pickup_checks() -> void:
 			"later": {"A": "o2", "X": 600, "Y": 80},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	for x: int in [100, 200, 300]:
 		state.x = x * S
 		Registry.contact(state, 0, world)
@@ -203,7 +203,7 @@ func _block_checks() -> void:
 			"linked": {"A": "o15", "X": 300, "Y": 80},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var block: Dictionary = state.entities[0]
 	var type := Registry.lookup("o9")
 	type.bump(block, state, world, 2)
@@ -253,7 +253,7 @@ func _block_checks() -> void:
 
 func _egg_checks() -> void:
 	var world := _world_for({"egg": {"A": "o7", "X": 100, "Y": 80, "F": 2}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 100 * S
 	Registry.advance(state, world, 0)
 	Registry.contact(state, 0, world)
@@ -296,7 +296,7 @@ func _egg_checks() -> void:
 		Registry.consume_requests(restored.state, world)
 		_check(restored.state.entities.size() == 2, "Restoration cannot duplicate a thrown egg")
 	world = _world_for({"coin": {"A": "o1", "X": 200, "Y": 60}})
-	state = State.create(world)
+	state = _placed_state(world)
 	projectile = Registry.spawn_dynamic(
 		state, world, "o7", 180 * S, 60 * S, {"mode": 1, "vx": 1024 * 60}
 	)
@@ -321,7 +321,7 @@ func _egg_checks() -> void:
 
 func _solid_bump_check() -> void:
 	var world := _world_for({"release": {"A": "o9", "X": 100, "Y": 80}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 100 * S
 	state.y = 160 * S
 	state.vy = -700 * 60
@@ -342,7 +342,7 @@ func _solid_bump_check() -> void:
 
 func _health_checks() -> void:
 	var world := _world_for({"drop": {"A": "o4", "X": 100, "Y": 80}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 100 * S
 	state.health = 29
 	Registry.advance(state, world, 0)
@@ -385,8 +385,10 @@ func _producer_checks() -> void:
 			"floor": {"A": "o15", "X": 100, "Y": 112, "F": 1},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var producer: Dictionary = state.entities[0]
+	# The first tick wakes the producer; its cycle runs from the next.
+	_advance_objects(state, world)
 	for tick in 62:
 		_advance_objects(state, world)
 	_check(
@@ -417,7 +419,7 @@ func _producer_checks() -> void:
 			"floor": {"A": "o15", "X": 100, "Y": 112, "F": 1},
 		}
 	)
-	state = State.create(world)
+	state = _placed_state(world)
 	state.health = 30
 	for tick in 70:
 		_advance_objects(state, world)
@@ -435,7 +437,7 @@ func _message_checks() -> void:
 	var world := _world_for(
 		{"note": {"A": "o18", "X": 100, "Y": 80, "E1": "A short invented note."}}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var type := Registry.lookup("o18")
 	type.bump(state.entities[0], state, world, 0)
 	_check(
@@ -493,7 +495,7 @@ func _message_head_bump_check() -> void:
 	# A rising player whose head reaches the block from below stops under it, like any
 	# ceiling, in the same step that opens the message.
 	var world := _world_for({"note": {"A": "o18", "X": 100, "Y": 200, "E1": "Invented."}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var block: Dictionary = state.entities[0]
 	var bottom: int = block.y + 16 * S
 	state.x = block.x
@@ -525,7 +527,7 @@ func _clear_checks() -> void:
 			"station": {"A": "o6", "X": 200, "Y": 80, "E1": "200", "E2": "100"},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var block: Dictionary = state.entities[0]
 	var type := Registry.lookup("o24")
 	_check(block.y == 48 * S, "The top-anchored clear block uses its placement spawn point")
@@ -553,7 +555,7 @@ func _clear_checks() -> void:
 
 func _capture_compaction_check() -> void:
 	var world := _world_for()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	# These complete schema records exercise compaction independently of spawn opt-in.
 	for serial in [1, 2]:
 		var entity := (
@@ -599,7 +601,7 @@ func _capture_compaction_check() -> void:
 
 func _runtime_view_check() -> void:
 	var world := _world_for()
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var item := Registry.spawn_dynamic(state, world, "o1", 100 * S, 80 * S, {"moving": 1})
 	var adapter: Script = load("res://src/view/runtime_objects.gd")
 	var renderer: RefCounted = adapter.new()
@@ -641,7 +643,7 @@ func _origin_checks() -> void:
 			"station": {"A": "o6", "X": 200, "Y": 80, "E1": "200", "E2": "100"},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var flower := Registry.spawn_dynamic(
 		state, world, "o3", 100 * S, 80 * S, {"origin_token": state.entities[0].token}
 	)
@@ -681,7 +683,7 @@ func _origin_checks() -> void:
 
 func _encoded_rejection_checks() -> void:
 	var world := _world_for({"actor": {"A": "e1", "X": 100, "Y": 80}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var bytes := Snapshot.encode(state)
 	var corrupt := _replace_saved_entity_field(bytes, 0, "family_index", 7)
 	_check(
@@ -740,7 +742,7 @@ func _mixed_enemy_check() -> void:
 			"added": {"A": added, "X": 200, "Y": 80},
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	_check(
 		state.enemies.size() == 2 and world.enemies.size() == 2,
 		"Actor and ENEMY placements share the same enemy view"
@@ -763,7 +765,7 @@ func _mixed_enemy_check() -> void:
 
 func _map_reference_reset_check() -> void:
 	var world := _world_for({"actor": {"A": "e5", "X": 100, "Y": 80}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.captured_by = 1
 	state.move_held_id = 1
 	state.move_digest = 1
@@ -783,7 +785,7 @@ func _map_reference_reset_check() -> void:
 
 func _projectile_completion_checks() -> void:
 	var world := _world_for({"block": {"A": "o9", "X": 200, "Y": 60}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var egg := Registry.spawn_dynamic(
 		state, world, "o7", 160 * S, 60 * S, {"mode": 1, "vx": 1024 * 60}
 	)
@@ -796,7 +798,7 @@ func _projectile_completion_checks() -> void:
 		state.entities[0].busy == 0, "An egg hit does not invent a lower bump on a releasing block"
 	)
 	world = _world_for()
-	state = State.create(world)
+	state = _placed_state(world)
 	egg = Registry.spawn_dynamic(state, world, "o7", 100 * S, 60 * S, {"mode": 1, "colour": 1})
 	egg.status = Registry.DEFEATED
 	var type := Registry.lookup("o7")
@@ -811,7 +813,7 @@ func _projectile_completion_checks() -> void:
 
 func _solid_tongue_check() -> void:
 	var world := _world_for({"block": {"A": "o9", "X": 100, "Y": 80}})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.move_action = Moves.TONGUE
 	state.move_tongue_phase = Moves.TONGUE_OUT
 	state.move_tongue_length = 80 * S
@@ -821,7 +823,7 @@ func _solid_tongue_check() -> void:
 		"An enabled full solid blocks the tongue without an edible hook"
 	)
 	world = _world_for({"off": {"A": "o15", "X": 100, "Y": 80}})
-	state = State.create(world)
+	state = _placed_state(world)
 	state.move_action = Moves.TONGUE
 	state.move_tongue_phase = Moves.TONGUE_OUT
 	state.move_tongue_length = 80 * S
@@ -836,3 +838,11 @@ func _check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		printerr("FAIL: ", message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

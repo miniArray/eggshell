@@ -138,7 +138,7 @@ func ledge_checks() -> void:
 			"plain": _place("p5", 900, 300)
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var castle := _by_id(state, "castle")
 	var cap := _by_id(state, "cap")
 	var type: Script = Registry.lookup("p4")
@@ -155,7 +155,7 @@ func ledge_checks() -> void:
 
 func countdown_checks() -> void:
 	var world := _floor_world({"count": _place("o32", 600, 268, {"F": 1})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var ledge := _by_id(state, "count")
 	var type: Script = Registry.lookup("o32")
 	check(ledge.count == 2, "The form plus one is the starting number")
@@ -170,7 +170,7 @@ func countdown_checks() -> void:
 		Sim.advance(state, 0, world)
 	check(ledge.status == Registry.DEFEATED, "Stepping off at one breaks it")
 	world = _floor_world({"count": _place("o32", 600, 268, {"F": 3}), "w": _place("e7", 600, 220)})
-	state = State.create(world)
+	state = _placed_state(world)
 	state.x = 900 * S
 	state.y = 300 * S - S / 16
 	ledge = _by_id(state, "count")
@@ -184,7 +184,7 @@ func countdown_checks() -> void:
 
 func flower_checks() -> void:
 	var world := _floor_world({"flower": _place("o22", 600, 252, {"E1": "2"})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 700 * S
 	state.y = 300 * S - S / 16
 	var flower := _by_id(state, "flower")
@@ -211,7 +211,7 @@ func flower_checks() -> void:
 	for tick in 140:
 		Sim.advance(state, 0, world)
 	check(flower.status == Registry.DEFEATED and flower.collected == 1, "It wilts and is recorded")
-	state = State.create(world)
+	state = _placed_state(world)
 	flower = _by_id(state, "flower")
 	flower.status = 1
 	var egg := {"code": "o7", "x": flower.x - 10 * S, "y": flower.y + 10 * S, "mode": 1}
@@ -230,7 +230,7 @@ func flyer_checks() -> void:
 		{"hang": _place("e14", 100, 48, {"M": 1}), "fly": _place("e14", 400, 100, {"F": 1})}
 	)
 	world.layers = [_tile_layer("roof", cells, 8, [0, 0, 32, 0, 32, 32, 0, 32])]
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var hang := _by_id(state, "hang")
 	var fly := _by_id(state, "fly")
 	var type: Script = Registry.lookup("e14")
@@ -271,7 +271,7 @@ func flyer_checks() -> void:
 
 func thief_checks() -> void:
 	var world := _floor_world({"thief": _place("e10", 600, 284, {"M": 1})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 990 * S
 	state.y = 300 * S - S / 16
 	var thief := _by_id(state, "thief")
@@ -287,7 +287,7 @@ func thief_checks() -> void:
 	state.x = thief.x + 150 * S
 	Sim.advance(state, 0, world)
 	check(thief.plan == type.CHASE and thief.vy < 0, "A near player starts a chase with a hop")
-	state = State.create(world)
+	state = _placed_state(world)
 	thief = _by_id(state, "thief")
 	thief.status = 1
 	thief.started = 1
@@ -301,7 +301,7 @@ func thief_checks() -> void:
 	Collision.begin_step(state, world, Registry)
 	type.step(thief, state, world)
 	check(state.recovery_x == thief.x, "The bubble rides on the thief")
-	state = State.create(world)
+	state = _placed_state(world)
 	thief = _by_id(state, "thief")
 	thief.status = 1
 	thief.started = 1
@@ -318,7 +318,7 @@ func thief_checks() -> void:
 		if entity.code == "o1" and entity.source_index == -1:
 			coins += 1
 	check(coins == 3, "A defeated thief drops three coins")
-	state = State.create(world)
+	state = _placed_state(world)
 	thief = _by_id(state, "thief")
 	thief.status = 1
 	var egg := {"code": "o7", "x": thief.x - 20 * S, "fall_on_terrain": 0}
@@ -328,7 +328,7 @@ func thief_checks() -> void:
 	for hit in 5:
 		type.projectile_contact(thief, egg, state, world)
 	check(thief.status == Registry.DEFEATED, "Six strikes defeat it")
-	check(type.valid(_by_id(State.create(world), "thief")), "Thief state is valid")
+	check(type.valid(_by_id(_placed_state(world), "thief")), "Thief state is valid")
 
 
 func _balls(state: Dictionary) -> Array:
@@ -341,7 +341,7 @@ func _balls(state: Dictionary) -> Array:
 
 func mace_checks() -> void:
 	var world := _floor_world({"mace": _place("e27", 600, 284)})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var mace := _by_id(state, "mace")
 	var type: Script = Registry.lookup("e27")
 	state.x = 400 * S
@@ -363,7 +363,7 @@ func mace_checks() -> void:
 	state.x = 2000 * S
 	Sim.advance(state, 0, world)
 	check(x0 - ball.x == 256 * 60, "The ball flies toward the player at 256 px/s")
-	state = State.create(world)
+	state = _placed_state(world)
 	mace = _by_id(state, "mace")
 	mace.status = 1
 	mace.started = 1
@@ -375,7 +375,7 @@ func mace_checks() -> void:
 	mace.grace = 0
 	type.contact(mace, state, world, 0)
 	check(mace.status == Registry.DEFEATED, "A rolling walker breaks on the player")
-	state = State.create(world)
+	state = _placed_state(world)
 	mace = _by_id(state, "mace")
 	mace.status = 1
 	state.x = mace.x
@@ -390,7 +390,7 @@ func lantern_checks() -> void:
 	var world := _floor_world(
 		{"lamp": _place("e32", 600, 284, {"F": 2, "M": 1}), "plain": _place("e1", 800, 284)}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	state.x = 700 * S
 	state.y = 300 * S - S / 16
 	var lamp := _by_id(state, "lamp")
@@ -413,7 +413,7 @@ func lantern_checks() -> void:
 
 func spear_checks() -> void:
 	var world := _floor_world({"guard": _place("e22", 600, 284, {"E1": "90", "F": 3})})
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var guard := _by_id(state, "guard")
 	var type: Script = Registry.lookup("e22")
 	check(guard.spear == 90 * S and guard.variant == 3, "E1 sets the spear and F the look")
@@ -443,7 +443,7 @@ func spear_checks() -> void:
 	var back := {"code": "o7", "x": guard.x + 30 * S, "vx": -16 * S, "fall_on_terrain": 0}
 	type.projectile_contact(guard, back, state, world)
 	check(guard.status == Registry.DEFEATED, "An egg from behind defeats it")
-	check(type.valid(_by_id(State.create(world), "guard")), "Spear state is valid")
+	check(type.valid(_by_id(_placed_state(world), "guard")), "Spear state is valid")
 
 
 func _tile_layer(name: String, cells: Array, columns: int, points: Array) -> Dictionary:
@@ -479,7 +479,7 @@ func snapshot_checks() -> void:
 			"i": _place("e22", 900, 100, {"E1": "64", "F": 4, "M": 1})
 		}
 	)
-	var state := State.create(world)
+	var state := _placed_state(world)
 	var bytes := Snapshot.encode(state)
 	var decoded := Snapshot.decode(bytes, world.identity, world)
 	check(decoded.ok and Snapshot.encode(decoded.state) == bytes, "Slice 8 objects round trip")
@@ -490,3 +490,11 @@ func check(value: bool, message: String) -> void:
 	if not value:
 		failures += 1
 		push_error("FAIL: " + message)
+
+
+## Entities run one world tick at level start, as in the original. These unit checks
+## start from the placement, so the table is spawned again after the level start.
+func _placed_state(world: Dictionary) -> Dictionary:
+	var state := State.create(world)
+	Registry.spawn_map(state, world)
+	return state

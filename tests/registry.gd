@@ -207,6 +207,8 @@ func schema_checks() -> void:
 func placement_checks() -> void:
 	var world := mixed_world()
 	var state := State.create(world)
+	# Entities run one world tick at level start; these checks read the placement.
+	Registry.spawn_map(state, world)
 	check(state.entities.size() == 5, "Every placement becomes an entity")
 	check(
 		state.entities[0].id == "unknown" and state.entities[0].source_index == 0,
@@ -468,6 +470,21 @@ func screen_checks() -> void:
 	# A walker on screen near the map's left edge wakes while the player stands at x 64.
 	world = world_for({"near": {"A": "e2", "X": 700, "Y": 100}})
 	state = State.create(world)
+	check(
+		state.entities[0].status == 1 and state.entities[0].x != 700 * S and state.frame == 0,
+		"At level start an object on screen wakes and runs one tick before the first step"
+	)
+	var later := world_for({"later": {"A": "e2", "X": 2000, "Y": 100}})
+	var waking := State.create(later)
+	var sleeper: Dictionary = waking.entities[0]
+	waking.camera_x = 2000 * S
+	Registry.advance(waking, later, 0)
+	check(
+		sleeper.status == 1 and sleeper.x == 2000 * S,
+		"An object that wakes on screen does not move in that step"
+	)
+	Registry.advance(waking, later, 0)
+	check(sleeper.x != 2000 * S, "It first moves in the next step")
 	Registry.advance(state, world, 0)
 	check(state.entities[0].status == 1, "An object on the edge-clamped screen activates")
 	# An object below the map's bottom edge stays asleep while the player is low.
@@ -500,6 +517,8 @@ func screen_checks() -> void:
 func contact_checks() -> void:
 	var world := world_for({"pad": {"A": "o11", "X": 100, "Y": 84, "F": 0}})
 	var state := State.create(world)
+	# Entities run at level start; this check reads the pad at its placement.
+	Registry.spawn_map(state, world)
 	state.x = 100 * S
 	state.y = 90 * S
 	state.vy = S

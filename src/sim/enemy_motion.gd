@@ -4,6 +4,9 @@ extends RefCounted
 const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const S := 3600
+## Steps the original's sine behaviours have run when input starts: they start at level
+## load and run through the level intro, active or not.
+const LEVEL_INTRO_TICKS := 152
 # The registry is bound late to avoid an import cycle; load() once, not per probe.
 static var _registry: Script = null
 

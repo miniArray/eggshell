@@ -105,13 +105,11 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.mode = WALK
 
 
-## Hold the player on the squashed body, keeping the landing offset.
+## Hold the player on the squashed body, keeping the landing offset. Only the position
+## is held: the player's own motion (speed, gravity, flutter) runs on underneath.
 static func pin(entity: Dictionary, state: Dictionary) -> void:
 	state.x = entity.x + entity.pin_dx
 	state.y = entity.y
-	state.vx = 0
-	state.vy = 0
-	state.on_floor = 1
 
 
 ## The source also knocks enemies within 128 px aside; that reaction is not ported.
@@ -121,6 +119,10 @@ static func burst(entity: Dictionary, state: Dictionary, _world: Dictionary) -> 
 
 static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, input: int) -> void:
 	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
+		return
+	if entity.mode == SQUASH:
+		# The hold puts the player back after its own move in this step.
+		pin(entity, state)
 		return
 	if entity.mode != WALK:
 		entity.contact = 0

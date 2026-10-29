@@ -20,8 +20,8 @@ const OPENING := 3
 const MAX_RELEASE := 1024
 const FLAP := [0, 1, 2, 3, 2, 1]
 ## The original creates the cache at level load and its wave runs through the level
-## intro, so at the first step the wave has already run 152 steps.
-const INTRO_PHASE := 152
+## intro. It has run 150 steps when the two level-start ticks run it twice more.
+const INTRO_PHASE := Motion.LEVEL_INTRO_TICKS - 2
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
