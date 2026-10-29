@@ -56,6 +56,8 @@ nothing treats the placeholder as the real object. It never steps or contacts,
 and it draws as the diagnostic square.
 
 Actors activate by collision bounds in the fixed 832 by 448 reference area.
+Walkers that declare `activation_bounds` use their picture box to wake, even
+when their contact body has not reached the area.
 The shared lifecycle can queue distant actors and recreate them after their
 placement anchor leaves and returns. The distances and flags are common saved
 fields. Load-active pads and static sensors keep their previous timing.
@@ -86,7 +88,7 @@ keys. It calls `Maps.initialize` and `Life.initialize` before spawning entities.
 All other new mutable scalar state must be declared in these lists.
 The movement, lifetime, map and registered type `valid_state(state)` hooks all
 run at the snapshot boundary. Input masks use eight bits. Base validation permits a six-tick jump
-buffer, flutter counters through 71 and water braking of 128.
+buffer, flutter counters through 72, water lift delay through 16 and water braking of 128.
 
 The state module binds the registry late for schema composition and entity creation. `units.gd` is
 the scale-only leaf. The world calls its `_build_objects` seam for every compiled
@@ -94,7 +96,7 @@ map, using that map's source and the registry placement compiler. Map caches
 hold geometry and immutable entity sources; `Maps.sync` selects the saved map.
 These boundaries avoid a preload cycle through state, movement and collision.
 
-Snapshot version 9 writes these schemas and the registry's entity schemas.
+Snapshot version 10 writes these schemas and the registry's entity schemas.
 It also stores a schema digest and checksum. See [saves](saves.md) for the exact
 byte order, limits, reset flags and compatibility rules.
 
@@ -135,8 +137,12 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    (walking off a ledge, a ground knock-back); rules before the move see a floor
    only once the body stands on it, so a fall that ends just above a floor lands
    on the next step. Flutter rules (`move_flutter.gd`) run after gravity; a flutter
-   release or landing still damps that step. Any body overlap with water sets the
-   water speed cap before swimming starts.
+   release or landing still damps that step. Flutter rules run before an enemy
+   bounce; the saved `move_bounce` phase keeps its final damping in order. Enemies
+   that walk off a floor likewise get no gravity on that step; the per-step floor
+   marks clear in `Collision.begin_step`. Any body overlap with water sets the
+   water speed cap before swimming starts. Deep-water lift waits 16 steps.
+   `water_flow.gd` applies flowing-water pushes before the player movement rules.
 5. Dispatch registry contacts (`dispatch_loops.gd`, three contact phases). On a not-GOAL to GOAL transition, convert eligible
    visible active enemy bodies once. Keep the goal pose and delay.
 6. Dispatch `Registry.tongue_contact` with the eating tip sensor. Check companion
@@ -154,7 +160,12 @@ Life.KNOCKED_LOCK, true)`; the plant's release uses the same call). Landing whil
 the knock-back pose lasts starts the look-around: a new 43-step lock
 (`Life.LOOK_AROUND_LOCK`). A hit while the companion is away spins for 63 steps
 without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
-death fades for 32; input works again on the third step after the respawn.
+death fades for 32; input works again on the third step after the respawn. Contact
+immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
+A companion catch freezes the world for 51 steps. The companion bubble uses an
+octagon for terrain contact, not its rectangular hull. Captors first move on the
+step after they start. A soft walker that bursts knocks nearby soft walkers
+aside with a hop and a 60-step horizontal ease to rest.
 
 Movement, damage, life and some types emit sound events during these phases
 (`SoundEvents.emit`). Listeners compare their saved serial in their own step, so
@@ -358,7 +369,9 @@ side effects. None of them enters snapshots.
   128 px cells under its bounds around its position, candidates tested live.
   The registry marks an entity after every dispatch on it and refiles marked
   entities at the next query; a dispatching entity is always a candidate.
-  Compaction and runtime creation are found by a walk of the table. A step uses
+  Constant per-code `GRID_BOUNDS` avoid refiling unchanged rows. The grid replays
+  up to `3 * count + 64` marks before rebuilding. Runtime creation is found by a
+  walk of the table. A step uses
   the grid when the previous step asked at least four queries, and scans
   otherwise; both give the same answer.
 - A type whose bounds stay inside one box in every state may name it per code
@@ -373,7 +386,8 @@ side effects. None of them enters snapshots.
   with a scan too.
 - Tables change only by replacement or by appending (runtime creation).
   Compaction builds a new table when an entity leaves and keeps the table
-  otherwise. Code must not replace or remove elements of `state.entities` in
+  otherwise; it scans only runtime rows and reuses unchanged family views. Code
+  must not replace or remove elements of `state.entities` in
   place: `Collision.begin_step` reuses its rows while the table array and its
   size are unchanged.
 

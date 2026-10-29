@@ -127,12 +127,12 @@ func mixed_checks() -> void:
 	check(
 		restored.ok and Snapshot.encode(restored.state) == bytes, "All families round trip together"
 	)
-	check(bytes.decode_u32(8) == 9, "Combined layout has version nine")
+	check(bytes.decode_u32(8) == 10, "Combined layout has version ten")
 	var old := bytes.duplicate()
-	old.encode_u32(8, 8)
+	old.encode_u32(8, 9)
 	check(
 		not Snapshot.decode(old, world.identity).ok,
-		"Version eight is rejected before reading fields"
+		"Version nine is rejected before reading fields"
 	)
 	for code: String in ["o1", "o2", "o3"]:
 		var entity: Dictionary = by_id(state, {"o1": "coin", "o2": "red", "o3": "flower"}[code])

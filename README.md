@@ -72,7 +72,8 @@ after the separator to silence all audio.
 
 ## Implemented behavior
 
-- Acceleration, turns, jumping, fluttering, crouching, ground pounds and swimming.
+- Acceleration, turns, jumping, fluttering, crouching, ground pounds, swimming
+  and flowing-water pushes.
 - Directed tongue, held-item, digestion, aiming and emission state with object hooks.
 - Bounce pads, semisolid bridges, checkpoints and a timed goal sequence.
 - Walkers, flyers, tumblers, shelled and armored walkers, shooters and fish.
@@ -88,7 +89,7 @@ after the separator to silence all audio.
 - Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
 - Countdown, capture, death and checkpoint respawn phases with a run HUD.
 - Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 9 snapshots with autosave and automatic resume.
+- A type registry and composed version 10 snapshots with autosave and automatic resume.
 - Pack music and sound effects derived from saved state, with music and effect volumes.
 - Container-sized camera fitting with integer scales and nearest-neighbor graphics.
 - Player zoom in whole steps, and blended pictures on high-refresh displays.

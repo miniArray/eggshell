@@ -1,8 +1,8 @@
 # Saves
 
-Snapshot version 9 stores the complete integer play state in little-endian
+Snapshot version 10 stores the complete integer play state in little-endian
 bytes. Its layout follows the declared schemas, not a hand-written list of
-object families. Version 8 and all other versions are rejected with a log line;
+object families. Version 9 and all other versions are rejected with a log line;
 old saves are not migrated.
 
 ## Layout
@@ -45,7 +45,7 @@ The three-argument decoder synchronizes a temporary world selection to the saved
 map before validating the ordered table and bridge support. A successful decode
 selects that map in the caller's world. Rejection leaves its map unchanged.
 
-## Composed version 9 state
+## Composed version 10 state
 
 Base fields hold simulation frame, follow point, input edges, motion, water and
 capture state. Movement owns action and posture timers, tongue reach, aim, held
@@ -58,7 +58,8 @@ pages and shared switch timer/sound state. Sound events own `sound_serial`,
 [architecture](architecture.md#sound-events)). All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 9 adds the player fields `hurt_phase` (after `hurt`: none, knock-back pose or
+Version 10 adds the player field `move_bounce` (the flutter tail after an enemy
+bounce) and widens `water_wait` to 0–16 steps. Version 9 added the player fields `hurt_phase` (after `hurt`: none, knock-back pose or
 look-around), `move_brake_vx` and `move_jump_carry`, and widens three validation
 limits: `hurt` up to 63 steps, `flutter_remaining` up to 72 and `flutter_cooldown` up
 to 17. Version 8 added the four sound-event level fields; the level field
@@ -119,7 +120,9 @@ failed validation cannot replace a valid slot with empty bytes. Play goes on.
 `Snapshot.refusal(state)` names the first failing check: for an entity, its id,
 its code and the field whose default would make it valid (for example
 `entity 55 (e35): timer = -2`). The game logs `Save skipped: invalid snapshot
-state: <reason>` once for each new reason, not on every autosave. After a
+state: <reason>` once for each new reason, not on every autosave. After a refusal, autosave retries
+every step until encoding succeeds. It then logs `Save resumed at frame N` and
+returns to its regular interval. The previous valid file stays intact meanwhile. After a
 refused autosave the game tries again every step, so autosave resumes on the
 first step the state is valid again (`Save resumed at frame N`), then returns
 to every 60 steps (`tests/autosave_retry.gd`).
