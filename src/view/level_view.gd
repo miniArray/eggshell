@@ -94,10 +94,16 @@ func _build_map(world: Dictionary, pack: String) -> void:
 				):
 					layer.slot = [int(instance.layer_index), int(instance.z_order)]
 		layers.sort_custom(draw_before)
+	# External images are not ResourceLoader-cached. Repeated terrain layers share
+	# their decoded texture for this build, while keeping separate tile atlases.
+	var terrain_textures := {}
 	for layer: Dictionary in layers:
 		var texture: Texture2D
 		if not manifest.is_empty() and manifest.tiles.has(layer.name):
-			texture = load_texture(pack.path_join(manifest.tiles[layer.name]))
+			var path: String = pack.path_join(manifest.tiles[layer.name])
+			if not terrain_textures.has(path):
+				terrain_textures[path] = load_texture(path)
+			texture = terrain_textures[path]
 		var real_tiles := texture != null
 		if texture == null:
 			texture = placeholder(layer.name, layer.size)
