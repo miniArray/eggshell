@@ -6,6 +6,7 @@ const State = preload("res://src/sim/play_state.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Sim = preload("res://src/sim/step.gd")
 const World = preload("res://src/sim/world.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const Shapes = preload("res://tests/platform_shapes.gd")
 const S := 3600
 const BOX := [-4 * S, -8 * S, 4 * S, 0]
@@ -266,7 +267,7 @@ func crumble_type_checks() -> void:
 	)
 	type.step(entity, state, world)
 	check(entity.y == 160 * S + 256, "falling uses fixed-step velocity")
-	entity.y = state.camera_y + 833 * S
+	entity.y = Screen.centre_y(state, world) + 833 * S
 	type.step(entity, state, world)
 	check(
 		entity.y == 160 * S and entity.age == 0 and entity.vy == 0,
@@ -274,7 +275,7 @@ func crumble_type_checks() -> void:
 	)
 	entity.respawns = 0
 	entity.age = 73
-	entity.y = state.camera_y + 833 * S
+	entity.y = Screen.centre_y(state, world) + 833 * S
 	type.step(entity, state, world)
 	check(entity.status == 3, "ordinary crumble is removed below the reference region")
 	world = typed_world({"ride": {"A": "o20", "X": 160, "Y": 160}})
@@ -557,6 +558,9 @@ func cache_type_checks() -> void:
 	var world := typed_world(
 		{"cache": {"A": "o8", "X": 200, "Y": 160, "E1": "1", "E2": "5", "E3": "1", "F": 9}}
 	)
+	# Wide enough that the map-clamped screen can leave the cache.
+	world.width = 4096 * S
+	world.maps[1].width = world.width
 	var state := State.create(world)
 	var entity: Dictionary = state.entities[0]
 	var type := Registry.lookup(entity.code)

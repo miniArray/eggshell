@@ -12,6 +12,7 @@ const World = preload("res://src/sim/world.gd")
 const Motion = preload("res://src/sim/item_motion.gd")
 const Math = preload("res://src/sim/enemy_motion.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const STATIONARY := 0
 const THROWN := 1
 const FALLING := 2
@@ -179,17 +180,16 @@ static func projectile_contact(
 	return 0
 
 
-static func active_count(state: Dictionary) -> int:
+static func active_count(state: Dictionary, world: Dictionary) -> int:
 	var count: int = state.move_eggs
 	for entity: Dictionary in state.entities:
 		if entity.code != "o7" or entity.status != 1 or entity.collected:
 			continue
 		var box := bounds(entity)
-		if (
-			entity.x + box[2] > state.camera_x - 416 * S
-			and entity.x + box[0] < state.camera_x + 416 * S
-			and entity.y + box[3] > state.camera_y - 224 * S
-			and entity.y + box[1] < state.camera_y + 224 * S
+		if Screen.overlaps(
+			state,
+			world,
+			[entity.x + box[0], entity.y + box[1], entity.x + box[2], entity.y + box[3]]
 		):
 			count += 1
 	return count

@@ -10,6 +10,7 @@ const InputBits = preload("res://src/sim/move_input.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const FIELDS := [
 	["home_x", 0],
 	["home_y", 0],
@@ -90,7 +91,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.y = entity.home_y - 32 * S * offset / 6
 		if entity.busy == 6:
 			var eggs: Script = registry().lookup("o7")
-			if eggs.has_method("active_count") and eggs.active_count(state) < 6:
+			if eggs.has_method("active_count") and eggs.active_count(state, world) < 6:
 				(
 					registry()
 					. spawn_dynamic(
@@ -219,12 +220,7 @@ static func bump_above(entity: Dictionary, state: Dictionary, world: Dictionary)
 
 
 static func clear_area(state: Dictionary, world: Dictionary) -> void:
-	var probe := [
-		state.camera_x - 416 * S,
-		state.camera_y - 224 * S,
-		state.camera_x + 416 * S,
-		state.camera_y + 224 * S
-	]
+	var probe := Screen.area(state, world)
 	var dispatch := registry()
 	for entity: Dictionary in state.entities:
 		var type: Script = dispatch.lookup(entity.code)

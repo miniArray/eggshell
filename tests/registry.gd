@@ -7,6 +7,7 @@ const Snapshot = preload("res://src/save/snapshot.gd")
 const World = preload("res://src/sim/world.gd")
 const Sim = preload("res://src/sim/step.gd")
 const Units = preload("res://src/sim/units.gd")
+const Screen = preload("res://src/sim/screen.gd")
 const S := Units.SCALE
 const FIXTURE_OPTIONS := {
 	"e12": {"M": 1},
@@ -65,6 +66,7 @@ func _initialize() -> void:
 	checkpoint_type_checks()
 	snapshot_checks()
 	lifecycle_checks()
+	screen_checks()
 	contact_checks()
 	step_check()
 	print("REGISTRY_RESULT: %d assertions, %d failures" % [checks, failures])
@@ -437,6 +439,46 @@ func lifecycle_checks() -> void:
 	actor.status = 3
 	Registry.advance(state, world, 0)
 	check(actor.status == 3, "Defeated actor does not respawn")
+
+
+func screen_checks() -> void:
+	# The reference screen stays inside the 4096×1024 map; the follow point does not.
+	var world := world_for()
+	var state := State.create(world)
+	var centres := []
+	for follow: Array in [[64, 100], [2000, 600], [4090, 1000], [2000, 200], [2000, 900]]:
+		state.camera_x = follow[0] * S
+		state.camera_y = (follow[1] - 28) * S
+		centres.append([Screen.centre_x(state, world) / S, Screen.centre_y(state, world) / S])
+	check(
+		centres == [[416, 224], [2000, 536], [3680, 800], [2000, 224], [2000, 800]],
+		"Screen centre follows the player 64 px up and stops 416×224 px inside the map"
+	)
+	var narrow := world.duplicate()
+	narrow.width = 600 * S
+	narrow.height = 400 * S
+	state.camera_x = 100 * S
+	state.camera_y = 272 * S
+	check(
+		Screen.centre_x(state, narrow) == 416 * S and Screen.centre_y(state, narrow) == 176 * S,
+		"A narrow map keeps the left limit; a short map keeps the bottom limit"
+	)
+	state.camera_x = 300 * S
+	check(Screen.centre_x(state, narrow) == 184 * S, "Past the right limit the right edge wins")
+	# A walker on screen near the map's left edge wakes while the player stands at x 64.
+	world = world_for({"near": {"A": "e2", "X": 700, "Y": 100}})
+	state = State.create(world)
+	Registry.advance(state, world, 0)
+	check(state.entities[0].status == 1, "An object on the edge-clamped screen activates")
+	# An object below the map's bottom edge stays asleep while the player is low.
+	world = world_for({"below": {"A": "e2", "X": 2000, "Y": 1088}})
+	state = State.create(world)
+	state.x = 2000 * S
+	state.y = 1000 * S
+	state.camera_x = state.x
+	state.camera_y = state.y - 28 * S
+	Registry.advance(state, world, 0)
+	check(state.entities[0].status == 0, "An object below the map stays outside the screen")
 
 
 func contact_checks() -> void:
