@@ -34,9 +34,10 @@ static func schema_hash() -> PackedByteArray:
 	return _schema_hash
 
 
+## The state's bytes, or an empty array when the state is invalid. It does not log a
+## refusal; a caller that wants to say why asks `refusal(state)`.
 static func encode(state: Dictionary) -> PackedByteArray:
 	if not valid_state(state) or not valid_identity(state.get("identity", "")):
-		push_warning("Cannot encode invalid snapshot state")
 		return PackedByteArray()
 	var body_size := count_offset() + 4
 	for entity: Dictionary in state.entities:
@@ -210,6 +211,52 @@ static func valid_state(state: Dictionary) -> bool:
 		if captor.code != "e5" or captor.status != 1 or captor.mode != 4:
 			return false
 	return true
+
+
+## Why `encode` refuses this state, as one log line: the first failing check and, for an
+## entity, its id and code. Where one field breaks the check, the line names that field and
+## its value (the field whose default would make the check pass). Empty when the state
+## passes validation. Diagnostic only; it never changes the state.
+static func refusal(state: Dictionary) -> String:
+	if not valid_identity(state.get("identity", "")):
+		return "level identity"
+	if not State.valid(state):
+		return "level and player fields: " + culprit(state, State.fields(), State.valid)
+	if not state.get("entities") is Array or state.entities.size() > MAX_ENTITIES:
+		return "entity table missing or too long"
+	for index in state.entities.size():
+		var entity: Variant = state.entities[index]
+		if not entity is Dictionary or not entity.get("code") is String:
+			return "entity %d: not an entity record" % index
+		if not Registry.valid(entity):
+			return (
+				"entity %s (%s): %s"
+				% [
+					str(entity.get("id", "?")),
+					entity.code,
+					culprit(entity, Registry.fields(entity.code), Registry.valid)
+				]
+			)
+	if not Registry.valid_table(state):
+		return "entity table: duplicate id, other map or dynamic order"
+	if not valid_state(state):
+		return "enemy or pad family order, or capture"
+	return ""
+
+
+## The one field of `values` whose declared default makes `check` pass, as `name = value`.
+static func culprit(values: Dictionary, fields: Array, check: Callable) -> String:
+	for pair: Array in fields:
+		if not values.get(pair[0]) is int:
+			return "field %s missing or not an integer" % pair[0]
+	for pair: Array in fields:
+		if values[pair[0]] == pair[1]:
+			continue
+		var probe := values.duplicate()
+		probe[pair[0]] = pair[1]
+		if check.call(probe):
+			return "%s = %d" % [pair[0], values[pair[0]]]
+	return "no single field (combined check or undeclared key)"
 
 
 static func error(message: String) -> Dictionary:

@@ -1,6 +1,7 @@
 """Real-process lifecycle checks. All game processes use placeholder graphics."""
 
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -14,6 +15,9 @@ import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("host_load", ROOT / "tools/host_load.py")
+HOST_LOAD = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOST_LOAD)
 GODOT = ROOT / "build/godot/bin/godot"
 RESULTS = ROOT / "build/host-kill-results.json"
 
@@ -72,7 +76,7 @@ def run_to(directory, frame, *args):
         command(directory, f"--exit-frame={frame}", *args),
         text=True,
         capture_output=True,
-        timeout=15,
+        timeout=HOST_LOAD.limit(30),
         check=False,
     )
     if result.returncode != 0 or "SCRIPT ERROR" in result.stderr:
@@ -98,7 +102,7 @@ class GameProcessTests(unittest.TestCase):
                 command(directory, "--close-frame=137"),
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=HOST_LOAD.limit(30),
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -113,7 +117,11 @@ class GameProcessTests(unittest.TestCase):
             separator = args.index("--")
             args[separator:separator] = ["--fixed-fps", "10"]
             result = subprocess.run(
-                args, capture_output=True, text=True, timeout=10, check=False
+                args,
+                capture_output=True,
+                text=True,
+                timeout=HOST_LOAD.limit(30),
+                check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(
@@ -131,14 +139,14 @@ class GameProcessTests(unittest.TestCase):
                     start_new_session=True,
                 )
                 try:
-                    deadline = time.monotonic() + 10
+                    deadline = time.monotonic() + HOST_LOAD.limit(30)
                     while (
                         last_frame(output.read_text()) < 137
                         and time.monotonic() < deadline
                     ):
                         time.sleep(0.005)
                     process.send_signal(signal.SIGTERM)
-                    process.wait(timeout=10)
+                    process.wait(timeout=HOST_LOAD.limit(30))
                 finally:
                     if process.poll() is None:
                         os.killpg(process.pid, signal.SIGKILL)
@@ -155,36 +163,47 @@ class GameProcessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as seed:
             run_to(seed, 3)
             valid = (pathlib.Path(seed) / "autosave.egg").read_bytes()
-        wrong_version = bytearray(valid)
-        struct.pack_into("<I", wrong_version, 8, 1)
-        legacy = bytearray(valid[:180])
-        struct.pack_into("<I", legacy, 8, 1)
-        legacy.extend(hashlib.sha256(legacy).digest())
-        old_v2 = bytearray(valid[:220])
-        struct.pack_into("<I", old_v2, 8, 2)
-        springs = struct.unpack_from("<I", valid, 324)[0]
-        old_v2.extend(valid[324 : 328 + 48 * springs])
-        old_v2.extend(hashlib.sha256(old_v2).digest())
+        version = snapshot_constant("VERSION")
+        checksum = snapshot_constant("CHECKSUM_SIZE")
+
+        def with_version(number):
+            # A whole current-layout file whose only defect is its version: the
+            # checksum is recomputed, so only the version check can refuse it.
+            data = bytearray(valid)
+            struct.pack_into("<I", data, 8, number)
+            data[-checksum:] = hashlib.sha256(data[:-checksum]).digest()
+            return data
+
         wrong_level = bytearray(valid)
         wrong_level[12:44] = b"x" * 32
-        wrong_level[-32:] = hashlib.sha256(wrong_level[:-32]).digest()
+        wrong_level[-checksum:] = hashlib.sha256(wrong_level[:-checksum]).digest()
         corrupt = bytearray(valid)
         corrupt[90] ^= 1
-        for label, data in [
-            ("truncated", valid[:-1]),
-            ("version", wrong_version),
-            ("old-v1", legacy),
-            ("old-v2", old_v2),
-            ("identity", wrong_level),
-            ("checksum", corrupt),
-        ]:
+        cases = [
+            ("truncated", valid[:-1], None),
+            ("identity", wrong_level, None),
+            ("checksum", corrupt, None),
+        ]
+        for number in sorted({1, 2, version - 1, version + 1}):
+            cases.append((f"version-{number}", with_version(number), number))
+        for label, data, number in cases:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
                 (pathlib.Path(directory) / "autosave.egg").write_bytes(data)
                 result = run_to(directory, 2)
                 self.assertIn("EGGSHELL_START 0", result.stdout)
                 self.assertIn("Ignoring autosave:", result.stderr)
-                if label in ["old-v1", "old-v2"]:
+                if number is not None:
                     self.assertIn("Snapshot format/version", result.stderr)
+                    self.assertIn(
+                        f"Ignoring snapshot version {number}; expected {version}",
+                        result.stdout,
+                    )
+        # The unchanged file resumes, so each version case failed on its version alone.
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "autosave.egg").write_bytes(valid)
+            result = run_to(directory, 5)
+            self.assertIn("EGGSHELL_START 3", result.stdout)
+            self.assertNotIn("Ignoring autosave:", result.stderr)
 
     def test_resume_disabled_does_not_load_or_write_autosave(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -215,7 +234,7 @@ class GameProcessTests(unittest.TestCase):
                         start_new_session=True,
                     )
                     try:
-                        deadline = time.monotonic() + 45
+                        deadline = time.monotonic() + HOST_LOAD.limit(90)
                         while (
                             last_frame(output.read_text()) < target
                             and time.monotonic() < deadline
@@ -227,7 +246,7 @@ class GameProcessTests(unittest.TestCase):
                             if line.startswith("EGGSHELL_ENGINE_PID ")
                         )
                         os.kill(engine_pid, signal.SIGKILL)
-                        process.wait(timeout=5)
+                        process.wait(timeout=HOST_LOAD.limit(15))
                     finally:
                         if process.poll() is None:
                             os.killpg(process.pid, signal.SIGKILL)

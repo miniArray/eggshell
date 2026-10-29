@@ -50,6 +50,8 @@ var _profile_file: FileAccess
 var _probe: Node
 var _sim_usec := 0
 var _slot_bytes := PackedByteArray()
+## The last logged reason the encoder refused a save; each refusal is logged once.
+var _save_refusal := ""
 var _loop := FrameLoop.new()
 var _levels: Array = []
 var _level_folder := ""
@@ -221,6 +223,7 @@ func _start_level(built: Dictionary, path: String) -> void:
 		else _save_dir.path_join("levels").path_join(String(world.identity))
 	)
 	_slot_bytes = PackedByteArray()
+	_save_refusal = ""
 	_goal_menu_shown = false
 	if _resume:
 		load_slot("autosave")
@@ -607,8 +610,13 @@ func _menu_values() -> Dictionary:
 func save_slot(slot: String) -> void:
 	var bytes := Snapshot.encode(state)
 	if bytes.is_empty():
-		printerr("Save skipped: invalid snapshot state")
+		# Play goes on; the older slot file stays. Log each refusal once, not every second.
+		var reason := Snapshot.refusal(state)
+		if reason != _save_refusal:
+			_save_refusal = reason
+			printerr("Save skipped: invalid snapshot state: ", reason)
 		return
+	_save_refusal = ""
 	if slot == "slot":
 		_slot_bytes = bytes
 	_store.submit(_slot_dir.path_join(slot + ".egg"), bytes, state.frame)

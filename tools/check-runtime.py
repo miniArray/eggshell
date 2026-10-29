@@ -12,6 +12,8 @@ import subprocess
 import tempfile
 import unittest
 
+import host_load
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GODOT = ROOT / "build/godot/bin/godot"
 
@@ -32,7 +34,7 @@ def run_godot(*args, env=None):
         env=env,
         text=True,
         capture_output=True,
-        timeout=20,
+        timeout=host_load.limit(40),
         check=False,
     )
 

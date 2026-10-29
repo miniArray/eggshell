@@ -1,6 +1,6 @@
 extends SceneTree
-## Sound events, the listening ghost and the empty object code. Invented placements and
-## controlled states only. No frames, recordings, packs or devices.
+## Sound events, the listening ghost, the empty object code and span drawing parts.
+## Invented placements and controlled states only. No frames, recordings or devices.
 const World = preload("res://src/sim/world.gd")
 const State = preload("res://src/sim/play_state.gd")
 const Registry = preload("res://src/sim/registry.gd")
@@ -29,6 +29,7 @@ func _initialize() -> void:
 	_empty_code_checks()
 	_span_part_checks()
 	_span_node_checks()
+	_span_body_checks()
 	print("LASTCODES_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -334,6 +335,55 @@ func _span_node_checks() -> void:
 		"Pack stalk art repeats down the stalk's height"
 	)
 	ledge.free()
+
+
+## A fixed span's body with pack art draws in the pack's slices, not one stretched image.
+func _span_body_checks() -> void:
+	var plain := SpanDressing.slices({})
+	check(
+		plain == {"left": 0, "right": 0, "top": 0, "bottom": 0, "tile": true},
+		"Without slices the whole image repeats"
+	)
+	var cut := SpanDressing.slices(
+		{"slices": {"left": 32, "right": 30, "top": 16, "bottom": -1, "fill": "stretch"}}
+	)
+	check(
+		cut.left == 32 and cut.right == 30 and cut.top == 16 and cut.bottom == 0 and not cut.tile,
+		"Slices read margins; an invalid margin reads as 0"
+	)
+	var entry := {"file": "objects/e1.png", "origin": [0, 0], "slices": {"left": 4, "right": 6}}
+	var span := Sprite2D.new()
+	span.scale = Vector2(10, 1)
+	var pack := ProjectSettings.globalize_path(PACK)
+	SpanDressing.attach(span, {"objects": {"p9": entry}}, pack, "p9", {}, 320)
+	var holder: Node2D = span.get_child(0) if span.get_child_count() else null
+	var patch: NinePatchRect = holder.get_child(0) if holder != null else null
+	check(
+		(
+			patch != null
+			and patch.size == Vector2(320, 56)
+			and patch.patch_margin_left == 4
+			and patch.patch_margin_right == 6
+			and patch.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_TILE
+		),
+		"A log span's body tiles its pack image across the span"
+	)
+	check(
+		(
+			holder != null
+			and (span.transform * holder.transform).get_scale().is_equal_approx(Vector2.ONE)
+		),
+		"The body keeps art pixels at world size under the stretched node"
+	)
+	check(span.self_modulate.a == 0.0, "The node's own stretched image is hidden")
+	span.free()
+	var bare := Sprite2D.new()
+	SpanDressing.attach(bare, {}, pack, "p9", {}, 320)
+	check(
+		bare.get_child_count() == 0 and bare.self_modulate.a == 1.0,
+		"Without pack art the span keeps its diagnostic box"
+	)
+	bare.free()
 
 
 func check(value: bool, message: String) -> void:

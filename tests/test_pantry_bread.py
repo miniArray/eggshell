@@ -1,12 +1,16 @@
 """The shipped Pantry pack is reproducible offline from its reviewed Nano Banana sources."""
 
 import hashlib
+import importlib.util
 import pathlib
 import subprocess
 import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("host_load", ROOT / "tools/host_load.py")
+HOST_LOAD = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOST_LOAD)
 PACK = ROOT / "packs/pantry"
 # Reviewed source bytes; provenance and prompts are in art/pantry/README.md.
 SOURCES = {
@@ -28,7 +32,7 @@ def godot(*args):
         ["godot", "--headless", "--path", str(ROOT), *args],
         text=True,
         capture_output=True,
-        timeout=120,
+        timeout=HOST_LOAD.limit(120),
         check=False,
     )
 

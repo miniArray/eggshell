@@ -112,7 +112,13 @@ autosave and the slot of each level are in `levels/<level identity>/` instead
 of the top of the save directory.
 
 Invalid state encodes to an empty payload. Save callers skip that payload, so a
-failed validation cannot replace a valid slot with empty bytes.
+failed validation cannot replace a valid slot with empty bytes. Play goes on.
+`Snapshot.refusal(state)` names the first failing check: for an entity, its id,
+its code and the field whose default would make it valid (for example
+`entity 55 (e35): timer = -2`). The game logs `Save skipped: invalid snapshot
+state: <reason>` once for each new reason, not on every autosave.
+`tests/valid_states.gd` plays every registered type on invented terrain with
+seeded input and hook strikes and checks that its state stays valid.
 
 Writes happen on a persistent worker. A write flushes and closes a temporary
 file, then renames it within the save directory. It does not synchronize the
