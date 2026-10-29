@@ -174,14 +174,25 @@ static func open_message(entity: Dictionary, state: Dictionary, world: Dictionar
 	if state.modal_token or entity.busy or Life.blocks_step(state):
 		return
 	bump_above(entity, state, world)
-	entity.enabled = 0
-	entity.solid_ready = 0
+	# The block stays solid for the rest of this step, so the head bump that opened it
+	# stops the player like any ceiling. consume_level_requests disables it at step end.
 	state.modal_token = entity.token
 	state.message_stage = OPENING
 	state.message_ticks = 78
 	state.message_section = 0
 	state.message_scroll = 0
 	state.message_previous = state.previous_input
+
+
+static func consume_level_requests(state: Dictionary, world: Dictionary) -> void:
+	if state.message_stage != OPENING or state.message_ticks != 78:
+		return
+	var entity: Dictionary = registry().find_token(state, state.modal_token)
+	if entity.is_empty() or entity.code != "o18" or not entity.enabled:
+		return
+	entity.enabled = 0
+	entity.solid_ready = 0
+	Collision.refresh(world, entity)
 
 
 static func toggle(entity: Dictionary, state: Dictionary, _world: Dictionary) -> void:

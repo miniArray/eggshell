@@ -210,7 +210,10 @@ func view_checks() -> void:
 		not entry.node.visible and not entry.head.visible, "Dynamic hidden body and head are hidden"
 	)
 	Registry.lookup("o18").bump(by_id(state, "note"), state, world, 0)
+	# The step's end disables the opened block; only then is the state saveable.
+	Registry.consume_requests(state, world)
 	bytes = Snapshot.encode(state)
+	check(not bytes.is_empty(), "An opened message is saveable at the step's end")
 	view.render(state)
 	var hud := view.get_node("RunHud")
 	check(
