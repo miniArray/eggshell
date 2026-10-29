@@ -41,7 +41,12 @@ const BOB := [
 
 
 static func prepare(
-	state: Dictionary, input: int, world: Dictionary, pressed := 0, posture_allowed := true
+	state: Dictionary,
+	input: int,
+	world: Dictionary,
+	pressed := 0,
+	posture_allowed := true,
+	frozen := false
 ) -> Dictionary:
 	if (
 		not state.swimming
@@ -65,12 +70,13 @@ static func prepare(
 		if not state.water_deep:
 			state.vy = 0
 			state.water_wait = 16
-		if state.water_wait:
-			state.water_wait -= 1
-		else:
-			state.vy -= 384
+		if not frozen:
+			if state.water_wait:
+				state.water_wait -= 1
+			else:
+				state.vy -= 384
 	else:
-		if not World.water_at(world, state.x, state.y - 28 * S):
+		if not frozen and not World.water_at(world, state.x, state.y - 28 * S):
 			state.vy += 256
 		if state.vy < 0 and not state.move_water_jump:
 			state.vy = 0
@@ -80,13 +86,14 @@ static func prepare(
 		if dive != state.move_dive:
 			state.move_dive = dive
 			state.move_water_transition = 9
-		else:
+		elif not frozen:
 			state.move_water_transition = maxi(0, state.move_water_transition - 1)
 		if dive and state.vx and state.move_water_transition <= 3:
 			state.move_water_transition = 0
 	var phase: int = state.water_phase
-	state.water_phase = (phase + 1) % 60
-	var bob := bob_position(phase + 1) - bob_position(phase)
+	if not frozen:
+		state.water_phase = (phase + 1) % 60
+	var bob := 0 if frozen else bob_position(phase + 1) - bob_position(phase)
 	var jump: bool = (
 		bool(pressed & InputBits.JUMP)
 		and state.vy < 96 * 60

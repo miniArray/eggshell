@@ -187,7 +187,8 @@ static func before_step(
 
 
 static func blocks_step(state: Dictionary) -> bool:
-	# The last restart step runs the world and moves the body, without input.
+	# Block world/body motion, not REJOIN's player events. The last restart step runs
+	# the world and moves the body, without input.
 	var phase := int(state.get("life_phase", PLAY))
 	return phase != PLAY and not (phase == FADE_IN and int(state.get("life_ticks", 0)) == 1)
 

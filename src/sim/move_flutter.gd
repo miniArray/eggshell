@@ -56,7 +56,7 @@ static func cancel(state: Dictionary) -> void:
 
 ## One flutter step: STARTED when a lift starts, LANDED when a lift that landed ends
 ## here (the caller lifts the body before the move), NONE otherwise.
-static func step(state: Dictionary, input: int) -> int:
+static func step(state: Dictionary, input: int, frozen := false) -> int:
 	if state.flutter_remaining and state.on_floor:
 		state.vx = clampi(state.vx, -256 * 60, 256 * 60)
 		cancel(state)
@@ -83,10 +83,12 @@ static func step(state: Dictionary, input: int) -> int:
 			1, state.flutter_remaining + (21 if state.move_flow else -21)
 		)
 		state.move_flutter_flow = state.move_flow
+	state.vx = clampi(state.vx, -256 * 60, 256 * 60)
+	if frozen:
+		return result
 	# Fixed rational coefficients for the two supported contact states at 60 Hz.
 	var coefficient := 50569 if state.move_flutter_flow else 37649
 	state.vy += ((-424 if state.boosted_flutter else -264) * 60 - state.vy) * coefficient / 1000000
-	state.vx = clampi(state.vx, -256 * 60, 256 * 60)
 	state.flutter_remaining -= 1
 	if state.flutter_remaining == 0:
 		state.flutter_cooldown = COOLDOWN

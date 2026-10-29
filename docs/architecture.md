@@ -119,8 +119,15 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    fall, a countdown or a quick restart, until the restart) the body keeps moving
    without control: the input of the death step steers it once, then it keeps the
    airborne braking it had. A hazard death holds the body. Return when
-   `Life.blocks_step` holds; the last restart step does not block, so it runs the
-   world and moves the body without input.
+   `Life.blocks_step` holds. During REJOIN, first sample input edges and run Moves
+   with `frozen = true`, then finish the player pose. This runs event rules such as
+   jump, jump release, posture and action requests. It does not tick player timers,
+   apply acceleration, gravity or flutter damping, carry supports, move the body,
+   run registry steps or contacts, or change the camera. Consume newly published
+   player requests immediately, so repeated input cannot overflow their saved history.
+   Actors created by those events do not move or tick. Hurt locks still apply.
+   The last restart step does not block, so it runs the world and moves the body
+   without input.
 3. Sample input edges. Call `Collision.begin_step` immediately before
    `Registry.advance`, capturing the old solid geometry before object motion.
    `Registry.advance` runs `dispatch_loops.gd`: the lifecycle on the reference
@@ -151,8 +158,8 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    ice shots first, then entity consumers), then `Life.after_step`, then
    `Registry.compact` once outside entity loops. Captured players skip movement/contact paths but
    still reach request cleanup and compaction.
-8. Save the fixed follow point. Finish the movement pose only during uncaptured
-   active play.
+8. Save the fixed follow point. Finish the movement pose during uncaptured active
+   play. The REJOIN event path also finishes the pose, without changing that point.
 
 Hurt locks are saved in `hurt` (steps left) and `hurt_phase`. A first dry-land hit
 starts the knock-back pose with a 38-step lock (`Life.start_hurt(state,
@@ -162,7 +169,12 @@ the knock-back pose lasts starts the look-around: a new 43-step lock
 without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
 death fades for 32; input works again on the third step after the respawn. Contact
 immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
-A companion catch freezes the world for 51 steps. The companion bubble uses an
+A companion catch freezes the world for 51 steps, but accepts player input events.
+Releasing jump cuts rising velocity once. A new ground jump changes velocity and
+pose immediately, without moving the body. The saved `previous_input` consumes
+both edges during the freeze, so resuming does not replay them. These event-only
+steps use the same fixed 60 Hz schedule and snapshot schema as ordinary play.
+The companion bubble uses an
 octagon for terrain contact, not its rectangular hull. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers
 aside with a hop and a 60-step horizontal ease to rest.

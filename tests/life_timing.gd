@@ -7,7 +7,10 @@ const Sim = preload("res://src/sim/step.gd")
 const Life = preload("res://src/sim/life.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const Bits = preload("res://src/sim/move_input.gd")
+const Moves = preload("res://src/sim/moves.gd")
+const Snapshot = preload("res://src/save/snapshot.gd")
 const Courses = preload("res://tests/moves.gd")
+const Fixtures = preload("res://tests/fixtures.gd")
 const S := 3600
 var checks := 0
 var failures := 0
@@ -20,6 +23,11 @@ func _initialize() -> void:
 	restart_checks()
 	dead_body_checks()
 	level_start_checks()
+	catch_input_checks()
+	catch_freeze_checks()
+	catch_water_checks()
+	catch_buffered_jump_checks()
+	catch_request_checks()
 	validation_checks()
 	print("LIFE_TIMING_RESULT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -237,6 +245,260 @@ func level_start_checks() -> void:
 	check(
 		first_input_step(standing, ground, 10) == 1,
 		"input works on the first step after the level start"
+	)
+
+
+func caught_player(world: Dictionary) -> Dictionary:
+	var state := Courses.actor(world)
+	Life.separate(state, 0, true)
+	check(
+		Life.catch_companion(state, state.x - 32 * S, state.y - 80 * S, state.x + 32 * S, state.y),
+		"the synthetic player catches the companion"
+	)
+	return state
+
+
+func catch_input_checks() -> void:
+	var air := Courses.empty_world()
+	var released := caught_player(air)
+	released.previous_input = Bits.RIGHT | Bits.JUMP
+	released.vx = 358 * 60
+	released.vy = -366 * 60
+	released.move_action = Moves.HEAD_BUMP
+	released.move_action_tick = 3
+	released.flutter_cooldown = 7
+	released.jump_buffer = 4
+	var at := [released.x, released.y, released.vx, released.camera_x, released.camera_y]
+	var clocks := [released.play_ticks, released.attempt_ticks, released.total_play_ticks]
+	var entities: Array = released.entities.duplicate(true)
+	Sim.advance(released, Bits.RIGHT, air)
+	check(
+		released.vy == -366 * 60 / 4,
+		"releasing jump during the catch cuts rising speed immediately"
+	)
+	check(released.previous_input == Bits.RIGHT, "the catch consumes the release edge")
+	for count in 10:
+		Sim.advance(released, Bits.RIGHT, air)
+	check(released.vy == -366 * 60 / 4, "a held release cuts speed once and adds no frozen gravity")
+	check(
+		[released.x, released.y, released.vx, released.camera_x, released.camera_y] == at,
+		"catch input does not move the player or camera or accelerate the body"
+	)
+	check(
+		(
+			[released.play_ticks, released.attempt_ticks, released.total_play_ticks] == clocks
+			and released.entities == entities
+		),
+		"catch input does not advance play clocks or world actors"
+	)
+	check(
+		(
+			released.move_action_tick == 3
+			and released.flutter_cooldown == 7
+			and released.jump_buffer == 4
+		),
+		"catch input does not advance action, flutter or buffered-jump timers"
+	)
+	var ground := Courses.floor_world()
+	var jumped := caught_player(ground)
+	at = [jumped.x, jumped.y]
+	Sim.advance(jumped, Bits.RIGHT | Bits.JUMP, ground)
+	check(
+		jumped.vy == -Moves.JUMP_SPEED and not jumped.on_floor,
+		"a new jump during the catch changes velocity without motion"
+	)
+	check(jumped.movement == 3, "a new jump during the catch selects the jump pose")
+	check([jumped.x, jumped.y] == at, "a frozen jump does not move the grounded body")
+	Sim.advance(jumped, Bits.RIGHT, ground)
+	check(jumped.vy == -Moves.JUMP_SPEED / 4, "a frozen jump can be released before the catch ends")
+	var decoded := Snapshot.decode(Snapshot.encode(jumped), ground.identity)
+	check(decoded.ok, "a jump during the catch remains valid saved state")
+	var restored: Dictionary = decoded.get("state", {}).duplicate(true)
+	for count in Life.REJOIN_STEPS - 3:
+		Sim.advance(jumped, Bits.RIGHT, ground)
+		if decoded.ok:
+			Sim.advance(restored, Bits.RIGHT, ground)
+	check([jumped.x, jumped.y] == at, "the body stays frozen until the last catch step")
+	Sim.advance(jumped, Bits.RIGHT | Bits.JUMP, ground)
+	if decoded.ok:
+		Sim.advance(restored, Bits.RIGHT | Bits.JUMP, ground)
+	check(
+		jumped.life_phase == Life.PLAY and jumped.y < at[1] and jumped.vy == -Moves.JUMP_SPEED / 4,
+		"play resumes with the cut jump rather than a deferred full jump"
+	)
+	check(jumped == restored, "restoring inside the catch preserves input edges and future motion")
+
+
+func catch_freeze_checks() -> void:
+	var world := Fixtures.world()
+	var state := caught_player(world)
+	check(not state.entities.is_empty(), "the catch freeze includes real world actors")
+	var entities: Array = state.entities.duplicate(true)
+	state.move_action = Moves.TONGUE
+	state.move_tongue_phase = Moves.TONGUE_OUT
+	state.move_action_tick = 5
+	state.move_digest_ticks = 4
+	state.hurt = 2
+	state.invulnerable = 19
+	var clocks := [state.play_ticks, state.attempt_ticks, state.total_play_ticks]
+	var at := [state.x, state.y]
+	for count in 10:
+		Sim.advance(state, Bits.RIGHT | Bits.JUMP, world)
+	check(state.entities == entities, "catch input leaves every real world actor unchanged")
+	check(
+		[state.x, state.y] == at and state.hurt == 2 and state.invulnerable == 19,
+		"a catch preserves the body and hurt/immunity timers"
+	)
+	check(
+		(
+			[state.play_ticks, state.attempt_ticks, state.total_play_ticks] == clocks
+			and state.move_digest_ticks == 4
+		),
+		"a catch preserves run clocks and the digestion timer"
+	)
+	check(state.vy != -Moves.JUMP_SPEED, "a catch does not bypass the hurt input lock")
+	var air := Courses.empty_world()
+	state = caught_player(air)
+	state.flutter_remaining = 20
+	state.flutter_ready = 0
+	state.vx = 400 * 60
+	state.vy = -100 * 60
+	state.previous_input = Bits.JUMP
+	Sim.advance(state, Bits.JUMP, air)
+	check(
+		state.flutter_remaining == 20 and state.vy == -100 * 60 and state.vx == 256 * 60,
+		"frozen flutter keeps its timer and speed but still applies its event clamp"
+	)
+	Sim.advance(state, 0, air)
+	check(
+		state.vy == -25 * 60 and state.flutter_remaining == 0 and state.flutter_cooldown == 17,
+		"a frozen flutter release cuts speed and cancels without damping"
+	)
+	Sim.advance(state, Bits.DOWN, air)
+	check(
+		state.move_action == Moves.POUND_START and state.vx == 0 and state.vy == 0,
+		"a frozen down event starts the pound pose without moving the body"
+	)
+	for count in 30:
+		Sim.advance(state, Bits.DOWN, air)
+	check(state.move_action_tick == 0, "a frozen pound never advances its windup")
+	var ground := Courses.floor_world()
+	state = caught_player(ground)
+	Sim.advance(state, Bits.UP, ground)
+	check(state.move_look == 1, "a frozen held up event changes posture")
+	Sim.advance(state, Bits.DOWN, ground)
+	check(
+		state.move_duck == 1 and state.move_look == 0, "a frozen down event changes ground posture"
+	)
+	for count in 5:
+		Sim.advance(state, Bits.DOWN, ground)
+	check(state.move_posture_tick == 0, "a frozen posture never advances its animation timer")
+	state.move_eggs = 2
+	Sim.advance(state, Bits.THROW, ground)
+	var angle: int = state.move_aim_angle
+	Sim.advance(state, 0, ground)
+	check(
+		state.move_aim == 1 and state.move_aim_angle == angle,
+		"a frozen aim starts but never sweeps with elapsed time"
+	)
+	Sim.advance(state, Bits.THROW, ground)
+	check(
+		state.move_eggs == 1 and state.move_action == Moves.TOSS and state.move_emit_serial == 1,
+		"a frozen throw publishes one saved request without advancing the world"
+	)
+
+
+func catch_water_checks() -> void:
+	var water := Courses.water_world()
+	water.spawn_y = 410 * S
+	var state := caught_player(water)
+	var at := [state.x, state.y]
+	var clocks := [state.water_wait, state.water_phase, state.move_water_transition]
+	state.vy = -100 * 60
+	state.previous_input = Bits.JUMP
+	Sim.advance(state, 0, water)
+	check(
+		state.swimming == 1 and state.vy == -25 * 60,
+		"frozen water still accepts a jump release without buoyancy"
+	)
+	for count in 5:
+		Sim.advance(state, 0, water)
+	check(
+		(
+			[state.x, state.y] == at
+			and [state.water_wait, state.water_phase, state.move_water_transition] == clocks
+		),
+		"frozen water does not bob or advance lift and transition timers"
+	)
+	var flow := Courses.empty_world()
+	flow.layers.append(Courses.layer("flowWater", false, false, [[3, 2]]))
+	# A full downward flow over the player; it must not add continuous acceleration.
+	flow.spawn_x = 112 * S
+	state = caught_player(flow)
+	at = [state.x, state.y]
+	state.vy = 100 * 60
+	for count in 5:
+		Sim.advance(state, Bits.RIGHT, flow)
+	check(
+		[state.x, state.y] == at and state.vy == 100 * 60,
+		"frozen flow does not push the body or add gravity"
+	)
+	flow.layers[0].cells[2 * 32 + 3] = 4
+	Sim.advance(state, 0, flow)
+	check([state.x, state.y] == at, "a frozen sideways flow never translates the body")
+	flow.layers[0].cells[2 * 32 + 3] = 6
+	state.vx = 100 * 60
+	Sim.advance(state, Bits.JUMP, flow)
+	check(
+		[state.x, state.y] == at and state.vx == -400 * 60 and state.vy == -Moves.JUMP_SPEED,
+		"a frozen sloped-flow jump changes velocity without its opposing-speed or flow pushes"
+	)
+
+
+func catch_buffered_jump_checks() -> void:
+	var world := Courses.floor_world()
+	var state := caught_player(world)
+	# A landing can start a buffered jump just before contact catches the companion.
+	Moves.jump(state)
+	state.move_jump_carry = 1
+	state.previous_input = Bits.JUMP
+	Sim.advance(state, 0, world)
+	check(
+		state.vy == -Moves.JUMP_SPEED / 4 and state.move_jump_carry == 0,
+		"the catch consumes a pending landing-jump event before its release"
+	)
+	for count in Life.REJOIN_STEPS - 1:
+		Sim.advance(state, 0, world)
+	check(
+		state.life_phase == Life.PLAY and state.vy == -Moves.JUMP_SPEED / 4,
+		"a landing-jump release is not overwritten by a carried full jump after the catch"
+	)
+
+
+func catch_request_checks() -> void:
+	var world := Courses.empty_world()
+	var state := caught_player(world)
+	state.move_eggs = 6
+	for count in 6:
+		Sim.advance(state, Bits.THROW, world)
+		Sim.advance(state, 0, world)
+		Sim.advance(state, Bits.THROW, world)
+		Sim.advance(state, 0, world)
+	check(
+		(
+			state.entities.size() == 6
+			and state.move_eggs == 0
+			and state.egg_request_cursor == state.move_emit_serial
+		),
+		"frozen throws consume each event before the saved request history can overflow"
+	)
+	var all_frozen := true
+	for entity: Dictionary in state.entities:
+		all_frozen = all_frozen and entity.x == state.x and entity.y == state.y - 32 * S
+	check(all_frozen, "actors created by frozen input events never advance or move")
+	check(
+		Snapshot.decode(Snapshot.encode(state), world.identity).ok,
+		"actors created by frozen input events remain valid saved state"
 	)
 
 
