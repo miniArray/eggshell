@@ -175,6 +175,9 @@ static func activation_bounds(entity: Dictionary) -> Array:
 			else [-14 * S, -32 * S, 18 * S, 22 * S]
 		)
 		return Body.world_box(entity, picture)
+	if entity.code == "e3":
+		# Wake by the first walking picture, not the narrower contact body.
+		return Body.picture_box(entity, [-24, -36, 16, 16])
 	return Body.world_box(entity, Motion.box(entity, entity.code))
 
 
