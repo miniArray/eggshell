@@ -317,6 +317,10 @@ func leap_and_capture_checks(world: Dictionary) -> void:
 		"Plant release flashes with release deceleration"
 	)
 	check(
+		player.hurt == Life.KNOCKED_LOCK and player.hurt_phase == Life.HURT_KNOCKED,
+		"Plant release starts the knock-back lock"
+	)
+	check(
 		Save.encode(player) == Save.encode(restored.state),
 		"Capture and escape future matches restore"
 	)
