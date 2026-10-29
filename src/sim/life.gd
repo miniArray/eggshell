@@ -179,8 +179,10 @@ static func before_step(
 	state.invulnerable = maxi(0, state.invulnerable - 1)
 	_hurt_step(state)
 	state.separation_grace = maxi(0, state.separation_grace - 1)
-	_countdown_step(state, world)
+	# The companion moves before the countdown: captors summoned at zero appear after the
+	# bubble's last move and first chase it on the next step.
 	_companion_step(state, world)
+	_countdown_step(state, world)
 	return false
 
 

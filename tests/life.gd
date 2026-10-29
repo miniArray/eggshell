@@ -299,6 +299,8 @@ func rescue_checks() -> void:
 	far.camera_x = 1000000000000
 	var far_start: int = far.camera_x - 120 * S
 	step(far, wide)
+	check(far.rescue_1_x == far_start, "Captors appear without moving on the step they come")
+	step(far, wide)
 	check(
 		far.rescue_1_x < far_start and far.rescue_1_x >= far_start - 1024 * 60,
 		(
