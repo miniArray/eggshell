@@ -296,7 +296,7 @@ static func advance(
 		dx = 0
 		dy = 0
 	if can_move:
-		Collision.horizontal(state, world, bounds, dx, support, jumping, JUMP_SPEED)
+		Collision.horizontal(state, world, bounds, dx, support, jumping, JUMP_SPEED, false)
 	var vertical := dy + bob
 	var moved := Collision.vertical(state, world, bounds, vertical, support) if can_move else 0
 	var floor := Collision.floor_at(state, world, bounds)
@@ -306,7 +306,13 @@ static func advance(
 		can_move and ((vertical > 0 and moved != vertical) or (vertical == 0 and floor != 0))
 	)
 	state.support_bridge = maxi(0, floor) if state.on_floor else 0
-	if moved != vertical and vertical < 0 and state.move_action == NORMAL:
+	# The head bump pose starts when the fall begins under a ceiling; a flutter never falls.
+	if (
+		moved != vertical
+		and vertical < 0
+		and state.move_action == NORMAL
+		and not state.flutter_remaining
+	):
 		_set_action(state, HEAD_BUMP)
 	if state.on_floor:
 		state.vy = 0
