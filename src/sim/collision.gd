@@ -482,7 +482,8 @@ static func horizontal(
 	distance: int,
 	support: int,
 	jumping: bool = false,
-	jump_speed: int = DEFAULT_JUMP
+	jump_speed: int = DEFAULT_JUMP,
+	touch_stops: bool = true
 ) -> int:
 	if distance == 0:
 		return 0
@@ -547,7 +548,9 @@ static func horizontal(
 					body.y = saved_y
 		elif floor != 0 and body.vy == 0:
 			refine(body, world, bounds, 0, -1, floor if _one_way(world, floor) else 0)
-	if body.vx != 0 and by_wall(body, world, bounds, 1 if body.vx > 0 else -1):
+	# A body that only touches a wall keeps its speed here when the caller checks the wall
+	# after its vertical move and acceleration (the player, like the original's platform).
+	if touch_stops and body.vx != 0 and by_wall(body, world, bounds, 1 if body.vx > 0 else -1):
 		body.vx = 0
 	return body.x - start_x
 

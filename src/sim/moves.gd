@@ -9,6 +9,7 @@ const Tongue = preload("res://src/sim/move_tongue.gd")
 const Requests = preload("res://src/sim/move_requests.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Flutter = preload("res://src/sim/move_flutter.gd")
+const Facing = preload("res://src/sim/move_facing.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const INPUT_MASK := InputBits.MASK
 const ACCELERATION := 512
@@ -212,6 +213,11 @@ static func advance(
 		state.move_aim = 0
 		if not was_swimming and state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 			_set_action(state, NORMAL)
+	Facing.update(
+		state,
+		input,
+		state.move_action in [POUND_START, POUND_FALL, POUND_LAND, TONGUE, SPIT, LAY, EMIT]
+	)
 	if not state.hurt:
 		_actions(state, input, pressed, world)
 	_posture(state, input, world)
@@ -251,18 +257,6 @@ static func advance(
 	# braking, before the swimming test (head point) starts.
 	var liquid: bool = state.swimming != 0 or Water.body_overlaps(state, world, bounds)
 	var speed := 200 * 60 if liquid else (336 * 60 if state.move_snow else MAX_SPEED)
-	var facing_locked: bool = (
-		state.move_aim
-		or state.move_duck
-		or state.move_action in [TONGUE, SPIT, EMIT, POUND_START, POUND_FALL, POUND_LAND]
-	)
-	if (
-		was_grounded
-		and state.move_snow
-		and not facing_locked
-		and input & (InputBits.LEFT | InputBits.RIGHT)
-	):
-		state.facing = 1 if input & InputBits.RIGHT else -1
 	var deceleration := _deceleration(state, input, liquid)
 	var acceleration := 256 if liquid else (192 if state.move_snow else ACCELERATION)
 	if state.move_action in [TONGUE, SPIT, EMIT, LAY]:
@@ -302,7 +296,7 @@ static func advance(
 		dx = 0
 		dy = 0
 	if can_move:
-		Collision.horizontal(state, world, bounds, dx, support, jumping, JUMP_SPEED)
+		Collision.horizontal(state, world, bounds, dx, support, jumping, JUMP_SPEED, false)
 	var vertical := dy + bob
 	var moved := Collision.vertical(state, world, bounds, vertical, support) if can_move else 0
 	var floor := Collision.floor_at(state, world, bounds)
@@ -312,7 +306,13 @@ static func advance(
 		can_move and ((vertical > 0 and moved != vertical) or (vertical == 0 and floor != 0))
 	)
 	state.support_bridge = maxi(0, floor) if state.on_floor else 0
-	if moved != vertical and vertical < 0 and state.move_action == NORMAL:
+	# The head bump pose starts when the fall begins under a ceiling; a flutter never falls.
+	if (
+		moved != vertical
+		and vertical < 0
+		and state.move_action == NORMAL
+		and not state.flutter_remaining
+	):
 		_set_action(state, HEAD_BUMP)
 	if state.on_floor:
 		state.vy = 0
@@ -341,8 +341,8 @@ static func advance(
 		state.vx = state.move_turn * 96 * 60
 		state.move_turn = 0
 		state.move_turn_ticks = 0
-	if (was_grounded or state.swimming) and not facing_locked and not state.move_snow and state.vx:
-		state.facing = 1 if state.vx > 0 else -1
+	if state.swimming and not state.move_aim and state.move_action not in [TONGUE, SPIT, EMIT]:
+		state.facing = 1 if state.vx > 0 else (-1 if state.vx < 0 else state.facing)
 	if (
 		state.on_floor
 		and state.jump_buffer
@@ -453,7 +453,7 @@ static func player_box(state: Dictionary) -> Array:
 		height = (54 if state.move_action_wet else 56) if state.move_tongue_axis else 50
 	elif action == EMIT:
 		height = 56 if state.move_tongue_axis else (50 if state.swimming else 54)
-	elif action == HEAD_BUMP and tick * 24 / 60 == 1:
+	elif action == HEAD_BUMP and tick >= 3 and tick <= 5:  # Frame 1 (frames restart timing).
 		return [-14 * S, -56 * S, 10 * S, 0]
 	elif action == NORMAL and state.swimming:
 		if state.get("move_water_transition", 0):
