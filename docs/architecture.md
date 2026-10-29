@@ -104,18 +104,37 @@ Before a step, and never while the pause menu is open, the game copies the quick
 death setting into the saved player field `quick_death`. Nothing else outside the
 simulation writes play state.
 
+`PlayState.create` ends with `Simulation.begin_level`: the player's body runs two
+steps without input (movement, `Life.after_step` and the pose finish, no world step
+and no counted frame), so a level that starts in mid-air is already falling at
+step 0.
+
 1. Synchronize the selected map and increment the simulation frame. Dispatch
    `Registry.modal_step`; return while a message or switch holds the world.
 2. Advance `Life.before_step` with the registry reset callback and bound map
-   change callback. Reset Moves on respawn. Return when `Life.blocks_step` holds.
+   change callback. Reset Moves on respawn. While `Life.body_moves` holds (after a
+   fall, a countdown or a quick restart, until the restart) the body keeps moving
+   without control: the input of the death step steers it once, then it keeps the
+   airborne braking it had. A hazard death holds the body. Return when
+   `Life.blocks_step` holds; the last restart step does not block, so it runs the
+   world and moves the body without input.
 3. Sample input edges. Call `Collision.begin_step` immediately before
    `Registry.advance`, capturing the old solid geometry before object motion.
-   `Registry.advance` runs `dispatch_loops.gd`: the camera lifecycle
-   (`entity_lifecycle.gd`) and the step of every entity, in table order and
-   phase order, including rows appended during the loop.
-4. Unless captured, advance Moves. Its `Collision.prepare` carries the player
+   `Registry.advance` runs `dispatch_loops.gd`: the lifecycle on the reference
+   screen (`entity_lifecycle.gd`, see [reference screen](#reference-screen-and-map-borders))
+   and the step of every entity, in table order and phase order, including rows
+   appended during the loop.
+4. `Life.locks_input` holds during a hurt lock (`hurt` above 0) and on the last
+   restart step: movement and contacts then see no input and no edges. Unless
+   captured, advance Moves. Its `Collision.prepare` carries the player
    using old and new support positions before floor and jump processing. Object
    motion must precede this carry. Water entry/exit braking remains 128/1296.
+   Within Moves, a step that starts on a floor adds no gravity unless it jumps
+   (walking off a ledge, a ground knock-back); rules before the move see a floor
+   only once the body stands on it, so a fall that ends just above a floor lands
+   on the next step. Flutter rules (`move_flutter.gd`) run after gravity; a flutter
+   release or landing still damps that step. Any body overlap with water sets the
+   water speed cap before swimming starts.
 5. Dispatch registry contacts (`dispatch_loops.gd`, three contact phases). On a not-GOAL to GOAL transition, convert eligible
    visible active enemy bodies once. Keep the goal pose and delay.
 6. Dispatch `Registry.tongue_contact` with the eating tip sensor. Check companion
@@ -126,6 +145,14 @@ simulation writes play state.
    still reach request cleanup and compaction.
 8. Save the fixed follow point. Finish the movement pose only during uncaptured
    active play.
+
+Hurt locks are saved in `hurt` (steps left) and `hurt_phase`. A first dry-land hit
+starts the knock-back pose with a 38-step lock (`Life.start_hurt(state,
+Life.KNOCKED_LOCK, true)`; the plant's release uses the same call). Landing while
+the knock-back pose lasts starts the look-around: a new 43-step lock
+(`Life.LOOK_AROUND_LOCK`). A hit while the companion is away spins for 63 steps
+without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
+death fades for 32; input works again on the third step after the respawn.
 
 Movement, damage, life and some types emit sound events during these phases
 (`SoundEvents.emit`). Listeners compare their saved serial in their own step, so
@@ -256,6 +283,22 @@ differs, so it hears only the latest event of a step, one step later. It takes t
 current serial when it activates, so sounds from before then are not news. A restored
 snapshot carries the serial and every cursor, so restoring replays nothing. The
 audio view still derives its cues from state and does not read these fields.
+
+## Reference screen and map borders
+
+`src/sim/screen.gd` is the fixed 832×448 reference screen. Its centre follows the
+saved follow point (the player 64 px up) and stops at the map edges; on a map
+smaller than the screen the right and bottom limits win. Every simulation
+"on screen" rule uses it: activation, despawn and respawn distances, goal coins,
+area clears and the on-screen egg count. Despawn measures an object's origin, more
+than 832 px from the screen centre on either axis. The screen never depends on
+the real view; the view clamps the follow point for its own size.
+
+Each side of the map has a solid border 32 px wide, from 480 px above the map to
+its bottom edge (`World.border_overlaps`). `World.overlaps_box` includes the
+borders, so they stop the player and every body that tests terrain; below the map
+the sides stay open, so pits work. `World.tiles_overlap_box` answers the tile test
+alone, for bodies that pass solid objects but not tiles.
 
 ## Terrain contacts
 
