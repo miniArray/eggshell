@@ -19,6 +19,9 @@ const REVEALED := 2
 const OPENING := 3
 const MAX_RELEASE := 1024
 const FLAP := [0, 1, 2, 3, 2, 1]
+## The original creates the cache at level load and its wave runs through the level
+## intro, so at the first step the wave has already run 152 steps.
+const INTRO_PHASE := 152
 
 
 static func prepare(source: Dictionary, _world: Dictionary) -> Dictionary:
@@ -51,6 +54,7 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 		"content": int(source.cache_content),
 		"count": int(source.cache_count),
 		"phase": int(source.cache_phase),
+		"age": INTRO_PHASE,
 		"home_y": int(source.y)
 	}
 

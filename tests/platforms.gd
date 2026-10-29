@@ -633,6 +633,8 @@ func cache_type_checks() -> void:
 	world = typed_world({"bob": {"A": "o8", "X": 200, "Y": 160}})
 	state = State.create(world)
 	entity = state.entities[0]
+	check(entity.age == 152, "a placed cache starts with the wave the level intro has run")
+	entity.age = 0
 	Collision.begin_step(state, world, Registry)
 	for tick in 45:
 		type.step(entity, state, world)
