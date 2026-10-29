@@ -118,7 +118,7 @@ static func capture(enemy: Dictionary, index: int, state: Dictionary) -> void:
 		enemy.timer = 210
 		enemy.phase = 0
 		state.captured_by = index + 1
-		state.hits += 1
+		# The capture itself is not a hurt; the separation 30 steps later counts one.
 		state.vx = 0
 		state.vy = 0
 		state.flutter_remaining = 0

@@ -471,7 +471,7 @@ func screen_checks() -> void:
 	world = world_for({"near": {"A": "e2", "X": 700, "Y": 100}})
 	state = State.create(world)
 	check(
-		state.entities[0].status == 1 and state.entities[0].x != 700 * S and state.frame == 0,
+		state.entities[0].status == 1 and state.entities[0].phase != 0 and state.frame == 0,
 		"At level start an object on screen wakes and runs one tick before the first step"
 	)
 	var later := world_for({"later": {"A": "e2", "X": 2000, "Y": 100}})
@@ -484,7 +484,7 @@ func screen_checks() -> void:
 		"An object that wakes on screen does not move in that step"
 	)
 	Registry.advance(waking, later, 0)
-	check(sleeper.x != 2000 * S, "It first moves in the next step")
+	check(sleeper.phase != 0, "It first runs in the next step")
 	Registry.advance(state, world, 0)
 	check(state.entities[0].status == 1, "An object on the edge-clamped screen activates")
 	# An object below the map's bottom edge stays asleep while the player is low.

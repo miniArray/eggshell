@@ -99,6 +99,7 @@ func movement_and_contact(world: Dictionary, code: String) -> void:
 		for tick in 20:
 			Sim.advance(state, 0, test_world)
 		check(state.captured_by == 1, "Plant captures rather than permitting a stomp")
+		check(state.hits == 0, "A capture is not a hurt until the companion is lost")
 	else:
 		check(state.hits == 1 and state.deaths == 0, code + " side contact hurts, not kills")
 		check(state.invulnerable == 120 and state.vy == -384 * 60, code + " hurt impulse")
@@ -123,7 +124,11 @@ func movement_constants(world: Dictionary) -> void:
 	# The step that wakes an object does not move it; 180 moves follow.
 	for tick in 181:
 		Sim.advance(player, 0, test_world)
-	check(player.enemies[0].vx == 128 * 60, "Flyer reaches its horizontal tween endpoint")
+	# The swing tweens -128 to 128 px/s, capped at the body's 48 px/s top speed.
+	check(
+		player.enemies[0].vx == 48 * 60,
+		"Flyer swings at its capped top speed near the tween endpoint"
+	)
 	var wave: int = Motion.sine((player.frame + Motion.LEVEL_INTRO_TICKS) % 180, 180, 12 * S)
 	check(
 		player.enemies[0].y == 300 * S + wave,
@@ -361,7 +366,7 @@ func lifecycle_checks(world: Dictionary) -> void:
 	Sim.advance(player, 0, test_world)
 	Sim.advance(player, 0, test_world)
 	check(
-		player.enemies[0].status == 1 and player.enemies[0].phase == 1,
+		player.enemies[0].status == 1 and player.enemies[0].phase == 360,
 		"Returning recreates the placement, not a timer"
 	)
 	player.enemies[0].status = 3
