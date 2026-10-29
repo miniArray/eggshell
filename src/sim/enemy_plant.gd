@@ -3,6 +3,7 @@ extends RefCounted
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Life = preload("res://src/sim/life.gd")
 const S := 3600
 const CHEW_REACH := 44  # Head anchor reach relative to the stem origin.
 const HEAD := [50, 22, 30, 34, 8, 26, -2, 8, 8, -10, 30, -20, 50, -8, 62, 8]
@@ -138,7 +139,7 @@ static func release(enemy: Dictionary, state: Dictionary) -> void:
 	enemy.timer = 30
 	state.captured_by = 0
 	state.invulnerable = 120
-	state.hurt = 36
+	Life.start_hurt(state, Life.KNOCKED_LOCK, true)
 	state.hurt_deceleration = 648
 	state.vx = enemy.facing * 400 * 60
 	state.vy = -384 * 60

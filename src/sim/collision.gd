@@ -14,8 +14,6 @@ const CELL := 128 * S
 ## A probe covering more cells than this scans every row, as the unindexed path did.
 const MAX_PROBE_CELLS := 64
 const NO_CONTEXT := {}
-const MAP_BORDER_WIDTH := 32 * S
-const MAP_BORDER_ABOVE := 480 * S
 ## Tests and the identity proof set this to compare every indexed query with a full scan.
 static var verify_index := false
 static var verify_failures := 0
@@ -289,18 +287,6 @@ static func overlaps(
 		body.y + bounds[3] + dy
 	):
 		return true
-	if (
-		(body.x + bounds[0] + dx <= 0 or body.x + bounds[2] + dx >= world.get("width", 0))
-		and map_border_overlaps(
-			body,
-			world,
-			body.x + bounds[0] + dx,
-			body.y + bounds[1] + dy,
-			body.x + bounds[2] + dx,
-			body.y + bounds[3] + dy
-		)
-	):
-		return true
 	for shape: Dictionary in _shapes(
 		world,
 		body.x + bounds[0] + dx,
@@ -324,22 +310,6 @@ static func overlaps(
 			and _shape_overlap(body, bounds, selected, dx, dy)
 		)
 	return false
-
-
-## The two map border walls the player collides with: 32 px wide outside each side edge,
-## from 480 px above the map down to its bottom. Below the map there is no border, so a
-## pit stays open. Other bodies pass the borders.
-static func map_border_overlaps(
-	body: Dictionary, world: Dictionary, left: int, top: int, right: int, bottom: int
-) -> bool:
-	if not is_same(body, _context(world).get("state")) or not world.has("width"):
-		return false
-	if top > world.height or bottom < -MAP_BORDER_ABOVE:
-		return false
-	return (
-		(left <= 0 and right >= -MAP_BORDER_WIDTH)
-		or (right >= world.width and left <= world.width + MAP_BORDER_WIDTH)
-	)
 
 
 static func bridge_overlap(
