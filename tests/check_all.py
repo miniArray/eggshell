@@ -37,7 +37,6 @@ def main():
         "move_input",
         "life",
         "life_timing",
-        "catch_freeze_input",
         "companion_bubble",
         "bubble_floor_support",
         "bubble_velocity",
