@@ -268,10 +268,7 @@ static func sprite_rect(node: Sprite2D) -> Variant:
 	for animation: Dictionary in art.animations.values():
 		for frame: Dictionary in animation.frames:
 			var rect := Rect2(-frame.origin, frame.texture.get_size())
-			# Sprite flips reflect the rectangle about the origin, not its collision box.
-			if node.flip_h:
-				rect.position.x = -rect.end.x
-			if node.flip_v:
-				rect.position.y = -rect.end.y
+			# Sprite flips change sampling inside this rectangle. Position-anchored
+			# mirrors use the node's signed scale, handled by the parent transform.
 			result = result.merge(rect) if result is Rect2 else rect
 	return result

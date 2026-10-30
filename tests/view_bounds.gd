@@ -79,6 +79,7 @@ func geometry_checks(density: int) -> void:
 			continue
 		var node: Sprite2D = view._placed_nodes[entity.id]
 		if entity.id == "coin":
+			box_flip_checks(node)
 			snap_checks(node, density)
 		var shape := Bounds.geometry(node)
 		check(not shape.is_empty(), "Stress art has a proven shape: " + entity.id)
@@ -113,6 +114,25 @@ func geometry_checks(density: int) -> void:
 	view.free()
 	viewport.free()
 	InputPack.remove(path)
+
+
+func box_flip_checks(node: Sprite2D) -> void:
+	var saved := node.transform
+	node.transform = Transform2D.IDENTITY
+	for flip: int in [1, 2, 3]:
+		node.flip_h = bool(flip & 1)
+		node.flip_v = bool(flip & 2)
+		var envelope: Rect2 = Bounds.tree(node, false)
+		for frame in 3:
+			Frames.apply(node, frame)
+			check(
+				envelope.grow(0.001).encloses(drawn_bounds(node)),
+				"Box flips keep the drawing rectangle and its frame origin"
+			)
+	node.flip_h = false
+	node.flip_v = false
+	node.transform = saved
+	Frames.apply(node, 0)
 
 
 func spring_checks(view: Node2D, state: Dictionary) -> void:
