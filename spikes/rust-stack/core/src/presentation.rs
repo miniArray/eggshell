@@ -8,11 +8,22 @@ pub(crate) struct Previous {
     pub player: Position,
     pub companion: Position,
     pub follow: Position,
-    pub entities: std::collections::BTreeMap<i64, (Position, Option<[i64; 4]>)>,
+    /// The previous state's entity rows, moved (not copied) from that state.
+    /// Looked up by token only for the rows a picture samples.
+    entities: Vec<crate::entity::Entity>,
+    placed: usize,
     pub rescuers: [Position; 4],
 }
 impl Previous {
-    pub fn of(run: &Run) -> Self {
+    pub fn of(run: &Run, placed: usize) -> Self {
+        Self::from_entities(run, run.entities.clone(), placed)
+    }
+    /// Takes the finished state's rows without copying them.
+    pub fn from_run(mut run: Run, placed: usize) -> Self {
+        let entities = std::mem::take(&mut run.entities);
+        Self::from_entities(&run, entities, placed)
+    }
+    fn from_entities(run: &Run, entities: Vec<crate::entity::Entity>, placed: usize) -> Self {
         Self {
             player: pos(run.player.body),
             companion: Position {
@@ -20,23 +31,48 @@ impl Previous {
                 y: run.player.recovery_y,
             },
             follow: run.camera,
-            entities: run
-                .entities
-                .iter()
-                .map(|e| {
-                    let head = match &e.kind {
-                        Kind::Walker(w)
-                            if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
-                        {
-                            Some(w.head_box(e.body, e.facing))
-                        }
-                        _ => None,
-                    };
-                    (e.origin.token(), (pos(e.body), head))
-                })
-                .collect(),
+            entities,
+            placed,
             rescuers: run.player.life.rescuers,
         }
+    }
+    pub fn into_entities(self) -> Vec<crate::entity::Entity> {
+        self.entities
+    }
+    /// Same result as the former token map: position and plant head box of the
+    /// previous row with this token, or None when the token did not exist.
+    pub fn entity(&self, token: i64) -> Option<(Position, Option<[i64; 4]>)> {
+        let row = |e: &crate::entity::Entity| {
+            let head = match &e.kind {
+                Kind::Walker(w)
+                    if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
+                {
+                    Some(w.head_box(e.body, e.facing))
+                }
+                _ => None,
+            };
+            (pos(e.body), head)
+        };
+        // Placed token t lives at index t-1 in a validated state.
+        if token >= 1 && token <= self.placed as i64 {
+            if let Some(e) = self.entities.get(token as usize - 1) {
+                if e.origin.token() == token {
+                    return Some(row(e));
+                }
+            }
+        } else if let Some(runtime) = self.entities.get(self.placed..) {
+            if let Ok(i) = runtime.binary_search_by_key(&token, |e| e.origin.token()) {
+                if runtime[i].origin.token() == token {
+                    return Some(row(&runtime[i]));
+                }
+            }
+        }
+        // Fallback for any layout the fast paths do not cover.
+        self.entities
+            .iter()
+            .rev()
+            .find(|e| e.origin.token() == token)
+            .map(row)
     }
 }
 fn pos(b: crate::body::Body) -> Position {
@@ -207,6 +243,15 @@ pub(crate) fn sample(
     world: &World,
     previous: &Previous,
     interpolate: bool,
+) -> Presentation {
+    sample_rows(run, world, previous, interpolate, None)
+}
+pub(crate) fn sample_rows(
+    run: &Run,
+    world: &World,
+    previous: &Previous,
+    interpolate: bool,
+    indices: Option<&[usize]>,
 ) -> Presentation {
     let p = &run.player;
     let frame = run.frame;
@@ -391,15 +436,17 @@ pub(crate) fn sample(
         score: run.score(),
         status,
     };
-    let entities = run
-        .entities
-        .iter()
+    let rows: Box<dyn Iterator<Item = &crate::entity::Entity> + '_> = if let Some(indices) = indices
+    {
+        Box::new(indices.iter().map(|i| &run.entities[*i]))
+    } else {
+        Box::new(run.entities.iter())
+    };
+    let entities = rows
         .map(|e| {
             let source = e.source(world);
             let previous_entity = previous
-                .entities
-                .get(&e.origin.token())
-                .copied()
+                .entity(e.origin.token())
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),

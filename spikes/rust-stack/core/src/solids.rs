@@ -53,7 +53,14 @@ pub(crate) struct SolidFrame {
     carried: bool,
     bumped: std::collections::BTreeSet<i64>,
     updates: Vec<PostUpdate>,
+    /// Broad phase for `shapes`: rows listed under every CELL their region has
+    /// ever covered this step (a superset). `shapes` still applies the exact
+    /// region test in row order, so results and handle order are unchanged.
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    /// Rows whose region covers too many cells to list.
+    wide: Vec<usize>,
 }
+const MAX_INDEXED_CELLS: i64 = 256;
 fn overlap(a: [i64; 4], b: [i64; 4]) -> bool {
     a[2] >= b[0] && a[0] <= b[2] && a[3] >= b[1] && a[1] <= b[3]
 }
@@ -91,12 +98,32 @@ impl SolidFrame {
             },
         }
     }
+    fn index_region(&mut self, index: usize, region: [i64; 4]) {
+        let c = region.map(|v| floor_div(v, CELL).expect("positive cell size"));
+        let count = (c[2] - c[0] + 1).saturating_mul(c[3] - c[1] + 1);
+        if c[2] < c[0] || c[3] < c[1] || count > MAX_INDEXED_CELLS {
+            if !self.wide.contains(&index) {
+                self.wide.push(index);
+            }
+            return;
+        }
+        for y in c[1]..=c[3] {
+            for x in c[0]..=c[2] {
+                let list = self.cells.entry((x, y)).or_default();
+                if list.last() != Some(&index) {
+                    list.push(index);
+                }
+            }
+        }
+    }
     pub fn begin(&mut self, entities: &[Entity]) {
         self.rows.clear();
         self.handles.clear();
         self.carried = false;
         self.bumped.clear();
         self.updates.clear();
+        self.cells.clear();
+        self.wide.clear();
         for entity in entities {
             if let Kind::Post(post) = &entity.kind {
                 let position = Position {
@@ -121,6 +148,9 @@ impl SolidFrame {
                 });
             }
         }
+        for index in 0..self.rows.len() {
+            self.index_region(index, self.rows[index].region);
+        }
     }
     pub fn shapes(&mut self, probe: [i64; 4]) -> Vec<Shape> {
         let cells = |q: [i64; 4]| q.map(|v| floor_div(v, CELL).expect("positive cell size"));
@@ -129,7 +159,26 @@ impl SolidFrame {
             || probe[2] < probe[0]
             || probe[3] < probe[1];
         let mut result = Vec::new();
-        for (index, row) in self.rows.iter_mut().enumerate() {
+        if self.rows.is_empty() {
+            return result;
+        }
+        let candidates: Vec<usize> = if scan {
+            (0..self.rows.len()).collect()
+        } else {
+            let mut found = self.wide.clone();
+            for y in p[1]..=p[3] {
+                for x in p[0]..=p[2] {
+                    if let Some(list) = self.cells.get(&(x, y)) {
+                        found.extend_from_slice(list);
+                    }
+                }
+            }
+            found.sort_unstable();
+            found.dedup();
+            found
+        };
+        for index in candidates {
+            let row = &mut self.rows[index];
             let Some(box_) = row.live_box else { continue };
             if !scan && !overlap(cells(row.region), p) {
                 continue;
@@ -195,12 +244,14 @@ impl SolidFrame {
             };
             row.live_box = (status == 1).then_some([box_[0], box_[3] - height, box_[2], box_[3]]);
             row.region = [box_[0], box_[3] - height, box_[2], box_[3]];
+            let region = row.region;
             self.updates.push(PostUpdate {
                 token: row.token,
                 strike_box: box_,
                 height,
                 status,
             });
+            self.index_region(index, region);
         }
     }
     pub fn touches(&mut self, probe: [i64; 4]) -> bool {

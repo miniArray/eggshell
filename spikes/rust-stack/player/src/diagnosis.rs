@@ -1,0 +1,262 @@
+//! Throwaway host diagnosis. No simulation or drawing optimizations.
+use eggshell_spike_core::Session;
+use std::time::Instant;
+
+#[inline(never)]
+pub fn profile_step(session: &mut Session) -> Result<(), eggshell_spike_core::Error> {
+    let result = session.advance(0);
+    std::hint::black_box(session.stats().tick);
+    result
+}
+fn load(args: &[String]) -> Result<Session, String> {
+    let read = |i: usize| std::fs::read_to_string(&args[i]).map_err(|e| e.to_string());
+    let method = if args[4] == "real-screen" {
+        Session::load_benchmark_real_screen
+    } else {
+        Session::load_benchmark_unverified
+    };
+    method(&read(0)?, &read(1)?, &read(2)?).map_err(|e| e.to_string())
+}
+pub fn profile_host(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 5 {
+        return Err("profile-host LEVEL COLLISION SCHEMA TICKS real-screen|synthetic".into());
+    }
+    let mut session = load(&args)?;
+    let ticks = args[3].parse::<usize>().map_err(|e| e.to_string())?;
+    let mut ms = Vec::with_capacity(ticks);
+    let before = session.stats().entity_steps;
+    for _ in 0..ticks {
+        let now = Instant::now();
+        profile_step(&mut session).map_err(|e| e.to_string())?;
+        ms.push(now.elapsed().as_secs_f64() * 1000.0);
+    }
+    ms.sort_by(f64::total_cmp);
+    println!(
+        "HOST_SIM_PROFILE {}",
+        serde_json::json!({"level":args[0],"calls":ticks,"saved_tick":session.stats().tick,"entity_steps":session.stats().entity_steps-before,"step_ms_p50":ms[ticks/2],"step_ms_max":ms[ticks-1],"host_only":true,"audio":"disabled","saves":"disabled","profile_scope":"profile_step only; initialization outside marker"})
+    );
+    Ok(())
+}
+
+/// Old-vs-new equality trace. Per tick: the full presentation, the snapshot
+/// bytes (or its error) and the scene quads at zooms 0..=2, chained by SHA-256.
+#[cfg(feature = "benchmark-work-counters")]
+pub fn trace_host(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    use crate::{pack::Pack, scene::Scene};
+    use sha2::{Digest, Sha256};
+    use std::path::Path;
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 8 {
+        return Err(
+            "trace-host LEVEL COLLISION SCHEMA TICKS real-screen|synthetic PACK INVENTORY METRICS"
+                .into(),
+        );
+    }
+    let mut session = load(&args)?;
+    let pack = Pack::open(Path::new(&args[5]), Path::new(&args[6]))?;
+    let prepare = if args[4] == "real-screen" {
+        Scene::prepare_benchmark_real_screen
+    } else {
+        Scene::prepare
+    };
+    let mut scene = prepare(
+        session.world(),
+        &session.admission_report().admitted_codes,
+        &pack,
+        Path::new(&args[7]),
+    )?;
+    scene.prepare_headless_assets(&pack)?;
+    session.configure_presentation_index(scene.absolute_origin_guard());
+    let ticks = args[3].parse::<usize>().map_err(|e| e.to_string())?;
+    let mut chain = [0u8; 32];
+    for tick in 1..=ticks {
+        profile_step(&mut session).map_err(|e| e.to_string())?;
+        let mut h = Sha256::new();
+        h.update(chain);
+        h.update(format!("{:?}", session.presentation()));
+        match session.snapshot() {
+            Ok(bytes) => h.update(&bytes),
+            Err(e) => h.update(format!("snapshot-error {e:?}")),
+        }
+        for zoom in 0..=2 {
+            let (map, focus) = session.presentation_view();
+            let region = scene.presentation_region(map, focus, [640.0, 480.0], zoom)?;
+            let p = session.presentation_region(region);
+            h.update(format!("{p:?}"));
+            let picture = scene.picture(&p, [640.0, 480.0], zoom)?;
+            if tick == 1 && zoom == 0 && std::env::var_os("TRACE_DUMP_QUADS").is_some() {
+                for (n, q) in picture
+                    .world
+                    .iter()
+                    .chain(&picture.hud)
+                    .enumerate()
+                    .step_by(7)
+                    .take(40)
+                {
+                    println!(
+                        "QUAD n={n} image={} corners={:?} uv={:?}",
+                        q.image, q.corners, q.uv
+                    );
+                }
+            }
+            h.update(format!(
+                "{:?}{:?}{:?}{}",
+                picture.world, picture.hud, picture.tint, picture.entity_bounds_in_view
+            ));
+        }
+        chain = h.finalize().into();
+        if tick % 50 == 0 || tick == ticks {
+            let hex: String = chain.iter().map(|b| format!("{b:02x}")).collect();
+            println!("TRACE_HOST level={} tick={tick} chain={hex}", args[0]);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "benchmark-work-counters")]
+#[derive(Default, serde::Serialize)]
+pub struct EntityWork {
+    pub visited: u64,
+    pub selected: u64,
+    pub art_built: u64,
+    pub emitted: u64,
+    pub quads_emitted: u64,
+}
+#[cfg(feature = "benchmark-work-counters")]
+#[derive(Default, serde::Serialize)]
+pub struct TileWork {
+    pub source_layer: String,
+    pub tilemap: String,
+    pub z: i64,
+    pub stored_cells: usize,
+    pub visited: u64,
+    pub emitted: u64,
+}
+#[cfg(feature = "benchmark-work-counters")]
+#[derive(Default, serde::Serialize)]
+pub struct SceneWork {
+    pub art_cull_margin: f64,
+    pub terrain_layers_total: usize,
+    pub terrain_layers_selected: usize,
+    pub presentation_entities: usize,
+    pub tiles_visited: u64,
+    pub tiles_emitted: u64,
+    pub entity_row_visits: u64,
+    pub entities_selected: u64,
+    pub entities_art_built: u64,
+    pub entities_emitted: u64,
+    pub tile_layers: Vec<TileWork>,
+    pub entity_layers: std::collections::BTreeMap<i64, EntityWork>,
+}
+
+#[cfg(feature = "benchmark-work-counters")]
+pub fn work_host(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    use crate::{pack::Pack, scene::Scene};
+    use std::path::Path;
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 10 {
+        return Err("work-host LEVEL COLLISION SCHEMA TICKS real-screen|synthetic ORIGINAL|- PACK INVENTORY METRICS REPORT".into());
+    }
+    let mut session = load(&args)?;
+    let original: serde_json::Value = if args[5] == "-" {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_str(&std::fs::read_to_string(&args[5]).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?
+    };
+    let original = if let Some(s) = original.as_str() {
+        serde_json::from_str(s).map_err(|e| e.to_string())?
+    } else {
+        original
+    };
+    let pack = Pack::open(Path::new(&args[6]), Path::new(&args[7]))?;
+    let prepare = if args[4] == "real-screen" {
+        Scene::prepare_benchmark_real_screen
+    } else {
+        Scene::prepare
+    };
+    let mut scene = prepare(
+        session.world(),
+        &session.admission_report().admitted_codes,
+        &pack,
+        Path::new(&args[8]),
+    )?;
+    scene.prepare_headless_assets(&pack)?;
+    session.configure_presentation_index(scene.absolute_origin_guard());
+    let ticks = args[3].parse::<usize>().map_err(|e| e.to_string())?;
+    let mut records = Vec::new();
+    let mut first_rows = serde_json::Value::Null;
+    for tick in 1..=ticks {
+        profile_step(&mut session).map_err(|e| e.to_string())?;
+        if tick == 1 {
+            let mut original_codes = std::collections::BTreeMap::<String, u64>::new();
+            let mut current_codes = std::collections::BTreeMap::<String, u64>::new();
+            let mut runtime = 0;
+            for row in &session.stats().benchmark_stepped_source_rows {
+                if let Some(i) = row {
+                    let p = &session.world().maps[0].placements[*i];
+                    *current_codes.entry(p.code.clone()).or_default() += 1;
+                    if let Some(code) = original["maps"]["map1"]["objects"][&p.id]["A"].as_str() {
+                        *original_codes.entry(code.into()).or_default() += 1;
+                    }
+                } else {
+                    runtime += 1;
+                }
+            }
+            let original_enemies: u64 = original_codes
+                .iter()
+                .filter(|(k, _)| k.starts_with('e'))
+                .map(|(_, v)| v)
+                .sum();
+            first_rows = serde_json::json!({"stepped_rows":session.stats().benchmark_stepped_source_rows.len(),"runtime_rows":runtime,"current_codes":current_codes,"original_codes":original_codes,"original_enemy_rows":original_enemies});
+        }
+        let detailed = tick == 1 || tick == ticks;
+        for zoom in 0..=2 {
+            let now = Instant::now();
+            let (map, focus) = session.presentation_view();
+            let region = scene.presentation_region(map, focus, [640.0, 480.0], zoom)?;
+            let p = session.presentation_region(region);
+            let picture = scene.picture(&p, [640.0, 480.0], zoom)?;
+            let elapsed = now.elapsed().as_secs_f64() * 1000.0;
+            let now = Instant::now();
+            let full = session.presentation();
+            let reference = scene.picture_before_spatial(&full, [640.0, 480.0], zoom)?;
+            let reference_ms = now.elapsed().as_secs_f64() * 1000.0;
+            if picture.world != reference.world
+                || picture.hud != reference.hud
+                || picture.tint != reference.tint
+                || picture.entity_bounds_in_view != reference.entity_bounds_in_view
+            {
+                return Err(format!(
+                    "early-cull output changed at tick={tick} zoom={zoom}"
+                ));
+            }
+            if !detailed {
+                continue;
+            }
+            let batch_count = |q: &[crate::gles::Quad]| {
+                if q.is_empty() {
+                    0
+                } else {
+                    1 + q
+                        .windows(2)
+                        .filter(|w| w[0].image != w[1].image || w[0].palette != w[1].palette)
+                        .count()
+                }
+            };
+            records.push(serde_json::json!({"saved_tick":p.tick,"zoom":zoom,"scale":picture.plan.scale,"scene_build_host_ms":elapsed,"reference_scene_build_host_ms":reference_ms,"reference_entities_art_built":reference.work.entities_art_built,"reference_work":reference.work,"render_index":session.render_index_metrics(),"collision_grid":session.world().maps[0].collision_grid_metrics(),"entities_bounds_in_view":picture.entity_bounds_in_view,"world_quads":picture.world.len(),"hud_quads":picture.hud.len(),"tint_quads":picture.tint.len(),"consecutive_batches":batch_count(&picture.world)+batch_count(&picture.tint)+batch_count(&picture.hud),"work":picture.work}));
+        }
+    }
+    let report = serde_json::json!({"mode":"benchmark-only-headless-scene-work-no-GPU","level":args[0],"first_tick_row_classification":first_rows,"exact_quad_comparisons":ticks*3,"records":records,"scope":"actual scene::picture unchanged geometry; image dimensions/binary-alpha decoded exactly as upload; no GL calls, no GPU timing"});
+    std::fs::write(
+        &args[9],
+        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    println!(
+        "HEADLESS_SCENE_WORK rows={} report={}",
+        report["first_tick_row_classification"], args[9]
+    );
+    Ok(())
+}

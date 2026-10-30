@@ -1,0 +1,856 @@
+//! Runnable core-connected verification player. Target remains refused by core admission.
+use crate::{
+    clock::FrameClock,
+    gles::Gles,
+    input::Controls,
+    pack::{Pack, hash},
+    scene::Scene,
+    timing::{Samples, Timer, memory_kib},
+};
+use eggshell_spike_core::Session;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
+
+struct Writer {
+    send: mpsc::SyncSender<Option<(PathBuf, Vec<u8>)>>,
+    join: Option<thread::JoinHandle<Result<u64, String>>>,
+}
+impl Writer {
+    fn start() -> Self {
+        let (send, receive) = mpsc::sync_channel::<Option<(PathBuf, Vec<u8>)>>(1);
+        let join = thread::spawn(move || {
+            let mut writes = 0;
+            while let Some((path, bytes)) = receive.recv().map_err(|e| e.to_string())? {
+                let temporary = path.with_extension("tmp");
+                let mut f = std::fs::File::create(&temporary).map_err(|e| e.to_string())?;
+                f.write_all(&bytes).map_err(|e| e.to_string())?;
+                f.flush().map_err(|e| e.to_string())?;
+                drop(f);
+                std::fs::rename(temporary, path).map_err(|e| e.to_string())?;
+                writes += 1;
+            }
+            Ok(writes)
+        });
+        Self {
+            send,
+            join: Some(join),
+        }
+    }
+    fn enqueue(&self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
+        self.send
+            .send(Some((path, bytes)))
+            .map_err(|e| e.to_string())
+    }
+    fn finish(mut self) -> Result<u64, String> {
+        self.send.send(None).map_err(|e| e.to_string())?;
+        self.join
+            .take()
+            .unwrap()
+            .join()
+            .map_err(|_| "save worker panicked")?
+    }
+}
+/// Shared by the real player and AKA host smoke. Disabled mode never constructs
+/// the writer, calls the snapshot codec, or writes a save at any lifecycle hook.
+pub(crate) struct SavePipeline {
+    writer: Option<Writer>,
+    directory: PathBuf,
+}
+impl SavePipeline {
+    pub(crate) fn start(directory: PathBuf, disabled: bool) -> Self {
+        Self {
+            writer: if disabled {
+                None
+            } else {
+                Some(Writer::start())
+            },
+            directory,
+        }
+    }
+    fn disabled(&self) -> bool {
+        self.writer.is_none()
+    }
+    pub(crate) fn manual(&self, session: &Session, samples: &mut Samples) -> Result<(), String> {
+        self.write_snapshot(session, "manual.v10", samples)
+    }
+    fn write_snapshot(
+        &self,
+        session: &Session,
+        name: &str,
+        samples: &mut Samples,
+    ) -> Result<(), String> {
+        if let Some(writer) = &self.writer {
+            let timer = Timer::new();
+            writer.enqueue(
+                self.directory.join(name),
+                session.snapshot().map_err(|e| e.to_string())?,
+            )?;
+            samples.add(timer.finish());
+        }
+        Ok(())
+    }
+    pub(crate) fn cadence(
+        &self,
+        session: &Session,
+        cursor: u64,
+        samples: &mut Samples,
+    ) -> Result<(), String> {
+        if !self.disabled() && crate::call_cursor::autosave_due(cursor, 60) {
+            self.write_snapshot(session, "autosave.v10", samples)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn finish(self, session: &Session, samples: &mut Samples) -> Result<u64, String> {
+        self.write_snapshot(session, "autosave.v10", samples)?;
+        match self.writer {
+            Some(writer) => writer.finish(),
+            None => Ok(0),
+        }
+    }
+}
+fn read(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+fn flush() -> Result<(), String> {
+    std::io::stdout().flush().map_err(|e| e.to_string())
+}
+
+/// Read once after platform initialization, before the ready/measurement clock.
+/// Native Rust I/O avoids a shell observer running under candidate library paths.
+fn startup_maps(directory: &Path) -> Result<PathBuf, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let bytes =
+        std::fs::read("/proc/self/maps").map_err(|e| format!("startup maps read failed: {e}"))?;
+    if bytes.is_empty() {
+        return Err("startup maps evidence is empty".into());
+    }
+    let path = directory.join("startup-process.maps");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("startup maps evidence {}: {e}", path.display()))?;
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+    file.flush().map_err(|e| e.to_string())?;
+    println!(
+        "RUST_STARTUP_MAPS path={path:?} bytes={} sha256={} timing=before-ready read_only_source=/proc/self/maps",
+        bytes.len(),
+        hash(&bytes)
+    );
+    Ok(path)
+}
+
+/// A sampled frame for the pipelined loop: the presentation of one state,
+/// cut to the view region the scene asks for, with what drawing needs.
+struct Prepared {
+    p: eggshell_spike_core::Presentation,
+    background: [u8; 3],
+    container: [f64; 2],
+    zoom: i32,
+    completed: u64,
+}
+fn prepare_frame(
+    session: &Session,
+    scene: &crate::scene::Scene,
+    container: [f64; 2],
+    zoom: i32,
+    completed: u64,
+) -> Result<Prepared, String> {
+    let (map_index, focus) = session.presentation_view();
+    let map = session
+        .world()
+        .maps
+        .get(map_index.checked_sub(1).ok_or("zero saved map index")?)
+        .ok_or("saved map absent")?;
+    let region = scene.presentation_region(map_index, focus, container, zoom)?;
+    Ok(Prepared {
+        p: session.presentation_region(region),
+        background: map.background_color,
+        container,
+        zoom,
+        completed,
+    })
+}
+pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    let startup = Instant::now();
+    let mut args = arguments;
+    let mut files = std::collections::HashMap::new();
+    let mut uncapped = false;
+    let mut benchmark_unverified_level = false;
+    let mut benchmark_single_texture = false;
+    let mut benchmark_real_screen = false;
+    let mut atlas = false;
+    let mut pipeline = false;
+    let mut digest_every: Option<u64> = None;
+    let mut digest_dump: Option<PathBuf> = None;
+    let mut want_feedback = false;
+    let mut fullscreen = true;
+    let mut ticks = None;
+    let mut seconds = 180u64;
+    let mut capture_tick = None;
+    let mut input_offset = None;
+    let mut require_active_window = false;
+    let mut initial_zoom = 0_i32;
+    while let Some(key) = args.next() {
+        match key.as_str() {
+            "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
+            | "--view-metrics" | "--replay" | "--restore" | "--save-dir" | "--capture" => {
+                files.insert(key, args.next().ok_or("missing argument value")?);
+            }
+            "--input-offset" => {
+                input_offset = Some(
+                    args.next()
+                        .ok_or("input offset missing")?
+                        .parse::<u64>()
+                        .map_err(|_| "invalid input offset")?,
+                )
+            }
+            "--zoom" => {
+                initial_zoom = args
+                    .next()
+                    .ok_or("--zoom needs integer")?
+                    .parse()
+                    .map_err(|_| "invalid zoom")?;
+            }
+            "--require-active-window" => require_active_window = true,
+            "--ticks" => {
+                ticks = Some(
+                    args.next()
+                        .ok_or("--ticks needs integer")?
+                        .parse::<u64>()
+                        .map_err(|_| "invalid ticks")?,
+                )
+            }
+            "--seconds" => {
+                seconds = args
+                    .next()
+                    .ok_or("--seconds needs integer")?
+                    .parse()
+                    .map_err(|_| "invalid seconds")?
+            }
+            "--capture-tick" => {
+                capture_tick = Some(
+                    args.next()
+                        .ok_or("capture tick missing")?
+                        .parse::<u64>()
+                        .map_err(|_| "invalid capture tick")?,
+                )
+            }
+            "--benchmark-unverified-level" => benchmark_unverified_level = true,
+            "--benchmark-single-texture" => benchmark_single_texture = true,
+            "--benchmark-real-screen" => benchmark_real_screen = true,
+            "--atlas" => atlas = true,
+            "--pipeline" => pipeline = true,
+            "--frame-digest-every" => {
+                digest_every = Some(
+                    args.next()
+                        .ok_or("--frame-digest-every needs integer")?
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|n| *n > 0)
+                        .ok_or("invalid frame digest interval")?,
+                )
+            }
+            "--frame-dump-dir" => {
+                digest_dump = Some(PathBuf::from(
+                    args.next().ok_or("--frame-dump-dir needs a path")?,
+                ))
+            }
+            "--uncapped" => uncapped = true,
+            "--presentation-feedback" => want_feedback = true,
+            "--windowed" => fullscreen = false,
+            _ => return Err(format!("unrecognized game argument: {key}")),
+        }
+    }
+    if benchmark_real_screen && !benchmark_unverified_level {
+        return Err("--benchmark-real-screen requires --benchmark-unverified-level; faithful_real_level=false".into());
+    }
+    if benchmark_single_texture && !benchmark_unverified_level {
+        return Err("--benchmark-single-texture requires --benchmark-unverified-level; picture_invalid=true".into());
+    }
+    if pipeline && (capture_tick.is_some() || files.contains_key("--capture")) {
+        return Err(
+            "--pipeline draws one frame behind; GPU captures use the sequential loop".into(),
+        );
+    }
+    if atlas && benchmark_single_texture {
+        return Err("--atlas and --benchmark-single-texture are separate variants".into());
+    }
+    if seconds == 0 || seconds > 900 {
+        return Err("game safety bound must be1..900 seconds".into());
+    }
+    let required = |key: &str| {
+        files
+            .get(key)
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("{key} required"))
+    };
+    let level = read(&required("--level")?)?;
+    let collision = read(&required("--collision")?)?;
+    let schema = read(&required("--schema")?)?;
+    let raw_hash = hash(level.as_bytes());
+    let is_target = raw_hash == "bbe93d1592bcb6b9576c908ceae50518d42b031cf3f1997486a37daf4a062a17";
+    let mut session = if benchmark_real_screen {
+        Session::load_benchmark_real_screen(&level, &collision, &schema)
+    } else if benchmark_unverified_level {
+        Session::load_benchmark_unverified(&level, &collision, &schema)
+    } else {
+        Session::load(&level, &collision, &schema)
+    }
+    .map_err(|e| format!("authoritative gameplay admission refused before graphics: {e}"))?;
+    let startup_entity_steps = session.stats().entity_steps;
+    if !session
+        .admission_report()
+        .unsupported_requirements
+        .is_empty()
+    {
+        return Err("core returned an unsupported successful session".into());
+    }
+    // Current imported core proves only the public Stride vertical slice. No
+    // throughput mode on that incomplete application can answer the target A/B.
+    println!(
+        "RUST_GAME_ADMISSION raw_level_sha256={raw_hash} target={is_target} report={:?} mode=verification-or-benchmark-hint benchmark_unverified_level={benchmark_unverified_level} target_A_B_claim=false",
+        session.admission_report()
+    );
+    let pack = Pack::open(&required("--pack-root")?, &required("--pack-inventory")?)?;
+    let prepare = if benchmark_real_screen {
+        Scene::prepare_benchmark_real_screen
+    } else {
+        Scene::prepare
+    };
+    let mut scene = prepare(
+        session.world(),
+        &session.admission_report().admitted_codes,
+        &pack,
+        &required("--view-metrics")?,
+    )?;
+    let fidelity = if benchmark_real_screen {
+        "false"
+    } else {
+        "not_claimed"
+    };
+    let stand_in = if scene
+        .visual_omissions
+        .iter()
+        .any(|v| v.contains("stand_in=gradient"))
+    {
+        "gradient"
+    } else {
+        "none"
+    };
+    let omission_label =
+        serde_json::to_string(&scene.visual_omissions).map_err(|e| e.to_string())?;
+    let replay = files
+        .get("--replay")
+        .map(|p| crate::input::replay(Path::new(p)))
+        .transpose()?;
+    if files.contains_key("--restore") && replay.is_some() && input_offset.is_none() {
+        return Err("replay restore requires explicit --input-offset; saved frame is not an input-call cursor".into());
+    }
+    let cursor_start = input_offset.unwrap_or(0);
+    let remaining = replay
+        .as_ref()
+        .map(|v| {
+            (v.len() as u64)
+                .checked_sub(cursor_start)
+                .ok_or("input offset exceeds literal replay")
+        })
+        .transpose()?;
+    let stop = ticks.unwrap_or(remaining.unwrap_or(3600));
+    if stop == 0 || remaining.is_some_and(|n| stop > n) {
+        return Err("successful-call window exceeds literal replay or is empty".into());
+    }
+    if uncapped && replay.is_none() {
+        return Err("uncapped fixed-work requires deterministic input replay".into());
+    }
+    if benchmark_unverified_level
+        && (files.contains_key("--restore")
+            || files.contains_key("--capture")
+            || capture_tick.is_some())
+    {
+        return Err(
+            "benchmark unverified mode disables saves, restore and snapshot captures".into(),
+        );
+    }
+    if capture_tick.is_some() != files.contains_key("--capture") {
+        return Err("capture requires both --capture and --capture-tick".into());
+    }
+    if capture_tick.is_some_and(|n| n > stop) {
+        return Err("capture tick exceeds the fixed-work window".into());
+    }
+    if let Some(path) = files.get("--restore") {
+        session
+            .restore(&std::fs::read(path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    }
+    let save_dir = required("--save-dir")?;
+    std::fs::create_dir_all(&save_dir).map_err(|e| e.to_string())?;
+    let mut gpu = Gles::open_game(fullscreen, !uncapped)?;
+    if atlas {
+        gpu.begin_atlas()?;
+    }
+    scene.upload(&mut gpu, &pack)?;
+    if atlas {
+        gpu.finish_atlas()?;
+    }
+    session.configure_presentation_index(scene.absolute_origin_guard());
+    if benchmark_single_texture {
+        if benchmark_real_screen {
+            gpu.enable_benchmark_single_texture_image(scene.solid)?;
+        } else {
+            gpu.enable_benchmark_single_texture()?;
+        }
+    }
+    let mut controls = Controls::open(&gpu.sdl)?;
+    let mut events = gpu.sdl.event_pump()?;
+    // Declared after gpu: protocol callbacks/proxies drop before SDL_Window.
+    // Optional for the first picture gate; mandatory before delivered-frame claims.
+    let mut feedback = if want_feedback {
+        Some(crate::presentation_feedback::Feedback::new(&gpu.window)?)
+    } else {
+        None
+    };
+    let saves = SavePipeline::start(save_dir.clone(), benchmark_unverified_level);
+    let startup_maps_path = startup_maps(&save_dir)?;
+    let initial_picture = session.presentation();
+    let initial_map = session
+        .world()
+        .maps
+        .get(
+            initial_picture
+                .map_index
+                .checked_sub(1)
+                .ok_or("zero initial map")?,
+        )
+        .ok_or("initial map absent")?;
+    let (view_w, view_h) = gpu.window.drawable_size();
+    let initial_plan = crate::screen::plan(
+        [view_w as f64, view_h as f64],
+        [
+            initial_map.width_pixels as f64,
+            initial_map.height_pixels as f64,
+        ],
+        [
+            initial_picture.follow.current.x as f64 / eggshell_spike_core::SCALE as f64,
+            initial_picture.follow.current.y as f64 / eggshell_spike_core::SCALE as f64,
+        ],
+        pack.density,
+        initial_zoom,
+    )?;
+    let ready = Instant::now();
+    let mut clock = FrameClock::new(ready);
+    let mut completed = 0u64;
+    let mut swap_calls = 0u64;
+    let mut paused = false;
+    let mut zoom = initial_plan.zoom;
+    let mut zoom_min = initial_plan.zoom_min;
+    let mut zoom_max = initial_plan.zoom_max;
+    let mut captured = false;
+    let mut held_saved_frame_calls = 0u64;
+    let mut sim = Samples::default();
+    let mut draw = Samples::default();
+    let mut batch_counts = crate::timing::Histogram::default();
+    let mut quad_counts = crate::timing::Histogram::default();
+    let mut vertex_counts = crate::timing::Histogram::default();
+    let mut entity_view_counts = crate::timing::Histogram::default();
+    let mut batch_total = 0_u64;
+    let mut quad_total = 0_u64;
+    let mut resolved_scale = initial_plan.scale;
+    let mut present = Samples::default();
+    let mut save = Samples::default();
+    let mut intervals = crate::timing::Histogram::default();
+    let mut previous_present = None;
+    let mut missed = 0u64;
+    let mut last_report = Instant::now();
+    println!(
+        "RUST_GAME_READY startup_ms={:.3} audio=disabled-no-mixing save_cadence=60-successful-input-calls save_phase_offset={cursor_start} save_sync=false frame_mode={} interpolation=off capture={} benchmark_eligible=false benchmark_unverified_level={benchmark_unverified_level} picture_invalid={benchmark_single_texture} faithful_real_level={fidelity} stand_in={stand_in} visual_omissions={omission_label} saves_disabled={benchmark_unverified_level} zoom={zoom} zoom_min={zoom_min} zoom_max={zoom_max} scale={resolved_scale}",
+        startup.elapsed().as_secs_f64() * 1000.0,
+        if uncapped {
+            "uncapped-fixed-work"
+        } else {
+            "real-time-fixed60"
+        },
+        capture_tick.is_some()
+    );
+    flush()?;
+    let mut region_container_mismatch = 0u64;
+    let mut pending = if pipeline {
+        Some(prepare_frame(
+            &session,
+            &scene,
+            [view_w as f64, view_h as f64],
+            zoom,
+            0,
+        )?)
+    } else {
+        None
+    };
+    while completed < stop && ready.elapsed() < Duration::from_secs(seconds) {
+        controls.reset_actions();
+        for event in events.poll_iter() {
+            controls.event(event);
+        }
+        if let Some(f) = &mut feedback {
+            f.collect()?;
+        }
+        let live = controls.mask();
+        if !uncapped {
+            clock.observe(Instant::now(), paused);
+        }
+        if controls.pause_toggle {
+            paused = !paused;
+            println!("RUST_GAME_PAUSE paused={paused} completed={completed}");
+        }
+        if controls.exit {
+            break;
+        }
+        if controls.zoom_reset {
+            zoom = 0;
+        }
+        zoom += controls.zoom_delta;
+        if controls.restore && !saves.disabled() {
+            if replay.is_some() {
+                return Err("interactive replay restore requires an explicit cursor: restart with --restore and --input-offset".into());
+            }
+            let data = std::fs::read(save_dir.join("manual.v10")).map_err(|e| e.to_string())?;
+            session.restore(&data).map_err(|e| e.to_string())?;
+        }
+        if controls.save {
+            saves.manual(&session, &mut save)?;
+        }
+        if pipeline {
+            let steps = if paused {
+                0
+            } else {
+                let owed = if uncapped { 1 } else { clock.owed() };
+                owed.min(stop - completed)
+            };
+            let masks = (0..steps)
+                .map(|i| {
+                    let cursor = crate::call_cursor::index(cursor_start, completed + i)?;
+                    Ok(replay.as_ref().map_or(live, |v| v[cursor]))
+                })
+                .collect::<Result<Vec<u8>, String>>()?;
+            let current = pending.take().ok_or("pipeline lost its prepared frame")?;
+            let request = (current.container, zoom);
+            let base = completed;
+            let (worker_result, draw_result) = thread::scope(|s| {
+                let session = &mut session;
+                let scene_ref = &scene;
+                let saves = &saves;
+                let save = &mut save;
+                let masks = &masks;
+                let worker = s.spawn(move || -> Result<(Prepared, Vec<crate::timing::Sample>, u64), String> {
+                    let mut samples = Vec::with_capacity(masks.len());
+                    let mut held = 0u64;
+                    for (i, &mask) in masks.iter().enumerate() {
+                        let saved_tick = session.stats().tick;
+                        let timer = Timer::new();
+                        session.advance(mask).map_err(|e| {
+                            format!("tick={} mask={mask} refused without completion: {e}", base + i as u64 + 1)
+                        })?;
+                        samples.push(timer.finish());
+                        if session.stats().tick == saved_tick {
+                            held += 1;
+                            if require_active_window {
+                                return Err("required active performance window includes a held saved frame; correctness mode permits it".into());
+                            }
+                        }
+                        saves.cadence(session, cursor_start + base + i as u64 + 1, save)?;
+                    }
+                    let prepared = prepare_frame(session, scene_ref, request.0, request.1, base + masks.len() as u64)?;
+                    Ok((prepared, samples, held))
+                });
+                let drawn = (|| -> Result<(), String> {
+                    let timer = Timer::new();
+                    let container = gpu.begin(current.background)?;
+                    let container = [container[0] as f64, container[1] as f64];
+                    if container != current.container {
+                        region_container_mismatch += 1;
+                    }
+                    let p = &current.p;
+                    let picture = scene.picture(p, container, current.zoom)?;
+                    zoom = picture.plan.zoom;
+                    zoom_min = picture.plan.zoom_min;
+                    zoom_max = picture.plan.zoom_max;
+                    resolved_scale = picture.plan.scale;
+                    let world_draw = gpu.draw(&picture.world)?;
+                    gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
+                    let tint_draw = if picture.tint.is_empty() {
+                        crate::gles::DrawCounts::default()
+                    } else {
+                        gpu.draw(&picture.tint)?
+                    };
+                    let hud_draw = gpu.draw(&picture.hud)?;
+                    let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
+                    let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
+                    batch_counts.add(batches);
+                    batch_total += batches;
+                    quad_counts.add(quads);
+                    quad_total += quads;
+                    vertex_counts.add(world_draw.vertices + hud_draw.vertices + tint_draw.vertices);
+                    entity_view_counts.add(picture.entity_bounds_in_view);
+                    if let Some(f) = &mut feedback {
+                        f.request(swap_calls + 1, p.tick as u64)?;
+                    }
+                    draw.add(timer.finish());
+                    if digest_every.is_some_and(|n| current.completed.is_multiple_of(n)) {
+                        let dump = digest_dump
+                            .as_ref()
+                            .map(|d| d.join(format!("frame-{:06}.png", current.completed)));
+                        let digest = gpu.frame_digest(dump.as_deref())?;
+                        println!(
+                            "RUST_FRAME_DIGEST completed={} tick={} zoom={} atlas={atlas} pipeline=true sha256={digest} clean_timing_excluded=true",
+                            current.completed, p.tick, current.zoom
+                        );
+                    }
+                    Ok(())
+                })();
+                (
+                    worker
+                        .join()
+                        .map_err(|_| "simulation thread panicked".to_string()),
+                    drawn,
+                )
+            });
+            draw_result?;
+            let (prepared, samples, held) = worker_result??;
+            for sample in samples {
+                sim.add(sample);
+            }
+            held_saved_frame_calls += held;
+            completed += steps;
+            if !uncapped {
+                for _ in 0..steps {
+                    clock.completed_one();
+                }
+            }
+            pending = Some(prepared);
+        } else {
+            if !paused {
+                let owed = if uncapped { 1 } else { clock.owed() };
+                let budget =
+                    if let Some(target) = capture_tick.filter(|t| !captured && *t >= completed) {
+                        owed.min(target - completed)
+                    } else {
+                        owed
+                    };
+                for _ in 0..budget.min(stop - completed) {
+                    let saved_tick = session.stats().tick;
+                    let cursor = crate::call_cursor::index(cursor_start, completed)?;
+                    let mask = replay.as_ref().map_or(live, |v| v[cursor]);
+                    let timer = Timer::new();
+                    session.advance(mask).map_err(|e| {
+                        format!(
+                            "tick={} mask={mask} refused without completion: {e}",
+                            completed + 1
+                        )
+                    })?;
+                    sim.add(timer.finish());
+                    if session.stats().tick == saved_tick {
+                        held_saved_frame_calls += 1;
+                        if require_active_window {
+                            return Err("required active performance window includes a held saved frame; correctness mode permits it".into());
+                        }
+                    }
+                    completed += 1;
+                    if !uncapped {
+                        clock.completed_one();
+                    }
+                    saves.cadence(&session, cursor_start + completed, &mut save)?;
+                }
+            }
+            let timer = Timer::new();
+            let (map_index, focus) = session.presentation_view();
+            let map = session
+                .world()
+                .maps
+                .get(map_index.checked_sub(1).ok_or("zero saved map index")?)
+                .ok_or("saved map absent")?;
+            let container = gpu.begin(map.background_color)?;
+            let region = scene.presentation_region(
+                map_index,
+                focus,
+                [container[0] as f64, container[1] as f64],
+                zoom,
+            )?;
+            let p = session.presentation_region(region);
+            let picture = scene.picture(&p, [container[0] as f64, container[1] as f64], zoom)?;
+            zoom = picture.plan.zoom;
+            zoom_min = picture.plan.zoom_min;
+            zoom_max = picture.plan.zoom_max;
+            resolved_scale = picture.plan.scale;
+            let world_draw = gpu.draw(&picture.world)?;
+            gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
+            let tint_draw = if picture.tint.is_empty() {
+                crate::gles::DrawCounts::default()
+            } else {
+                gpu.draw(&picture.tint)?
+            };
+            let hud_draw = gpu.draw(&picture.hud)?;
+            let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
+            let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
+            batch_counts.add(batches);
+            batch_total += batches;
+            quad_counts.add(quads);
+            quad_total += quads;
+            vertex_counts.add(world_draw.vertices + hud_draw.vertices + tint_draw.vertices);
+            entity_view_counts.add(picture.entity_bounds_in_view);
+            if let Some(f) = &mut feedback {
+                f.request(swap_calls + 1, p.tick as u64)?;
+            }
+            draw.add(timer.finish());
+            if digest_every.is_some_and(|n| completed.is_multiple_of(n)) {
+                let dump = digest_dump
+                    .as_ref()
+                    .map(|d| d.join(format!("frame-{completed:06}.png")));
+                let digest = gpu.frame_digest(dump.as_deref())?;
+                println!(
+                    "RUST_FRAME_DIGEST completed={completed} tick={} zoom={zoom} atlas={atlas} sha256={digest} clean_timing_excluded=true",
+                    p.tick
+                );
+            }
+            if capture_tick == Some(completed) && !captured {
+                let path = Path::new(files.get("--capture").unwrap());
+                let snapshot = session.snapshot().map_err(|e| e.to_string())?;
+                gpu.capture(path)?;
+                let snapshot_path = path.with_extension("v10");
+                std::fs::write(&snapshot_path, &snapshot).map_err(|e| e.to_string())?;
+                let metadata = serde_json::json!({"mode":"correctness-GPU-capture-not-clean-timing","input_offset":cursor_start,"successful_input_calls":completed,"input_call_cursor":cursor_start+completed,"saved_frame":p.tick,"level_raw_sha256":raw_hash,"snapshot_path":snapshot_path,"snapshot_sha256":hash(&snapshot),"startup_maps_path":startup_maps_path,"selected_player_pose":{"name":p.player.selected_pose.name,"tick":p.player.selected_pose.tick,"frame":p.player.selected_pose.frame},"swimming":p.player.swimming,"companion_mode":p.companions.mode,"semantic_entity_scales":p.entities.iter().filter_map(|e|e.visual.scale.map(|ratio|serde_json::json!({"token":e.token,"code":e.code,"ratio":ratio}))).collect::<Vec<_>>(),"pack_manifest_sha256":crate::pack::MANIFEST_SHA,"pack_file_inventory_sha256":crate::pack::INVENTORY_SHA,"framebuffer":container,"camera":{"scale":picture.plan.scale,"center":picture.plan.center,"visible":picture.plan.visible,"offset":picture.plan.offset,"rounded_root_offset":picture.plan.offset.map(crate::screen::godot_round)},"interpolation":"off","backend":"owned-GLES","gles_pipeline":gpu.pipeline_info(),"capture_pipeline":gpu.last_capture_pipeline(),"audio":"disabled-no-mixing"});
+                std::fs::write(
+                    path.with_extension("json"),
+                    serde_json::to_vec_pretty(&metadata).map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                println!(
+                    "RUST_CAPTURE_STATE input_call_cursor={} successful_calls={} saved_frame={} snapshot_sha256={}",
+                    cursor_start + completed,
+                    completed,
+                    p.tick,
+                    hash(&snapshot)
+                );
+                captured = true;
+            }
+        }
+        let timer = Timer::new();
+        gpu.present()?;
+        present.add(timer.finish());
+        swap_calls += 1;
+        let now = Instant::now();
+        if let Some(previous) = previous_present {
+            let duration = now.duration_since(previous).as_nanos() as u64;
+            intervals.add(duration);
+            if duration > 16_666_667 {
+                missed += 1;
+            }
+        }
+        previous_present = Some(now);
+        if last_report.elapsed() >= Duration::from_secs(1) {
+            println!(
+                "RUST_GAME_PROGRESS {}",
+                serde_json::json!({"benchmark_unverified_level":benchmark_unverified_level,"wall_ms":ready.elapsed().as_millis(),"expected_ticks":stop,"completed_ticks":completed,"saved_tick":session.stats().tick,"owed_ticks":clock.owed(),"max_debt":clock.max_debt,"swap_calls":swap_calls,"swap_intervals_over_refresh_budget":missed,"input_events":controls.events,"paused":paused,"memory":memory_kib()})
+            );
+            flush()?;
+            last_report = Instant::now();
+        }
+        if paused || (!uncapped && clock.owed() == 0) {
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    if !uncapped {
+        clock.observe(Instant::now(), paused);
+    }
+    gpu.check_error()?;
+    let active_wall = ready.elapsed();
+    if let Some(f) = &mut feedback {
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while f.stats().pending != 0 && Instant::now() < deadline {
+            for _ in events.poll_iter() {}
+            f.collect()?;
+            thread::sleep(Duration::from_millis(1));
+        }
+        f.collect()?;
+        if f.stats().pending != 0 {
+            return Err("Wayland delivery feedback did not drain; no completion proof".into());
+        }
+    }
+    let writes = saves.finish(&session, &mut save)?;
+    let mut summary = serde_json::json!({"purpose":if benchmark_unverified_level{"throwaway-scaling-speed-hint-not-correctness-not-target-A/B"}else{"correctness-verification-only-not-target-A/B"},"level_sha256":raw_hash,"mode":if uncapped{"uncapped-fixed-work"}else{"real-time"},"capture_tainted":capture_tick.is_some(),"audio":"disabled-no-mixing","wall_ms":active_wall.as_millis(),"expected_ticks":stop,"completed_ticks":completed,"input_offset":cursor_start,"input_call_cursor":cursor_start+completed,"held_saved_frame_calls":held_saved_frame_calls,"require_active_window":require_active_window,"save_call_cadence":60,"saved_tick":session.stats().tick,"swap_calls":swap_calls,"actual_compositor_delivered_frames":feedback.as_ref().map(|f|f.delivered_unique),"wayland_presentation":feedback.as_ref().map(|f|f.summary()),"maximum_debt":clock.max_debt,"ending_debt":clock.owed(),"swap_intervals_over_16_667ms":missed,"swap_return_interval_ns":intervals.summary(),"presentation_feedback":if want_feedback{"wp_presentation requested; inspect actual callback/flags evidence"}else{"not instrumented; swap calls are not compositor-delivered-frame proof"},"quantile_method":"fixed-memory log histogram upper bounds, relative bucket width <=1/512 above512ns; exact maxima","sim":sim.summary(),"draw_submit":draw.summary(),"presentation_copy_and_swap":present.summary(),"gles_pipeline":gpu.pipeline_info(),"snapshot_enqueue":save.summary(),"save_writes":writes,"input_events":controls.events,"ignored_key_repeats":controls.repeat_events,"input_delivery":"one literal mask per successful advance call; explicit restore offset; live state sampled per event batch","memory":memory_kib(),"stats":{"entity_steps":session.stats().entity_steps,"terrain_queries":session.stats().terrain_queries,"nearby_queries":session.stats().nearby_queries,"runtime_spawns":session.stats().runtime_spawns,"collections":session.stats().collections,"damage_events":session.stats().damage_events},"cpu_phases":"nonoverlapping main-thread samples; presentation_copy_and_swap includes fullscreen copy submission and SDL swap; capture-only allocation/copy/readback is outside these timers; asynchronous GPU and save-worker times not attributed to these CPU samples"});
+    summary["benchmark_unverified_level"] = benchmark_unverified_level.into();
+    summary["picture_invalid"] = benchmark_single_texture.into();
+    summary["benchmark_single_texture"] = benchmark_single_texture.into();
+    if benchmark_real_screen {
+        summary["faithful_real_level"] = false.into();
+        summary["visual_omissions"] = serde_json::json!(scene.visual_omissions);
+        summary["stand_in"] = stand_in.into();
+        summary["tint_overlay"] = "source-map_effects.gd-plan-real-alpha-overlay".into();
+    }
+    summary["atlas"] = gpu.atlas_info();
+    summary["pipeline"] = serde_json::json!({"enabled":pipeline,"region_container_mismatch":region_container_mismatch,"drawn_frame":"state after the previous frame's steps; simulation runs on a second thread during drawing"});
+    summary["saves_disabled"] = benchmark_unverified_level.into();
+    summary["scale"] = serde_json::json!(resolved_scale);
+    summary["draw_batches_per_frame"] = serde_json::json!({"frames":batch_counts.count,"mean":batch_total as f64/batch_counts.count.max(1) as f64,"quantiles":batch_counts.summary(),"scope":"world+HUD Gles::draw results; excludes darkness and presentation copy"});
+    summary["draw_counts_per_frame"] = serde_json::json!({"frames":batch_counts.count,"quads":quad_counts.summary(),"batches":batch_counts.summary(),"vertices":vertex_counts.summary(),"scope":"actual DrawCounts for world (including explicit benchmark stand-ins)+optional real tint+HUD; darkness adds one draw when enabled, presentation copy adds one"});
+    summary["entities_bounds_intersect_view_per_frame"] = serde_json::json!({"count":entity_view_counts.count,"quantiles":entity_view_counts.summary(),"bounds":"visible Core body hulls; inactive placed actors at immutable placement; not art envelopes; measurement only"});
+    summary["drawn_quads_per_frame"] =
+        serde_json::json!(quad_total as f64 / batch_counts.count.max(1) as f64);
+    summary["zoom"] = zoom.into();
+    summary["zoom_min"] = zoom_min.into();
+    summary["zoom_max"] = zoom_max.into();
+    if benchmark_unverified_level {
+        summary["save_call_cadence"] = 0.into();
+    }
+    summary["startup_entity_steps"] = startup_entity_steps.into();
+    summary["active_entity_steps"] = (session.stats().entity_steps - startup_entity_steps).into();
+    summary["active_entity_steps_per_accepted_call"] = serde_json::json!(
+        (session.stats().entity_steps - startup_entity_steps) as f64 / completed.max(1) as f64
+    );
+    println!("RUST_GAME_SUMMARY {summary}");
+    flush()?;
+    if controls.exit {
+        println!("RUST_GAME_EXIT user_requested=true completed={completed} expected={stop}");
+        return Ok(());
+    }
+    if completed != stop || capture_tick.is_some() && !captured {
+        return Err("bounded game run incomplete; no successful completion marker".into());
+    }
+    println!(
+        "RUST_GAME_DONE completed_ticks={completed} expected_ticks={stop} benchmark_unverified_level={benchmark_unverified_level} target_A_B_claim=false"
+    );
+    flush()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn startup_maps_are_private_nonempty_and_never_overwritten() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "eggshell-startup-maps-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let path = startup_maps(&directory).unwrap();
+        let first = std::fs::read(&path).unwrap();
+        assert!(!first.is_empty());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(startup_maps(&directory).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), first);
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+}

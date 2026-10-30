@@ -609,10 +609,7 @@ impl Player {
             self.body.x + 12 * S,
             self.body.y,
         ];
-        if map
-            .layers
-            .iter()
-            .any(|l| l.hazard != crate::TerrainHazard::None && l.overlaps_box(rect))
+        if map.hazard_overlaps(rect)
         {
             return self.kill(3, false, sound);
         }

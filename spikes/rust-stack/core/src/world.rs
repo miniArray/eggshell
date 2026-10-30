@@ -19,6 +19,20 @@ const D: u32 = 0x2000_0000;
 impl World {
     /// Compile immutable terrain/placements only. Does not run starts or admit simulation.
     pub fn compile(level_json: &str, collision_json: &str) -> Result<Self, Error> {
+        Self::compile_configured(level_json, collision_json, false)
+    }
+    /// Explicit benchmark drawing omission; source properties/identity stay intact.
+    pub fn compile_benchmark_real_screen(
+        level_json: &str,
+        collision_json: &str,
+    ) -> Result<Self, Error> {
+        Self::compile_configured(level_json, collision_json, true)
+    }
+    fn compile_configured(
+        level_json: &str,
+        collision_json: &str,
+        omit_dice_colours: bool,
+    ) -> Result<Self, Error> {
         if level_json.len() > 16_777_216 || collision_json.len() > 16_777_216 {
             return Err(invalid("level/collision exceeds 16 MiB"));
         }
@@ -215,8 +229,7 @@ impl World {
                         .ok_or_else(|| invalid("tile size"))?;
                     let size = number(&tile_size[0], "tile width")?;
                     if size != number(&tile_size[1], "tile height")?
-                        || size < 1.0
-                        || size > 4096.0
+                        || !(1.0..=4096.0).contains(&size)
                         || size.fract() != 0.0
                     {
                         return Err(invalid("unsupported tile shape/size"));
@@ -293,6 +306,11 @@ impl World {
                         solid: solid && source_layer != "layer3",
                         water: water && source_layer != "layer3",
                         hazard,
+                        collision_index: contact
+                            .iter()
+                            .enumerate()
+                            .map(|(i, c)| (c.cell, i))
+                            .collect(),
                         collision: contact,
                         width: grid_width,
                         height: grid_height,
@@ -317,10 +335,11 @@ impl World {
                 .map(stringify_scalar)
                 .unwrap_or_else(|| "0_255,255,255".into());
             let cave_shimmer = source.get("caveShimmer").map(loose_number).unwrap_or(0.0) == 1.0;
-            if source
-                .get("diceBlockColours")
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
+            if !omit_dice_colours
+                && source
+                    .get("diceBlockColours")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
             {
                 return Err(Error::Unsupported {
                     requirements: vec!["diceBlockColours compilation".into()],
@@ -338,6 +357,7 @@ impl World {
                 cave_shimmer,
                 dice_colours,
                 source_properties: properties(source),
+                collision_grid: crate::collision_grid::Grid::build(&layers),
                 layers,
                 placements,
                 bridges,
@@ -464,6 +484,12 @@ fn tile_polygon(
     Ok(points)
 }
 impl TileLayer {
+    pub(crate) fn contact(&self, cell: i32) -> Option<&TileCollision> {
+        if cell == -1 {
+            return None;
+        }
+        self.collision_index.get(&cell).map(|i| &self.collision[*i])
+    }
     pub fn overlaps_box(&self, bounds: [i64; 4]) -> bool {
         let [left, top, right, bottom] = bounds;
         let size = self.tile_size_pixels * SCALE;
@@ -478,7 +504,7 @@ impl TileLayer {
         for row in y0..=y1 {
             for col in x0..=x1 {
                 let cell = self.cells[row as usize * self.width + col as usize];
-                if let Some(contact) = self.collision.iter().find(|p| p.cell == cell) {
+                if let Some(contact) = self.contact(cell) {
                     if polygon::overlaps_box(
                         &contact.polygon,
                         [
@@ -498,14 +524,22 @@ impl TileLayer {
 }
 impl Map {
     pub fn terrain_overlaps(&self, bounds: [i64; 4]) -> bool {
-        self.layers
-            .iter()
-            .any(|layer| layer.solid && layer.overlaps_box(bounds))
+        self.collision_grid
+            .overlaps(self, bounds, crate::collision_grid::SOLID)
     }
     pub(crate) fn water_overlaps(&self, bounds: [i64; 4]) -> bool {
-        self.layers
-            .iter()
-            .any(|layer| layer.water && layer.overlaps_box(bounds))
+        self.collision_grid
+            .overlaps(self, bounds, crate::collision_grid::WATER)
+    }
+    pub fn collision_grid_metrics(&self) -> (usize, usize, usize) {
+        self.collision_grid.metrics()
+    }
+    pub(crate) fn hazard_overlaps(&self, b: [i64; 4]) -> bool {
+        self.collision_grid.overlaps(
+            self,
+            b,
+            crate::collision_grid::LAVA | crate::collision_grid::SPIKES,
+        )
     }
     pub(crate) fn water_at(&self, x: i64, y: i64) -> bool {
         self.water_overlaps([x, y, x, y])
@@ -606,6 +640,161 @@ fn property(v: &Value) -> PropertyValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(clippy::collapsible_if)]
+    fn old_overlaps_box(layer: &TileLayer, bounds: [i64; 4]) -> bool {
+        let [left, top, right, bottom] = bounds;
+        let size = layer.tile_size_pixels * SCALE;
+        let x0 = floor_div(left.wrapping_sub(1), size).unwrap_or(0).max(0);
+        let y0 = floor_div(top.wrapping_sub(1), size).unwrap_or(0).max(0);
+        let x1 = floor_div(right, size)
+            .unwrap_or(-1)
+            .min(layer.width as i64 - 1);
+        let y1 = floor_div(bottom, size)
+            .unwrap_or(-1)
+            .min(layer.height as i64 - 1);
+        for row in y0..=y1 {
+            for col in x0..=x1 {
+                let cell = layer.cells[row as usize * layer.width + col as usize];
+                if let Some(contact) = layer.collision.iter().find(|p| p.cell == cell) {
+                    if polygon::overlaps_box(
+                        &contact.polygon,
+                        [
+                            left - col * size,
+                            top - row * size,
+                            right - col * size,
+                            bottom - row * size,
+                        ],
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+    fn check_indexed_level(path: &std::path::Path, boxes: usize) -> usize {
+        let collision = include_str!("../../../../src/level/collision_table.json");
+        let raw = std::fs::read_to_string(path).unwrap();
+        let world = World::compile_benchmark_real_screen(&raw, collision).unwrap();
+        let mut checks = 0;
+        let mut seed = 0x6a09e667f3bcc909_u64;
+        let mut random = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for map in &world.maps {
+            for layer in &map.layers {
+                assert_eq!(layer.collision_index.len(), layer.collision.len());
+                for cell in layer.cells.iter().copied().collect::<BTreeSet<_>>() {
+                    assert_eq!(
+                        layer.contact(cell),
+                        layer.collision.iter().find(|p| p.cell == cell)
+                    );
+                }
+            }
+            for index in 0..boxes {
+                let x = (random() % ((map.width_pixels + 128) * SCALE) as u64) as i64 - 64 * SCALE;
+                let y = (random() % ((map.height_pixels + 128) * SCALE) as u64) as i64 - 64 * SCALE;
+                let dx = (random() % (128 * SCALE) as u64) as i64;
+                let dy = (random() % (128 * SCALE) as u64) as i64;
+                let bounds = match index % 16 {
+                    0 => [x, y, x, y],
+                    1 => [x, y, x - dx, y - dy],
+                    2 => [-SCALE, -SCALE, 0, 0],
+                    3 => [0, 0, 32 * SCALE, 32 * SCALE],
+                    _ => [x, y, x + dx, y + dy],
+                };
+                for class in [1_u8, 2, 4, 8, 12] {
+                    let old = map.layers.iter().any(|l| {
+                        crate::collision_grid::classes(l) & class != 0
+                            && old_overlaps_box(l, bounds)
+                    });
+                    assert_eq!(
+                        old,
+                        map.collision_grid.overlaps(map, bounds, class),
+                        "combined class={class} {} {bounds:?}",
+                        path.display()
+                    );
+                }
+                if bounds[0] <= bounds[2] && bounds[1] <= bounds[3] {
+                    let points = [
+                        Position {
+                            x: bounds[0],
+                            y: bounds[1],
+                        },
+                        Position {
+                            x: bounds[2],
+                            y: bounds[1],
+                        },
+                        Position {
+                            x: bounds[0] + (bounds[2] - bounds[0]) / 2,
+                            y: bounds[3],
+                        },
+                    ];
+                    assert_eq!(
+                        map.legacy_terrain_polygon_overlaps(&points, bounds),
+                        map.terrain_polygon_overlaps(&points, bounds),
+                        "combined polygon {} {bounds:?}",
+                        path.display()
+                    );
+                }
+                for layer in &map.layers {
+                    assert_eq!(
+                        old_overlaps_box(layer, bounds),
+                        layer.overlaps_box(bounds),
+                        "{} {} {:?}",
+                        path.display(),
+                        layer.tilemap,
+                        bounds
+                    );
+                    checks += 1;
+                }
+            }
+        }
+        println!(
+            "TERRAIN_INDEX_EQUAL path={} random_boxes_per_map={boxes} layer_queries={checks}",
+            path.display()
+        );
+        checks
+    }
+    #[test]
+    fn indexed_collision_matches_linear_on_all_public_level_fixtures() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let mut paths = std::fs::read_dir(root)
+            .unwrap()
+            .map(|p| p.unwrap().path())
+            .filter(|p| p.to_string_lossy().ends_with(".level.json"))
+            .collect::<Vec<_>>();
+        paths.sort();
+        assert!(!paths.is_empty());
+        for path in paths {
+            check_indexed_level(&path, 2000);
+        }
+    }
+    #[test]
+    #[ignore = "requires private AKA real-screen inputs; set TERRAIN_EQ_LEVELS"]
+    fn indexed_collision_matches_linear_on_private_real_maps() {
+        let paths = std::env::var_os("TERRAIN_EQ_LEVELS").expect("TERRAIN_EQ_LEVELS required");
+        let paths = std::env::split_paths(&paths).collect::<Vec<_>>();
+        assert!(!paths.is_empty());
+        for path in paths {
+            check_indexed_level(&path, 20000);
+        }
+    }
+    #[test]
+    fn benchmark_dice_omission_keeps_source_and_normal_refusal() {
+        let level = r#"{"version":"1","name":"test","desc":"","author":"test","startpoint":{"map":1,"X":32,"Y":32},"maps":{"map1":{"width":640,"height":480,"objects":{},"diceBlockColours":"retained-source"}}}"#;
+        let collision = r#"{"version":2,"tilemaps":{}}"#;
+        assert!(World::compile(level, collision).is_err());
+        let world = World::compile_benchmark_real_screen(level, collision).unwrap();
+        assert!(world.maps[0]
+            .source_properties
+            .iter()
+            .any(|(k, v)| k == "diceBlockColours"
+                && matches!(v,PropertyValue::String(s) if s=="retained-source")));
+    }
     #[test]
     fn tile_runs_preserve_transforms_and_refuse_malformed_expansion() {
         let (_, _, cells) = decode_tilemap(

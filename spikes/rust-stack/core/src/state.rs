@@ -77,6 +77,19 @@ impl Run {
         {
             return Err(unsupported("Only admitted public/verification worlds are supported; selected target runtime closure is not implemented"));
         }
+        Self::create_after_fixture_identity(world, stats)
+    }
+    /// Benchmark-only: only the fixture identity gate above is bypassed.
+    pub fn create_benchmark_unverified(
+        world: &World,
+        stats: &mut crate::Stats,
+    ) -> Result<Self, Error> {
+        Self::create_after_fixture_identity(world, stats)
+    }
+    fn create_after_fixture_identity(
+        world: &World,
+        stats: &mut crate::Stats,
+    ) -> Result<Self, Error> {
         let entities = Self::spawn_rows(world)?;
         let player = Player::new(
             Body {
@@ -279,6 +292,8 @@ impl Run {
                 continue;
             }
             stats.entity_steps += 1;
+            #[cfg(feature = "benchmark-work-counters")]
+            stats.benchmark_stepped_source_rows.push(e.origin.placed());
             match &mut e.kind {
                 Kind::Post(_) => {}
                 Kind::Pickup(p) => p.advance(&mut e.body, &mut e.status, e.collected, map),
@@ -290,6 +305,18 @@ impl Run {
                     map,
                 ),
                 Kind::Walker(w) => {
+                    #[cfg(debug_assertions)]
+                    {
+                        use crate::actors::ActorKind;
+                        let index = match w.kind {
+                            ActorKind::Walker => 0,
+                            ActorKind::Flyer => 1,
+                            ActorKind::Flower => 2,
+                            ActorKind::Plant => 3,
+                            ActorKind::Stilt => 4,
+                        };
+                        stats.benchmark_actor_steps[index] += 1;
+                    }
                     let mut context = crate::actors::ActorStep {
                         map,
                         frame: self.frame,
@@ -315,6 +342,8 @@ impl Run {
             if let Kind::Pad(pad) = &mut e.kind {
                 if awake {
                     stats.entity_steps += 1;
+                    #[cfg(feature = "benchmark-work-counters")]
+                    stats.benchmark_stepped_source_rows.push(e.origin.placed());
                     let crate::PreparedPlacement::Pad { large, .. } = map.placements[e
                         .origin
                         .placed()
@@ -995,7 +1024,13 @@ impl Run {
         {
             return Err(unsupported("runtime serial/placed prefix validation"));
         }
-        let mut tokens = std::collections::BTreeSet::new();
+        // Token uniqueness without a per-step set: placed tokens are slot+1 and the
+        // identity check below pins slot == index, so they are distinct. Runtime
+        // tokens are TOKEN_BASE+serial; they must be distinct from each other and
+        // above every placed token. Checked after the loop.
+        let placed_count = world.maps[0].placements.len() as i64;
+        let mut runtime_serials: Vec<i64> = Vec::new();
+        let mut runtime_sorted = true;
         let mut family = 0;
         for (index, e) in self.entities.iter().enumerate() {
             match e.origin {
@@ -1009,8 +1044,14 @@ impl Run {
                         && e.can_respawn == 0 => {}
                 _ => return Err(unsupported("ordered placed/runtime identity")),
             }
-            if !tokens.insert(e.origin.token()) {
-                return Err(unsupported("duplicate entity token"));
+            if let Origin::Runtime(serial) = e.origin {
+                if runtime_serials.last().is_some_and(|last| *last >= serial) {
+                    runtime_sorted = false;
+                }
+                if e.origin.token() <= placed_count {
+                    return Err(unsupported("duplicate entity token"));
+                }
+                runtime_serials.push(serial);
             }
             if matches!(e.kind, Kind::Walker(_)) {
                 if e.family_index != family {
@@ -1106,6 +1147,12 @@ impl Run {
                 {
                     return Err(unsupported("walker validation"));
                 }
+            }
+        }
+        if !runtime_sorted {
+            runtime_serials.sort_unstable();
+            if runtime_serials.windows(2).any(|w| w[0] == w[1]) {
+                return Err(unsupported("duplicate entity token"));
             }
         }
         Ok(())

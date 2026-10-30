@@ -4,6 +4,7 @@ use std::fmt;
 mod actors;
 mod body;
 mod checkpoint;
+mod collision_grid;
 mod entity;
 mod items;
 mod life;
@@ -14,6 +15,7 @@ pub mod polygon;
 mod post;
 mod pound;
 mod presentation;
+mod render_index;
 mod runtime;
 pub mod schema;
 mod solids;
@@ -326,6 +328,9 @@ pub struct TileLayer {
     pub hazard: TerrainHazard,
     /// Transformed contact polygons for every distinct nonempty cell identifier.
     pub collision: Vec<TileCollision>,
+    /// Derived once at compilation. Keys include all h/v/d transform bits.
+    /// Immutable with `collision`; never part of saved gameplay state.
+    pub(crate) collision_index: std::collections::HashMap<i32, usize>,
     pub width: usize,
     pub height: usize,
     /// Signed int32 Tiled identifiers, -1 empty, high bits h/v/d.
@@ -344,6 +349,7 @@ pub struct Map {
     pub dice_colours: Vec<[u8; 3]>,
     pub source_properties: Vec<(String, PropertyValue)>,
     pub layers: Vec<TileLayer>,
+    pub(crate) collision_grid: collision_grid::Grid,
     pub placements: Vec<Placement>,
     /// One immutable geometry owner. Saved support_bridge uses index + 1.
     pub bridges: Vec<BridgeGeometry>,
@@ -372,6 +378,11 @@ pub struct Stats {
     pub tick: i64,
     pub completed_ticks: u64,
     pub entity_steps: u64,
+    #[cfg(feature = "benchmark-work-counters")]
+    pub benchmark_stepped_source_rows: Vec<Option<usize>>,
+    /// Debug-host-only actual dispatch counters; absent from optimized Pro builds.
+    #[cfg(debug_assertions)]
+    pub benchmark_actor_steps: [u64; 5],
     pub contacts: u64,
     pub nearby_queries: u64,
     pub nearby_candidates: u64,
@@ -391,7 +402,10 @@ pub struct Session {
     schema: schema::Schema,
     state: state::Run,
     previous: presentation::Previous,
+    render_index: render_index::Index,
     interpolate: bool,
+    /// Reused storage for the next step's entity rows. Contents are never read.
+    spare_entities: Vec<entity::Entity>,
 }
 impl Session {
     pub fn load(level_json: &str, collision_json: &str, schema_json: &str) -> Result<Self, Error> {
@@ -409,7 +423,9 @@ impl Session {
         let mut stats = Stats::default();
         let state = state::Run::create(&world, &mut stats)?;
         state.validate(&world)?;
-        let previous = presentation::Previous::of(&state);
+        let mut render_index = render_index::Index::default();
+        render_index.update(&state, &world);
+        let previous = presentation::Previous::of(&state, world.maps[0].placements.len());
         let admission = AdmissionReport {
             admitted_codes: world.maps[0]
                 .placements
@@ -429,22 +445,114 @@ impl Session {
             schema,
             state,
             previous,
+            render_index,
             interpolate: false,
+            spare_entities: Vec::new(),
         })
+    }
+    /// Benchmark-only entry; normal load remains strict and all other checks run.
+    pub fn load_benchmark_unverified(
+        level_json: &str,
+        collision_json: &str,
+        schema_json: &str,
+    ) -> Result<Self, Error> {
+        Self::load_benchmark_configured(level_json, collision_json, schema_json, false)
+    }
+    pub fn load_benchmark_real_screen(
+        level_json: &str,
+        collision_json: &str,
+        schema_json: &str,
+    ) -> Result<Self, Error> {
+        Self::load_benchmark_configured(level_json, collision_json, schema_json, true)
+    }
+    fn load_benchmark_configured(
+        level_json: &str,
+        collision_json: &str,
+        schema_json: &str,
+        omit_dice_colours: bool,
+    ) -> Result<Self, Error> {
+        let schema = schema::Schema::parse(schema_json)?;
+        if schema::hash(collision_json.as_bytes())
+            != schema::decode_hash(
+                "a143014159ced2f04f82386471c7fbf6e628f4760c4085655b7e9392b0dde6d6",
+            )?
+        {
+            return Err(Error::Unsupported {
+                requirements: vec!["collision table differs from pinned reference".into()],
+            });
+        }
+        let world = if omit_dice_colours {
+            World::compile_benchmark_real_screen(level_json, collision_json)?
+        } else {
+            World::compile(level_json, collision_json)?
+        };
+        let mut stats = Stats::default();
+        let state = state::Run::create_benchmark_unverified(&world, &mut stats)?;
+        state.validate(&world)?;
+        let mut render_index = render_index::Index::default();
+        render_index.update(&state, &world);
+        let previous = presentation::Previous::of(&state, world.maps[0].placements.len());
+        let admission = AdmissionReport {
+            admitted_codes: world.maps[0]
+                .placements
+                .iter()
+                .map(|p| p.code.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            unsupported_requirements: Vec::new(),
+            schema_digest: schema.digest(),
+            placed_rows: world.maps[0].placements.len(),
+        };
+        Ok(Self {
+            world,
+            admission,
+            stats,
+            schema,
+            state,
+            previous,
+            render_index,
+            interpolate: false,
+            spare_entities: Vec::new(),
+        })
+    }
+    pub fn benchmark_actor_steps(&self) -> Option<[u64; 5]> {
+        #[cfg(debug_assertions)]
+        {
+            Some(self.stats.benchmark_actor_steps)
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            None
+        }
     }
     pub fn advance(&mut self, input_mask: u8) -> Result<(), Error> {
         // Transactional refusal while this narrow vertical slice still has unsupported
         // contacts. This is a typed-state copy, never snapshot encoding or JSON.
         // Remove the rollback copy only when the admitted closure cannot fail mid-step.
+        // The entity rows are copied into a recycled buffer (the rows of the state
+        // before last), so a step makes no large allocation.
+        let rows = std::mem::take(&mut self.state.entities);
         let mut next = self.state.clone();
+        self.state.entities = rows;
+        let mut buffer = std::mem::take(&mut self.spare_entities);
+        buffer.clone_from(&self.state.entities);
+        next.entities = buffer;
         let mut stats = self.stats.clone();
+        #[cfg(feature = "benchmark-work-counters")]
+        stats.benchmark_stepped_source_rows.clear();
         next.advance(input_mask, &self.world, &mut stats)?;
         next.validate(&self.world)?;
-        self.previous = presentation::Previous::of(&self.state);
         stats.completed_ticks += 1;
         stats.tick = next.frame;
         self.stats = stats;
-        self.state = next;
+        self.render_index.update(&next, &self.world);
+        let finished = std::mem::replace(&mut self.state, next);
+        let older = std::mem::replace(
+            &mut self.previous,
+            presentation::Previous::from_run(finished, self.world.maps[0].placements.len()),
+        );
+        self.spare_entities = older.into_entities();
         self.interpolate = true;
         Ok(())
     }
@@ -457,12 +565,34 @@ impl Session {
     pub fn restore(&mut self, bytes: &[u8]) -> Result<(), Error> {
         let wire = wire::WireSnapshot::decode(bytes, self.world.identity, &self.schema)?;
         let state = state::Run::restored(&wire, &self.world, &self.schema)?;
-        self.previous = presentation::Previous::of(&state);
+        self.previous = presentation::Previous::of(&state, self.world.maps[0].placements.len());
+        self.render_index.update(&state, &self.world);
         self.state = state;
         self.stats.tick = self.state.frame;
         self.stats.restore_count += 1;
         self.interpolate = false;
         Ok(())
+    }
+    /// Visual-only query; never used by activation or simulation dispatch.
+    pub fn presentation_region(&self, bounds: [i64; 4]) -> Presentation {
+        let rows = self.render_index.query(bounds);
+        presentation::sample_rows(
+            &self.state,
+            &self.world,
+            &self.previous,
+            self.interpolate,
+            Some(&rows),
+        )
+    }
+    pub fn configure_presentation_index(&mut self, absolute_origin_guard: i64) {
+        self.render_index.configure(absolute_origin_guard.max(1));
+        self.render_index.update(&self.state, &self.world);
+    }
+    pub fn presentation_view(&self) -> (usize, Position) {
+        (1, self.state.camera)
+    }
+    pub fn render_index_metrics(&self) -> (usize, usize, usize, usize) {
+        self.render_index.metrics()
     }
     pub fn presentation(&self) -> Presentation {
         presentation::sample(&self.state, &self.world, &self.previous, self.interpolate)

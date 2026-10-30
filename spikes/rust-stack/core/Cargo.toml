@@ -7,6 +7,9 @@ publish = false
 [lib]
 name = "eggshell_spike_core"
 
+[features]
+benchmark-work-counters = []
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
