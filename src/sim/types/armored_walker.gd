@@ -29,6 +29,8 @@ const ROLL := 4
 const RECOVER := 5
 ## Positive: the 60-tick burst tween; negative: the 90-tick wall rebound.
 ## 61 defers a burst until this body's normal motion has finished this tick.
+## knock_pending saves a natural finish until tick2, even if Global98 starts a new
+## value tween in the meantime. An explicit Stop (Global100/101) cancels that finish.
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -36,6 +38,7 @@ const FIELDS := (
 		["timer", 0],
 		["roll_direction", -1],
 		["knock_ticks", 0],
+		["knock_pending", 0],
 		["birth_frame", 0],
 		["birth_serial", 0],
 		["birth_phase", Birth.EVENTS_BIRTH]
@@ -72,6 +75,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	var old_vx: int = entity.vx
 	if knocked:
 		entity.knock_ticks -= signi(entity.knock_ticks)
+		if entity.knock_ticks == 0:
+			entity.knock_pending = 1
 	match entity.mode:
 		ROLL:
 			entity.vx = entity.roll_direction * 256 * 60 * entity.timer * entity.timer / 8100
@@ -136,6 +141,7 @@ static func knockback(
 	if entity.held or entity.spat or entity.hidden or entity.frozen or entity.status != 1:
 		return
 	entity.roll_direction = 1 if entity.x > from_x else -1
+	# Global98 adds a value tween without stopping a queued natural completion.
 	entity.knock_ticks = 61 if later else 60
 
 
@@ -145,7 +151,7 @@ static func after_advance(state: Dictionary, world: Dictionary) -> void:
 		if (
 			entity.code in CODES
 			and entity.status == 1
-			and entity.knock_ticks
+			and knockback_active(entity)
 			and not entity.held
 			and not entity.spat
 			and not entity.hidden
@@ -155,7 +161,23 @@ static func after_advance(state: Dictionary, world: Dictionary) -> void:
 			Collision.refresh(world, entity)
 
 
+## Global99 still picks a naturally completed tween at value zero. Global102
+## clears beingKnockedBack only in the late completion trigger, after regular events.
+static func knockback_active(entity: Dictionary) -> bool:
+	return entity.knock_ticks != 0 or entity.knock_pending == 1
+
+
+static func after_step(state: Dictionary, _world: Dictionary) -> void:
+	for entity: Dictionary in state.entities:
+		if entity.code in CODES and entity.knock_pending:
+			entity.knock_pending = 0
+			# Global102 clears the flag even when Global98 registered a newer tween.
+			entity.knock_ticks = 0
+
+
 static func knockback_velocity(entity: Dictionary) -> int:
+	if entity.knock_pending:
+		return 0
 	var ticks: int = mini(entity.knock_ticks, 60)
 	return (
 		entity.roll_direction * 448 * 60 * ticks / 60
@@ -173,10 +195,10 @@ static func _first_knock_velocity(state: Dictionary) -> int:
 		if other.status != 1:
 			continue
 		var type: Script = _registry.lookup(other.code)
-		if not type.has_method("knockback_velocity"):
+		if not type.has_method("knockback_active") or not type.knockback_active(other):
 			continue
 		var candidate: int = type.knockback_velocity(other)
-		if candidate and (first.is_empty() or Birth.born_before(other, first)):
+		if first.is_empty() or Birth.born_before(other, first):
 			first = other
 			velocity = candidate
 	return velocity
@@ -199,6 +221,8 @@ static func _knock_events(entity: Dictionary, world: Dictionary, first_speed: in
 		entity.roll_direction = -wall_direction
 		entity.facing = entity.roll_direction
 		entity.knock_ticks = -90
+		# The wall event explicitly Stops the old tween before starting its rebound.
+		entity.knock_pending = 0
 		speed = 48 * 60
 	if speed > 24 * 60 and Collision.floor_at(entity, world, box) != 0:
 		entity.vy = -speed / 2 - 160 * 60
@@ -270,6 +294,8 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.roll_direction in [-1, 1]
 		and entity.knock_ticks >= -90
 		and entity.knock_ticks <= 61
+		and entity.knock_pending in [0, 1]
+		and (not entity.knock_pending or entity.knock_ticks >= 0)
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
 		and entity.birth_phase in Birth.BIRTH_PHASES

@@ -41,6 +41,7 @@ const FIELDS := (
 		["slide_from", 0],
 		["slide_ticks", 0],
 		["slide_total", 0],
+		["knock_pending", 0],
 		["birth_frame", 0],
 		["birth_serial", 0],
 		["birth_phase", Birth.EVENTS_BIRTH]
@@ -61,8 +62,30 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 	return Body.create(source)
 
 
+## Milde uses the same GameObjects knockBackTimer as armor: zero stays picked
+## through Global99 until Global102's late natural-completion trigger clears it.
+static func knockback_active(entity: Dictionary) -> bool:
+	return entity.mode == KNOCKED and (entity.slide_ticks > 0 or entity.knock_pending == 1)
+
+
+static func after_advance(state: Dictionary, _world: Dictionary) -> void:
+	for entity: Dictionary in state.entities:
+		if entity.code in CODES and entity.status == Birth.ACTIVE and entity.knock_pending:
+			entity.vx = 0
+
+
+static func after_step(state: Dictionary, _world: Dictionary) -> void:
+	for entity: Dictionary in state.entities:
+		if entity.code in CODES and entity.knock_pending:
+			entity.knock_pending = 0
+			if entity.mode == KNOCKED:
+				# A same-step burst adds a tween; the older queued finish still clears it.
+				entity.slide_ticks = 0
+				entity.timer = KNOCK_PAUSE
+
+
 static func knockback_velocity(entity: Dictionary) -> int:
-	if entity.mode != KNOCKED or entity.slide_ticks <= 0:
+	if entity.mode != KNOCKED or entity.slide_ticks <= 0 or entity.knock_pending:
 		return 0
 	return entity.slide_from * entity.slide_ticks / entity.slide_total
 
@@ -168,6 +191,7 @@ static func _knocked_step(
 	_hop(entity, Motion.gravity_box(entity, world, box))
 	if entity.slide_ticks == 0:
 		entity.timer = KNOCK_PAUSE
+		entity.knock_pending = 1
 
 
 static func _hop(entity: Dictionary, landed: bool) -> void:
@@ -205,6 +229,7 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 				type.knockback(other, state, world, entity.x, later)
 				Collision.refresh(world, other)
 			continue
+		# Global98 starts another value tween; it does not cancel a pending finish.
 		other.mode = KNOCKED
 		other.slide_from = KNOCK_SPEED * (1 if other.x > entity.x else -1)
 		other.slide_total = KNOCK_TICKS
@@ -297,6 +322,8 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_total <= 600
 		and entity.slide_ticks >= 0
 		and entity.slide_ticks <= entity.slide_total
+		and entity.knock_pending in [0, 1]
+		and (not entity.knock_pending or entity.slide_total > 0)
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
 		and entity.birth_phase in Birth.BIRTH_PHASES
