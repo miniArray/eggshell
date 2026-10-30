@@ -545,6 +545,11 @@ impl Map {
     pub fn collision_grid_metrics(&self) -> (usize, usize, usize) {
         self.collision_grid.metrics()
     }
+    /// world.gd lava_overlaps: the lava tilemaps only (spikes hurt the player, not bodies).
+    pub(crate) fn lava_overlaps(&self, b: [i64; 4]) -> bool {
+        self.collision_grid
+            .overlaps(self, b, crate::collision_grid::LAVA)
+    }
     pub(crate) fn hazard_overlaps(&self, b: [i64; 4]) -> bool {
         self.collision_grid.overlaps(
             self,

@@ -16,7 +16,26 @@ def main() -> None:
     ):
         raise RuntimeError("Route processing requires aka with builders disabled")
     name, destination = sys.argv[1:]
-    if name == "bounce.moves":
+    if name == "stride.eat":
+        # P1 eating: the damage route reaches food at call 152; catch it and lay an
+        # egg with DOWN (consume, then the stored egg), then walk on and try a
+        # second catch and a spit.
+        damage = json.loads(Path("tests/fixtures/stride.damage.input.json").read_text())
+        # The catch lands as the hit lands; actions resume when the hurt lock ends (~call 222).
+        inputs = (
+            damage[:152]
+            + [10]
+            + [0] * 76
+            + [32]
+            + [0] * 40
+            + [2] * 30
+            + [8]
+            + [0] * 20
+            + [8]
+            + [0] * 40
+        )
+        inputs += [2] * (800 - len(inputs))
+    elif name == "bounce.moves":
         # P1 player actions without food: look up, upward tongue, toss and aim
         # without eggs, aim lock, duck + throw, airborne throw and tongues.
         inputs = (

@@ -25,7 +25,7 @@ impl Run {
             run.entities.push(entity);
         }
         for (Field(name, default), value) in schema.level().iter().zip(&wire.level) {
-            if run.checkpoint.set_field(name, *value) {
+            if run.checkpoint.set_field(name, *value) || run.consumers.set_field(name, *value) {
                 continue;
             }
             match name.as_str() {

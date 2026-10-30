@@ -220,12 +220,18 @@ impl Actor {
         !(map.terrain_overlaps([left, bottom, left + 12 * S, bottom + 28 * S])
             || map.border_overlaps([left, bottom, left + 12 * S, bottom + 28 * S]))
     }
+    /// actor.gd / stilt_walker.gd step, from enemy_body.gd process to the behaviour.
+    #[allow(clippy::too_many_arguments)]
     pub fn advance(
         &mut self,
+        token: i64,
         body: &mut Body,
         facing: &mut i64,
+        status: &mut i64,
+        can_respawn: &mut i64,
         step: &mut ActorStep,
-    ) -> Result<(), Error> {
+    ) -> Result<crate::eating::After, Error> {
+        use crate::eating::{After, Hold};
         let fresh = self.started == 0;
         if fresh {
             self.started = 1;
@@ -234,12 +240,36 @@ impl Actor {
                 *facing = if step.player.body.x > body.x { 1 } else { -1 };
             }
         }
+        let action = self.process(token, body, facing, status, can_respawn, step);
         if fresh
             && self.kind == ActorKind::Plant
             && self.variant == 1
             && !body.overlaps(step.map, self.body_bounds(*facing), 0, -4 * S)
         {
             self.variant = 0;
+        }
+        if [Hold::Held, Hold::Gone].contains(&action) {
+            return Ok(After::Nothing);
+        }
+        if self.kind != ActorKind::Stilt {
+            if action == Hold::Released {
+                self.on_spit_release(body, facing, step.player.facing);
+            }
+            if self.roll != 0 {
+                return Ok(self.roll_step(body, facing, status, can_respawn, step));
+            }
+            if let Some(after) = self.spit_step(body, facing, status, can_respawn, step) {
+                return Ok(after);
+            }
+        }
+        if step.map.lava_overlaps([
+            body.x + self.bounds(*body, *facing)[0],
+            body.y + self.bounds(*body, *facing)[1],
+            body.x + self.bounds(*body, *facing)[2],
+            body.y + self.bounds(*body, *facing)[3],
+        ]) {
+            self.remove(status, can_respawn);
+            return Ok(After::Nothing);
         }
         match self.kind {
             ActorKind::Walker => self.walker(body, facing, step),
@@ -320,7 +350,7 @@ impl Actor {
             ActorKind::Plant => self.plant(body, facing, step),
             ActorKind::Stilt => self.stilt_advance(body, facing, step.map),
         }
-        Ok(())
+        Ok(After::Nothing)
     }
     fn walker(&mut self, body: &mut Body, facing: &mut i64, step: &mut ActorStep) {
         if self.timer == 0 && self.mode == 0 {

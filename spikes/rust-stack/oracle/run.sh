@@ -33,9 +33,9 @@ elif [[ "$fixture" == collections ]]; then
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"
   level="$PWD/spikes/rust-stack/core/tests/fixtures/collections.level.json"
   input="$out/$fixture.input.json"
-elif [[ "$fixture" == bounce.pad || "$fixture" == bounce.moves ]]; then
+elif [[ "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$fixture" == stride.eat ]]; then
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"
-  level="$PWD/tests/fixtures/bounce.level.json"
+  level="$PWD/tests/fixtures/${fixture%%.*}.level.json"
   input="$out/$fixture.input.json"
 elif [[ "$fixture" == stride.damage ]]; then
   level="$PWD/tests/fixtures/stride.level.json"

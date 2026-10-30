@@ -26,6 +26,7 @@ pub(crate) struct Run {
     pub deaths: i64,
     pub dynamic_serial: i64,
     pub checkpoint: crate::checkpoint::Memory,
+    pub consumers: crate::consumers::Consumers,
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,
 }
@@ -119,6 +120,7 @@ impl Run {
             deaths: 0,
             dynamic_serial: 1,
             checkpoint: crate::checkpoint::Memory::default(),
+            consumers: crate::consumers::Consumers::default(),
             #[cfg(test)]
             solid_trace: crate::solids::SolidTrace::default(),
         };
@@ -237,6 +239,9 @@ impl Run {
         } else {
             world.spawn
         };
+        // item_egg/seed/element reset_map run in spawn_map, before Moves.reset clears
+        // the request history, so they keep the serial from before the reset.
+        self.consumers.reset_map(self.player.food.requests.serial());
         let previous = self.player.previous_input;
         let pressed = self.player.pressed_input;
         let hits = self.player.life.hits;
@@ -295,16 +300,29 @@ impl Run {
             stats.entity_steps += 1;
             #[cfg(feature = "benchmark-work-counters")]
             stats.benchmark_stepped_source_rows.push(e.origin.placed());
-            match &mut e.kind {
-                Kind::Post(_) => {}
-                Kind::Pickup(p) => p.advance(&mut e.body, &mut e.status, e.collected, map),
-                Kind::Star(p) => p.advance(
-                    &mut e.body,
-                    &mut e.facing,
-                    &mut e.status,
-                    self.player.body.x,
-                    map,
-                ),
+            let token = e.origin.token();
+            let after = match &mut e.kind {
+                Kind::Post(_) => crate::eating::After::Nothing,
+                // pickup.gd / item_star.gd step: a held item only consumes its requests.
+                Kind::Pickup(p) if p.held != 0 => {
+                    p.phase = (p.phase + 1) % 60;
+                    crate::eating::After::ConsumeItem
+                }
+                Kind::Star(p) if p.held != 0 => crate::eating::After::ConsumeItem,
+                Kind::Pickup(p) => {
+                    p.advance(&mut e.body, &mut e.status, e.collected, map);
+                    crate::eating::After::Nothing
+                }
+                Kind::Star(p) => {
+                    p.advance(
+                        &mut e.body,
+                        &mut e.facing,
+                        &mut e.status,
+                        self.player.body.x,
+                        map,
+                    );
+                    crate::eating::After::Nothing
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -325,9 +343,21 @@ impl Run {
                         player: &mut self.player,
                         rng: &mut self.rng,
                     };
-                    w.advance(&mut e.body, &mut e.facing, &mut context)?;
+                    w.advance(
+                        token,
+                        &mut e.body,
+                        &mut e.facing,
+                        &mut e.status,
+                        &mut e.can_respawn,
+                        &mut context,
+                    )?
                 }
                 _ => unreachable!("phase 0 members"),
+            };
+            match after {
+                crate::eating::After::HitOthers(b) => self.hit_others(next - 1, b)?,
+                crate::eating::After::ConsumeItem => self.consume_item(next - 1),
+                crate::eating::After::Nothing => {}
             }
         }
         // Captures skip phase 1 exactly as DispatchLoops.advance does.
@@ -475,6 +505,10 @@ impl Run {
                     continue;
                 }
                 if let Kind::Pickup(p) = &mut e.kind {
+                    // DispatchLoops.contact skips held entities.
+                    if p.held == 1 {
+                        continue;
+                    }
                     stats.contacts += 1;
                     let b = self.player.bounds();
                     let box_ = [
@@ -529,7 +563,27 @@ impl Run {
                 let Kind::Walker(w) = &mut e.kind else {
                     continue;
                 };
+                // DispatchLoops.contact skips held and hidden entities; actor.gd contact
+                // also ignores spat bodies.
+                if w.held == 1 || w.hidden == 1 {
+                    continue;
+                }
                 stats.contacts += 1;
+                if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
+                    continue;
+                }
+                if w.roll != 0 && w.kind != crate::actors::ActorKind::Stilt {
+                    // actor.gd contact: a rolling body breaks on the player after its grace.
+                    let b = self.player.bounds();
+                    if w.roll_grace == 0
+                        && w.roll_up == 0
+                        && self.player.captured_by == 0
+                        && overlap(e.body, w.bounds(e.body, e.facing), self.player.body, b)
+                    {
+                        w.remove(&mut e.status, &mut e.can_respawn);
+                    }
+                    continue;
+                }
                 if self.player.captured_by != 0 {
                     continue;
                 }
@@ -646,74 +700,18 @@ impl Run {
                     }
                 }
             }
+            // registry.gd tongue_contact, in table order (eating.rs).
             if let Some(sensor) = self.player.tongue_box() {
-                for e in &mut self.entities {
-                    if let Kind::Post(p) = &e.kind {
-                        if p.solid(e.body, e.status).is_some()
-                            && overlap(e.body, p.bounds(), Body::default(), sensor)
-                        {
-                            self.player.block_tongue();
-                            break;
-                        }
-                    }
-                    if let Kind::Walker(w) = &mut e.kind {
-                        if e.status == 1
-                            && w.kind == crate::actors::ActorKind::Stilt
-                            && overlap(e.body, w.bounds(e.body, e.facing), Body::default(), sensor)
-                        {
-                            w.stilt_knock(&mut e.body, &mut e.facing, self.player.body.x);
-                            self.player.block_tongue();
-                            break;
-                        }
-                        if e.status == 1
-                            && w.kind == crate::actors::ActorKind::Plant
-                            && w.mode != 0
-                            && overlap(e.body, w.bounds(e.body, e.facing), Body::default(), sensor)
-                            && overlap(
-                                Body::default(),
-                                w.head_box(e.body, e.facing),
-                                Body::default(),
-                                sensor,
-                            )
-                        {
-                            self.player.block_tongue();
-                            break;
-                        }
-                    }
-                    let food_bounds = match &e.kind {
-                        Kind::Walker(w) if w.kind != crate::actors::ActorKind::Plant => {
-                            Some(w.bounds(e.body, e.facing))
-                        }
-                        Kind::Star(p)
-                            if e.collected == 0
-                                && p.pickup_delay == 0
-                                && !self.player.blocks_step() =>
-                        {
-                            Some(p.bounds())
-                        }
-                        Kind::Pickup(p)
-                            if p.moving != 0
-                                && e.collected == 0
-                                && p.pickup_delay == 0
-                                && !self.player.blocks_step() =>
-                        {
-                            Some(p.bounds())
-                        }
-                        _ => None,
-                    };
-                    if e.status == 1
-                        && food_bounds.is_some_and(|b| overlap(e.body, b, Body::default(), sensor))
-                    {
-                        return Err(unsupported(
-                            "tongue food capture/request consumer is not implemented",
-                        ));
-                    }
-                }
+                self.tongue_contact(sensor);
             }
             if let Some(reach) = self.player.tongue_reach() {
                 self.player.catch_companion(reach);
             }
         }
+        // registry.gd consume_requests: level-wide consumers, then entity consumers.
+        self.consumers
+            .run(&self.player.food.requests, self.player.food.eggs)?;
+        self.consume_item_requests();
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
         }
@@ -780,6 +778,9 @@ impl Run {
     }
     fn level_value(&self, n: &str, world: &World) -> Option<i64> {
         if let Some(value) = self.checkpoint.field(n) {
+            return Some(value);
+        }
+        if let Some(value) = self.consumers.field(n) {
             return Some(value);
         }
         Some(match n {
@@ -1032,6 +1033,10 @@ impl Run {
         // tokens are TOKEN_BASE+serial; they must be distinct from each other and
         // above every placed token. Checked after the loop.
         let placed_count = world.maps[0].placements.len() as i64;
+        let serial = self.player.food.requests.serial();
+        if !self.consumers.valid() {
+            return Err(unsupported("egg inventory and level request cursors"));
+        }
         let mut runtime_serials: Vec<i64> = Vec::new();
         let mut runtime_sorted = true;
         let mut family = 0;
@@ -1101,8 +1106,8 @@ impl Run {
                     || !(-position_limit..=position_limit).contains(&p.collect_y)
                     || p.collect_ticks != 0
                         && (p.kind != crate::items::PickupKind::RedCoin || e.collected != 1)
-                    || p.held != 0
-                    || p.request_cursor != 0
+                    || ![0, 1].contains(&p.held)
+                    || !(0..=serial).contains(&p.request_cursor)
                     || p.origin_token != 0
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
@@ -1112,8 +1117,8 @@ impl Run {
             }
             if let Kind::Star(p) = &e.kind {
                 if !p.valid()
-                    || p.held != 0
-                    || p.request_cursor != 0
+                    || ![0, 1].contains(&p.held)
+                    || !(0..=serial).contains(&p.request_cursor)
                     || p.origin_token != 0
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
@@ -1135,12 +1140,10 @@ impl Run {
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
                     || !(0..=5).contains(&w.mode)
-                    || w.held != 0
+                    || (w.held != 0 && w.spat != 0)
                     || w.hidden != 0
-                    || w.spat != 0
-                    || w.roll != 0
                     || w.frozen != 0
-                    || w.request_cursor != 0
+                    || !(0..=serial).contains(&w.request_cursor)
                     || w.impact_cursor > p.impact
                     || !(0..=1).contains(&w.started)
                     || !(0..=1).contains(&w.contact)

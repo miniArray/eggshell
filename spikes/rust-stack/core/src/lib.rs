@@ -5,6 +5,8 @@ mod actors;
 mod body;
 mod checkpoint;
 mod collision_grid;
+mod consumers;
+mod eating;
 mod entity;
 mod food;
 mod items;

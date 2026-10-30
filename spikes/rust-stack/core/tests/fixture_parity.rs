@@ -11,6 +11,7 @@ fn run(restores: bool) {
         "bounce",
         "bounce.pad",
         "bounce.moves",
+        "stride.eat",
         "lagoon",
         "collections",
         "actors_target",
@@ -49,6 +50,9 @@ fn run(restores: bool) {
     let mut squash_ticks = 0;
     let mut tongue_ticks = 0;
     let mut swimming_ticks = 0;
+    let mut held_ticks = 0;
+    let mut most_eggs = 0;
+    let mut requests = 0;
     let mut captured_ticks = 0;
     let mut head_ticks = 0;
     let mut rescuer_ticks = 0;
@@ -354,6 +358,20 @@ fn run(restores: bool) {
         bridge_ticks +=
             usize::from(required(&wire.player, schema.player(), "support_bridge").unwrap() != 0);
         tongue_ticks += usize::from(packet.player.action == 4);
+        held_ticks +=
+            usize::from(required(&wire.player, schema.player(), "move_held_id").unwrap() != 0);
+        most_eggs = most_eggs.max(required(&wire.player, schema.player(), "move_eggs").unwrap());
+        if std::env::var_os("FIXTURE_DUMP").is_some() && !restores {
+            let f = |n: &str| required(&wire.player, schema.player(), n).unwrap();
+            println!(
+                "DUMP tick={tick} input={} action={} hurt={} held={} digest={} eggs={} serial={} x={} y={} on_floor={}",
+                inputs.get(tick.saturating_sub(1)).copied().unwrap_or(0),
+                f("move_action"), f("hurt"), f("move_held_id"), f("move_digest"), f("move_eggs"),
+                f("move_emit_serial"), f("x"), f("y"), f("on_floor")
+            );
+        }
+        requests =
+            requests.max(required(&wire.player, schema.player(), "move_emit_serial").unwrap());
         assert_eq!(
             packet.player.swimming,
             required(&wire.player, schema.player(), "swimming").unwrap() != 0
@@ -495,7 +513,14 @@ fn run(restores: bool) {
     if pictures.is_some() {
         println!("LEGAL_INACTIVE_VISIBILITY_COVERAGE fixture={name} waiting_samples={inactive_waiting_samples} queued_samples={inactive_queued_samples} original_policy=true");
     }
-    println!("FIXTURE_VERTICAL_DONE fixture={name} snapshots={} accepted_ticks={} saved_frame={} uninterrupted={} A_to_B_restores={} bridge_support_ticks={bridge_ticks} pad_squash_ticks={squash_ticks} tongue_ticks={tongue_ticks} swimming_ticks={swimming_ticks} target_admission=refused",inputs.len()+1,session.stats().completed_ticks,session.stats().tick,!restores,session.stats().restore_count);
+    if name == "stride.eat" {
+        // The eating route must really eat, spit and lay, or it proves nothing.
+        assert!(
+            held_ticks > 0 && most_eggs > 0 && requests >= 2,
+            "held={held_ticks} eggs={most_eggs} requests={requests}"
+        );
+    }
+    println!("FIXTURE_VERTICAL_DONE fixture={name} snapshots={} accepted_ticks={} saved_frame={} uninterrupted={} A_to_B_restores={} bridge_support_ticks={bridge_ticks} pad_squash_ticks={squash_ticks} tongue_ticks={tongue_ticks} swimming_ticks={swimming_ticks} held_ticks={held_ticks} most_eggs={most_eggs} requests={requests} target_admission=refused",inputs.len()+1,session.stats().completed_ticks,session.stats().tick,!restores,session.stats().restore_count);
 }
 #[test]
 #[ignore = "requires original Godot fixture stream"]
@@ -540,33 +565,5 @@ fn popup_coordinate_headroom_refuses_atomically() {
     assert_eq!(session.snapshot().unwrap(), before);
     assert_eq!(session.stats().restore_count, 0);
 }
-#[test]
-#[ignore = "requires original Godot schema"]
-fn unsupported_tongue_food_contact_refuses_atomically() {
-    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let root = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
-    let level = fs::read_to_string(project.join("tests/fixtures/stride.level.json")).unwrap();
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
-    let metadata = fs::read_to_string(root.join("schema.json")).unwrap();
-    let inputs: Vec<u8> = serde_json::from_slice(
-        &fs::read(project.join("tests/fixtures/stride.damage.input.json")).unwrap(),
-    )
-    .unwrap();
-    let mut session = Session::load(&level, &collision, &metadata).unwrap();
-    for input in &inputs[..152] {
-        session.advance(*input).unwrap();
-    }
-    let before = session.snapshot().unwrap();
-    let picture = session.presentation();
-    let stats = session.stats().clone();
-    let error = session.advance(10).unwrap_err();
-    assert!(
-        matches!(error,eggshell_spike_core::Error::Unsupported{requirements} if requirements==["tongue food capture/request consumer is not implemented"])
-    );
-    assert_eq!(session.snapshot().unwrap(), before);
-    assert_eq!(session.presentation(), picture);
-    assert_eq!(session.stats().completed_ticks, stats.completed_ticks);
-    assert_eq!(session.stats().terrain_queries, stats.terrain_queries);
-    assert_eq!(session.stats().contacts, stats.contacts);
-    println!("FOOD_REFUSAL_DONE normally_reached=true atomic=true");
-}
+// The former refusal of tongue food is gone: eating is ported (P1) and checked
+// against Godot by the stride.eat fixture route.

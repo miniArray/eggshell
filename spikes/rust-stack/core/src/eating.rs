@@ -1,0 +1,598 @@
+//! Eating: the tongue's catch, held bodies, spat and rolling enemies, and the item
+//! request consumers (registry.gd tongue_contact, enemy_body.gd, actor.gd roll,
+//! pickup.gd and item_star.gd consume_requests).
+use crate::{
+    actors::{Actor, ActorKind, ActorStep},
+    body::{Body, Probe},
+    entity::{Entity, Kind},
+    food::{Since, CONSUME, SPIT},
+    items::PickupKind,
+    state::Run,
+    Error, Position, SCALE as S,
+};
+
+impl Run {
+    /// stilt_walker.gd unseat: the rider becomes a dynamic e1 and the stilt is removed.
+    pub(crate) fn unseat_stilt(&mut self, index: usize) -> Result<(), Error> {
+        let e = &mut self.entities[index];
+        if e.status != 1 {
+            return Ok(());
+        }
+        let Kind::Walker(w) = &mut e.kind else {
+            return Ok(());
+        };
+        let position = Position {
+            x: e.body.x,
+            y: e.body.y - w.height + 34 * S,
+        };
+        let (variant, facing, layer) = (w.variant, e.facing, e.layer);
+        w.remove(&mut e.status, &mut e.can_respawn);
+        self.spawn_walker(position, variant, facing, layer)
+    }
+}
+
+/// Body.process outcome (enemy_body.gd FREE/HELD/RELEASED/GONE).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Hold {
+    Free,
+    Held,
+    Released,
+    Gone,
+}
+
+/// What an actor step asks the run to do with other entities afterwards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum After {
+    Nothing,
+    /// enemy_body.gd hit_others with Hits.SPIT and self_breaks, from this box offset.
+    HitOthers([i64; 4]),
+    /// A held pickup or star: run its consume_requests now.
+    ConsumeItem,
+}
+
+fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
+    [body.x + b[0], body.y + b[1], body.x + b[2], body.y + b[3]]
+}
+/// enemy_body.gd overlap: strict on every side.
+fn strict(a: [i64; 4], b: [i64; 4]) -> bool {
+    a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]
+}
+
+impl Actor {
+    /// enemy_body.gd remove (no actor in the admitted set has on_remove side effects
+    /// that can run here: a plant can never be held, spat or rolled).
+    pub(crate) fn remove(&mut self, status: &mut i64, can_respawn: &mut i64) {
+        *status = 3;
+        self.held = 0;
+        self.spat = 0;
+        *can_respawn = 0;
+    }
+    /// enemy_body.gd process, after the `started` initialisation the caller already ran.
+    pub(crate) fn process(
+        &mut self,
+        token: i64,
+        body: &mut Body,
+        facing: &mut i64,
+        status: &mut i64,
+        can_respawn: &mut i64,
+        step: &ActorStep,
+    ) -> Hold {
+        let mut released = false;
+        let requests = &step.player.food.requests;
+        if let Since::Requests(list) = requests.since(self.request_cursor) {
+            for r in list {
+                if r.item != token {
+                    continue;
+                }
+                if r.kind == CONSUME {
+                    self.remove(status, can_respawn);
+                } else if r.kind == SPIT && self.held != 0 {
+                    self.held = 0;
+                    self.spat = 1;
+                    self.spit_age = 0;
+                    self.spit_wall = 0;
+                    body.x = r.x;
+                    body.y = r.y;
+                    body.vx = r.vx;
+                    body.vy = r.vy;
+                    self.spit_speed = r.vx.abs();
+                    if r.vx != 0 {
+                        *facing = r.vx.signum();
+                    }
+                    released = true;
+                }
+            }
+        }
+        self.request_cursor = requests.serial();
+        if *status == 3 {
+            return Hold::Gone;
+        }
+        if self.held != 0 {
+            let p = &step.player;
+            body.x = p.body.x + p.facing * 24 * S;
+            body.y = p.body.y - 24 * S;
+            body.vx = 0;
+            body.vy = 0;
+            return Hold::Held;
+        }
+        if released {
+            Hold::Released
+        } else {
+            Hold::Free
+        }
+    }
+    /// actor.gd start_roll
+    pub(crate) fn start_roll(
+        &mut self,
+        body: &mut Body,
+        facing: &mut i64,
+        direction: i64,
+        vy: i64,
+        upward: bool,
+    ) {
+        self.roll = 1;
+        self.ground_form = 1;
+        self.roll_up = i64::from(upward);
+        self.roll_ticks = if upward { 90 } else { 0 };
+        self.roll_grace = if upward { 0 } else { 15 };
+        self.roll_bounce = if upward { 0 } else { 1 };
+        *facing = direction;
+        body.vx = if upward { 0 } else { direction * 432 * 60 };
+        body.vy = vy;
+    }
+    /// actor.gd on_spit_release: e1/e2 roll off; others keep flying as spat food.
+    pub(crate) fn on_spit_release(
+        &mut self,
+        body: &mut Body,
+        facing: &mut i64,
+        player_facing: i64,
+    ) {
+        if ![ActorKind::Walker, ActorKind::Flyer].contains(&self.kind) {
+            return;
+        }
+        let (vy, upward) = (body.vy, body.vx == 0);
+        self.start_roll(body, facing, player_facing, vy, upward);
+        self.spat = 0;
+    }
+    fn hazards(
+        &mut self,
+        body: Body,
+        b: [i64; 4],
+        status: &mut i64,
+        can_respawn: &mut i64,
+        map: &Probe,
+    ) -> bool {
+        if map.lava_overlaps(world_box(body, b)) {
+            self.remove(status, can_respawn);
+            return true;
+        }
+        false
+    }
+    /// actor.gd roll_step; `None` when it ended or removed the body.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn roll_step(
+        &mut self,
+        body: &mut Body,
+        facing: &mut i64,
+        status: &mut i64,
+        can_respawn: &mut i64,
+        step: &mut ActorStep,
+    ) -> After {
+        self.roll_grace = (self.roll_grace - 1).max(0);
+        if self.roll_up != 0 {
+            self.roll_ticks = (self.roll_ticks - 1).max(0);
+            body.vx = 0;
+            if self.roll_ticks == 0 {
+                self.roll = 0;
+                self.mode = 0;
+                self.timer = step.rng.ticks(60, 150);
+                return After::Nothing;
+            }
+        } else {
+            body.vx = *facing * 432 * 60;
+        }
+        let distance = body.vx;
+        let (actual, grounded) = self.movement(body, *facing, step.map, distance);
+        if actual != distance && self.roll_up == 0 {
+            self.remove(status, can_respawn);
+            return After::Nothing;
+        }
+        let b = self.body_bounds(*facing);
+        if body.gravity(step.map, b, grounded) && self.roll_up != 0 {
+            body.vy = if self.roll_bounce == 0 { -384 } else { -256 } * 60;
+            self.roll_bounce = 1;
+        }
+        if self.hazards(*body, b, status, can_respawn, step.map) {
+            return After::Nothing;
+        }
+        After::HitOthers(b)
+    }
+    /// enemy_body.gd spit_step; `None` when the body is not spat.
+    pub(crate) fn spit_step(
+        &mut self,
+        body: &mut Body,
+        facing: &mut i64,
+        status: &mut i64,
+        can_respawn: &mut i64,
+        step: &mut ActorStep,
+    ) -> Option<After> {
+        if self.spat == 0 {
+            return None;
+        }
+        self.spit_age += 1;
+        body.vx = *facing * self.spit_speed;
+        let distance = body.vx;
+        let (actual, grounded) = self.movement(body, *facing, step.map, distance);
+        if actual != distance {
+            *facing = -*facing;
+            self.spit_speed = 48 * 60;
+            self.spit_wall = 1;
+            self.spit_age = 0;
+        }
+        let b = self.bounds(*body, *facing);
+        let landed = body.gravity(step.map, b, grounded);
+        let duration = if self.spit_wall != 0 { 42 } else { 60 };
+        if landed {
+            if self.spit_age < duration {
+                let remaining = duration - self.spit_age;
+                let high = if self.spit_wall != 0 { 256 } else { 512 };
+                let low = if self.spit_wall != 0 { 96 } else { 128 };
+                let bounce =
+                    low * 60 + (high - low) * 60 * remaining * remaining / (duration * duration);
+                body.vy = -bounce / 2 - 128 * 60;
+            } else {
+                self.spat = 0;
+                body.vx = 0;
+                *facing = if body.x < step.player.body.x { 1 } else { -1 };
+            }
+        }
+        if self.hazards(*body, b, status, can_respawn, step.map) {
+            return Some(After::Nothing);
+        }
+        Some(After::HitOthers(b))
+    }
+}
+
+impl Run {
+    /// registry.gd tongue_contact over the whole table, in table order. The first entity
+    /// whose tongue rule returns 1 (caught) or 2 (blocks) ends the search.
+    pub(crate) fn tongue_contact(&mut self, sensor: [i64; 4]) {
+        if self.player.food.held_id != 0 {
+            return;
+        }
+        for index in 0..self.entities.len() {
+            let e = &self.entities[index];
+            if e.status != 1 || held(e) || hidden(e) {
+                continue;
+            }
+            let b = match &e.kind {
+                Kind::Walker(w) => w.bounds(e.body, e.facing),
+                Kind::Pickup(p) => p.bounds(),
+                Kind::Star(p) => p.bounds(),
+                Kind::Post(p) => p.bounds(),
+                _ => [0; 4],
+            };
+            let reach = e.body.x + b[2] > sensor[0]
+                && e.body.x + b[0] < sensor[2]
+                && e.body.y + b[3] > sensor[1]
+                && e.body.y + b[1] < sensor[3];
+            if !reach {
+                continue;
+            }
+            let token = e.origin.token();
+            let blocks_step = self.player.blocks_step();
+            let e = &mut self.entities[index];
+            let result = match &mut e.kind {
+                Kind::Post(p) => {
+                    if p.solid(e.body, e.status).is_some() {
+                        2
+                    } else {
+                        0
+                    }
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Stilt => {
+                    w.stilt_knock(&mut e.body, &mut e.facing, self.player.body.x);
+                    2
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Plant => {
+                    if strict(sensor, w.head_box(e.body, e.facing)) && w.mode != 0 {
+                        2
+                    } else {
+                        0
+                    }
+                }
+                Kind::Walker(w) => {
+                    // enemy_body.gd tongue (digestible, not instant for this family).
+                    if w.hidden != 0 || w.held != 0 || e.status != 1 {
+                        0
+                    } else if self.player.catch_item(token, 1, 0, 0, 0, 256 * 60) {
+                        w.held = 1;
+                        w.spat = 0;
+                        e.body.vx = 0;
+                        e.body.vy = 0;
+                        w.request_cursor = self.player.food.requests.serial();
+                        if w.kind == ActorKind::Flyer {
+                            w.ground_form = 1;
+                            w.mode = 0;
+                            w.timer = 0;
+                        }
+                        1
+                    } else {
+                        0
+                    }
+                }
+                Kind::Pickup(p) => {
+                    if p.moving == 0 || e.collected != 0 || p.pickup_delay != 0 || blocks_step {
+                        0
+                    } else if self.player.catch_item(token, 0, 0, 0, 1, 256 * 60) {
+                        p.held = 1;
+                        p.request_cursor = self.player.food.requests.serial();
+                        1
+                    } else {
+                        0
+                    }
+                }
+                Kind::Star(p) => {
+                    if e.collected != 0 || p.pickup_delay != 0 || blocks_step {
+                        0
+                    } else if self.player.catch_item(token, 0, 0, 0, 1, 256 * 60) {
+                        p.held = 1;
+                        p.request_cursor = self.player.food.requests.serial();
+                        1
+                    } else {
+                        0
+                    }
+                }
+                _ => 0,
+            };
+            if result == 1 {
+                return;
+            }
+            if result == 2 {
+                self.player.block_tongue();
+                return;
+            }
+        }
+    }
+    /// pickup.gd and item_star.gd consume_requests, in table order (registry.gd
+    /// consume_requests runs the entity consumers after the level-wide ones).
+    pub(crate) fn consume_item_requests(&mut self) {
+        for index in 0..self.entities.len() {
+            self.consume_item(index);
+        }
+    }
+    /// One held pickup or star: its consume_requests (also run by its own step).
+    pub(crate) fn consume_item(&mut self, index: usize) {
+        let serial = self.player.food.requests.serial();
+        let token = self.entities[index].origin.token();
+        let list = match &self.entities[index].kind {
+            Kind::Pickup(p) if p.held != 0 => self.player.food.requests.since(p.request_cursor),
+            Kind::Star(p) if p.held != 0 => self.player.food.requests.since(p.request_cursor),
+            _ => return,
+        };
+        {
+            let Since::Requests(list) = list else {
+                match &mut self.entities[index].kind {
+                    Kind::Pickup(p) => p.request_cursor = serial,
+                    Kind::Star(p) => p.request_cursor = serial,
+                    _ => {}
+                }
+                return;
+            };
+            for r in list {
+                if r.item != token {
+                    continue;
+                }
+                if r.kind == CONSUME {
+                    self.collect_item(index);
+                } else if r.kind == SPIT {
+                    let e = &mut self.entities[index];
+                    e.body.x = r.x;
+                    e.body.y = r.y;
+                    e.body.vx = r.vx;
+                    e.body.vy = r.vy;
+                    match &mut e.kind {
+                        Kind::Pickup(p) => p.held = 0,
+                        Kind::Star(p) => {
+                            p.held = 0;
+                            p.pickup_delay = 6;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            match &mut self.entities[index].kind {
+                Kind::Pickup(p) => p.request_cursor = serial,
+                Kind::Star(p) => p.request_cursor = serial,
+                _ => {}
+            }
+        }
+    }
+    /// pickup.gd / item_star.gd collect (Life.collect with the entity's own flag).
+    pub(crate) fn collect_item(&mut self, index: usize) {
+        if self.player.life_phase != 0 {
+            return;
+        }
+        let e = &mut self.entities[index];
+        match &mut e.kind {
+            Kind::Pickup(p) => {
+                if e.collected != 0 || p.enabled == 0 || p.pickup_delay != 0 {
+                    return;
+                }
+                e.collected = 1;
+                match p.kind {
+                    PickupKind::Coin => self.coins = self.coins.saturating_add(1),
+                    PickupKind::RedCoin => self.redcoins = self.redcoins.saturating_add(1),
+                    PickupKind::Flower => self.flowers = self.flowers.saturating_add(1),
+                }
+                self.sound.emit(2, e.body.x, e.body.y);
+                p.held = 0;
+                if p.kind == PickupKind::RedCoin {
+                    p.phase = 0;
+                    p.collect_y = e.body.y;
+                    p.collect_ticks = 60;
+                } else {
+                    e.status = 3;
+                }
+            }
+            Kind::Star(p) => {
+                if e.collected != 0 {
+                    return;
+                }
+                e.collected = 1;
+                self.player.life.health = (self.player.life.health + 1).min(30);
+                self.sound.emit(2, e.body.x, e.body.y);
+                p.held = 0;
+                e.status = 3;
+            }
+            _ => {}
+        }
+    }
+    /// enemy_body.gd hit_others with Hits.SPIT, self_breaks = true, for the spat or
+    /// rolling body at `index` with contact box offset `b`.
+    pub(crate) fn hit_others(&mut self, index: usize, b: [i64; 4]) -> Result<(), Error> {
+        let projectile = self.entities[index].body;
+        let projectile_box = world_box(projectile, b);
+        let projectile_rolls = matches!(
+            &self.entities[index].kind,
+            Kind::Walker(w) if w.roll != 0 && [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind)
+        );
+        let projectile_breaks = matches!(
+            &self.entities[index].kind,
+            Kind::Walker(w) if w.spat != 0 || w.roll != 0
+        );
+        let mut other = 0;
+        while other < self.entities.len() {
+            let current = other;
+            other += 1;
+            if current == index {
+                continue;
+            }
+            let o = &self.entities[current];
+            if o.status != 1 || held(o) || hidden(o) {
+                continue;
+            }
+            let ob = match &o.kind {
+                Kind::Walker(w) => w.bounds(o.body, o.facing),
+                Kind::Pickup(p) => p.bounds(),
+                Kind::Star(p) => p.bounds(),
+                // Posts, pads, bridges, goals and checkpoints have no hit rule.
+                _ => continue,
+            };
+            if !strict(projectile_box, world_box(o.body, ob)) {
+                continue;
+            }
+            enum Target {
+                StiltRider,
+                StiltBody,
+                PlantHead,
+                PlantMiss,
+                Actor,
+                RollingPair,
+                Pickup,
+                Nothing,
+            }
+            let target = {
+                let o = &self.entities[current];
+                match &o.kind {
+                    // stilt_walker.gd projectile_contact: the rider is struck near the top.
+                    Kind::Walker(w) if w.kind == ActorKind::Stilt => {
+                        if projectile.y < o.body.y - w.height + 50 * S {
+                            Target::StiltRider
+                        } else {
+                            Target::StiltBody
+                        }
+                    }
+                    // actor.gd projectile_contact for e5 with a spit hit: only the head.
+                    Kind::Walker(w) if w.kind == ActorKind::Plant => {
+                        if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box)
+                        {
+                            Target::PlantHead
+                        } else {
+                            Target::PlantMiss
+                        }
+                    }
+                    Kind::Walker(w) if w.roll != 0 && projectile_rolls => Target::RollingPair,
+                    Kind::Walker(_) => Target::Actor,
+                    // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
+                    Kind::Pickup(_) => Target::Pickup,
+                    // item_star.gd has projectile_contact only and is not an ENEMY.
+                    _ => Target::Nothing,
+                }
+            };
+            let reaction = match target {
+                Target::StiltRider => {
+                    self.unseat_stilt(current)?;
+                    3
+                }
+                Target::StiltBody => {
+                    let o = &mut self.entities[current];
+                    if let Kind::Walker(w) = &mut o.kind {
+                        w.stilt_knock(&mut o.body, &mut o.facing, projectile.x);
+                    }
+                    3
+                }
+                Target::PlantHead => {
+                    self.hit_actor(current)?;
+                    if projectile_breaks {
+                        1
+                    } else {
+                        3
+                    }
+                }
+                Target::Actor => {
+                    self.hit_actor(current)?;
+                    3
+                }
+                Target::Pickup => {
+                    self.collect_item(current);
+                    3
+                }
+                Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
+            };
+            if self.entities[index].status != 1 {
+                return Ok(());
+            }
+            if reaction == 1 || reaction == 3 {
+                let e = &mut self.entities[index];
+                if let Kind::Walker(w) = &mut e.kind {
+                    w.remove(&mut e.status, &mut e.can_respawn);
+                }
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+    /// actor.gd hit with a spit (no element, not an egg): remove the body.
+    fn hit_actor(&mut self, index: usize) -> Result<(), Error> {
+        let captured_by = self.player.captured_by;
+        let e = &mut self.entities[index];
+        if e.status != 1 {
+            return Ok(());
+        }
+        if let Kind::Walker(w) = &mut e.kind {
+            if w.held != 0 {
+                return Ok(());
+            }
+            if w.kind == ActorKind::Plant && captured_by == e.family_index + 1 {
+                return Err(Error::Unsupported {
+                    requirements: vec!["spit hit on the capturing plant (on_remove release)".into()],
+                });
+            }
+            w.remove(&mut e.status, &mut e.can_respawn);
+        }
+        Ok(())
+    }
+}
+
+fn held(e: &Entity) -> bool {
+    match &e.kind {
+        Kind::Walker(w) => w.held == 1,
+        Kind::Pickup(p) => p.held == 1,
+        Kind::Star(p) => p.held == 1,
+        _ => false,
+    }
+}
+fn hidden(e: &Entity) -> bool {
+    matches!(&e.kind, Kind::Walker(w) if w.hidden == 1)
+}
