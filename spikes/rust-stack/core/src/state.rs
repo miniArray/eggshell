@@ -7,15 +7,6 @@ use crate::{
     wire::{WireEntity, WireSnapshot},
     Error, Position, World, SCALE as S,
 };
-#[derive(Clone, Debug, Default)]
-pub(crate) struct Walker {
-    pub phase: i64,
-    pub timer: i64,
-    pub cycles: i64,
-    pub mode: i64,
-    pub started: i64,
-    pub contact: i64,
-}
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
@@ -24,11 +15,12 @@ pub(crate) enum Kind {
     Star(crate::items::Star),
     Bridge,
     Pad(crate::pad::Pad),
-    Walker(Walker),
+    Walker(crate::actors::Actor),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
     pub source: usize,
+    pub family_index: i64,
     pub body: Body,
     pub facing: i64,
     pub status: i64,
@@ -54,7 +46,6 @@ pub(crate) struct Run {
     pub goal_reached: i64,
     pub deaths: i64,
 }
-const WALKER_BOX: [i64; 4] = [-10 * S, -18 * S, 10 * S, 16 * S];
 fn unsupported(reason: &str) -> Error {
     Error::Unsupported {
         requirements: vec![reason.into()],
@@ -80,7 +71,11 @@ impl Run {
         let collections_identity = crate::schema::hash(
             include_str!("../tests/fixtures/collections.level.json").as_bytes(),
         );
+        let actors_identity = crate::schema::hash(
+            include_str!("../tests/fixtures/actors_target.level.json").as_bytes(),
+        );
         if world.identity != identity
+            && world.identity != actors_identity
             && world.identity != bounce_identity
             && world.identity != lagoon_identity
             && world.identity != collections_identity
@@ -117,7 +112,7 @@ impl Run {
         };
         let map = crate::body::Probe::new(&world.maps[0]);
         for _ in 0..2 {
-            run.entities_step(&map, stats);
+            run.entities_step(&map, stats)?;
             run.player.advance(&map, 0, 0, 0, 0, &mut run.sound);
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
@@ -132,6 +127,7 @@ impl Run {
         Ok(run)
     }
     fn spawn_rows(world: &World) -> Result<Vec<Entity>, Error> {
+        let mut next_family = 0;
         world.maps[0]
             .placements
             .iter()
@@ -164,13 +160,39 @@ impl Run {
                     "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
                         Kind::Pad(crate::pad::Pad::default())
                     }
-                    "e1" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
-                        Kind::Walker(Walker::default())
+                    "e1" | "e2" | "e3" | "e5"
+                        if p.variant >= 0
+                            && p.variant
+                                <= if ["e1", "e2"].contains(&p.code.as_str()) {
+                                    4
+                                } else {
+                                    1
+                                }
+                            && (0..=2).contains(&p.mirror)
+                            && p.rotation == 0 =>
+                    {
+                        let kind = match p.code.as_str() {
+                            "e1" => crate::actors::ActorKind::Walker,
+                            "e2" => crate::actors::ActorKind::Flyer,
+                            "e3" => crate::actors::ActorKind::Flower,
+                            _ => crate::actors::ActorKind::Plant,
+                        };
+                        Kind::Walker(crate::actors::Actor::new(
+                            kind, p.variant, p.mirror, p.position,
+                        ))
                     }
                     _ => return Err(unsupported("fixture entity form")),
                 };
+                let family_index = if matches!(kind, Kind::Walker(_)) {
+                    let index = next_family;
+                    next_family += 1;
+                    index
+                } else {
+                    0
+                };
                 Ok(Entity {
                     source,
+                    family_index,
                     body: Body {
                         x: p.position.x,
                         y: p.position.y,
@@ -223,11 +245,11 @@ impl Run {
         };
         Ok(())
     }
-    fn activate(w: &mut Walker, rng: &mut Rng) {
-        w.timer = rng.ticks(60, 150);
-        w.cycles = rng.cycles();
-    }
-    fn entities_step(&mut self, map: &crate::body::Probe, stats: &mut crate::Stats) {
+    fn entities_step(
+        &mut self,
+        map: &crate::body::Probe,
+        stats: &mut crate::Stats,
+    ) -> Result<(), Error> {
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
         for e in &mut self.entities {
             if let Kind::Pickup(p) = &mut e.kind {
@@ -315,82 +337,52 @@ impl Run {
                         && (source.position.x - centre.x).abs() < 624 * S
                         && (source.position.y - centre.y).abs() < 624 * S
                     {
-                        *w = Walker::default();
+                        *w = crate::actors::Actor::new(
+                            w.kind,
+                            source.variant,
+                            source.mirror,
+                            source.position,
+                        );
                         e.body = Body {
                             x: source.position.x,
                             y: source.position.y,
                             ..Body::default()
                         };
-                        e.facing = -1;
+                        e.facing = if source.mirror == 1 { 1 } else { -1 };
                         e.status = 0;
                         e.offscreen = 0;
                     }
                 }
+                let b = w.body_bounds(e.facing);
                 if e.status == 0
-                    && e.body.x + 10 * S > centre.x - 416 * S
-                    && e.body.x - 10 * S < centre.x + 416 * S
-                    && e.body.y + 16 * S > centre.y - 224 * S
-                    && e.body.y - 18 * S < centre.y + 224 * S
+                    && e.body.x + b[2] > centre.x - 416 * S
+                    && e.body.x + b[0] < centre.x + 416 * S
+                    && e.body.y + b[3] > centre.y - 224 * S
+                    && e.body.y + b[1] < centre.y + 224 * S
                 {
                     e.status = 1;
-                    Self::activate(w, &mut self.rng);
+                    if source.mirror == 2 {
+                        e.facing = if self.player.body.x < e.body.x { -1 } else { 1 };
+                    }
+                    w.activate(e.facing, &mut self.rng);
                 }
             }
             if !awake || e.status != 1 {
                 continue;
             }
             stats.entity_steps += 1;
-            w.started = 1;
-            if w.timer == 0 && w.mode == 0 {
-                Self::activate(w, &mut self.rng);
-            }
-            w.timer -= 1;
-            if w.mode == 0 {
-                w.phase += 1;
-                if w.phase % 30 == 0 {
-                    e.facing = -e.facing;
-                }
-                if w.timer == 0 {
-                    w.mode = 1;
-                    w.timer = 15;
-                }
-            } else if w.timer == 0 {
-                if w.cycles != 0 {
-                    w.cycles -= 1;
-                    w.timer = 15;
-                } else {
-                    w.mode = 0;
-                    w.phase = 0;
-                    Self::activate(w, &mut self.rng);
-                }
-            }
-            e.body.vx = if w.mode == 1 { e.facing * 48 * 60 } else { 0 };
-            let mut started = false;
-            if e.body.prepare(map, WALKER_BOX) {
-                let support = e.body.floor(map, WALKER_BOX);
-                started = support != 0 && e.body.vy >= 0;
-                let distance = e.body.vx;
-                e.body.horizontal(
-                    map,
-                    WALKER_BOX,
-                    distance,
-                    support,
-                    crate::body::HorizontalMove::Actor,
-                );
-            }
-            if e.body.gravity(map, WALKER_BOX, started) && w.mode == 1 {
-                let left = if e.facing > 0 {
-                    e.body.x
-                } else {
-                    e.body.x - 12 * S
-                };
-                let bottom = e.body.y + 16 * S;
-                if !(map.terrain_overlaps([left, bottom, left + 12 * S, bottom + 28 * S])
-                    || map.border_overlaps([left, bottom, left + 12 * S, bottom + 28 * S]))
-                {
-                    e.facing = -e.facing;
-                }
-            }
+            let mut context = crate::actors::ActorStep {
+                map,
+                frame: self.frame,
+                camera: self.camera,
+                player: &mut self.player,
+                rng: &mut self.rng,
+            };
+            w.advance(&mut e.body, &mut e.facing, &mut context)?;
+        }
+        // Captures skip phase 1 exactly as DispatchLoops.advance does.
+        if self.player.captured_by != 0 {
+            return Ok(());
         }
         // Step phase 1, still in saved table order. Pad has no activation lifecycle.
         for e in &mut self.entities {
@@ -406,6 +398,7 @@ impl Run {
                 }
             }
         }
+        Ok(())
     }
     pub fn advance(
         &mut self,
@@ -463,7 +456,7 @@ impl Run {
         let released = self.player.previous_input as u8 & !input;
         self.player.previous_input = input as i64;
         self.player.pressed_input = pressed as i64;
-        self.entities_step(&map, stats);
+        self.entities_step(&map, stats)?;
         let locked = self.player.locks_input();
         let action = if locked {
             self.player.locked_action(input)
@@ -471,170 +464,210 @@ impl Run {
             input
         };
         let (pressed, released) = if locked { (0, 0) } else { (pressed, released) };
-        self.player
-            .advance(&map, action, pressed, released, self.frame, &mut self.sound);
-        // Contact phase 0 precedes actors (phase 1), regardless of placement order.
-        for e in &mut self.entities {
-            if let Kind::Pad(pad) = &mut e.kind {
-                if e.status == 1 {
-                    stats.contacts += 1;
-                    let crate::PreparedPlacement::Pad { large, single_use } =
-                        world.maps[0].placements[e.source].prepared
-                    else {
-                        unreachable!("compiler-owned pad flags")
-                    };
-                    pad.contact(e.body, &mut self.player, action, large, single_use);
-                }
-            }
-        }
-        for e in &mut self.entities {
-            if e.status != 1 {
-                continue;
-            }
-            if let Kind::Pickup(p) = &mut e.kind {
-                stats.contacts += 1;
-                let b = self.player.bounds();
-                let box_ = [
-                    self.player.body.x + b[0],
-                    self.player.body.y + b[1],
-                    self.player.body.x + b[2],
-                    self.player.body.y + b[3],
-                ];
-                if self.player.life_phase == 0 && p.touches(e.body, e.collected, box_) {
-                    e.collected = 1;
-                    match p.kind {
-                        crate::items::PickupKind::Coin => self.coins = self.coins.saturating_add(1),
-                        crate::items::PickupKind::RedCoin => {
-                            self.redcoins = self.redcoins.saturating_add(1)
-                        }
-                        crate::items::PickupKind::Flower => {
-                            self.flowers = self.flowers.saturating_add(1)
-                        }
-                    }
-                    self.sound.emit(2, e.body.x, e.body.y);
-                    p.held = 0;
-                    if p.kind == crate::items::PickupKind::RedCoin {
-                        p.phase = 0;
-                        p.collect_y = e.body.y;
-                        p.collect_ticks = 60;
-                    } else {
-                        e.status = 3;
-                    }
-                    stats.collections += 1;
-                }
-                continue;
-            }
-            if let Kind::Star(p) = &mut e.kind {
-                stats.contacts += 1;
-                if e.collected == 0
-                    && p.pickup_delay == 0
-                    && p.held == 0
-                    && self.player.life_phase == 0
-                    && overlap(e.body, p.bounds(), self.player.body, self.player.bounds())
-                {
-                    e.collected = 1;
-                    self.player.life.health = (self.player.life.health + 1).min(30);
-                    self.sound.emit(2, e.body.x, e.body.y);
-                    p.held = 0;
-                    e.status = 3;
-                    stats.collections += 1;
-                }
-                continue;
-            }
-            let Kind::Walker(w) = &mut e.kind else {
-                continue;
-            };
-            stats.contacts += 1;
-            let touching = overlap(self.player.body, self.player.bounds(), e.body, WALKER_BOX);
-            if touching {
-                if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
-                    self.player.stomp(e.body.vy, action, &mut self.sound);
-                    e.status = 3;
-                } else if e.body.y < self.player.body.y - 8 * S
-                    && self.player.hurt(e.body.x, &mut self.sound)
-                {
-                    stats.damage_events += 1;
-                }
-                w.contact = 1;
-            } else {
-                w.contact = 0;
-            }
-        }
-        for e in &self.entities {
-            if !matches!(e.kind, Kind::Goal) || e.status != 1 {
-                continue;
-            }
-            stats.contacts += 1;
-            if self.player.life_phase == 0
-                && self.player.life.separated == 0
-                && overlap(
-                    self.player.body,
-                    [-12 * S, -56 * S, 12 * S, 0],
-                    e.body,
-                    [-8 * S, -8 * S, 8 * S, 8 * S],
-                )
-            {
-                let p = &mut self.player;
-                p.life_phase = 7;
-                p.life_ticks = 180;
-                p.goal_from_x = p.body.x;
-                p.goal_from_y = p.body.y;
-                p.goal_x = e.body.x;
-                p.goal_y = e.body.y + 32 * S;
-                p.body.vx = 0;
-                p.body.vy = 0;
-                p.movement = 5;
-                self.sound.player(p.body);
-                break;
-            }
-        }
-        if self.player.life_phase == 7 {
-            let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
+        if self.player.captured_by == 0 {
+            self.player
+                .advance(&map, action, pressed, released, self.frame, &mut self.sound);
+            // Contact phase 0 precedes actors (phase 1), regardless of placement order.
             for e in &mut self.entities {
-                if matches!(e.kind, Kind::Walker(_))
-                    && e.status == 1
-                    && e.body.x + 10 * S > centre.x - 416 * S
-                    && e.body.x - 10 * S < centre.x + 416 * S
-                    && e.body.y + 16 * S > centre.y - 224 * S
-                    && e.body.y - 18 * S < centre.y + 224 * S
-                {
-                    e.status = 3;
-                    self.coins = self.coins.saturating_add(1);
+                if let Kind::Pad(pad) = &mut e.kind {
+                    if e.status == 1 {
+                        stats.contacts += 1;
+                        let crate::PreparedPlacement::Pad { large, single_use } =
+                            world.maps[0].placements[e.source].prepared
+                        else {
+                            unreachable!("compiler-owned pad flags")
+                        };
+                        pad.contact(e.body, &mut self.player, action, large, single_use);
+                    }
                 }
             }
-        }
-        if let Some(sensor) = self.player.tongue_box() {
-            for e in &self.entities {
-                let food_bounds = match &e.kind {
-                    Kind::Walker(_) => Some(WALKER_BOX),
-                    Kind::Star(p)
-                        if e.collected == 0
-                            && p.pickup_delay == 0
-                            && !self.player.blocks_step() =>
-                    {
-                        Some(p.bounds())
+            for e in &mut self.entities {
+                if e.status != 1 {
+                    continue;
+                }
+                if let Kind::Pickup(p) = &mut e.kind {
+                    stats.contacts += 1;
+                    let b = self.player.bounds();
+                    let box_ = [
+                        self.player.body.x + b[0],
+                        self.player.body.y + b[1],
+                        self.player.body.x + b[2],
+                        self.player.body.y + b[3],
+                    ];
+                    if self.player.life_phase == 0 && p.touches(e.body, e.collected, box_) {
+                        e.collected = 1;
+                        match p.kind {
+                            crate::items::PickupKind::Coin => {
+                                self.coins = self.coins.saturating_add(1)
+                            }
+                            crate::items::PickupKind::RedCoin => {
+                                self.redcoins = self.redcoins.saturating_add(1)
+                            }
+                            crate::items::PickupKind::Flower => {
+                                self.flowers = self.flowers.saturating_add(1)
+                            }
+                        }
+                        self.sound.emit(2, e.body.x, e.body.y);
+                        p.held = 0;
+                        if p.kind == crate::items::PickupKind::RedCoin {
+                            p.phase = 0;
+                            p.collect_y = e.body.y;
+                            p.collect_ticks = 60;
+                        } else {
+                            e.status = 3;
+                        }
+                        stats.collections += 1;
                     }
-                    Kind::Pickup(p)
-                        if p.moving != 0
-                            && e.collected == 0
-                            && p.pickup_delay == 0
-                            && !self.player.blocks_step() =>
+                    continue;
+                }
+                if let Kind::Star(p) = &mut e.kind {
+                    stats.contacts += 1;
+                    if e.collected == 0
+                        && p.pickup_delay == 0
+                        && p.held == 0
+                        && self.player.life_phase == 0
+                        && overlap(e.body, p.bounds(), self.player.body, self.player.bounds())
                     {
-                        Some(p.bounds())
+                        e.collected = 1;
+                        self.player.life.health = (self.player.life.health + 1).min(30);
+                        self.sound.emit(2, e.body.x, e.body.y);
+                        p.held = 0;
+                        e.status = 3;
+                        stats.collections += 1;
                     }
-                    _ => None,
+                    continue;
+                }
+                let Kind::Walker(w) = &mut e.kind else {
+                    continue;
                 };
-                if e.status == 1
-                    && food_bounds.is_some_and(|b| overlap(e.body, b, Body::default(), sensor))
-                {
-                    return Err(unsupported(
-                        "tongue food capture/request consumer is not implemented",
-                    ));
+                stats.contacts += 1;
+                if self.player.captured_by != 0 {
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Plant {
+                    w.capture(e.body, e.facing, e.family_index, &mut self.player);
+                    continue;
+                }
+                let touching = overlap(
+                    self.player.body,
+                    self.player.bounds(),
+                    e.body,
+                    w.body_bounds(e.facing),
+                );
+                if touching {
+                    if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
+                        self.player.stomp(e.body.vy, action, &mut self.sound);
+                        e.status = 3;
+                    } else if e.body.y < self.player.body.y - 8 * S
+                        && self.player.hurt(e.body.x, &mut self.sound)
+                    {
+                        stats.damage_events += 1;
+                    }
+                    w.contact = 1;
+                } else {
+                    w.contact = 0;
                 }
             }
-        }
-        if let Some(reach) = self.player.tongue_reach() {
-            self.player.catch_companion(reach);
+            for e in &self.entities {
+                if !matches!(e.kind, Kind::Goal) || e.status != 1 {
+                    continue;
+                }
+                stats.contacts += 1;
+                if self.player.life_phase == 0
+                    && self.player.life.separated == 0
+                    && self.player.captured_by == 0
+                    && overlap(
+                        self.player.body,
+                        [-12 * S, -56 * S, 12 * S, 0],
+                        e.body,
+                        [-8 * S, -8 * S, 8 * S, 8 * S],
+                    )
+                {
+                    let p = &mut self.player;
+                    p.life_phase = 7;
+                    p.life_ticks = 180;
+                    p.goal_from_x = p.body.x;
+                    p.goal_from_y = p.body.y;
+                    p.goal_x = e.body.x;
+                    p.goal_y = e.body.y + 32 * S;
+                    p.body.vx = 0;
+                    p.body.vy = 0;
+                    p.movement = 5;
+                    self.sound.player(p.body);
+                    break;
+                }
+            }
+            if self.player.life_phase == 7 {
+                let centre =
+                    screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
+                for e in &mut self.entities {
+                    let b = if let Kind::Walker(w) = &e.kind {
+                        w.bounds(e.body, e.facing)
+                    } else {
+                        continue;
+                    };
+                    if e.status == 1
+                        && e.body.x + b[2] > centre.x - 416 * S
+                        && e.body.x + b[0] < centre.x + 416 * S
+                        && e.body.y + b[3] > centre.y - 224 * S
+                        && e.body.y + b[1] < centre.y + 224 * S
+                    {
+                        e.status = 3;
+                        self.coins = self.coins.saturating_add(1);
+                    }
+                }
+            }
+            if let Some(sensor) = self.player.tongue_box() {
+                for e in &self.entities {
+                    if let Kind::Walker(w) = &e.kind {
+                        if e.status == 1
+                            && w.kind == crate::actors::ActorKind::Plant
+                            && w.mode != 0
+                            && overlap(e.body, w.bounds(e.body, e.facing), Body::default(), sensor)
+                            && overlap(
+                                Body::default(),
+                                w.head_box(e.body, e.facing),
+                                Body::default(),
+                                sensor,
+                            )
+                        {
+                            self.player.block_tongue();
+                            break;
+                        }
+                    }
+                    let food_bounds = match &e.kind {
+                        Kind::Walker(w) if w.kind != crate::actors::ActorKind::Plant => {
+                            Some(w.bounds(e.body, e.facing))
+                        }
+                        Kind::Star(p)
+                            if e.collected == 0
+                                && p.pickup_delay == 0
+                                && !self.player.blocks_step() =>
+                        {
+                            Some(p.bounds())
+                        }
+                        Kind::Pickup(p)
+                            if p.moving != 0
+                                && e.collected == 0
+                                && p.pickup_delay == 0
+                                && !self.player.blocks_step() =>
+                        {
+                            Some(p.bounds())
+                        }
+                        _ => None,
+                    };
+                    if e.status == 1
+                        && food_bounds.is_some_and(|b| overlap(e.body, b, Body::default(), sensor))
+                    {
+                        return Err(unsupported(
+                            "tongue food capture/request consumer is not implemented",
+                        ));
+                    }
+                }
+            }
+            if let Some(reach) = self.player.tongue_reach() {
+                self.player.catch_companion(reach);
+            }
         }
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
@@ -643,7 +676,7 @@ impl Run {
             x: self.player.body.x,
             y: self.player.body.y - 28 * S,
         };
-        if !self.player.blocks_step() {
+        if self.player.captured_by == 0 && !self.player.blocks_step() {
             self.player.finish(&map, action);
         }
         stats.terrain_queries += map.terrain_queries.get();
@@ -732,6 +765,7 @@ impl Run {
         let specific = match &e.kind {
             Kind::Pickup(p) => p.field(n),
             Kind::Star(p) => p.field(n),
+            Kind::Walker(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -742,7 +776,7 @@ impl Run {
             "source_index" => e.source as i64,
             "token" => e.source as i64 + 1,
             "map_index" => 1,
-            "family_index" => 0,
+            "family_index" => e.family_index,
             "x" => e.body.x,
             "y" => e.body.y,
             "vx" => e.body.vx,
@@ -844,6 +878,13 @@ impl Run {
             || !(0..=1).contains(&self.goal_reached)
             || ![-1, 1].contains(&p.facing)
             || !(0..=1).contains(&p.on_floor)
+            || p.captured_by < 0
+            || p.captured_by
+                > self
+                    .entities
+                    .iter()
+                    .filter(|e| matches!(e.kind, Kind::Walker(_)))
+                    .count() as i64
             || p.support_bridge < 0
             || p.support_bridge > world.maps[0].bridges.len() as i64
             || !(0..=6).contains(&p.movement)
@@ -951,10 +992,18 @@ impl Run {
                 }
             }
             if let Kind::Walker(w) = &e.kind {
-                if !(0..=360).contains(&w.phase)
+                if !w.valid()
+                    || !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
-                    || !(0..=1).contains(&w.mode)
+                    || !(0..=5).contains(&w.mode)
+                    || w.held != 0
+                    || w.hidden != 0
+                    || w.spat != 0
+                    || w.roll != 0
+                    || w.frozen != 0
+                    || w.request_cursor != 0
+                    || w.impact_cursor != 0
                     || !(0..=1).contains(&w.started)
                     || !(0..=1).contains(&w.contact)
                     || !(-512 * 60..=512 * 60).contains(&e.body.vx)
@@ -974,6 +1023,7 @@ impl Player{
     pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>self.life.set_field(n,v)}}
 }};}
 fields! {
+"captured_by"=>captured_by,
 "x"=>body.x,"y"=>body.y,"vx"=>body.vx,"vy"=>body.vy,"facing"=>facing,"movement"=>movement,"on_floor"=>on_floor,"support_bridge"=>support_bridge,"previous_input"=>previous_input,"pressed_input"=>pressed_input,
 "jump_buffer"=>jump_buffer,"flutter_remaining"=>flutter_remaining,"flutter_cooldown"=>flutter_cooldown,"flutter_ready"=>flutter_ready,"boosted_flutter"=>boosted_flutter,
 "move_tongue_axis"=>tongue.axis,"move_tongue_length"=>tongue.length,"move_tongue_phase"=>tongue.phase,"move_tongue_block_tick"=>tongue.block_tick,"move_tongue_hold"=>tongue.hold,

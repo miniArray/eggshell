@@ -9,6 +9,7 @@ pub(crate) struct Previous {
     pub companion: Position,
     pub follow: Position,
     pub entities: Vec<Position>,
+    pub heads: Vec<Option<[i64; 4]>>,
     pub rescuers: [Position; 4],
 }
 impl Previous {
@@ -21,6 +22,18 @@ impl Previous {
             },
             follow: run.camera,
             entities: run.entities.iter().map(|e| pos(e.body)).collect(),
+            heads: run
+                .entities
+                .iter()
+                .map(|e| match &e.kind {
+                    Kind::Walker(w)
+                        if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
+                    {
+                        Some(w.head_box(e.body, e.facing))
+                    }
+                    _ => None,
+                })
+                .collect(),
             rescuers: run.player.life.rescuers,
         }
     }
@@ -65,6 +78,98 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
         alpha: item_alpha(p.despawn_ticks),
         ..VisualState::default()
     }
+}
+fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
+    use crate::actors::ActorKind;
+    let animation = match w.kind {
+        ActorKind::Walker | ActorKind::Flyer => {
+            if w.roll != 0 {
+                "Roll".into()
+            } else {
+                format!(
+                    "{}{}",
+                    w.variant,
+                    if w.kind == ActorKind::Flyer && w.ground_form == 0 {
+                        "Fly"
+                    } else if w.mode == 0 {
+                        "Idle"
+                    } else {
+                        "Walk"
+                    }
+                )
+            }
+        }
+        ActorKind::Flower => {
+            if w.mode != 0 {
+                "turn".into()
+            } else {
+                "walk".into()
+            }
+        }
+        ActorKind::Plant => {
+            if w.mode != 0 {
+                "active".into()
+            } else {
+                "idle".into()
+            }
+        }
+    };
+    VisualState {
+        animation: Some(animation),
+        flip_v: if w.kind == ActorKind::Plant && w.variant == 1 {
+            Some(true)
+        } else {
+            None
+        },
+        head_box: if w.kind == ActorKind::Plant && w.head_size != 0 {
+            Some(w.head_box(body, facing))
+        } else {
+            None
+        },
+        ..VisualState::default()
+    }
+}
+fn plant_head(
+    e: &crate::state::Entity,
+    previous: Option<[i64; 4]>,
+    frame: i64,
+) -> Vec<EntityAuxiliaryPicture> {
+    let Kind::Walker(w) = &e.kind else {
+        return Vec::new();
+    };
+    if w.kind != crate::actors::ActorKind::Plant || w.head_size == 0 {
+        return Vec::new();
+    }
+    let b = w.head_box(e.body, e.facing);
+    let old = previous.unwrap_or(b);
+    vec![EntityAuxiliaryPicture {
+        kind: EntityAuxiliaryKind::PlantHead,
+        scale: [1.0, 1.0],
+        picture: AuxiliaryPicture {
+            motion: motion(
+                Position {
+                    x: old[0],
+                    y: old[1],
+                },
+                Position { x: b[0], y: b[1] },
+            ),
+            visible: e.status == 1 && e.collected == 0 && w.held == 0 && w.hidden == 0,
+            layer: 10,
+            facing: e.facing,
+            animation: String::new(),
+            tick: frame,
+            visual: VisualState {
+                asset_key: Some("e5_head".into()),
+                origin_pixels: Some([0.0, 0.0]),
+                size_pixels: [
+                    Some((b[2] - b[0]) as f64 / SCALE as f64),
+                    Some((b[3] - b[1]) as f64 / SCALE as f64),
+                ],
+                rotation_degrees: Some(0.0),
+                ..VisualState::default()
+            },
+        },
+    }]
 }
 fn pad_visual(large: bool, remaining: i64) -> VisualState {
     let size = if large { 48.0 } else { 32.0 };
@@ -187,7 +292,8 @@ pub(crate) fn sample(
         life_phase: p.life_phase,
         on_floor: p.on_floor != 0,
         swimming: p.water.swimming != 0,
-        visible: p.life.invulnerable == 0 || (120 - p.life.invulnerable) % 6 < 3,
+        visible: p.captured_by == 0
+            && (p.life.invulnerable == 0 || (120 - p.life.invulnerable) % 6 < 3),
         companion,
         companion_phase: p.life.companion_mode,
         health: p.life.health,
@@ -299,13 +405,7 @@ pub(crate) fn sample(
                     };
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
                 }
-                Kind::Walker(w) => (
-                    [-10 * SCALE, -18 * SCALE, 10 * SCALE, 16 * SCALE],
-                    VisualState {
-                        animation: Some(if w.mode == 0 { "0Idle" } else { "0Walk" }.into()),
-                        ..VisualState::default()
-                    },
-                ),
+                Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing)),
             };
             EntityPicture {
                 token: e.source as i64 + 1,
@@ -316,7 +416,11 @@ pub(crate) fn sample(
                 motion: motion(previous.entities[index], pos(e.body)),
                 facing: e.facing,
                 layer: source.layer,
-                variant: source.variant,
+                variant: if let Kind::Walker(w) = &e.kind {
+                    w.variant
+                } else {
+                    source.variant
+                },
                 status: match e.status {
                     0 => EntityStatus::Waiting,
                     1 => EntityStatus::Active,
@@ -332,12 +436,13 @@ pub(crate) fn sample(
                                 && (e.collected == 0 || p.collect_ticks > 0)
                         }
                         Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
+                        Kind::Walker(w) => e.status == 1 && w.held == 0 && w.hidden == 0,
                         _ => true,
                     },
-                held: false,
-                hidden: false,
+                held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
+                hidden: matches!(&e.kind,Kind::Walker(w)if w.hidden!=0),
                 visual,
-                auxiliary: Vec::new(),
+                auxiliary: plant_head(e, previous.heads[index], frame),
             }
         })
         .collect();

@@ -57,6 +57,7 @@ impl Run {
                 let specific = match &mut e.kind {
                     Kind::Pickup(p) => p.set_field(name, *value),
                     Kind::Star(p) => p.set_field(name, *value),
+                    Kind::Walker(p) => p.set_field(name, *value),
                     _ => false,
                 };
                 let handled = if specific {
@@ -150,6 +151,12 @@ impl Run {
                         }
                         "token" => {
                             if *value != e.source as i64 + 1 {
+                                return Err(refuse(name));
+                            }
+                            true
+                        }
+                        "family_index" => {
+                            if *value != e.family_index {
                                 return Err(refuse(name));
                             }
                             true

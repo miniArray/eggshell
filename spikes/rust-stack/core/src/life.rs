@@ -130,7 +130,7 @@ impl Life {
 }
 impl Player {
     pub fn hurt(&mut self, damager_x: i64, sound: &mut Sound) -> bool {
-        if self.life.invulnerable != 0 || self.life_phase != 0 {
+        if self.life.invulnerable != 0 || self.captured_by != 0 || self.life_phase != 0 {
             return false;
         }
         let separated = self.life.separated == 1;
@@ -194,8 +194,22 @@ impl Player {
             };
         }
     }
+    pub fn separate_in_world(
+        &mut self,
+        velocity: i64,
+        instant: bool,
+        map: &Probe,
+        camera: Position,
+    ) {
+        let eligible = self.life.separated == 0 && self.life_phase == 0;
+        self.separate(velocity, instant);
+        if eligible && self.life.health == 0 && instant {
+            self.start_rescue(map, camera);
+        }
+    }
     pub fn catch_companion(&mut self, box_: [i64; 4]) -> bool {
         if self.life_phase != 0
+            || self.captured_by != 0
             || self.life.companion_mode != 2
             || self.life.bubble_bound_ticks != 0
         {
@@ -257,6 +271,7 @@ impl Player {
         self.life.hurt = 0;
         self.life.hurt_phase = 0;
         self.life.invulnerable = 0;
+        self.captured_by = 0;
         if self.life_phase == 2 {
             sound.player(self.body);
         }

@@ -119,6 +119,13 @@ impl Player {
             self.tongue.phase = 3;
         }
     }
+    pub fn block_tongue(&mut self) {
+        if self.action == 4 && self.tongue.phase == 1 {
+            self.tongue.phase = 2;
+            self.tongue.block_tick = self.action_tick.min(12);
+            self.tongue.hold = self.tongue.length;
+        }
+    }
     pub fn advance_tongue(&mut self, map: &Probe) {
         if self.action != 4 || self.tongue.phase == 3 {
             return;

@@ -4,10 +4,17 @@ use eggshell_spike_core::{
     wire::{required, WireSnapshot},
     Session,
 };
-use std::{fs, path::PathBuf};
+use std::{collections::BTreeSet, fs, path::PathBuf};
 fn run(restores: bool) {
     let name = std::env::var("CORE_FIXTURE").unwrap();
-    assert!(["bounce", "bounce.pad", "lagoon", "collections"].contains(&name.as_str()));
+    assert!([
+        "bounce",
+        "bounce.pad",
+        "lagoon",
+        "collections",
+        "actors_target"
+    ]
+    .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let root = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
     let level = fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap();
@@ -21,11 +28,29 @@ fn run(restores: bool) {
     let mut session = Session::load(&level, &collision, &metadata).unwrap_or_else(|error| {
         panic!("{name} next support/action gate at initialization: {error}")
     });
+    let pictures: Option<Vec<serde_json::Value>> = if name == "actors_target" {
+        Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
+    } else {
+        None
+    };
     let mut cursor = 0;
     let mut bridge_ticks = 0;
     let mut squash_ticks = 0;
     let mut tongue_ticks = 0;
     let mut swimming_ticks = 0;
+    let mut captured_ticks = 0;
+    let mut head_ticks = 0;
+    let mut rescuer_ticks = 0;
+    let mut phases = BTreeSet::new();
+    let mut modes = BTreeSet::new();
+    let mut restore_ticks = vec![0, 1, 6, 11, 66, 70, 75, 90, 160, 220, 350, 500];
+    let mut branch_ticks = vec![1, 6, 11, 70, 75, 90, 160, 220, 350];
+    if name == "actors_target" {
+        restore_ticks.extend([
+            600, 700, 780, 790, 791, 800, 900, 1000, 1040, 1080, 1100, 1200, 1500,
+        ]);
+        branch_ticks.extend([780, 790, 791, 1000, 1080, 1100, 1200]);
+    }
     for tick in 0..=inputs.len() {
         let size = u32::from_le_bytes(stream[cursor..cursor + 4].try_into().unwrap()) as usize;
         cursor += 4;
@@ -41,6 +66,74 @@ fn run(restores: bool) {
             );
         }
         let packet = session.presentation();
+        if let Some(pictures) = &pictures {
+            let expected = &pictures[tick];
+            let pose = &expected["player"];
+            assert_eq!(
+                packet.player.selected_pose.name,
+                pose["name"].as_str().unwrap()
+            );
+            assert_eq!(
+                packet.player.selected_pose.tick,
+                pose["tick"].as_i64().unwrap()
+            );
+            assert_eq!(
+                packet.player.selected_pose.frame,
+                pose["frame"].as_i64().unwrap()
+            );
+            for e in expected["entities"].as_array().unwrap() {
+                let token = e["token"].as_i64().unwrap();
+                let picture = packet.entities.iter().find(|p| p.token == token).unwrap();
+                let b = e["body"].as_array().unwrap();
+                assert_eq!(
+                    picture.body_bounds,
+                    [
+                        b[0].as_i64().unwrap(),
+                        b[1].as_i64().unwrap(),
+                        b[2].as_i64().unwrap(),
+                        b[3].as_i64().unwrap()
+                    ]
+                );
+                assert_eq!(
+                    picture.visual.animation.as_deref(),
+                    e["view"]["animation"].as_str()
+                );
+                let h = e["head"].as_array().unwrap();
+                if h.is_empty() {
+                    assert!(picture.auxiliary.is_empty());
+                    assert_eq!(picture.visual.head_box, None);
+                } else {
+                    let b = [
+                        h[0].as_i64().unwrap(),
+                        h[1].as_i64().unwrap(),
+                        h[2].as_i64().unwrap(),
+                        h[3].as_i64().unwrap(),
+                    ];
+                    assert_eq!(picture.visual.head_box, Some(b));
+                    let aux = &picture.auxiliary[0];
+                    assert_eq!(
+                        aux.picture.motion.current,
+                        eggshell_spike_core::Position { x: b[0], y: b[1] }
+                    );
+                    assert_eq!(aux.picture.visual.origin_pixels, Some([0.0, 0.0]));
+                    assert_eq!(
+                        aux.picture.visual.size_pixels,
+                        [
+                            Some((b[2] - b[0]) as f64 / 3600.0),
+                            Some((b[3] - b[1]) as f64 / 3600.0)
+                        ]
+                    );
+                    assert_eq!(aux.picture.visual.rotation_degrees, Some(0.0));
+                    assert_eq!(aux.scale, [1.0, 1.0]);
+                }
+            }
+        }
+        phases.insert(packet.player.life_phase);
+        modes.insert(packet.companions.mode);
+        captured_ticks +=
+            usize::from(required(&wire.player, schema.player(), "captured_by").unwrap() != 0);
+        head_ticks += usize::from(packet.entities.iter().any(|e| !e.auxiliary.is_empty()));
+        rescuer_ticks += usize::from(packet.companions.rescuers.iter().any(|r| r.visible));
         bridge_ticks +=
             usize::from(required(&wire.player, schema.player(), "support_bridge").unwrap() != 0);
         tongue_ticks += usize::from(packet.player.action == 4);
@@ -74,11 +167,11 @@ fn run(restores: bool) {
             actual,
             "presentation mutates saved state"
         );
-        if restores && [0, 1, 6, 11, 66, 70, 75, 90, 160, 220, 350, 500].contains(&tick) {
+        if restores && restore_ticks.contains(&tick) {
             session.restore(expected).unwrap();
             assert_eq!(session.snapshot().unwrap(), expected);
         }
-        if !restores && [1, 6, 11, 70, 75, 90, 160, 220, 350].contains(&tick) {
+        if !restores && branch_ticks.contains(&tick) {
             fs::write(root.join(format!("rust-uninterrupted-{tick}.v10")), &actual).unwrap();
         }
         if tick < inputs.len() {
@@ -89,7 +182,14 @@ fn run(restores: bool) {
     }
     assert_eq!(cursor, stream.len());
     assert_eq!(session.stats().completed_ticks, inputs.len() as u64);
-    assert_eq!(session.stats().restore_count, if restores { 12 } else { 0 });
+    assert_eq!(
+        session.stats().restore_count,
+        if restores {
+            restore_ticks.len() as u64
+        } else {
+            0
+        }
+    );
     if name == "bounce.pad" {
         assert!(
             squash_ticks > 0,
@@ -116,6 +216,16 @@ fn run(restores: bool) {
                 session.stats().collections
             ),
             (1, 1, 1, 11, 22, 4)
+        );
+    } else if name == "actors_target" {
+        assert!(captured_ticks > 0 && head_ticks > 0 && rescuer_ticks > 0);
+        assert!(phases.contains(&2) && phases.contains(&3) && phases.contains(&5));
+        println!("ACTOR_LIFE_COVERAGE captured_ticks={captured_ticks} head_ticks={head_ticks} rescuers_visible_ticks={rescuer_ticks} phases={phases:?} companion_modes={modes:?}");
+        println!(
+            "ACTOR_COURSE_DONE hits={} deaths={} life_phase={}",
+            session.presentation().hud.hits,
+            session.presentation().hud.deaths,
+            session.presentation().hud.life_phase
         );
     } else {
         assert!(tongue_ticks > 0);

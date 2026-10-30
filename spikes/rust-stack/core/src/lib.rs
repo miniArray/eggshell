@@ -1,6 +1,7 @@
 //! Engine-independent fixed-tick experiment. No engine, I/O, or clock dependencies.
 use std::fmt;
 
+mod actors;
 mod body;
 mod items;
 mod life;

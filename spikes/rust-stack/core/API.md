@@ -87,7 +87,13 @@ parity and both restore directions. Original Bounce has 1 bridge-support tick,
 activate 12 squash ticks and verify the sampled ratio on every tick. Lagoon
 adds actual water contact, integer buoyancy/wait/bobbing, liquid motion caps,
 water jump/exit and wet pose sampling, including 91 swimming snapshots.
-Captor/death/respawn code is typed but needs its normally reached route proof.
+The authored `actors_target` course uses only target-required e2/e3/e5 actors,
+not the public Actors course's unrelated fish dependency. It has 1,601 literal
+snapshot matches over 1,600 accepted ticks, including capture, captors, countdown
+death, fade and respawn. Its 341 captured, 815 head and 414 rescuer-visible
+snapshots exercise the shared lifetime rules; this is verification, not a target
+benchmark. Original `PlayerPose`, actor view_state/body boxes and head hulls also
+compare independently every tick.
 A separate authored `collections` verification course exercises required target
 coin/red-coin/flower collection, health-drop activation/motion/contact, popup
 tweening, source counters/score, sound serials and semantic item pictures. It is
@@ -115,6 +121,11 @@ simulation admission. Do not use a successful world compilation or structural
 wire round-trip as evidence of playable target support.
 
 `EntityPicture.auxiliary` contains typed `EntityAuxiliaryPicture` entries. Kind
-`PlantHead` uses an `AuxiliaryPicture` plus nonuniform `scale`; this represents a
-separate e5_head visual, not an inferred head hull. It is not populated until e5
-rules and sampling exist. The target remains refused in the meantime.
+`PlantHead` uses an `AuxiliaryPicture` plus nonuniform `scale` for a separate
+`e5_head` binding. Current actor types use `enemy_head.gd::present`, not the older
+rotating fallback in level_view: upper-left motion is the saved head hull's
+upper-left, origin is zero, absolute size is the hull size, rotation is zero and
+auxiliary scale is identity. Preserve pack flips; do not add a facing-derived
+head flip or rotation. Physical facing remains a readout. These semantics match
+the independent original actor/head oracle, not a GPU-picture proof. The
+unchanged target remains refused until the remaining runtime closure exists.
