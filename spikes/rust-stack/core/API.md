@@ -33,6 +33,11 @@ simulation rules. Renderer must not write back any packet data.
 - Visual flip overrides are `Option<bool>` for each axis. Default alpha is 1.
   Optional semantic asset/origin/slice/palette overrides do not replace pack
   binding. Player owns pack texture/frame/origin/slice interpretation.
+  `rotation_degrees: Option<f64>` defaults to None; Some(0.0) is an explicit
+  zero override, not absence. Binding precedence is compiled placement defaults
+  and pack anchors first, then present live semantic overrides. Optional sizes,
+  flips and palette swaps follow the same rule. Empty palette means no swap.
+  Offset zero and alpha one are the current target's safe identity defaults.
 - `PlayerPicture.selected_pose` is the exact semantic `PlayerPose.select`
   name/tick/frame. Player must not repeat the action-to-pose state machine.
 - Presentation has explicit companion, bubble and four rescuer packets,

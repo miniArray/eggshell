@@ -98,7 +98,7 @@ pub struct VisualState {
     pub frame: Option<i64>,
     pub offset_pixels: [f64; 2],
     pub size_pixels: [Option<f64>; 2],
-    pub rotation_degrees: f64,
+    pub rotation_degrees: Option<f64>,
     /// None preserves the pack/source setting; Some(false) overrides it.
     pub flip_h: Option<bool>,
     pub flip_v: Option<bool>,
@@ -118,7 +118,7 @@ impl Default for VisualState {
             frame: None,
             offset_pixels: [0.0; 2],
             size_pixels: [None; 2],
-            rotation_degrees: 0.0,
+            rotation_degrees: None,
             flip_h: None,
             flip_v: None,
             alpha: 1.0,
@@ -436,6 +436,7 @@ mod tests {
         assert_eq!(visual.alpha, 1.0);
         assert_eq!(visual.flip_h, None);
         assert_eq!(visual.flip_v, None);
+        assert_eq!(visual.rotation_degrees, None);
     }
     #[test]
     fn malformed_loader_does_not_admit_gameplay() {

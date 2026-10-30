@@ -3,6 +3,9 @@
 set -euo pipefail
 [[ $(hostname) == aka ]]
 [[ "$NIX_CONFIG" == *'builders ='* ]]
+if [[ -n "${EXPECTED_SOURCE_SHA:-}" ]]; then
+  test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+fi
 printf 'CORE_CHECK host=%s NIX_CONFIG=%s\n' "$(hostname)" "$NIX_CONFIG"
 rustc --version --verbose
 cargo --version
@@ -22,3 +25,4 @@ if [[ "${CORE_STRIDE:-0}" == 1 ]]; then
 fi
 cargo clippy --locked --manifest-path spikes/rust-stack/core/Cargo.toml --all-targets -- -D warnings
 printf 'CORE_CHECK_DONE\n'
+printf 'CORE_API_READY source=%s rotation_degrees=Option-f64 auxiliary=PlantHead scope=Stride-only target=refused\n' "$(git rev-parse HEAD)"
