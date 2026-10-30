@@ -1,0 +1,25 @@
+#!/usr/bin/env nix-shell
+#! nix-shell ../core/toolchain.nix -i bash
+# aka only. Every Godot-reference parity check the core has: Stride milestone, then each fixture.
+# Keeps going after a failure and prints one summary line per check.
+set -uo pipefail
+[[ $(hostname) == aka ]]
+[[ "$NIX_CONFIG" == *'builders ='* ]]
+failed=0
+check() {
+  local name=$1
+  shift
+  if "$@" >"/tmp/parity-$name.log" 2>&1; then
+    printf 'PARITY_PASS %s\n' "$name"
+  else
+    failed=$((failed + 1))
+    printf 'PARITY_FAIL %s\n' "$name"
+    grep -E 'panicked|assert|expected|FAILED|ERROR|first|differ' "/tmp/parity-$name.log" | head -12
+  fi
+}
+check stride nix-shell spikes/rust-stack/oracle/milestone.sh
+for fixture in bounce bounce.pad lagoon collections actors_target stilts_target stilts_target.knock checkpoint_target posts_target posts_target.pound posts_target.duck; do
+  check "$fixture" nix-shell spikes/rust-stack/oracle/fixture.sh "$fixture"
+done
+printf 'PARITY_ALL_DONE failed=%s source=%s\n' "$failed" "$(git rev-parse HEAD)"
+[[ "$failed" == 0 ]]
