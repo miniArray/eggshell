@@ -8,6 +8,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Life = preload("res://src/sim/life.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Motion = preload("res://src/sim/enemy_motion.gd")
 const S := State.SCALE
 var checks := 0
 var failures := 0
@@ -873,7 +874,44 @@ func hound_checks() -> void:
 		"An enemy standing on the back rises with the runner"
 	)
 	check(rider.status == 1, "A rider on the back is not touched by the runner's body")
+	ledge_stops_falling_rider()
 	map_border_checks()
+
+
+## A runner falling past a top-only ledge leaves its rider standing on that ledge.
+func ledge_stops_falling_rider() -> void:
+	var world := _hound_world(
+		{
+			"dog": _place("o16", 1000, 284),
+			"walker": _place("e4", 1000, 200),
+			"ledge": _place("p4", 1000, 240, {"E1": "64"})
+		}
+	)
+	var state := _placed_state(world)
+	var dog := _by_id(state, "dog")
+	var rider := _by_id(state, "walker")
+	var ledge := _by_id(state, "ledge")
+	var type: Script = Registry.lookup("o16")
+	var ledge_top: int = Registry.lookup("p4").solid_box(ledge)[1]
+	var foot: int = Motion.box(rider, "e4")[3]
+	dog.status = 1
+	rider.status = 1
+	ledge.status = 1
+	rider.vy = 0
+	# The rider stands 1 px above the ledge top; the runner falls 5 px this step.
+	rider.y = ledge_top - S - foot
+	dog.y = rider.y + foot + 32 * S
+	dog.mode = type.FALL
+	dog.vy = 300 * 60
+	Collision.begin_step(state, world, Registry)
+	var dog_y: int = dog.y
+	type.step(dog, state, world)
+	check(dog.y - dog_y > 2 * S, "The runner falls past the ledge")
+	check(rider.y + foot == ledge_top, "The carried rider stops on the ledge it reaches")
+	Collision.begin_step(state, world, Registry)
+	var rider_y: int = rider.y
+	type.step(dog, state, world)
+	check(rider.y == rider_y, "Once off the back, the runner no longer carries it")
 
 
 func map_border_checks() -> void:

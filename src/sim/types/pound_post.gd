@@ -58,11 +58,36 @@ static func solid_box(entity: Dictionary) -> Array:
 	return [entity.x - 16 * S, entity.y - entity.height, entity.x + 16 * S, entity.y]
 
 
+## Hits every entity whose foot rests on the post's top edge.
+static func _strike_above(
+	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array, kind: int
+) -> void:
+	var registry := Collision.registry_for(world)
+	if registry == null:
+		return
+	for target: Dictionary in state.entities:
+		if is_same(entity, target) or target.status != 1:
+			continue
+		var type: Script = registry.lookup(target.code)
+		if not type.has_method("hit") or not type.has_method("bounds"):
+			continue
+		var bounds: Array = type.bounds(target)
+		var foot: int = target.y + bounds[3]
+		if (
+			target.x + bounds[2] >= box[0]
+			and target.x + bounds[0] <= box[2]
+			and foot <= box[1] + S
+			and foot >= box[1] - 2 * S
+		):
+			type.hit(target, state, world, kind, entity.x)
+			Collision.refresh(world, target)
+
+
 static func bump(entity: Dictionary, state: Dictionary, world: Dictionary, side: int) -> void:
 	if side != 1 or entity.spiked or entity.status != 1 or entity.height == 0:
 		return
 	var box := solid_box(entity)
-	Collision.strike_above(entity, state, world, box, 2)
+	_strike_above(entity, state, world, box, 2)
 	var player := Moves.player_box(state)
 	state.y = box[1] - player[3] - S / 16
 	for part in 2:

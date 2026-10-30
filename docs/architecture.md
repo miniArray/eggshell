@@ -192,7 +192,9 @@ input remains locked. A hit while the companion is away spins for 63 steps
 without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
 death fades for 32; input works again on the third step after the respawn. Contact
 immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
-A companion catch freezes the world for 51 steps. The original sets time scale 0, so
+A rider carried down by a falling runner stops on any top-only ledge its feet cross;
+the original's moving-floor tracking pushes a carried body back out of a solid it
+reaches. A companion catch freezes the world for 51 steps. The original sets time scale 0, so
 input events still run: a jump release cuts rising velocity by four, and a fresh jump
 press on a floor sets jump velocity (`move_frozen.gd`). Motion, gravity,
 acceleration and timers add nothing; the body and world stay still. `move_pose.gd` supplies the

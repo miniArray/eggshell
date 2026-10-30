@@ -869,28 +869,34 @@ static func support_in_box(
 	return false
 
 
-static func strike_above(
-	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array, kind: int
-) -> void:
-	var registry := registry_for(world)
-	if registry == null:
-		return
-	for target: Dictionary in state.entities:
-		if is_same(entity, target) or target.status != 1:
-			continue
-		var type: Script = registry.lookup(target.code)
-		if not type.has_method("hit") or not type.has_method("bounds"):
-			continue
-		var bounds: Array = type.bounds(target)
-		var foot: int = target.y + bounds[3]
+## The highest top-only edge, other than `ignore`'s, that a body's foot crossed moving
+## down from `old_foot`; -1 when none.
+static func one_way_crossed(
+	body: Dictionary, world: Dictionary, bounds: Array, old_foot: int, ignore: Dictionary
+) -> int:
+	var left: int = body.x + bounds[0]
+	var right: int = body.x + bounds[2]
+	var foot: int = body.y + bounds[3]
+	var best := -1
+	for bridge: Dictionary in world.bridges:
 		if (
-			target.x + bounds[2] >= box[0]
-			and target.x + bounds[0] <= box[2]
-			and foot <= box[1] + S
-			and foot >= box[1] - 2 * S
+			old_foot <= bridge.top
+			and bridge.top < foot
+			and right >= bridge.left
+			and left <= bridge.right
 		):
-			type.hit(target, state, world, kind, entity.x)
-			refresh(world, target)
+			best = bridge.top if best < 0 else mini(best, bridge.top)
+	for shape: Dictionary in _shapes(world, left, old_foot, right, foot):
+		var top: int = shape.box[1]
+		if (
+			shape.mode == 2
+			and not is_same(ignore, shape.row.entity)
+			and old_foot <= top
+			and top < foot
+		):
+			if right > shape.box[0] and left < shape.box[2]:
+				best = top if best < 0 else mini(best, top)
+	return best
 
 
 static func push_out(

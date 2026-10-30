@@ -148,7 +148,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	_move(entity, world, box, control)
 	if riders and (entity.x != start_x or entity.y != start_y):
 		Collision.refresh(world, entity)
-		_carry(riders, world, entity.x - start_x, entity.y - start_y)
+		_carry(entity, riders, world, entity.x - start_x, entity.y - start_y)
 	box = bounds(entity)
 	if entity.vx != 0 or entity.vy != 0:
 		_destroy_enemies(entity, state, world, box)
@@ -351,11 +351,19 @@ static func _enemy_riders(entity: Dictionary, state: Dictionary) -> Array:
 	return riders
 
 
-static func _carry(riders: Array, world: Dictionary, dx: int, dy: int) -> void:
+static func _carry(entity: Dictionary, riders: Array, world: Dictionary, dx: int, dy: int) -> void:
 	for rider: Dictionary in riders:
 		var box := Motion.box(rider, rider.code)
 		if dy:
+			var old_foot: int = rider.y + box[3]
 			Motion.move(rider, world, box, dy, false)
+			# The original's floor tracking pushes a carried body back out of any solid it
+			# reaches, so a ledge the runner falls past keeps the rider standing on it.
+			var ledge := (
+				Collision.one_way_crossed(rider, world, box, old_foot, entity) if dy > 0 else -1
+			)
+			if ledge >= 0:
+				rider.y = ledge - box[3]
 		if dx:
 			Motion.move(rider, world, box, dx, true)
 		Collision.refresh(world, rider)
