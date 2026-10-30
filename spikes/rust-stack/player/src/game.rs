@@ -185,8 +185,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut benchmark_unverified_level = false;
     let mut benchmark_single_texture = false;
     let mut benchmark_real_screen = false;
-    let mut atlas = false;
-    let mut pipeline = false;
+    // Defaults since phase 0 of the conversion: atlas and two-core loop on.
+    // `--no-atlas` / `--no-pipeline` give the plain loop for comparisons;
+    // GPU captures and the single-texture floor test switch them off by themselves.
+    let mut atlas = true;
+    let mut pipeline = true;
     let mut digest_every: Option<u64> = None;
     let mut digest_dump: Option<PathBuf> = None;
     let mut want_feedback = false;
@@ -247,6 +250,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             "--benchmark-real-screen" => benchmark_real_screen = true,
             "--atlas" => atlas = true,
             "--pipeline" => pipeline = true,
+            "--no-atlas" => atlas = false,
+            "--no-pipeline" => pipeline = false,
             "--frame-digest-every" => {
                 digest_every = Some(
                     args.next()
@@ -274,13 +279,13 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     if benchmark_single_texture && !benchmark_unverified_level {
         return Err("--benchmark-single-texture requires --benchmark-unverified-level; picture_invalid=true".into());
     }
-    if pipeline && (capture_tick.is_some() || files.contains_key("--capture")) {
-        return Err(
-            "--pipeline draws one frame behind; GPU captures use the sequential loop".into(),
-        );
+    if capture_tick.is_some() || files.contains_key("--capture") {
+        // The pipeline draws one frame behind; captures use the sequential loop.
+        pipeline = false;
     }
-    if atlas && benchmark_single_texture {
-        return Err("--atlas and --benchmark-single-texture are separate variants".into());
+    if benchmark_single_texture {
+        atlas = false;
+        pipeline = false;
     }
     if seconds == 0 || seconds > 900 {
         return Err("game safety bound must be1..900 seconds".into());

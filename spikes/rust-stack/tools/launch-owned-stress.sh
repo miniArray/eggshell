@@ -35,7 +35,9 @@ run_case() {
   picture_invalid=false
   if [[ "$level" == real-* ]]; then flags+=(--benchmark-real-screen); fi
   if [[ "$variant" == single-texture ]]; then flags+=(--benchmark-single-texture); picture_invalid=true; fi
-  if [[ "$variant" == atlas ]]; then flags+=(--atlas); fi
+  # The player defaults to atlas + two-core loop; spell every variant out.
+  if [[ "$variant" == normal ]]; then flags+=(--no-atlas --no-pipeline); fi
+  if [[ "$variant" == atlas ]]; then flags+=(--atlas --no-pipeline); fi
   if [[ "$variant" == pipeline ]]; then flags+=(--atlas --pipeline); fi
   if [[ -n "${digest_every:-}" ]]; then
     local dump="$ROOT/data/digest-$level-zoom-$zoom-$variant"
