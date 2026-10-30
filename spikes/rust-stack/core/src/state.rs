@@ -246,7 +246,9 @@ impl Run {
         if self.goal_reached != 0 {
             return Ok(());
         }
-        self.frame += 1;
+        self.frame = self.frame.checked_add(1).ok_or_else(|| {
+            unsupported("saved frame increment exceeds the admitted Stride state range")
+        })?;
         if self.player.life_phase == 7 {
             let p = &mut self.player;
             p.life_ticks = (p.life_ticks - 1).max(0);

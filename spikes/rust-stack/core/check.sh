@@ -21,7 +21,7 @@ if [[ -n "${CORE_PROOF_DIR:-}" ]]; then
   cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --test oracle_foundations -- --ignored --nocapture
 fi
 if [[ "${CORE_STRIDE:-0}" == 1 ]]; then
-  cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --test stride_session --test stride_uninterrupted -- --ignored --nocapture
+  cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --test stride_session --test stride_uninterrupted --test stride_overflow -- --ignored --nocapture
 fi
 cargo clippy --locked --manifest-path spikes/rust-stack/core/Cargo.toml --all-targets -- -D warnings
 printf 'CORE_CHECK_DONE\n'
