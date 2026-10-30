@@ -1,14 +1,28 @@
 use crate::{
+    entity::Kind,
     schema::{Field, Schema},
-    state::{Kind, Run},
+    state::Run,
     wire::WireSnapshot,
     Error, World,
 };
 impl Run {
     pub fn restored(wire: &WireSnapshot, world: &World, schema: &Schema) -> Result<Self, Error> {
         let mut run = Self::create(world, &mut crate::Stats::default())?;
-        if wire.entities.len() != run.entities.len() {
-            return Err(refuse("entity count/runtime suffix"));
+        if wire.entities.len() < run.entities.len() {
+            return Err(refuse("placed prefix count"));
+        }
+        let prefix = run.entities.len();
+        let mut family = run
+            .entities
+            .iter()
+            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .count() as i64;
+        for row in &wire.entities[prefix..] {
+            let entity = crate::runtime::restore_head(row, schema, family)?;
+            if matches!(entity.kind, Kind::Walker(_)) {
+                family += 1;
+            }
+            run.entities.push(entity);
         }
         for (Field(name, default), value) in schema.level().iter().zip(&wire.level) {
             match name.as_str() {
@@ -18,6 +32,7 @@ impl Run {
                 "rng" => run.rng = crate::math::Rng::from_saved(*value)?,
                 "goal_reached" => run.goal_reached = *value,
                 "deaths" => run.deaths = *value,
+                "dynamic_serial" => run.dynamic_serial = *value,
                 "play_ticks" => run.play_ticks = *value,
                 "total_play_ticks" => run.total_play_ticks = *value,
                 "coins" => run.coins = *value,
@@ -48,11 +63,11 @@ impl Run {
             }
         }
         for (e, encoded) in run.entities.iter_mut().zip(&wire.entities) {
-            let source = &world.maps[0].placements[e.source];
-            if encoded.id != source.id || encoded.code != source.code {
+            let source = e.source(world);
+            if encoded.id != e.id(world).as_ref() || encoded.code != e.code(world) {
                 return Err(refuse("ordered world table"));
             }
-            let fields = schema.entity_fields(&source.code);
+            let fields = schema.entity_fields(&encoded.code);
             for (Field(name, default), value) in fields.iter().zip(&encoded.values) {
                 let specific = match &mut e.kind {
                     Kind::Pickup(p) => p.set_field(name, *value),
@@ -60,7 +75,7 @@ impl Run {
                     Kind::Walker(p) => p.set_field(name, *value),
                     _ => false,
                 };
-                let handled = if specific {
+                let handled = if specific || e.set_common(name, *value) {
                     true
                 } else {
                     match name.as_str() {
@@ -133,7 +148,7 @@ impl Run {
                         }
                         "large" | "single_use" => {
                             let crate::PreparedPlacement::Pad { large, single_use } =
-                                source.prepared
+                                source.ok_or_else(|| refuse("pad source"))?.prepared
                             else {
                                 return Err(refuse("pad source flags"));
                             };
@@ -144,13 +159,13 @@ impl Run {
                             true
                         }
                         "source_index" => {
-                            if *value != e.source as i64 {
+                            if *value != e.origin.index() {
                                 return Err(refuse(name));
                             }
                             true
                         }
                         "token" => {
-                            if *value != e.source as i64 + 1 {
+                            if *value != e.origin.token() {
                                 return Err(refuse(name));
                             }
                             true
@@ -188,13 +203,13 @@ impl Run {
                             true
                         }
                         "spawn_x" | "home_x" => {
-                            if *value != source.position.x {
+                            if *value != e.position_at_spawn(world).x {
                                 return Err(refuse(name));
                             }
                             true
                         }
                         "spawn_y" | "home_y" => {
-                            if *value != source.position.y {
+                            if *value != e.position_at_spawn(world).y {
                                 return Err(refuse(name));
                             }
                             true

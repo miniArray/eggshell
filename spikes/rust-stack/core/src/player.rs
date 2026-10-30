@@ -205,18 +205,21 @@ impl Player {
         false
     }
     pub fn stomp(&mut self, enemy_vy: i64, input: u8, sound: &mut Sound) {
-        self.set_action(0, sound);
-        if self.on_floor == 0 {
-            if self.flutter_cooldown == 1 {
-                self.flutter_cooldown = 0;
+        if self.action != 4 {
+            self.set_action(0, sound);
+            if self.on_floor == 0 && self.water.swimming == 0 {
+                if self.flutter_cooldown == 1 {
+                    self.flutter_cooldown = 0;
+                }
+                self.flutter(input, sound);
             }
-            self.flutter(input, sound);
+            if self.flutter_remaining != 0 {
+                self.bounce = 2;
+            } else {
+                self.cancel_flutter();
+            }
         }
-        if self.flutter_remaining != 0 {
-            self.bounce = 2;
-        } else {
-            self.cancel_flutter();
-        }
+        self.support_bridge = 0;
         self.body.vy = -(enemy_vy / 2).abs() - 320 * 60 - if input & 4 != 0 { 384 * 60 } else { 0 };
         self.on_floor = 0;
         self.jump_buffer = 0;

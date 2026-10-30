@@ -24,6 +24,16 @@ impl<'a> Probe<'a> {
             parent_counter: Some(&self.terrain_queries),
         }
     }
+    pub(crate) fn support_in_box(&self, bounds: [i64; 4]) -> bool {
+        self.terrain_overlaps(bounds)
+            || self.border_overlaps(bounds)
+            || self.bridges.iter().any(|b| {
+                bounds[1] <= b.top
+                    && bounds[3] >= b.top
+                    && bounds[2] >= b.left
+                    && bounds[0] <= b.right
+            })
+    }
     pub fn terrain_overlaps(&self, bounds: [i64; 4]) -> bool {
         self.terrain_queries.set(self.terrain_queries.get() + 1);
         self.map.terrain_overlaps(bounds)

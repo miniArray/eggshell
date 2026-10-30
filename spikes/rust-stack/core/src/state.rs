@@ -1,34 +1,13 @@
 //! One typed authoritative table. Schema-indexed arrays exist only at codec boundaries.
 use crate::{
     body::Body,
+    entity::{Entity, Kind, Origin},
     math::{screen_centre, Rng},
     player::{Player, Sound},
     schema::{Field, Schema},
     wire::{WireEntity, WireSnapshot},
     Error, Position, World, SCALE as S,
 };
-#[derive(Clone, Debug)]
-pub(crate) enum Kind {
-    Goal,
-    Decor,
-    Pickup(crate::items::Pickup),
-    Star(crate::items::Star),
-    Bridge,
-    Pad(crate::pad::Pad),
-    Walker(crate::actors::Actor),
-}
-#[derive(Clone, Debug)]
-pub(crate) struct Entity {
-    pub source: usize,
-    pub family_index: i64,
-    pub body: Body,
-    pub facing: i64,
-    pub status: i64,
-    pub offscreen: i64,
-    pub collected: i64,
-    pub checkpoint_collected: i64,
-    pub kind: Kind,
-}
 #[derive(Clone, Debug)]
 pub(crate) struct Run {
     pub frame: i64,
@@ -45,6 +24,7 @@ pub(crate) struct Run {
     pub flowers: i64,
     pub goal_reached: i64,
     pub deaths: i64,
+    pub dynamic_serial: i64,
 }
 fn unsupported(reason: &str) -> Error {
     Error::Unsupported {
@@ -74,7 +54,11 @@ impl Run {
         let actors_identity = crate::schema::hash(
             include_str!("../tests/fixtures/actors_target.level.json").as_bytes(),
         );
+        let stilts_identity = crate::schema::hash(
+            include_str!("../tests/fixtures/stilts_target.level.json").as_bytes(),
+        );
         if world.identity != identity
+            && world.identity != stilts_identity
             && world.identity != actors_identity
             && world.identity != bounce_identity
             && world.identity != lagoon_identity
@@ -109,6 +93,7 @@ impl Run {
             flowers: 0,
             goal_reached: 0,
             deaths: 0,
+            dynamic_serial: 1,
         };
         let map = crate::body::Probe::new(&world.maps[0]);
         for _ in 0..2 {
@@ -160,10 +145,10 @@ impl Run {
                     "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
                         Kind::Pad(crate::pad::Pad::default())
                     }
-                    "e1" | "e2" | "e3" | "e5"
+                    "e1" | "e2" | "e3" | "e5" | "e35"
                         if p.variant >= 0
                             && p.variant
-                                <= if ["e1", "e2"].contains(&p.code.as_str()) {
+                                <= if ["e1", "e2", "e35"].contains(&p.code.as_str()) {
                                     4
                                 } else {
                                     1
@@ -175,11 +160,15 @@ impl Run {
                             "e1" => crate::actors::ActorKind::Walker,
                             "e2" => crate::actors::ActorKind::Flyer,
                             "e3" => crate::actors::ActorKind::Flower,
+                            "e35" => crate::actors::ActorKind::Stilt,
                             _ => crate::actors::ActorKind::Plant,
                         };
-                        Kind::Walker(crate::actors::Actor::new(
-                            kind, p.variant, p.mirror, p.position,
-                        ))
+                        let mut actor =
+                            crate::actors::Actor::new(kind, p.variant, p.mirror, p.position);
+                        if kind == crate::actors::ActorKind::Stilt {
+                            actor.height = crate::stilt::height(p)?;
+                        }
+                        Kind::Walker(actor)
                     }
                     _ => return Err(unsupported("fixture entity form")),
                 };
@@ -190,25 +179,7 @@ impl Run {
                 } else {
                     0
                 };
-                Ok(Entity {
-                    source,
-                    family_index,
-                    body: Body {
-                        x: p.position.x,
-                        y: p.position.y,
-                        ..Body::default()
-                    },
-                    facing: if p.mirror == 1 { 1 } else { -1 },
-                    status: if matches!(kind, Kind::Walker(_) | Kind::Star(_)) {
-                        0
-                    } else {
-                        1
-                    },
-                    offscreen: 0,
-                    collected: 0,
-                    checkpoint_collected: 0,
-                    kind,
-                })
+                Ok(Entity::placed(source, p, kind, family_index))
             })
             .collect()
     }
@@ -251,134 +222,38 @@ impl Run {
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
-        for e in &mut self.entities {
-            if let Kind::Pickup(p) = &mut e.kind {
-                if e.status == 1 {
-                    stats.entity_steps += 1;
-                    p.advance(&mut e.body, &mut e.status, e.collected, map);
-                }
+        let mut next = 0;
+        while next < self.entities.len() {
+            let e = &mut self.entities[next];
+            next += 1;
+            if !matches!(e.kind, Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_)) {
                 continue;
             }
-            if let Kind::Star(star) = &mut e.kind {
-                let awake = e.status == 1;
-                let source = &map.placements[e.source];
-                if e.status != 3 {
-                    let far = (e.body.x - centre.x).abs() > 832 * S
-                        || (e.body.y - centre.y).abs() > 832 * S;
-                    if e.status == 1 && far {
-                        e.status = 2;
-                        e.offscreen = 0;
-                    }
-                    if e.status == 2 {
-                        if (source.position.x - centre.x).abs() > 416 * S
-                            || (source.position.y - centre.y).abs() > 224 * S
-                        {
-                            e.offscreen = 1;
-                        }
-                        if e.offscreen != 0
-                            && (source.position.x - centre.x).abs() < 624 * S
-                            && (source.position.y - centre.y).abs() < 624 * S
-                        {
-                            *star = crate::items::Star::default();
-                            e.body = Body {
-                                x: source.position.x,
-                                y: source.position.y,
-                                ..Body::default()
-                            };
-                            e.facing = if source.mirror == 1 { 1 } else { -1 };
-                            e.status = 0;
-                            e.offscreen = 0;
-                        }
-                    }
-                    let b = star.bounds();
-                    if e.status == 0
-                        && e.body.x + b[2] > centre.x - 416 * S
-                        && e.body.x + b[0] < centre.x + 416 * S
-                        && e.body.y + b[3] > centre.y - 224 * S
-                        && e.body.y + b[1] < centre.y + 224 * S
-                    {
-                        e.status = 1;
-                        if source.mirror == 2 {
-                            e.facing = if self.player.body.x < e.body.x { -1 } else { 1 };
-                        }
-                    }
-                }
-                if awake && e.status == 1 {
-                    stats.entity_steps += 1;
-                    star.advance(
-                        &mut e.body,
-                        &mut e.facing,
-                        &mut e.status,
-                        self.player.body.x,
-                        map,
-                    );
-                }
-                continue;
-            }
-            let Kind::Walker(w) = &mut e.kind else {
-                continue;
-            };
-            let awake = e.status == 1;
-            if e.status != 3 {
-                let source = &map.placements[e.source];
-                let far =
-                    (e.body.x - centre.x).abs() > 832 * S || (e.body.y - centre.y).abs() > 832 * S;
-                if e.status == 1 && far {
-                    e.status = 2;
-                    e.offscreen = 0;
-                }
-                if e.status == 2 {
-                    if (source.position.x - centre.x).abs() > 416 * S
-                        || (source.position.y - centre.y).abs() > 224 * S
-                    {
-                        e.offscreen = 1;
-                    }
-                    if e.offscreen != 0
-                        && (source.position.x - centre.x).abs() < 624 * S
-                        && (source.position.y - centre.y).abs() < 624 * S
-                    {
-                        *w = crate::actors::Actor::new(
-                            w.kind,
-                            source.variant,
-                            source.mirror,
-                            source.position,
-                        );
-                        e.body = Body {
-                            x: source.position.x,
-                            y: source.position.y,
-                            ..Body::default()
-                        };
-                        e.facing = if source.mirror == 1 { 1 } else { -1 };
-                        e.status = 0;
-                        e.offscreen = 0;
-                    }
-                }
-                let b = w.body_bounds(e.facing);
-                if e.status == 0
-                    && e.body.x + b[2] > centre.x - 416 * S
-                    && e.body.x + b[0] < centre.x + 416 * S
-                    && e.body.y + b[3] > centre.y - 224 * S
-                    && e.body.y + b[1] < centre.y + 224 * S
-                {
-                    e.status = 1;
-                    if source.mirror == 2 {
-                        e.facing = if self.player.body.x < e.body.x { -1 } else { 1 };
-                    }
-                    w.activate(e.facing, &mut self.rng);
-                }
-            }
-            if !awake || e.status != 1 {
+            if !e.lifecycle(map, centre, self.player.body.x, &mut self.rng)? {
                 continue;
             }
             stats.entity_steps += 1;
-            let mut context = crate::actors::ActorStep {
-                map,
-                frame: self.frame,
-                camera: self.camera,
-                player: &mut self.player,
-                rng: &mut self.rng,
-            };
-            w.advance(&mut e.body, &mut e.facing, &mut context)?;
+            match &mut e.kind {
+                Kind::Pickup(p) => p.advance(&mut e.body, &mut e.status, e.collected, map),
+                Kind::Star(p) => p.advance(
+                    &mut e.body,
+                    &mut e.facing,
+                    &mut e.status,
+                    self.player.body.x,
+                    map,
+                ),
+                Kind::Walker(w) => {
+                    let mut context = crate::actors::ActorStep {
+                        map,
+                        frame: self.frame,
+                        camera: self.camera,
+                        player: &mut self.player,
+                        rng: &mut self.rng,
+                    };
+                    w.advance(&mut e.body, &mut e.facing, &mut context)?;
+                }
+                _ => unreachable!("phase 0 members"),
+            }
         }
         // Captures skip phase 1 exactly as DispatchLoops.advance does.
         if self.player.captured_by != 0 {
@@ -386,11 +261,18 @@ impl Run {
         }
         // Step phase 1, still in saved table order. Pad has no activation lifecycle.
         for e in &mut self.entities {
+            if !matches!(e.kind, Kind::Pad(_)) {
+                continue;
+            }
+            let awake = e.lifecycle(map, centre, self.player.body.x, &mut self.rng)?;
             if let Kind::Pad(pad) = &mut e.kind {
-                if e.status == 1 {
+                if awake {
                     stats.entity_steps += 1;
-                    let crate::PreparedPlacement::Pad { large, .. } =
-                        map.placements[e.source].prepared
+                    let crate::PreparedPlacement::Pad { large, .. } = map.placements[e
+                        .origin
+                        .placed()
+                        .expect("pad is a placed verification dependency")]
+                    .prepared
                     else {
                         unreachable!("compiler-owned pad flags")
                     };
@@ -472,8 +354,12 @@ impl Run {
                 if let Kind::Pad(pad) = &mut e.kind {
                     if e.status == 1 {
                         stats.contacts += 1;
-                        let crate::PreparedPlacement::Pad { large, single_use } =
-                            world.maps[0].placements[e.source].prepared
+                        let crate::PreparedPlacement::Pad { large, single_use } = world.maps[0]
+                            .placements[e
+                            .origin
+                            .placed()
+                            .expect("pad is a placed verification dependency")]
+                        .prepared
                         else {
                             unreachable!("compiler-owned pad flags")
                         };
@@ -481,7 +367,11 @@ impl Run {
                     }
                 }
             }
-            for e in &mut self.entities {
+            let mut contact_index = 0;
+            while contact_index < self.entities.len() {
+                let index = contact_index;
+                contact_index += 1;
+                let e = &mut self.entities[index];
                 if e.status != 1 {
                     continue;
                 }
@@ -554,6 +444,29 @@ impl Run {
                     e.body,
                     w.body_bounds(e.facing),
                 );
+                if w.kind == crate::actors::ActorKind::Stilt {
+                    let high = self.player.body.y <= e.body.y - w.height + 50 * S;
+                    let unseat = touching && w.contact == 0 && high;
+                    w.contact = i64::from(touching);
+                    if unseat {
+                        self.player.stomp(e.body.vy, action, &mut self.sound);
+                        let position = Position {
+                            x: e.body.x,
+                            y: e.body.y - w.height + 34 * S,
+                        };
+                        let variant = w.variant;
+                        let facing = e.facing;
+                        let layer = e.layer;
+                        e.status = 3;
+                        e.can_respawn = 0;
+                        w.held = 0;
+                        w.spat = 0;
+                        self.spawn_walker(position, variant, facing, layer)?;
+                    } else if touching && !high && self.player.hurt(e.body.x, &mut self.sound) {
+                        stats.damage_events += 1;
+                    }
+                    continue;
+                }
                 if touching {
                     if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
                         self.player.stomp(e.body.vy, action, &mut self.sound);
@@ -618,8 +531,16 @@ impl Run {
                 }
             }
             if let Some(sensor) = self.player.tongue_box() {
-                for e in &self.entities {
-                    if let Kind::Walker(w) = &e.kind {
+                for e in &mut self.entities {
+                    if let Kind::Walker(w) = &mut e.kind {
+                        if e.status == 1
+                            && w.kind == crate::actors::ActorKind::Stilt
+                            && overlap(e.body, w.bounds(e.body, e.facing), Body::default(), sensor)
+                        {
+                            w.stilt_knock(&mut e.body, &mut e.facing, self.player.body.x);
+                            self.player.block_tongue();
+                            break;
+                        }
                         if e.status == 1
                             && w.kind == crate::actors::ActorKind::Plant
                             && w.mode != 0
@@ -672,6 +593,7 @@ impl Run {
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
         }
+        self.compact();
         self.camera = Position {
             x: self.player.body.x,
             y: self.player.body.y - 28 * S,
@@ -708,15 +630,15 @@ impl Run {
             .entities
             .iter()
             .map(|e| {
-                let p = &world.maps[0].placements[e.source];
+                let code = e.code(world);
                 let values = schema
-                    .entity_fields(&p.code)
+                    .entity_fields(code)
                     .iter()
                     .map(|Field(n, d)| self.entity_value(e, n, world).unwrap_or(*d))
                     .collect();
                 WireEntity {
-                    code: p.code.clone(),
-                    id: p.id.clone(),
+                    code: code.to_owned(),
+                    id: e.id(world).into_owned(),
                     values,
                 }
             })
@@ -736,6 +658,7 @@ impl Run {
             "rng" => self.rng.saved(),
             "goal_reached" => self.goal_reached,
             "deaths" => self.deaths,
+            "dynamic_serial" => self.dynamic_serial,
             "life_ready" => 1,
             "run_spawn_x" => world.spawn.x,
             "run_spawn_y" => world.spawn.y,
@@ -771,10 +694,14 @@ impl Run {
         if specific.is_some() {
             return specific;
         }
-        let p = &world.maps[0].placements[e.source];
+        if let Some(value) = e.common_field(n) {
+            return Some(value);
+        }
+        let p = e.source(world);
+        let spawn = e.position_at_spawn(world);
         Some(match n {
-            "source_index" => e.source as i64,
-            "token" => e.source as i64 + 1,
+            "source_index" => e.origin.index(),
+            "token" => e.origin.token(),
             "map_index" => 1,
             "family_index" => e.family_index,
             "x" => e.body.x,
@@ -796,8 +723,8 @@ impl Run {
                     7
                 }
             }
-            "spawn_x" | "home_x" => p.position.x,
-            "spawn_y" | "home_y" => p.position.y,
+            "spawn_x" | "home_x" => spawn.x,
+            "spawn_y" | "home_y" => spawn.y,
             "phase" => {
                 if let Kind::Walker(w) = &e.kind {
                     w.phase
@@ -855,8 +782,12 @@ impl Run {
                 }
             }
             "large" | "single_use" => {
-                if let crate::PreparedPlacement::Pad { large, single_use } = p.prepared {
-                    i64::from(if n == "large" { large } else { single_use })
+                if let Some(crate::Placement {
+                    prepared: crate::PreparedPlacement::Pad { large, single_use },
+                    ..
+                }) = p
+                {
+                    i64::from(if n == "large" { *large } else { *single_use })
                 } else {
                     return None;
                 }
@@ -947,7 +878,49 @@ impl Run {
                 return Err(unsupported("coordinate headroom"));
             }
         }
-        for e in &self.entities {
+        if self.dynamic_serial < 1
+            || self.dynamic_serial > i64::MAX - crate::entity::TOKEN_BASE + 1
+            || self.entities.len() < world.maps[0].placements.len()
+        {
+            return Err(unsupported("runtime serial/placed prefix validation"));
+        }
+        let mut tokens = std::collections::BTreeSet::new();
+        let mut family = 0;
+        for (index, e) in self.entities.iter().enumerate() {
+            match e.origin {
+                Origin::Placed(slot) if slot == index && index < world.maps[0].placements.len() => {
+                }
+                Origin::Runtime(serial)
+                    if index >= world.maps[0].placements.len()
+                        && serial >= 1
+                        && serial < self.dynamic_serial
+                        && e.spawn_mode == 0
+                        && e.can_respawn == 0 => {}
+                _ => return Err(unsupported("ordered placed/runtime identity")),
+            }
+            if !tokens.insert(e.origin.token()) {
+                return Err(unsupported("duplicate entity token"));
+            }
+            if matches!(e.kind, Kind::Walker(_)) {
+                if e.family_index != family {
+                    return Err(unsupported("enemy family order"));
+                }
+                family += 1;
+            }
+            if ![0, 1].contains(&e.spawn_mode)
+                || ![0, 1].contains(&e.can_despawn)
+                || ![0, 1].contains(&e.can_respawn)
+                || ![
+                    e.activation_x,
+                    e.activation_y,
+                    e.despawn_radius,
+                    e.respawn_radius,
+                ]
+                .iter()
+                .all(|v| (0..=position_limit).contains(v))
+            {
+                return Err(unsupported("entity common field headroom"));
+            }
             if !(0..=3).contains(&e.status)
                 || ![-1, 1].contains(&e.facing)
                 || !(0..=1).contains(&e.offscreen)

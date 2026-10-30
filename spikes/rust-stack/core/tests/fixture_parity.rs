@@ -12,7 +12,9 @@ fn run(restores: bool) {
         "bounce.pad",
         "lagoon",
         "collections",
-        "actors_target"
+        "actors_target",
+        "stilts_target",
+        "stilts_target.knock"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -28,11 +30,12 @@ fn run(restores: bool) {
     let mut session = Session::load(&level, &collision, &metadata).unwrap_or_else(|error| {
         panic!("{name} next support/action gate at initialization: {error}")
     });
-    let pictures: Option<Vec<serde_json::Value>> = if name == "actors_target" {
-        Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
-    } else {
-        None
-    };
+    let pictures: Option<Vec<serde_json::Value>> =
+        if name == "actors_target" || name.starts_with("stilts_target") {
+            Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
+        } else {
+            None
+        };
     let mut cursor = 0;
     let mut bridge_ticks = 0;
     let mut squash_ticks = 0;
@@ -43,6 +46,15 @@ fn run(restores: bool) {
     let mut rescuer_ticks = 0;
     let mut phases = BTreeSet::new();
     let mut modes = BTreeSet::new();
+    let mut max_runtime = 0;
+    let mut runtime_ticks = 0;
+    let mut first_spawn = None;
+    let mut first_compaction = None;
+    let mut previous_runtime = 0;
+    let mut last_serial = 1;
+    let mut knock_ticks = 0;
+    let mut first_knock = None;
+    let mut last_knock = None;
     let mut restore_ticks = vec![0, 1, 6, 11, 66, 70, 75, 90, 160, 220, 350, 500];
     let mut branch_ticks = vec![1, 6, 11, 70, 75, 90, 160, 220, 350];
     if name == "actors_target" {
@@ -50,6 +62,14 @@ fn run(restores: bool) {
             600, 700, 780, 790, 791, 800, 900, 1000, 1040, 1080, 1100, 1200, 1500,
         ]);
         branch_ticks.extend([780, 790, 791, 1000, 1080, 1100, 1200]);
+    }
+    if name == "stilts_target" {
+        restore_ticks.extend([106, 107, 108, 244, 245, 246]);
+        branch_ticks.extend([106, 107, 108, 244, 245, 246]);
+    }
+    if name == "stilts_target.knock" {
+        restore_ticks.extend([25, 26, 27, 77, 78, 79]);
+        branch_ticks.extend([25, 26, 27, 77, 78, 79]);
     }
     for tick in 0..=inputs.len() {
         let size = u32::from_le_bytes(stream[cursor..cursor + 4].try_into().unwrap()) as usize;
@@ -98,6 +118,9 @@ fn run(restores: bool) {
                     picture.visual.animation.as_deref(),
                     e["view"]["animation"].as_str()
                 );
+                if let Some(size) = e["view"]["size_y"].as_f64() {
+                    assert_eq!(picture.visual.size_pixels[1], Some(size));
+                }
                 let h = e["head"].as_array().unwrap();
                 if h.is_empty() {
                     assert!(picture.auxiliary.is_empty());
@@ -127,6 +150,38 @@ fn run(restores: bool) {
                     assert_eq!(aux.scale, [1.0, 1.0]);
                 }
             }
+        }
+        let runtime_count = wire
+            .entities
+            .iter()
+            .filter(|e| {
+                required(&e.values, schema.entity_fields(&e.code), "source_index").unwrap() == -1
+            })
+            .count();
+        max_runtime = max_runtime.max(runtime_count);
+        runtime_ticks += usize::from(runtime_count > 0);
+        if runtime_count > previous_runtime && first_spawn.is_none() {
+            first_spawn = Some(tick);
+        }
+        if runtime_count < previous_runtime && first_compaction.is_none() {
+            first_compaction = Some(tick);
+        }
+        previous_runtime = runtime_count;
+        let serial = required(&wire.level, schema.level(), "dynamic_serial").unwrap();
+        if serial != last_serial {
+            println!("RUNTIME_SERIAL_CHANGE tick={tick} before={last_serial} after={serial} player_x={} player_y={} retained={runtime_count}",packet.player.motion.current.x,packet.player.motion.current.y);
+        }
+        last_serial = serial;
+        let knocked = wire.entities.iter().any(|e| {
+            e.code == "e35"
+                && required(&e.values, schema.entity_fields("e35"), "phase").unwrap() == 1
+        });
+        knock_ticks += usize::from(knocked);
+        if knocked {
+            if first_knock.is_none() {
+                first_knock = Some(tick);
+            }
+            last_knock = Some(tick);
         }
         phases.insert(packet.player.life_phase);
         modes.insert(packet.companions.mode);
@@ -216,6 +271,18 @@ fn run(restores: bool) {
                 session.stats().collections
             ),
             (1, 1, 1, 11, 22, 4)
+        );
+    } else if name == "stilts_target.knock" {
+        println!("STILT_KNOCK_COVERAGE knocked_ticks={knock_ticks} tongue_ticks={tongue_ticks} first={first_knock:?} last={last_knock:?}");
+        assert!(knock_ticks > 0 && tongue_ticks > 0);
+    } else if name == "stilts_target" {
+        println!("STILT_RUNTIME_COVERAGE max_runtime={max_runtime} runtime_ticks={runtime_ticks} first_spawn={first_spawn:?} first_compaction={first_compaction:?} serial={last_serial} knocked_ticks={knock_ticks}");
+        assert!(
+            max_runtime > 0
+                && last_serial > 1
+                && runtime_ticks > 0
+                && first_compaction > first_spawn,
+            "normal stilt route must unseat a rider"
         );
     } else if name == "actors_target" {
         assert!(captured_ticks > 0 && head_ticks > 0 && rescuer_ticks > 0);

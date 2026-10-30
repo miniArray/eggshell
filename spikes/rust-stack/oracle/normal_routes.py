@@ -23,6 +23,10 @@ def main() -> None:
         inputs = [2] * 800
     elif name == "actors_target":
         inputs = [2] * 1600
+    elif name == "stilts_target.knock":
+        inputs = [2] * 20 + [10] + [2] * 779
+    elif name == "stilts_target":
+        inputs = [2] * 8 + [6] * 45 + [2] * 41 + [6] * 55 + [2] * 651
     else:
         raise ValueError(f"unknown verification route: {name}")
     Path(destination).write_text(json.dumps(inputs, separators=(",", ":")) + "\n")

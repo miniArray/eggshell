@@ -114,7 +114,8 @@ Godot's saved frame stops at completion. `Stats.tick` is the saved simulation fr
 Workload counters include actual entity steps and terrain probes during the two
 start ticks; restore setup is excluded. This slice uses a typed rollback copy on
 each step so unsupported contacts cannot partly change the session. It is not a
-candidate performance build. Nearby/runtime-spawn paths are not admitted.
+candidate performance build. Full target nearby/request/projectile/runtime closure
+is not admitted; the stilt-created e1 suffix below is a focused exception.
 
 `World::compile` exposes immutable compilation for verification. It is not
 simulation admission. Do not use a successful world compilation or structural
@@ -129,3 +130,30 @@ auxiliary scale is identity. Preserve pack flips; do not add a facing-derived
 head flip or rotation. Physical facing remains a readout. These semantics match
 the independent original actor/head oracle, not a GPU-picture proof. The
 unchanged target remains refused until the remaining runtime closure exists.
+
+## Stilt and runtime-row verification slice
+
+No public DTO signatures change. e35 selects an absolute `size_pixels[1]` from
+its saved height, with no animation override. Original e35 has no solid-box
+callback; its player collision is an enemy contact, not a platform substitute.
+The typed shared row table now distinguishes a placed prefix from a runtime
+suffix. Runtime ids are canonical `+serial`; tokens are `1_000_000 + serial`.
+Creation consumes original RNG and appends in table order. Contact dispatch
+visits appended rows in the same phase, then compacts defeated runtime rows only
+after contacts and lifetime work. Stable token history preserves interpolation
+when rows are born or compacted. Restore reconstructs typed rows and checks the
+whole v10 payload; it does not retain opaque fields.
+
+The authored `stilts_target` course uses target F4/E1=82 and 114. Its normal
+controls produce one live e1 row at tick107, retain it for 138 snapshots, then
+compact it at tick245. Its 800 accepted calls produce 801 exact states; the
+saved frame stops at510 after goal completion. Both restore directions include
+106/107/108 and244/245/246. The separate normal-input `stilts_target.knock`
+route has 53 knocked snapshots and23 tongue snapshots; 800 accepted calls end
+at saved frame750. Knock transition restore cuts are25/26/27 and77/78/79.
+Source actor/body/size/head and player-pose samples compare independently each
+tick. Stale serial, duplicate runtime id, mismatched token and unsupported request
+cursor restores refuse atomically from a normally reached live runtime state. These courses are not
+unchanged-target coverage, a GPU proof or a benchmark. Checkpoints, posts,
+clouds, old/live entity solids and the remaining request/projectile closure
+still block the selected target.

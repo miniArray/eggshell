@@ -5,6 +5,7 @@ const Snapshot = preload("res://src/save/snapshot.gd")
 const Actor = preload("res://src/sim/types/actor.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Pose = preload("res://src/view/player_pose.gd")
+const Stilt = preload("res://src/sim/types/stilt_walker.gd")
 
 
 func _initialize() -> void:
@@ -30,14 +31,24 @@ func _initialize() -> void:
 		var state: Dictionary = decoded.state
 		var entities := []
 		for entity: Dictionary in state.entities:
-			if entity.code not in ["e1", "e2", "e3", "e5"]:
+			if entity.code not in ["e1", "e2", "e3", "e5", "e35"]:
 				continue
 			entities.append(
 				{
 					"token": entity.token,
-					"body": Motion.box(entity, entity.code),
-					"view": Actor.view_state(entity, state),
-					"head": Actor.head_box(entity)
+					"body":
+					(
+						Stilt.bounds(entity)
+						if entity.code == "e35"
+						else Motion.box(entity, entity.code)
+					),
+					"view":
+					(
+						Stilt.view_state(entity, state)
+						if entity.code == "e35"
+						else Actor.view_state(entity, state)
+					),
+					"head": [] if entity.code == "e35" else Actor.head_box(entity)
 				}
 			)
 		pictures.append({"player": Pose.select(state), "entities": entities})

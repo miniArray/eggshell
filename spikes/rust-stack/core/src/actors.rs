@@ -11,6 +11,7 @@ pub(crate) enum ActorKind {
     Flyer,
     Flower,
     Plant,
+    Stilt,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -48,6 +49,8 @@ pub(crate) struct Actor {
     pub rise_ticks: i64,
     pub rise_velocity: i64,
     pub pin_size: i64,
+    pub height: i64,
+    pub stride: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -93,16 +96,23 @@ impl Actor {
             rise_ticks: 0,
             rise_velocity: 0,
             pin_size: 0,
+            height: 68 * S,
+            stride: 0,
         }
     }
     pub fn valid(&self) -> bool {
         let limit = i64::MAX / 16384;
-        let last = if [ActorKind::Walker, ActorKind::Flyer].contains(&self.kind) {
+        let last = if [ActorKind::Walker, ActorKind::Flyer, ActorKind::Stilt].contains(&self.kind) {
             4
         } else {
             1
         };
         (0..=last).contains(&self.variant)
+            && (self.kind != ActorKind::Stilt
+                || ((1..=100_018 * S).contains(&self.height)
+                    && (0..72).contains(&self.stride)
+                    && (0..=1).contains(&self.phase)
+                    && (0..=36).contains(&self.timer)))
             && (0..=2).contains(&self.mirror)
             && [self.spawn_x, self.spawn_y]
                 .iter()
@@ -163,6 +173,7 @@ impl Actor {
                 }
             }
             ActorKind::Flower => [-14 * S, -34 * S, 14 * S, 16 * S],
+            ActorKind::Stilt => [-8 * S, -self.height, 8 * S, 0],
             ActorKind::Plant => {
                 let top = if self.mode == 0 { -14 * S } else { -10 * S };
                 if self.variant == 1 {
@@ -187,7 +198,13 @@ impl Actor {
             b
         }
     }
-    fn movement(&self, body: &mut Body, facing: i64, map: &Probe, distance: i64) -> (i64, bool) {
+    pub(crate) fn movement(
+        &self,
+        body: &mut Body,
+        facing: i64,
+        map: &Probe,
+        distance: i64,
+    ) -> (i64, bool) {
         let b = self.body_bounds(facing);
         if !body.prepare(map, b) {
             return (0, false);
@@ -300,6 +317,7 @@ impl Actor {
                 }
             }
             ActorKind::Plant => self.plant(body, facing, step),
+            ActorKind::Stilt => self.stilt_advance(body, facing, step.map),
         }
         Ok(())
     }
@@ -515,5 +533,7 @@ fields!(
     head_size,
     rise_ticks,
     rise_velocity,
-    pin_size
+    pin_size,
+    height,
+    stride
 );

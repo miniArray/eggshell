@@ -25,9 +25,9 @@ if [[ "$fixture" == target ]]; then
   python3 spikes/rust-stack/oracle/target_route.py "$out/target.input.json"
   level="$HOME/.local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"
   input="$out/target.input.json"
-elif [[ "$fixture" == actors_target ]]; then
+elif [[ "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock ]]; then
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"
-  level="$PWD/spikes/rust-stack/core/tests/fixtures/actors_target.level.json"
+  level="$PWD/spikes/rust-stack/core/tests/fixtures/${fixture%%.*}.level.json"
   input="$out/$fixture.input.json"
 elif [[ "$fixture" == collections ]]; then
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"

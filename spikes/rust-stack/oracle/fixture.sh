@@ -6,19 +6,26 @@ set -euo pipefail
 if [[ -n "${EXPECTED_SOURCE_SHA:-}" ]]; then test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"; fi
 git diff --exit-code 297ada9a022d0ddc297dd2d4091c5dccfab4531e -- src tests/fixtures
 fixture=${1:-bounce}
-[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target ]]
+[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock ]]
 base=${fixture%%.*}
 export CORE_FIXTURE_INPUT="$PWD/tests/fixtures/$fixture.input.json"
 export CORE_FIXTURE_LEVEL="$PWD/tests/fixtures/$base.level.json"
-if [[ "$fixture" == bounce.pad || "$fixture" == collections || "$fixture" == actors_target ]]; then export CORE_FIXTURE_INPUT="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture.input.json"; fi
-if [[ "$fixture" == collections || "$fixture" == actors_target ]]; then export CORE_FIXTURE_LEVEL="$PWD/spikes/rust-stack/core/tests/fixtures/$fixture.level.json"; fi
+if [[ "$fixture" == bounce.pad || "$fixture" == collections || "$fixture" == actors_target || "$base" == stilts_target ]]; then export CORE_FIXTURE_INPUT="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture.input.json"; fi
+if [[ "$fixture" == collections || "$fixture" == actors_target || "$base" == stilts_target ]]; then export CORE_FIXTURE_LEVEL="$PWD/spikes/rust-stack/core/tests/fixtures/$base.level.json"; fi
 export CORE_FIXTURE="$fixture"
 export CORE_FIXTURE_DIR="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture-4.7.2"
-if [[ ! -f "$CORE_FIXTURE_DIR/snapshots.v10.stream" ]]; then nix-shell spikes/rust-stack/oracle/run.sh "$fixture"; fi
+need_export=0
+if [[ ! -f "$CORE_FIXTURE_DIR/snapshots.v10.stream" ]]; then need_export=1; fi
+if [[ "$fixture" == bounce.pad || "$fixture" == collections || "$fixture" == actors_target || "$base" == stilts_target ]]; then
+  mkdir -p "$CORE_FIXTURE_DIR"
+  python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$CORE_FIXTURE_DIR/expected.input.json"
+  if ! cmp -s "$CORE_FIXTURE_DIR/expected.input.json" "$CORE_FIXTURE_INPUT"; then need_export=1; fi
+fi
+if [[ "$need_export" == 1 ]]; then nix-shell spikes/rust-stack/oracle/run.sh "$fixture"; fi
 cargo fmt --manifest-path spikes/rust-stack/core/Cargo.toml
 GODOT=${GODOT:-godot}
 [[ $("$GODOT" --version) == 4.7.2.* ]]
-if [[ "$fixture" == actors_target ]]; then
+if [[ "$fixture" == actors_target || "$base" == stilts_target ]]; then
   gdformat spikes/rust-stack/oracle/actor_pictures.gd
   gdlint spikes/rust-stack/oracle/actor_pictures.gd
   "$GODOT" --headless --path . --script spikes/rust-stack/oracle/actor_pictures.gd -- "$CORE_FIXTURE_LEVEL" "$CORE_FIXTURE_DIR/snapshots.v10.stream" "$CORE_FIXTURE_DIR/pictures.json" 2>&1 | tee "$CORE_FIXTURE_DIR/pictures.log"
@@ -27,10 +34,13 @@ if [[ "$fixture" == actors_target ]]; then
 fi
 cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --lib
 cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --test fixture_parity -- --ignored --nocapture
+if [[ "$fixture" == stilts_target ]]; then cargo test --locked --manifest-path spikes/rust-stack/core/Cargo.toml --test runtime_boundary -- --ignored --nocapture; fi
 GODOT=${GODOT:-godot}
 [[ $("$GODOT" --version) == 4.7.2.* ]]
 branches=(1 6 11 70 75 90 160 220 350)
 if [[ "$fixture" == actors_target ]]; then branches+=(780 790 791 1000 1080 1100 1200); fi
+if [[ "$fixture" == stilts_target ]]; then branches+=(106 107 108 244 245 246); fi
+if [[ "$fixture" == stilts_target.knock ]]; then branches+=(25 26 27 77 78 79); fi
 for tick in "${branches[@]}"; do
   "$GODOT" --headless --path . --script spikes/rust-stack/oracle/continue.gd -- "$CORE_FIXTURE_LEVEL" "$CORE_FIXTURE_INPUT" "$CORE_FIXTURE_DIR/snapshots.v10.stream" "$CORE_FIXTURE_DIR/rust-uninterrupted-$tick.v10" "$tick" 2>&1 | tee "$CORE_FIXTURE_DIR/b-to-a-$tick.log"
   if grep -E 'SCRIPT ERROR|ERROR:' "$CORE_FIXTURE_DIR/b-to-a-$tick.log"; then exit 1; fi

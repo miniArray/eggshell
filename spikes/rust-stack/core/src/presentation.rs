@@ -1,15 +1,11 @@
 //! Pure semantic sampling. Pack frame binding and screen planning stay in the player.
-use crate::{
-    state::{Kind, Run},
-    *,
-};
+use crate::{entity::Kind, state::Run, *};
 #[derive(Clone, Debug)]
 pub(crate) struct Previous {
     pub player: Position,
     pub companion: Position,
     pub follow: Position,
-    pub entities: Vec<Position>,
-    pub heads: Vec<Option<[i64; 4]>>,
+    pub entities: std::collections::BTreeMap<i64, (Position, Option<[i64; 4]>)>,
     pub rescuers: [Position; 4],
 }
 impl Previous {
@@ -21,17 +17,19 @@ impl Previous {
                 y: run.player.recovery_y,
             },
             follow: run.camera,
-            entities: run.entities.iter().map(|e| pos(e.body)).collect(),
-            heads: run
+            entities: run
                 .entities
                 .iter()
-                .map(|e| match &e.kind {
-                    Kind::Walker(w)
-                        if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
-                    {
-                        Some(w.head_box(e.body, e.facing))
-                    }
-                    _ => None,
+                .map(|e| {
+                    let head = match &e.kind {
+                        Kind::Walker(w)
+                            if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
+                        {
+                            Some(w.head_box(e.body, e.facing))
+                        }
+                        _ => None,
+                    };
+                    (e.origin.token(), (pos(e.body), head))
                 })
                 .collect(),
             rescuers: run.player.life.rescuers,
@@ -81,6 +79,12 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
 }
 fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
     use crate::actors::ActorKind;
+    if w.kind == ActorKind::Stilt {
+        return VisualState {
+            size_pixels: [None, Some(w.height as f64 / SCALE as f64)],
+            ..VisualState::default()
+        };
+    }
     let animation = match w.kind {
         ActorKind::Walker | ActorKind::Flyer => {
             if w.roll != 0 {
@@ -99,6 +103,7 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
                 )
             }
         }
+        ActorKind::Stilt => unreachable!("stilt samples a size, not actor animation"),
         ActorKind::Flower => {
             if w.mode != 0 {
                 "turn".into()
@@ -130,7 +135,7 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
     }
 }
 fn plant_head(
-    e: &crate::state::Entity,
+    e: &crate::entity::Entity,
     previous: Option<[i64; 4]>,
     frame: i64,
 ) -> Vec<EntityAuxiliaryPicture> {
@@ -367,9 +372,13 @@ pub(crate) fn sample(
     let entities = run
         .entities
         .iter()
-        .enumerate()
-        .map(|(index, e)| {
-            let source = &world.maps[0].placements[e.source];
+        .map(|e| {
+            let source = e.source(world);
+            let previous_entity = previous
+                .entities
+                .get(&e.origin.token())
+                .copied()
+                .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor => ([0; 4], VisualState::default()),
                 Kind::Pickup(pickup) => (pickup.bounds(), pickup_visual(pickup, e.collected)),
@@ -384,7 +393,8 @@ pub(crate) fn sample(
                     },
                 ),
                 Kind::Bridge => {
-                    let crate::PreparedPlacement::Bridge { geometry_index } = source.prepared
+                    let crate::PreparedPlacement::Bridge { geometry_index } =
+                        source.expect("placed bridge").prepared
                     else {
                         unreachable!("compiler-owned bridge geometry")
                     };
@@ -400,7 +410,9 @@ pub(crate) fn sample(
                     )
                 }
                 Kind::Pad(pad) => {
-                    let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
+                    let crate::PreparedPlacement::Pad { large, .. } =
+                        source.expect("placed pad").prepared
+                    else {
                         unreachable!("compiler-owned pad facts")
                     };
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
@@ -408,18 +420,18 @@ pub(crate) fn sample(
                 Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing)),
             };
             EntityPicture {
-                token: e.source as i64 + 1,
-                code: source.code.clone(),
-                placement_id: Some(source.id.clone()),
-                source_index: Some(e.source),
+                token: e.origin.token(),
+                code: e.code(world).to_owned(),
+                placement_id: source.map(|p| p.id.clone()),
+                source_index: e.origin.placed(),
                 body_bounds: bounds,
-                motion: motion(previous.entities[index], pos(e.body)),
+                motion: motion(previous_entity.0, pos(e.body)),
                 facing: e.facing,
-                layer: source.layer,
+                layer: e.layer,
                 variant: if let Kind::Walker(w) = &e.kind {
                     w.variant
                 } else {
-                    source.variant
+                    source.map(|p| p.variant).unwrap_or(0)
                 },
                 status: match e.status {
                     0 => EntityStatus::Waiting,
@@ -442,7 +454,7 @@ pub(crate) fn sample(
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
                 hidden: matches!(&e.kind,Kind::Walker(w)if w.hidden!=0),
                 visual,
-                auxiliary: plant_head(e, previous.heads[index], frame),
+                auxiliary: plant_head(e, previous_entity.1, frame),
             }
         })
         .collect();
