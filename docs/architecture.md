@@ -192,7 +192,10 @@ input remains locked. A hit while the companion is away spins for 63 steps
 without a look-around. An ordinary death waits 240 steps and fades for 61; a quick
 death fades for 32; input works again on the third step after the respawn. Contact
 immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
-A companion catch freezes the world for 51 steps. `move_pose.gd` supplies the
+A companion catch freezes the world for 51 steps. The original sets time scale 0, so
+input events still run: a jump release cuts rising velocity by four, and a fresh jump
+press on a floor sets jump velocity (`move_frozen.gd`). Motion, gravity,
+acceleration and timers add nothing; the body and world stay still. `move_pose.gd` supplies the
 companion's reference attachment point. Steady swimming uses 12 px behind and
 30 px above the feet; floating uses 10 px behind and 32 px above. It reads the
 pre-contact velocity in `move_brake_vx`, because damage changes `vx` before

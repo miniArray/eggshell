@@ -9,6 +9,7 @@ const Maps = preload("res://src/sim/maps.gd")
 const Life = preload("res://src/sim/life.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const InputBits = preload("res://src/sim/move_input.gd")
+const FrozenMoves = preload("res://src/sim/move_frozen.gd")
 const S := State.SCALE
 const LEFT := InputBits.LEFT
 const RIGHT := InputBits.RIGHT
@@ -37,6 +38,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if Life.body_moves(state):
 		_dead_body(state, input, world)
 	if Life.blocks_step(state):
+		if Life.frozen_input(state):
+			_frozen_input(state, input, world)
 		return
 	var pressed: int = input & ~state.previous_input
 	var released: int = state.previous_input & ~input
@@ -67,6 +70,15 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.camera_y = state.y - 28 * S
 	if not state.captured_by and not Life.blocks_step(state):
 		Moves.finish(state, action, world)
+
+
+## The catch freeze stops the world and the body, but input events still change velocity.
+static func _frozen_input(state: Dictionary, input: int, world: Dictionary) -> void:
+	var pressed: int = input & ~state.previous_input
+	var released: int = state.previous_input & ~input
+	state.previous_input = input
+	Collision.begin_step(state, world, Registry)
+	FrozenMoves.advance(state, world, pressed, released)
 
 
 static func _locked_action(state: Dictionary, input: int) -> int:

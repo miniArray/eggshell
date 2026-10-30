@@ -196,6 +196,11 @@ static func blocks_step(state: Dictionary) -> bool:
 	return phase != PLAY and not (phase == FADE_IN and int(state.get("life_ticks", 0)) == 1)
 
 
+## The catch freeze sets time scale 0; input events still run (see move_frozen.gd).
+static func frozen_input(state: Dictionary) -> bool:
+	return int(state.get("life_phase", PLAY)) == REJOIN
+
+
 static func body_moves(state: Dictionary) -> bool:
 	# After a fall, a countdown or a quick restart the body keeps its motion without
 	# control until the restart. A hazard holds it.
