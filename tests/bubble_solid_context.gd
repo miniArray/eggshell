@@ -26,6 +26,12 @@ func _initialize() -> void:
 		unit.state.recovery_y < 144 * S,
 		"Bubble physics sees the current registered span before actor dispatch"
 	)
+	Sim.advance(unit.state, 0, unit.world)
+	check(
+		unit.state.recovery_y < 144 * S,
+		"A supported Bubble settles instead of falling through on the next step"
+	)
+	check(unit.state.companion_age == 182, "Floor settling keeps the wave clock running")
 	var saved := fixture()
 	var bytes := Snapshot.encode(saved.state)
 	check(not bytes.is_empty(), "The falling Bubble saves")

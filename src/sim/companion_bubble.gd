@@ -67,6 +67,7 @@ static func advance(state: Dictionary, world: Dictionary, platform_enabled: bool
 	# Platform keeps the pre-recovery floor for ramp following, even while rising.
 	var support := Collision.floor_at(moving, world, bounds)
 	if Collision.prepare(moving, world, bounds):
+		Collision.settle_floor(moving, world, bounds, support)
 		var previous: int = moving.vx
 		var accelerated: int = previous + control * 512
 		var next := clampi(accelerated, -48 * 60, 48 * 60)
