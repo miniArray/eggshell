@@ -229,6 +229,7 @@ impl Actor {
         let fresh = self.started == 0;
         if fresh {
             self.started = 1;
+            self.impact_cursor = step.player.impact;
             if self.mirror == 2 {
                 *facing = if step.player.body.x > body.x { 1 } else { -1 };
             }

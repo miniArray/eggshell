@@ -23,6 +23,12 @@ def main() -> None:
         inputs = [2] * 800
     elif name == "actors_target":
         inputs = [2] * 1600
+    elif name == "posts_target.duck":
+        inputs = [6] * 45 + [0] * 35 + [32] * 20 + [0] * 20 + [2] * 680
+    elif name == "posts_target.pound":
+        inputs = [6] * 45 + [0] * 35 + ([4] * 12 + [32] * 50 + [0] * 10) * 3 + [2] * 504
+    elif name == "posts_target":
+        inputs = [6] * 45 + [0] * 135 + [2] * 620
     elif name == "checkpoint_target":
         inputs = [2] * 2400
     elif name == "stilts_target.knock":

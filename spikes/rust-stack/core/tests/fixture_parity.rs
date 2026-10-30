@@ -15,7 +15,10 @@ fn run(restores: bool) {
         "actors_target",
         "stilts_target",
         "stilts_target.knock",
-        "checkpoint_target"
+        "checkpoint_target",
+        "posts_target",
+        "posts_target.pound",
+        "posts_target.duck"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -34,6 +37,7 @@ fn run(restores: bool) {
     let pictures: Option<Vec<serde_json::Value>> = if name == "actors_target"
         || name.starts_with("stilts_target")
         || name == "checkpoint_target"
+        || name.starts_with("posts_target")
     {
         Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
     } else {
@@ -47,6 +51,18 @@ fn run(restores: bool) {
     let mut captured_ticks = 0;
     let mut head_ticks = 0;
     let mut rescuer_ticks = 0;
+    let mut post_floor_ticks = 0;
+    let mut maximum_x = 0;
+    let mut post_height = 96 * 3600;
+    let mut post_updates = Vec::new();
+    let mut pound_ticks = [0usize; 3];
+    let mut impact = 0;
+    let mut duck_ticks = 0;
+    let mut shortest_duck = 56 * 3600;
+    let mut old_action = 0;
+    let mut action_changes = Vec::new();
+    let mut old_post_floor = false;
+    let mut post_floor_changes = Vec::new();
     let mut inactive_waiting_samples = 0;
     let mut inactive_queued_samples = 0;
     let mut phases = BTreeSet::new();
@@ -93,6 +109,29 @@ fn run(restores: bool) {
         restore_ticks.extend(cuts);
         branch_ticks.extend(cuts);
     }
+    if name == "posts_target.duck" {
+        let cuts = [80, 81, 82, 89, 90, 91, 100, 101, 102];
+        restore_ticks.extend(cuts);
+        branch_ticks.extend(cuts);
+    }
+    if name == "posts_target" {
+        let cuts = [53, 54, 55, 198, 199, 200];
+        restore_ticks.extend(cuts);
+        branch_ticks.extend(cuts);
+    }
+    if name == "posts_target.pound" {
+        let cuts = [
+            53, 54, 55, 80, 81, 82, 142, 143, 144, 152, 153, 154, 214, 215, 216, 224, 225, 226, 92,
+            93, 94, 116, 117, 118, 120, 121, 122, 164, 165, 166, 188, 189, 190, 192, 193, 194, 236,
+            237, 238, 260, 261, 262, 264, 265, 266, 286, 287, 288,
+        ];
+        restore_ticks.extend(cuts);
+        branch_ticks.extend(cuts);
+    }
+    restore_ticks.sort_unstable();
+    restore_ticks.dedup();
+    branch_ticks.sort_unstable();
+    branch_ticks.dedup();
     for tick in 0..=inputs.len() {
         let size = u32::from_le_bytes(stream[cursor..cursor + 4].try_into().unwrap()) as usize;
         cursor += 4;
@@ -140,6 +179,12 @@ fn run(restores: bool) {
                     picture.visual.animation.as_deref(),
                     e["view"]["animation"].as_str()
                 );
+                if let Some(size) = e["view"]["size_x"].as_f64() {
+                    assert_eq!(picture.visual.size_pixels[0], Some(size));
+                }
+                if let Some(frame) = e["view"]["frame"].as_i64() {
+                    assert_eq!(picture.visual.frame, Some(frame));
+                }
                 if let Some(size) = e["view"]["size_y"].as_f64() {
                     assert_eq!(picture.visual.size_pixels[1], Some(size));
                 }
@@ -259,6 +304,46 @@ fn run(restores: bool) {
             assert_eq!((packet.hud.redcoins, packet.hud.flowers), (1, 1));
             checkpoint_flags_seen = true;
         }
+        maximum_x = maximum_x.max(packet.player.motion.current.x);
+        if packet.player.posture != 0 {
+            duck_ticks += 1;
+            shortest_duck = shortest_duck.min(-packet.player.body_bounds[1]);
+        }
+        if (1..=3).contains(&packet.player.action) {
+            pound_ticks[(packet.player.action - 1) as usize] += 1;
+        }
+        impact = required(&wire.player, schema.player(), "move_impact").unwrap();
+        if let Some(post) = wire.entities.iter().find(|e| e.id == "post96") {
+            let fields = schema.entity_fields("o23");
+            let height = required(&post.values, fields, "height").unwrap();
+            if height != post_height {
+                post_updates.push((
+                    tick,
+                    height,
+                    required(&post.values, fields, "status").unwrap(),
+                ));
+                post_height = height;
+            }
+        }
+        let post_supported = packet.player.on_floor
+            && packet.entities.iter().any(|e| {
+                e.code == "o23"
+                    && e.status == eggshell_spike_core::EntityStatus::Active
+                    && packet.player.motion.current.x + 12 * 3600 >= e.motion.current.x - 16 * 3600
+                    && packet.player.motion.current.x - 12 * 3600 <= e.motion.current.x + 16 * 3600
+                    && packet.player.motion.current.y <= e.motion.current.y + e.body_bounds[1]
+                    && packet.player.motion.current.y
+                        >= e.motion.current.y + e.body_bounds[1] - 3600
+            });
+        post_floor_ticks += usize::from(post_supported);
+        if post_supported != old_post_floor {
+            post_floor_changes.push((tick, post_supported));
+            old_post_floor = post_supported;
+        }
+        if packet.player.action != old_action {
+            action_changes.push((tick, packet.player.action));
+            old_action = packet.player.action;
+        }
         phases.insert(packet.player.life_phase);
         modes.insert(packet.companions.mode);
         captured_ticks +=
@@ -353,6 +438,31 @@ fn run(restores: bool) {
         assert!(checkpoint_ticks > 0 && checkpoint_respawn_ticks > 0 && checkpoint_flags_seen);
         let hud = session.presentation().hud;
         assert!(hud.coins >= 3 && hud.redcoins == 1 && hud.flowers == 1);
+    } else if name.starts_with("posts_target") {
+        println!("POST_COLLISION_COVERAGE floor_ticks={post_floor_ticks} maximum_x={maximum_x} changes={post_updates:?} pound_phase_ticks={pound_ticks:?} impact={impact} duck_ticks={duck_ticks} shortest_duck={shortest_duck} action_changes={action_changes:?} floor_changes={post_floor_changes:?}");
+        if name == "posts_target.duck" {
+            assert_eq!(duck_ticks, 20);
+            assert_eq!(shortest_duck, 32 * 3600);
+            assert!(post_updates.is_empty());
+        }
+        if name == "posts_target.pound" {
+            assert_eq!(post_updates.len(), 3);
+            assert_eq!(post_height, 16 * 3600);
+            assert_eq!(impact, 3);
+            assert!(pound_ticks.iter().all(|v| *v > 0));
+            let stump = session
+                .presentation()
+                .entities
+                .into_iter()
+                .find(|e| e.placement_id.as_deref() == Some("post96"))
+                .unwrap();
+            assert!(stump.visible && stump.status == eggshell_spike_core::EntityStatus::Defeated);
+            assert!(maximum_x > 384 * 3600);
+        }
+        assert!(
+            post_floor_ticks > 0,
+            "normal route must stand on an actual post"
+        );
     } else if name == "stilts_target.knock" {
         println!("STILT_KNOCK_COVERAGE knocked_ticks={knock_ticks} tongue_ticks={tongue_ticks} first={first_knock:?} last={last_knock:?}");
         assert!(knock_ticks > 0 && tongue_ticks > 0);

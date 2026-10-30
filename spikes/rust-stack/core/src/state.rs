@@ -26,6 +26,8 @@ pub(crate) struct Run {
     pub deaths: i64,
     pub dynamic_serial: i64,
     pub checkpoint: crate::checkpoint::Memory,
+    #[cfg(test)]
+    pub solid_trace: crate::solids::SolidTrace,
 }
 fn unsupported(reason: &str) -> Error {
     Error::Unsupported {
@@ -61,7 +63,11 @@ impl Run {
         let checkpoint_identity = crate::schema::hash(
             include_str!("../tests/fixtures/checkpoint_target.level.json").as_bytes(),
         );
+        let posts_identity = crate::schema::hash(
+            include_str!("../tests/fixtures/posts_target.level.json").as_bytes(),
+        );
         if world.identity != identity
+            && world.identity != posts_identity
             && world.identity != checkpoint_identity
             && world.identity != stilts_identity
             && world.identity != actors_identity
@@ -100,15 +106,24 @@ impl Run {
             deaths: 0,
             dynamic_serial: 1,
             checkpoint: crate::checkpoint::Memory::default(),
+            #[cfg(test)]
+            solid_trace: crate::solids::SolidTrace::default(),
         };
-        let map = crate::body::Probe::new(&world.maps[0]);
+        let solids = std::cell::RefCell::new(crate::solids::SolidFrame::default());
+        let map = crate::body::Probe::with_solids(&world.maps[0], &solids);
         for _ in 0..2 {
+            solids.borrow_mut().begin(&run.entities);
             run.entities_step(&map, stats)?;
             run.player.advance(&map, 0, 0, 0, 0, &mut run.sound);
+            run.apply_post_updates(map.post_updates())?;
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
             }
             run.player.finish(&map, 0);
+            #[cfg(test)]
+            {
+                run.solid_trace = map.solid_trace(run.frame, run.player.body, run.player.bounds());
+            }
         }
         stats.terrain_queries += map.terrain_queries.get();
         run.camera = Position {
@@ -126,6 +141,7 @@ impl Run {
             .map(|(source, p)| {
                 let kind = match p.code.as_str() {
                     "o5" => Kind::Goal,
+                    "o23" => Kind::Post(crate::post::Post::new(p)?),
                     "o6" => Kind::Checkpoint(crate::checkpoint::Marker::new(p)?),
                     "d1" | "d2" | "d4" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
                         Kind::Decor
@@ -253,7 +269,10 @@ impl Run {
         while next < self.entities.len() {
             let e = &mut self.entities[next];
             next += 1;
-            if !matches!(e.kind, Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_)) {
+            if !matches!(
+                e.kind,
+                Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_) | Kind::Post(_)
+            ) {
                 continue;
             }
             if !e.lifecycle(map, centre, self.player.body.x, &mut self.rng)? {
@@ -261,6 +280,7 @@ impl Run {
             }
             stats.entity_steps += 1;
             match &mut e.kind {
+                Kind::Post(_) => {}
                 Kind::Pickup(p) => p.advance(&mut e.body, &mut e.status, e.collected, map),
                 Kind::Star(p) => p.advance(
                     &mut e.body,
@@ -315,9 +335,9 @@ impl Run {
         world: &World,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
-        if input & !15 != 0 {
+        if input & !47 != 0 {
             return Err(unsupported(
-                "fixture slice supports LEFT/RIGHT/JUMP/empty-mouth USE only; remaining actions are not implemented",
+                "admitted input is LEFT/RIGHT/JUMP/empty-mouth USE/DOWN; UP/THROW/LOCK actions remain unsupported",
             ));
         }
         if self.goal_reached != 0 {
@@ -326,7 +346,9 @@ impl Run {
         self.frame = self.frame.checked_add(1).ok_or_else(|| {
             unsupported("saved frame increment exceeds the admitted Stride state range")
         })?;
-        let map = crate::body::Probe::new(&world.maps[0]);
+        let solids = std::cell::RefCell::new(crate::solids::SolidFrame::default());
+        solids.borrow_mut().begin(&self.entities);
+        let map = crate::body::Probe::with_solids(&world.maps[0], &solids);
         if self.player.life_phase == 0 {
             self.play_ticks = self.play_ticks.saturating_add(1);
             self.total_play_ticks = self.total_play_ticks.saturating_add(1);
@@ -356,6 +378,8 @@ impl Run {
         }
         self.player
             .dead_body(&map, input, self.frame, &mut self.sound);
+        // The frozen world still receives callbacks from its moving dead player body.
+        self.apply_post_updates(map.post_updates())?;
         if self.player.blocks_step() {
             stats.terrain_queries += map.terrain_queries.get();
             return Ok(());
@@ -364,6 +388,7 @@ impl Run {
         let released = self.player.previous_input as u8 & !input;
         self.player.previous_input = input as i64;
         self.player.pressed_input = pressed as i64;
+        solids.borrow_mut().begin(&self.entities);
         self.entities_step(&map, stats)?;
         let locked = self.player.locks_input();
         let action = if locked {
@@ -375,6 +400,7 @@ impl Run {
         if self.player.captured_by == 0 {
             self.player
                 .advance(&map, action, pressed, released, self.frame, &mut self.sound);
+            self.apply_post_updates(map.post_updates())?;
             // Contact phase 0 precedes actors (phase 1), regardless of placement order.
             for e in &mut self.entities {
                 if let Kind::Pad(pad) = &mut e.kind {
@@ -399,6 +425,21 @@ impl Run {
                 contact_index += 1;
                 let e = &mut self.entities[index];
                 if e.status != 1 {
+                    continue;
+                }
+                if let Kind::Post(p) = &e.kind {
+                    stats.contacts += 1;
+                    if p.spiked != 0 && p.height > 0 {
+                        let b = self.player.bounds();
+                        if self.player.body.x + b[2] >= e.body.x - 16 * S
+                            && self.player.body.x + b[0] <= e.body.x + 16 * S
+                            && self.player.body.y + b[3] + S / 10 >= e.body.y - p.height
+                            && self.player.body.y + b[1] + S / 10 <= e.body.y
+                            && self.player.hurt(e.body.x, &mut self.sound)
+                        {
+                            stats.damage_events += 1;
+                        }
+                    }
                     continue;
                 }
                 if let Kind::Pickup(p) = &mut e.kind {
@@ -474,6 +515,13 @@ impl Run {
                     let high = self.player.body.y <= e.body.y - w.height + 50 * S;
                     let unseat = touching && w.contact == 0 && high;
                     w.contact = i64::from(touching);
+                    if unseat && [2, 3].contains(&self.player.action) {
+                        e.status = 3;
+                        e.can_respawn = 0;
+                        w.held = 0;
+                        w.spat = 0;
+                        continue;
+                    }
                     if unseat {
                         self.player.stomp(e.body.vy, action, &mut self.sound);
                         let position = Position {
@@ -495,7 +543,9 @@ impl Run {
                 }
                 if touching {
                     if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
-                        self.player.stomp(e.body.vy, action, &mut self.sound);
+                        if ![2, 3].contains(&self.player.action) {
+                            self.player.stomp(e.body.vy, action, &mut self.sound);
+                        }
                         e.status = 3;
                     } else if e.body.y < self.player.body.y - 8 * S
                         && self.player.hurt(e.body.x, &mut self.sound)
@@ -566,6 +616,14 @@ impl Run {
             }
             if let Some(sensor) = self.player.tongue_box() {
                 for e in &mut self.entities {
+                    if let Kind::Post(p) = &e.kind {
+                        if p.solid(e.body, e.status).is_some()
+                            && overlap(e.body, p.bounds(), Body::default(), sensor)
+                        {
+                            self.player.block_tongue();
+                            break;
+                        }
+                    }
                     if let Kind::Walker(w) = &mut e.kind {
                         if e.status == 1
                             && w.kind == crate::actors::ActorKind::Stilt
@@ -634,6 +692,10 @@ impl Run {
         };
         if self.player.captured_by == 0 && !self.player.blocks_step() {
             self.player.finish(&map, action);
+        }
+        #[cfg(test)]
+        {
+            self.solid_trace = map.solid_trace(self.frame, self.player.body, self.player.bounds());
         }
         stats.terrain_queries += map.terrain_queries.get();
         Ok(())
@@ -727,6 +789,7 @@ impl Run {
             Kind::Star(p) => p.field(n),
             Kind::Walker(p) => p.field(n),
             Kind::Checkpoint(p) => p.field(n),
+            Kind::Post(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -860,9 +923,15 @@ impl Run {
             || p.support_bridge < 0
             || p.support_bridge > world.maps[0].bridges.len() as i64
             || !(0..=6).contains(&p.movement)
-            || !(0..=15).contains(&p.previous_input)
-            || !(0..=15).contains(&p.pressed_input)
-            || ![0, 4, 9, 10].contains(&p.action)
+            || !(0..=47).contains(&p.previous_input)
+            || p.previous_input & 16 != 0
+            || !(0..=47).contains(&p.pressed_input)
+            || p.pressed_input & 16 != 0
+            || ![0, 1, 2, 3, 4, 9, 10].contains(&p.action)
+            || ![0, 1].contains(&p.duck)
+            || p.look != 0
+            || !(0..=9).contains(&p.posture_tick)
+            || !(0..=position_limit).contains(&p.impact)
             || !p.tongue.valid(p.action)
             || !p.water.valid()
             || ![0, 1].contains(&p.action_wet)
@@ -894,7 +963,7 @@ impl Run {
             || (p.life_phase == 8) != (self.goal_reached != 0)
             || !(-2000 * 60..=2000 * 60).contains(&p.body.vx)
             || p.body.vy < -2000 * 60
-            || p.body.vy > 704 * 60
+            || p.body.vy > if p.action == 2 { 1408 * 60 } else { 704 * 60 }
             || self.sound.serial < 0
             || !(0..=4).contains(&self.sound.kind)
         {
@@ -903,6 +972,8 @@ impl Run {
         for v in [
             p.body.x,
             p.body.y,
+            p.impact_x,
+            p.impact_y,
             self.camera.x,
             self.camera.y,
             p.recovery_x,
@@ -971,6 +1042,11 @@ impl Run {
             {
                 return Err(unsupported("entity lifecycle validation"));
             }
+            if let Kind::Post(p) = &e.kind {
+                if !p.valid() {
+                    return Err(unsupported("post fields"));
+                }
+            }
             if let Kind::Checkpoint(p) = &e.kind {
                 if !p.valid() {
                     return Err(unsupported("checkpoint marker fields"));
@@ -1021,7 +1097,7 @@ impl Run {
                     || w.roll != 0
                     || w.frozen != 0
                     || w.request_cursor != 0
-                    || w.impact_cursor != 0
+                    || w.impact_cursor > p.impact
                     || !(0..=1).contains(&w.started)
                     || !(0..=1).contains(&w.contact)
                     || !(-512 * 60..=512 * 60).contains(&e.body.vx)
@@ -1046,6 +1122,7 @@ fields! {
 "jump_buffer"=>jump_buffer,"flutter_remaining"=>flutter_remaining,"flutter_cooldown"=>flutter_cooldown,"flutter_ready"=>flutter_ready,"boosted_flutter"=>boosted_flutter,
 "move_tongue_axis"=>tongue.axis,"move_tongue_length"=>tongue.length,"move_tongue_phase"=>tongue.phase,"move_tongue_block_tick"=>tongue.block_tick,"move_tongue_hold"=>tongue.hold,
 "swimming"=>water.swimming,"water_wait"=>water.wait,"water_phase"=>water.phase,"water_deep"=>water.deep,"move_dive"=>water.dive,"move_water_jump"=>water.jump,"move_water_transition"=>water.transition,"move_action_wet"=>action_wet,
+"move_duck"=>duck,"move_look"=>look,"move_posture_tick"=>posture_tick,"move_impact"=>impact,"move_impact_x"=>impact_x,"move_impact_y"=>impact_y,
 "move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_jump_carry"=>jump_carry,
 "life_phase"=>life_phase,"life_ticks"=>life_ticks,"recovery_x"=>recovery_x,"recovery_y"=>recovery_y,"goal_from_x"=>goal_from_x,"goal_from_y"=>goal_from_y,"goal_x"=>goal_x,"goal_y"=>goal_y
 }

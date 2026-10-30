@@ -8,6 +8,7 @@ const Pose = preload("res://src/view/player_pose.gd")
 const Stilt = preload("res://src/sim/types/stilt_walker.gd")
 const Dressing = preload("res://src/view/pack_dressing.gd")
 const View = preload("res://src/view/level_view.gd")
+const Post = preload("res://src/sim/types/pound_post.gd")
 
 
 func enemy_visible(entity: Dictionary, state: Dictionary) -> bool:
@@ -48,6 +49,17 @@ func _initialize() -> void:
 		var state: Dictionary = decoded.state
 		var entities := []
 		for entity: Dictionary in state.entities:
+			if entity.code == "o23":
+				entities.append(
+					{
+						"token": entity.token,
+						"body": Post.bounds(entity),
+						"view": Post.view_state(entity, state),
+						"head": [],
+						"visible": Post.view_state(entity, state).visible
+					}
+				)
+				continue
 			if entity.code == "o6":
 				entities.append(
 					{

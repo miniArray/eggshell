@@ -34,6 +34,7 @@ impl Origin {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
+    Post(crate::post::Post),
     Checkpoint(crate::checkpoint::Marker),
     Decor,
     Pickup(Pickup),
@@ -65,7 +66,9 @@ pub(crate) struct Entity {
 impl Entity {
     pub fn placed(source: usize, p: &Placement, kind: Kind, family_index: i64) -> Self {
         let lifecycle = i64::from(matches!(kind, Kind::Walker(_) | Kind::Star(_)));
-        let layer = if matches!(kind, Kind::Walker(_)) {
+        let layer = if matches!(kind, Kind::Post(_)) {
+            9
+        } else if matches!(kind, Kind::Walker(_)) {
             8
         } else {
             7
@@ -228,6 +231,7 @@ impl Entity {
             let b = match &self.kind {
                 Kind::Walker(a) => a.body_bounds(self.facing),
                 Kind::Star(p) => p.bounds(),
+                Kind::Post(p) => p.bounds(),
                 Kind::Pickup(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {

@@ -45,6 +45,12 @@ pub(crate) struct Player {
     pub boosted_flutter: i64,
     pub action: i64,
     pub action_tick: i64,
+    pub duck: i64,
+    pub look: i64,
+    pub posture_tick: i64,
+    pub impact: i64,
+    pub impact_x: i64,
+    pub impact_y: i64,
     pub turn: i64,
     pub turn_ticks: i64,
     pub push: i64,
@@ -84,6 +90,12 @@ impl Player {
             boosted_flutter: 0,
             action: 0,
             action_tick: 0,
+            duck: 0,
+            look: 0,
+            posture_tick: 0,
+            impact: 0,
+            impact_x: 0,
+            impact_y: 0,
             turn: 0,
             turn_ticks: 0,
             push: 0,
@@ -103,6 +115,9 @@ impl Player {
         }
     }
     pub fn bounds(&self) -> [i64; 4] {
+        if let Some(bounds) = self.pound_bounds() {
+            return bounds;
+        }
         if self.action == 4 {
             [
                 -12 * S,
@@ -131,7 +146,7 @@ impl Player {
         self.recovery_y = self.body.y - 24 * S;
     }
     pub(crate) fn set_action(&mut self, action: i64, sound: &mut Sound) {
-        if action != self.action && [4, 9].contains(&action) {
+        if action != self.action && [1, 3, 4, 9].contains(&action) {
             sound.player(self.body);
         }
         if self.action == 4 && action != 4 {
@@ -141,7 +156,7 @@ impl Player {
         self.action_tick = 0;
         self.action_wet = self.water.swimming;
     }
-    fn cancel_flutter(&mut self) {
+    pub(crate) fn cancel_flutter(&mut self) {
         if self.flutter_remaining != 0 {
             self.flutter_cooldown = 17;
         }
@@ -161,7 +176,7 @@ impl Player {
         }
     }
     fn flutter(&mut self, input: u8, sound: &mut Sound) -> bool {
-        if self.water.swimming != 0 {
+        if self.water.swimming != 0 || [1, 2, 3].contains(&self.action) {
             return false;
         }
         if self.flutter_remaining != 0 && self.on_floor != 0 {
@@ -205,9 +220,13 @@ impl Player {
         false
     }
     pub fn stomp(&mut self, enemy_vy: i64, input: u8, sound: &mut Sound) {
+        let pounding = [1, 2, 3].contains(&self.action);
+        if pounding {
+            self.pound_delay = 6;
+        }
         if self.action != 4 {
             self.set_action(0, sound);
-            if self.on_floor == 0 && self.water.swimming == 0 {
+            if self.on_floor == 0 && self.water.swimming == 0 && !pounding {
                 if self.flutter_cooldown == 1 {
                     self.flutter_cooldown = 0;
                 }
@@ -241,6 +260,7 @@ impl Player {
         if self.action != 0 {
             self.action_tick = (self.action_tick + 1).min(35);
         }
+        self.tick_pound(input, sound);
         if self.action == 4 && self.action_tick >= self.tongue_end_tick() {
             self.set_action(0, sound);
             self.tongue.length = 16 * S;
@@ -256,6 +276,8 @@ impl Player {
         if self.life.hurt != 0 {
             self.action = 0;
             self.action_tick = 0;
+            self.duck = 0;
+            self.look = 0;
             self.tongue.phase = 0;
             self.tongue.length = 16 * S;
             self.turn = 0;
@@ -265,6 +287,7 @@ impl Player {
             self.cancel_flutter();
         }
         let bounds = self.bounds();
+        map.carry_player(&mut self.body, bounds, self.on_floor);
         let can_move = self.body.prepare(map, bounds);
         let mut support = self.body.track(map, bounds, false);
         self.on_floor = i64::from(support != 0 && self.body.vy == 0);
@@ -300,20 +323,30 @@ impl Player {
         }
         if self.water.swimming != 0 {
             self.cancel_flutter();
+            if [1, 2, 3].contains(&self.action) {
+                self.set_action(0, sound);
+            }
         }
         let right = input & 2 != 0;
         let left = input & 1 != 0;
         let free = self.on_floor == 0;
-        let face_locked = self.action == 4 || self.water.swimming != 0;
+        let face_locked = [1, 2, 3, 4].contains(&self.action) || self.water.swimming != 0;
         if !face_locked && right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
             self.facing = 1;
         }
         if !face_locked && left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
             self.facing = -1;
         }
-        if self.life.hurt == 0 && pressed & 8 != 0 && self.action != 4 && self.push == 0 {
+        let pounding = self.life.hurt == 0 && self.start_pound(input, sound);
+        if !pounding
+            && self.life.hurt == 0
+            && pressed & 8 != 0
+            && ![1, 2, 3, 4].contains(&self.action)
+            && self.push == 0
+        {
             self.start_tongue(map, sound);
         }
+        self.update_posture(map, input, sound);
         let mut bounds = self.bounds();
         let mut jumping = carried;
         if self.water.swimming == 0
@@ -321,6 +354,7 @@ impl Player {
             && self.jump_buffer != 0
             && input & 4 != 0
             && !self.body.overlaps(map, NORMAL, 0, -S)
+            && ![1, 2, 3].contains(&self.action)
         {
             self.jump(sound);
             jumping = true;
@@ -349,7 +383,15 @@ impl Player {
             self.gravity_tick = 0;
             self.boosted_flutter = 0;
         }
-        let direction = i64::from(right) - i64::from(left);
+        let direction = if self.duck != 0 || [1, 2, 3].contains(&self.action) {
+            0
+        } else {
+            i64::from(right) - i64::from(left)
+        };
+        if self.action == 1 {
+            self.body.vx = 0;
+            self.body.vy = 0;
+        }
         let liquid = self.water.swimming != 0 || self.liquid_body(map, bounds);
         let speed = if liquid { 200 * 60 } else { 400 * 60 };
         let deceleration = if self.life.hurt != 0 || self.water.swimming != 0 {
@@ -387,32 +429,47 @@ impl Player {
             support = self.body.floor(map, bounds);
         }
         self.body.settle(map, bounds, support);
-        let dx = if self.body.vx != 0 {
+        let dx = if self.action == 1 {
+            0
+        } else if self.body.vx != 0 {
             (self.body.vx + acceleration / 2).clamp(-speed, speed)
         } else {
             0
         };
-        let gravity = if self.water.swimming != 0 || self.flutter_remaining != 0 && self.bounce == 0
+        let gravity = if self.water.swimming != 0
+            || self.action == 1
+            || self.flutter_remaining != 0 && self.bounce == 0
         {
             0
         } else {
-            if self.gravity_tick != 0 && self.action != 0 {
-                self.gravity_tick = 0;
-            }
-            if self.gravity_tick != 0 {
-                const RECOVERY: [i64; 24] = [
-                    2048, 1080, 1149, 1219, 1287, 1353, 1417, 1478, 1537, 1594, 1647, 1698, 1746,
-                    1791, 1833, 1871, 1906, 1938, 1966, 1990, 2010, 2026, 2038, 2046,
-                ];
-                let index = (self.gravity_tick - 1) as usize;
-                self.gravity_tick = if index < 23 { index as i64 + 2 } else { 0 };
-                RECOVERY[index]
+            if self.action == 2 {
+                4096
             } else {
-                2048
+                if self.gravity_tick != 0 && self.action != 0 {
+                    self.gravity_tick = 0;
+                }
+                if self.gravity_tick != 0 {
+                    const RECOVERY: [i64; 24] = [
+                        2048, 1080, 1149, 1219, 1287, 1353, 1417, 1478, 1537, 1594, 1647, 1698,
+                        1746, 1791, 1833, 1871, 1906, 1938, 1966, 1990, 2010, 2026, 2038, 2046,
+                    ];
+                    let index = (self.gravity_tick - 1) as usize;
+                    self.gravity_tick = if index < 23 { index as i64 + 2 } else { 0 };
+                    RECOVERY[index]
+                } else {
+                    2048
+                }
             }
         };
-        let dy = if self.body.vy != 0 {
-            (self.body.vy + gravity / 2).min(704 * 60)
+        let cap = if self.action == 2 {
+            1408 * 60
+        } else {
+            704 * 60
+        };
+        let dy = if self.action == 1 {
+            0
+        } else if self.body.vy != 0 {
+            (self.body.vy + gravity / 2).min(cap)
         } else {
             0
         };
@@ -427,7 +484,8 @@ impl Player {
         }
         let vertical = dy + bob;
         let moved = if can_move {
-            self.body.vertical_support(map, bounds, vertical, support)
+            self.body
+                .vertical_player(map, bounds, vertical, support, self.action == 2)
         } else {
             0
         };
@@ -443,11 +501,16 @@ impl Player {
             self.body.vy = 0;
             self.boosted_flutter = 0;
             self.gravity_tick = 0;
-            if !was_grounded && self.action == 0 {
+            if self.action == 2 {
+                self.set_action(3, sound);
+                self.impact += 1;
+                self.impact_x = self.body.x;
+                self.impact_y = self.body.y;
+            } else if !was_grounded && self.action == 0 {
                 self.set_action(10, sound);
             }
-        } else if support == 0 || jumping {
-            self.body.vy = (self.body.vy + gravity).min(704 * 60);
+        } else if self.action != 1 && (support == 0 || jumping) {
+            self.body.vy = (self.body.vy + gravity).min(cap);
         }
         if direction == 0 {
             self.body.vx = approach(self.body.vx, 0, deceleration);
@@ -475,6 +538,7 @@ impl Player {
             && self.jump_buffer != 0
             && input & 4 != 0
             && !self.body.overlaps(map, NORMAL, 0, -S)
+            && ![1, 2, 3].contains(&self.action)
         {
             self.jump(sound);
             self.jump_carry = 1;

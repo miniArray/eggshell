@@ -197,3 +197,57 @@ step runs ordinary floor refinement, as the literal original trace shows.
 Original player-pose, actor/head and checkpoint visibility samples compare
 independently each tick. Invalid checkpoint id, marker bonus and award count
 restore atomically. This is not unchanged-target admission or a benchmark.
+
+## Verification admission: o23 posts and DOWN
+
+`posts_target` is an authored verification course, not the unchanged target.
+It contains the target's 96/128/144/176 px o23 forms. `posts_target.pound`
+uses only normal RIGHT/JUMP/DOWN input. DOWN implements compact posture,
+24-tick pound start, capped fall, land/release, impact serial/coordinates,
+original pose bounds, and per-action sound events. UP/THROW/LOCK, held-food
+requests, and the selected target still refuse atomically.
+
+The entity table owns saved post height/colour/spiked/status. `SolidFrame`
+is a transient projection with ordered rows, old/live boxes, 128 px candidate
+cells and lazily assigned negative handles. These handles never replace the
+positive legacy `support_bridge` value in v10. A pound fixes the contact set,
+deduplicates each post/side, changes the live projection immediately, and
+rechecks overlap/floor against that projection in the same player move.
+Typed post updates commit to the entity table before contact dispatch. In
+this admission, struck actors have no registered solid callback. Their hit
+updates therefore commute with the remaining player collision queries.
+Moving clouds and other registered-solid callbacks are not admitted by this
+slice. This bounded staging is not a claim of general mid-phase equivalence.
+
+The pound course reaches three natural height changes at calls121/193/265:
+96→64→32→16 px, with statuses1/1/3. The defeated 16 px stump remains visible
+because original `Post.view_state` says so. Defeated actors remain hidden.
+Independent original view/pose sampling compares each frame. Restore cuts
+bracket pound starts, falls, impacts, live geometry changes and release.
+
+A separate fresh original replay records old/live post boxes and post-step
+floor support by stable entity token for all801 states. A test-only typed
+trace compares the Rust collision projection and its live floor query.
+It checks three natural geometry-change frames and asserts that the oracle
+queries change no saved state. It does not prove moving-cloud carry or all
+mid-phase callback ordering. Malformed post/pound restores and unsupported
+input refuse without changing snapshot, statistics or presentation.
+
+The geometry replay also makes four deliberate read-only bubble-shaped query
+probes per state. They test a separate collision rule: the optional polygon
+restricts terrain tests, but registered-solid overlap uses the body's box.
+These probes are boundary tests, not normally reached bubble contacts or
+additional target activity. The source's `_terrain` and `_box_overlap` are
+different contracts; the core must not apply the terrain polygon to both.
+
+A separate lifetime boundary test runs120 normal course inputs, calls the
+original's quick-restart action, restores that literal snapshot into Rust,
+and compares the next dead-body step. A moving dead player can still pound
+a post while the world waits. Post updates therefore commit before the
+lifetime early return too. This test does not claim a normal-input target
+restart route or add a restart API to the candidate.
+
+Normal routes land on the96 px post; the pound route destroys that post.
+The128 px post then blocks rightward motion. All four forms participate in
+original style/box/query sampling. These routes do not pound every authored
+post, finish the authored course, or substitute for target traversal.

@@ -1,10 +1,11 @@
-//! Integer terrain and immutable legacy bridge motion. Entity solids remain a separate gate.
+//! Integer terrain, legacy bridges and the admitted entity-solid projection.
 use crate::{math::floor_div, Map, SCALE as S};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 pub(crate) struct Probe<'a> {
     map: &'a Map,
     pub terrain_queries: Cell<u64>,
     polygon: Option<&'a [crate::Position]>,
+    solids: Option<&'a RefCell<crate::solids::SolidFrame>>,
     parent_counter: Option<&'a Cell<u64>>,
 }
 impl<'a> Probe<'a> {
@@ -13,7 +14,79 @@ impl<'a> Probe<'a> {
             map,
             terrain_queries: Cell::new(0),
             polygon: None,
+            solids: None,
             parent_counter: None,
+        }
+    }
+    pub fn with_solids(map: &'a Map, solids: &'a RefCell<crate::solids::SolidFrame>) -> Self {
+        let mut probe = Self::new(map);
+        probe.solids = Some(solids);
+        probe
+    }
+    pub fn pound_posts(&self, body: &mut Body, bounds: [i64; 4], previous_edge: i64) {
+        if let Some(frame) = self.solids {
+            frame.borrow_mut().pound(self, body, bounds, previous_edge);
+        }
+    }
+    #[cfg(test)]
+    pub fn solid_trace(
+        &self,
+        saved_frame: i64,
+        body: Body,
+        bounds: [i64; 4],
+    ) -> crate::solids::SolidTrace {
+        let floor = body.floor(self, bounds);
+        self.solids
+            .map(|f| {
+                let positions = f.borrow().probe_positions();
+                let points = [
+                    [-22, -52],
+                    [0, -60],
+                    [22, -52],
+                    [30, -30],
+                    [22, -8],
+                    [0, 0],
+                    [-22, -8],
+                    [-30, -30],
+                ]
+                .map(|p| crate::Position {
+                    x: p[0] * S,
+                    y: p[1] * S,
+                });
+                let probe = self.with_polygon(&points);
+                let hits = positions
+                    .into_iter()
+                    .map(|p| {
+                        Body {
+                            x: p.x,
+                            y: p.y,
+                            ..Body::default()
+                        }
+                        .overlaps(
+                            &probe,
+                            [-30 * S, -60 * S, 30 * S, 0],
+                            0,
+                            0,
+                        )
+                    })
+                    .collect();
+                f.borrow().trace(saved_frame, floor, hits)
+            })
+            .unwrap_or_default()
+    }
+    pub fn post_updates(&self) -> Vec<crate::solids::PostUpdate> {
+        self.solids
+            .map(|f| f.borrow_mut().take_updates())
+            .unwrap_or_default()
+    }
+    pub fn solid_shapes(&self, probe: [i64; 4]) -> Vec<crate::solids::Shape> {
+        self.solids
+            .map(|s| s.borrow_mut().shapes(probe))
+            .unwrap_or_default()
+    }
+    pub fn carry_player(&self, body: &mut Body, bounds: [i64; 4], on_floor: i64) {
+        if let Some(frame) = self.solids {
+            frame.borrow_mut().carry(body, bounds, on_floor);
         }
     }
     pub fn with_polygon<'b>(&'b self, points: &'b [crate::Position]) -> Probe<'b> {
@@ -21,6 +94,7 @@ impl<'a> Probe<'a> {
             map: self.map,
             terrain_queries: Cell::new(0),
             polygon: Some(points),
+            solids: self.solids,
             parent_counter: Some(&self.terrain_queries),
         }
     }
@@ -33,6 +107,7 @@ impl<'a> Probe<'a> {
                     && bounds[2] >= b.left
                     && bounds[0] <= b.right
             })
+            || self.solids.is_some_and(|s| s.borrow_mut().touches(bounds))
     }
     pub fn terrain_overlaps(&self, bounds: [i64; 4]) -> bool {
         self.terrain_queries.set(self.terrain_queries.get() + 1);
@@ -65,7 +140,31 @@ pub(crate) enum HorizontalMove {
     Actor,
 }
 impl Body {
+    fn shape_overlap(&self, b: [i64; 4], box_: [i64; 4], dx: i64, dy: i64) -> bool {
+        let q = [
+            self.x + b[0] + dx,
+            self.y + b[1] + dy,
+            self.x + b[2] + dx,
+            self.y + b[3] + dy,
+        ];
+        // The optional body polygon restricts terrain only; original _box_overlap is AABB.
+        q[2] >= box_[0] && q[0] <= box_[2] && q[3] >= box_[1] && q[1] <= box_[3]
+    }
     pub fn overlaps(&self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) -> bool {
+        if self.terrain_at(map, b, dx, dy) {
+            return true;
+        }
+        let q = [
+            self.x + b[0] + dx,
+            self.y + b[1] + dy,
+            self.x + b[2] + dx,
+            self.y + b[3] + dy,
+        ];
+        map.solid_shapes(q)
+            .into_iter()
+            .any(|s| self.shape_overlap(b, s.box_, dx, dy))
+    }
+    fn terrain_at(&self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) -> bool {
         let q = [
             self.x + b[0] + dx,
             self.y + b[1] + dy,
@@ -123,8 +222,19 @@ impl Body {
         if self.overlaps(map, b, 0, 0) {
             return 0;
         }
-        if self.overlaps(map, b, 0, S) {
+        if self.terrain_at(map, b, 0, S) {
             return -1;
+        }
+        let below = [
+            self.x + b[0],
+            self.y + b[1] + S,
+            self.x + b[2],
+            self.y + b[3] + S,
+        ];
+        for shape in map.solid_shapes(below) {
+            if self.shape_overlap(b, shape.box_, 0, S) {
+                return shape.handle;
+            }
         }
         for (index, bridge) in map.bridges.iter().enumerate() {
             if self.y + b[3] <= bridge.top && self.bridge_overlap(bridge, b, 0, S) {
@@ -368,6 +478,26 @@ impl Body {
         distance: i64,
         support: i64,
     ) -> i64 {
+        self.vertical_move(map, b, distance, support, false)
+    }
+    pub fn vertical_player(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        distance: i64,
+        support: i64,
+        pounding: bool,
+    ) -> i64 {
+        self.vertical_move(map, b, distance, support, pounding)
+    }
+    fn vertical_move(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        distance: i64,
+        support: i64,
+        pounding: bool,
+    ) -> i64 {
         if distance == 0 {
             return 0;
         }
@@ -382,6 +512,14 @@ impl Body {
                 .unwrap_or(0)
         } else {
             0
+        };
+        if pounding && distance > 0 {
+            map.pound_posts(self, b, sy + b[3]);
+        }
+        let obstacle = if pounding && distance > 0 {
+            self.overlaps(map, b, 0, 0)
+        } else {
+            obstacle
         };
         if obstacle || bridge != 0 {
             let limit = (distance.abs() * if bridge != 0 { 20 } else { 11 } / 10).max(2 * S);

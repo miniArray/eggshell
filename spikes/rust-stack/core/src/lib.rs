@@ -11,9 +11,14 @@ pub mod math;
 mod pad;
 mod player;
 pub mod polygon;
+mod post;
+mod pound;
 mod presentation;
 mod runtime;
 pub mod schema;
+mod solids;
+#[cfg(test)]
+mod solids_trace_tests;
 mod state;
 mod state_restore;
 mod stilt;

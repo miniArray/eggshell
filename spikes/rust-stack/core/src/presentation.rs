@@ -214,6 +214,13 @@ pub(crate) fn sample(
     let mut literal_frame = 0;
     let name = if p.life.hurt != 0 {
         "Hurt0"
+    } else if [1, 2].contains(&p.action) {
+        if p.action == 2 {
+            tick += 24;
+        }
+        "GroundPound0"
+    } else if p.action == 3 {
+        "GPLand0"
     } else if p.action == 4 {
         if p.tongue.phase == 3 {
             literal_frame = 1 + (tick * 24 / 60).min(1);
@@ -226,6 +233,9 @@ pub(crate) fn sample(
         }
     } else if p.action == 9 {
         "HeadBump0"
+    } else if p.duck != 0 {
+        tick = p.posture_tick;
+        "Duck0"
     } else if p.water.swimming != 0 {
         if p.water.jump != 0 {
             "Jump0"
@@ -288,7 +298,7 @@ pub(crate) fn sample(
         facing: p.facing,
         movement: p.movement,
         action: p.action,
-        posture: 0,
+        posture: p.duck,
         pose: p.action,
         pose_ticks: p.action_tick,
         selected_pose,
@@ -393,6 +403,14 @@ pub(crate) fn sample(
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
+                Kind::Post(post) => (
+                    post.bounds(),
+                    VisualState {
+                        size_pixels: [Some(32.0), Some((post.height / SCALE) as f64)],
+                        frame: Some(post.colour),
+                        ..VisualState::default()
+                    },
+                ),
                 Kind::Pickup(pickup) => (pickup.bounds(), pickup_visual(pickup, e.collected)),
                 Kind::Star(star) => (
                     star.bounds(),
@@ -451,19 +469,20 @@ pub(crate) fn sample(
                     2 => EntityStatus::Queued,
                     _ => EntityStatus::Defeated,
                 },
-                visible: e.status != 3
-                    && match &e.kind {
-                        Kind::Checkpoint(_) => e.collected == 0,
-                        Kind::Pad(pad) => pad.active,
-                        Kind::Pickup(p) => {
-                            e.status == 1
-                                && p.held == 0
-                                && (e.collected == 0 || p.collect_ticks > 0)
-                        }
-                        Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
-                        Kind::Walker(_) => actor_visible(e),
-                        _ => true,
-                    },
+                visible: matches!(e.kind, Kind::Post(_))
+                    || e.status != 3
+                        && match &e.kind {
+                            Kind::Checkpoint(_) => e.collected == 0,
+                            Kind::Pad(pad) => pad.active,
+                            Kind::Pickup(p) => {
+                                e.status == 1
+                                    && p.held == 0
+                                    && (e.collected == 0 || p.collect_ticks > 0)
+                            }
+                            Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
+                            Kind::Walker(_) => actor_visible(e),
+                            _ => true,
+                        },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
                 hidden: matches!(&e.kind,Kind::Walker(w)if w.hidden!=0),
                 visual,
