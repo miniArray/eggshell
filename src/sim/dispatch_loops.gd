@@ -6,6 +6,7 @@ extends RefCounted
 const Collision = preload("res://src/sim/collision.gd")
 const EntityGrid = preload("res://src/sim/entity_grid.gd")
 const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
+const EnemyBody = preload("res://src/sim/enemy_body.gd")
 const ACTIVE := 1
 static var _registry: Script = null
 ## Per code: the registry's dispatch facts (Registry.facts), read once.
@@ -18,6 +19,20 @@ static func registry() -> Script:
 	if _registry == null:
 		_registry = load("res://src/sim/registry.gd")
 	return _registry
+
+
+## Enemy requests normally run inside their steps. During a catch freeze, consume
+## held-body events now, without AI, timers, travel or contacts, before later input
+## expires the history. Body-schema actors such as gust flyers need not be in the enemy view.
+static func consume_frozen_requests(state: Dictionary, world: Dictionary) -> void:
+	for entity: Dictionary in state.entities:
+		if entity.get("held", 0) and entity.has("spat"):
+			var released := EnemyBody.consume_requests(entity, state)
+			var type: Script = registry().lookup(entity.code)
+			if released and type.has_method("on_spit_release"):
+				type.on_spit_release(entity, state)
+			Collision.refresh(world, entity)
+			EntityGrid.touch(world, entity)
 
 
 static func facts(code: String) -> Dictionary:

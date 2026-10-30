@@ -91,6 +91,13 @@ static func activate(entity: Dictionary, state: Dictionary, _world: Dictionary) 
 		entity.heading = posmod(entity.heading + 180000, TURN)
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	# Spat out, it flies on level in the direction it was spat.
+	entity.spat = 0
+	entity.heading = 0 if entity.facing > 0 else 180000
+	entity.vy = 0
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -98,10 +105,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		# Spat out, it flies on level in the direction it was spat.
-		entity.spat = 0
-		entity.heading = 0 if entity.facing > 0 else 180000
-		entity.vy = 0
+		on_spit_release(entity, state)
 	entity.ramp = mini(RAMP_TICKS, entity.ramp + 1)
 	var speed: int = TOP_SPEED * 60 * entity.ramp / RAMP_TICKS
 	entity.vx = speed * Motion.turn_cosine(entity.heading) / S

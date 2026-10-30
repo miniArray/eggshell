@@ -90,6 +90,15 @@ static func bounds(entity: Dictionary) -> Array:
 	return [-14 * S, -22 * S, 14 * S, 16 * S]
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	if entity.mode not in [BARE, SLIDE, BARE_TURN, ENTER]:
+		if entity.vx == 0:
+			entity.mode = UP_SPIT
+		else:
+			spin(entity, signi(entity.vx))
+			entity.spat = 0
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var registry: Script = Body.registry_for()
 	if entity.runner_token:
@@ -106,12 +115,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if fresh:
 		entity.flight_direction = entity.facing
 	if action == Body.RELEASED:
-		if entity.mode not in [BARE, SLIDE, BARE_TURN, ENTER]:
-			if entity.vx == 0:
-				entity.mode = UP_SPIT
-			else:
-				spin(entity, signi(entity.vx))
-				entity.spat = 0
+		on_spit_release(entity, state)
 	if Body.spit_step(entity, state, world, bounds(entity)):
 		if not entity.spat and entity.mode == UP_SPIT:
 			entity.mode = IDLE

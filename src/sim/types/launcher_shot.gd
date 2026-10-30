@@ -53,6 +53,12 @@ static func bounds(_entity: Dictionary) -> Array:
 	return BOX
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	entity.spat = 0
+	entity.falling = 0
+	entity.heading = 0 if entity.facing > 0 else 180000
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -60,9 +66,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		entity.spat = 0
-		entity.falling = 0
-		entity.heading = 0 if entity.facing > 0 else 180000
+		on_spit_release(entity, state)
 	if entity.falling:
 		entity.vy = mini(FALL_CAP, entity.vy + GRAVITY)
 		entity.y += entity.vy

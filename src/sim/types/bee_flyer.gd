@@ -72,6 +72,11 @@ static func bob_offset(entity: Dictionary, age: int) -> int:
 	return entity.bob * Motion.turn_sine(phase)
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	entity.spat = 0
+	entity.vy = 0
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -79,8 +84,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		entity.spat = 0
-		entity.vy = 0
+		on_spit_release(entity, state)
 	entity.vx = entity.facing * entity.speed * 60
 	entity.x += entity.vx
 	entity.y += bob_offset(entity, entity.age + 1) - bob_offset(entity, entity.age)

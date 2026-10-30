@@ -37,6 +37,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	if Life.body_moves(state):
 		_dead_body(state, input, world)
 	if Life.blocks_step(state):
+		if state.life_phase == Life.REJOIN:
+			_catch_events(state, input, world)
 		return
 	var pressed: int = input & ~state.previous_input
 	var released: int = state.previous_input & ~input
@@ -67,6 +69,23 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.camera_y = state.y - 28 * S
 	if not state.captured_by and not Life.blocks_step(state):
 		Moves.finish(state, action, world)
+
+
+static func _catch_events(state: Dictionary, input: int, world: Dictionary) -> void:
+	var pressed: int = input & ~state.previous_input
+	var released: int = state.previous_input & ~input
+	state.previous_input = input
+	if state.captured_by:
+		return
+	var locked := Life.locks_input(state)
+	var action := 0 if locked else input
+	var serial: int = state.move_emit_serial
+	Moves.advance(state, action, world, 0 if locked else pressed, 0 if locked else released, true)
+	if state.move_emit_serial != serial:
+		# Input events can create actors, but no actor takes a simulation step here.
+		# Consume now so repeated frozen inputs cannot overrun the saved request history.
+		Registry.consume_requests(state, world, true)
+	Moves.finish(state, action, world)
 
 
 static func _locked_action(state: Dictionary, input: int) -> int:

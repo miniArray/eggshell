@@ -46,6 +46,17 @@ static func hull(entity: Dictionary) -> Array:
 	return result
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	# Mouth release is the same plain throw as the spiked hopper.
+	var upward: bool = entity.vx == 0
+	var direction: int = state.facing if upward else signi(entity.vx)
+	entity.spat = 0
+	entity.mode = THROWN
+	entity.facing = direction
+	entity.vx = direction * (200 if upward else 320) * 60
+	entity.vy = (-768 if upward else -256) * 60
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -53,14 +64,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		# Mouth release is the same plain throw as the spiked hopper.
-		var upward: bool = entity.vx == 0
-		var direction: int = state.facing if upward else signi(entity.vx)
-		entity.spat = 0
-		entity.mode = THROWN
-		entity.facing = direction
-		entity.vx = direction * (200 if upward else 320) * 60
-		entity.vy = (-768 if upward else -256) * 60
+		on_spit_release(entity, state)
 	entity.age = mini(entity.age + 1, RADIUS_TICKS)
 	match entity.mode:
 		ORBIT:

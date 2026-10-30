@@ -57,6 +57,13 @@ static func bounds(entity: Dictionary) -> Array:
 	return [-12 * S, -10 * S, 12 * S, 14 * S]
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	# Released from the mouth, it flees the way the player faces and never hurts again.
+	entity.spat = 0
+	entity.mode = FLEE
+	entity.facing = state.facing if state.facing != 0 else 1
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var fresh: bool = entity.started == 0
 	var action := Body.process(entity, state)
@@ -70,10 +77,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		if not Motion.overlaps(entity, world, box, 0, -4 * S):
 			entity.mode = FORWARD
 	if action == Body.RELEASED:
-		# Released from the mouth, it flees the way the player faces and never hurts again.
-		entity.spat = 0
-		entity.mode = FLEE
-		entity.facing = state.facing if state.facing != 0 else 1
+		on_spit_release(entity, state)
 	if entity.mode != HANG:
 		entity.flap = (entity.flap + 1) % 20
 	match entity.mode:

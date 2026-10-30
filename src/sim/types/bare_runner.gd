@@ -36,6 +36,10 @@ static func bounds(entity: Dictionary) -> Array:
 	return Walker.bounds(entity)
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	Walker.on_spit_release(entity, state)
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	Walker.step(entity, state, world)
 

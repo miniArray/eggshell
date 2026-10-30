@@ -9,6 +9,40 @@ const COLD := 5
 const CONSUME := 6
 const STORED_EGG := 7
 const PARTS := ["serial", "kind", "item", "x", "y", "angle", "vx", "vy"]
+const PLAYER_FIELDS := [
+	["move_emit_serial", 0],
+	["move_emit_kind", 0],
+	["move_emit_item", 0],
+	["move_emit_x", 0],
+	["move_emit_y", 0],
+	["move_emit_angle", 0],
+	["move_emit_vx", 0],
+	["move_emit_vy", 0],
+	["move_emit_1_serial", 0],
+	["move_emit_1_kind", 0],
+	["move_emit_1_item", 0],
+	["move_emit_1_x", 0],
+	["move_emit_1_y", 0],
+	["move_emit_1_angle", 0],
+	["move_emit_1_vx", 0],
+	["move_emit_1_vy", 0],
+	["move_emit_2_serial", 0],
+	["move_emit_2_kind", 0],
+	["move_emit_2_item", 0],
+	["move_emit_2_x", 0],
+	["move_emit_2_y", 0],
+	["move_emit_2_angle", 0],
+	["move_emit_2_vx", 0],
+	["move_emit_2_vy", 0],
+	["move_emit_3_serial", 0],
+	["move_emit_3_kind", 0],
+	["move_emit_3_item", 0],
+	["move_emit_3_x", 0],
+	["move_emit_3_y", 0],
+	["move_emit_3_angle", 0],
+	["move_emit_3_vx", 0],
+	["move_emit_3_vy", 0],
+]
 
 
 static func emit(

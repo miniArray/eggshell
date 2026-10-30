@@ -35,6 +35,10 @@ static func activation_bounds(entity: Dictionary) -> Array:
 	return _as_base(entity, func() -> Variant: return Actor.activation_bounds(entity))
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	_as_base(entity, func() -> void: Actor.on_spit_release(entity, state))
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	_as_base(entity, func() -> void: Actor.step(entity, state, world))
 

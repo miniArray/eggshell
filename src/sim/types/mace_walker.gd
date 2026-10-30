@@ -58,6 +58,20 @@ static func bounds(entity: Dictionary) -> Array:
 	return ROLL_BOX if entity.mode == ROLL else WALK_BOX
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	entity.spat = 0
+	var direction: int = state.facing if state.facing != 0 else 1
+	if entity.vx == 0:
+		# Spat upward: a high arc that knocks over what it meets.
+		entity.mode = LOFT
+		entity.facing = direction
+		entity.vx = direction * (256 * 60 + absi(state.vx))
+		entity.vy = -768 * 60
+		entity.grounded = 0
+	else:
+		roll(entity, state, direction, -256 * 60)
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action == Body.HELD:
@@ -68,17 +82,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if action == Body.GONE:
 		return
 	if action == Body.RELEASED:
-		entity.spat = 0
-		var direction: int = state.facing if state.facing != 0 else 1
-		if entity.vx == 0:
-			# Spat upward: a high arc that knocks over what it meets.
-			entity.mode = LOFT
-			entity.facing = direction
-			entity.vx = direction * (256 * 60 + absi(state.vx))
-			entity.vy = -768 * 60
-			entity.grounded = 0
-		else:
-			roll(entity, state, direction, -256 * 60)
+		on_spit_release(entity, state)
 	if Body.hazards(entity, state, world, bounds(entity)):
 		return
 	entity.cooldown = maxi(0, entity.cooldown - 1)

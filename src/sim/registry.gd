@@ -292,7 +292,9 @@ static func modal_step(state: Dictionary, world: Dictionary, input: int) -> bool
 	return paused
 
 
-static func consume_requests(state: Dictionary, world: Dictionary) -> void:
+static func consume_requests(state: Dictionary, world: Dictionary, frozen := false) -> void:
+	if frozen:
+		DispatchLoops.consume_frozen_requests(state, world)
 	for type: Script in _level_consumers:
 		type.consume_level_requests(state, world)
 	DispatchLoops.consume_requests(state, world)

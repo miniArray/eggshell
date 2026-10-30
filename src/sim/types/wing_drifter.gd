@@ -80,6 +80,11 @@ static func bounds(entity: Dictionary) -> Array:
 	return [-16 * S, -14 * S, -left * S, 30 * S]
 
 
+static func on_spit_release(entity: Dictionary, _state: Dictionary) -> void:
+	entity.mode = ANGRY
+	entity.timer = 0
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -87,8 +92,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	if Reactions.frozen_step(entity, state, world, bounds(entity), ELEMENT_REACTIONS):
 		return
 	if action == Body.RELEASED:
-		entity.mode = ANGRY
-		entity.timer = 0
+		on_spit_release(entity, state)
 	if Body.spit_step(entity, state, world, bounds(entity)):
 		return
 	match entity.mode:

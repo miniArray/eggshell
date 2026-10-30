@@ -49,85 +49,58 @@ const REQUEST_STORED_EGG := Requests.STORED_EGG
 const SEED := 1
 const HEAT := 2
 const COLD := 3
-const PLAYER_FIELDS := [
-	["move_action", NORMAL],
-	["move_action_tick", 0],
-	["move_action_wet", 0],
-	["move_duck", 0],
-	["move_look", 0],
-	["move_posture_tick", 0],
-	["move_turn", 0],
-	["move_turn_ticks", 0],
-	["move_push", 0],
-	["move_pound_delay", 0],
-	["move_impact", 0],
-	["move_impact_x", 0],
-	["move_impact_y", 0],
-	["move_aim", 0],
-	["move_aim_angle", 45000],
-	["move_aim_dir", -1],
-	["move_aim_lock", 0],
-	["move_aim_up", 0],
-	["move_eggs", 0],
-	["move_held_id", 0],
-	["move_digest", 0],
-	["move_instant", 0],
-	["move_digest_ticks", 0],
-	["move_ammo", 0],
-	["move_ammo_count", 0],
-	["move_held_speed", 256 * 60],
-	["move_tongue_axis", 0],
-	["move_tongue_length", 16 * S],
-	["move_tongue_phase", TONGUE_NONE],
-	["move_tongue_block_tick", 0],
-	["move_tongue_hold", 16 * S],
-	["move_swallow_queue", 0],
-	["move_dive", 0],
-	["move_water_jump", 0],
-	["move_water_transition", 0],
-	["move_gravity_tick", 0],
-	["move_snow", 0],
-	["move_flow", 0],
-	["move_flutter_flow", 0],
-	["move_emit_serial", 0],
-	["move_emit_kind", 0],
-	["move_emit_item", 0],
-	["move_emit_x", 0],
-	["move_emit_y", 0],
-	["move_emit_angle", 0],
-	["move_emit_vx", 0],
-	["move_emit_vy", 0],
-	["move_emit_1_serial", 0],
-	["move_emit_1_kind", 0],
-	["move_emit_1_item", 0],
-	["move_emit_1_x", 0],
-	["move_emit_1_y", 0],
-	["move_emit_1_angle", 0],
-	["move_emit_1_vx", 0],
-	["move_emit_1_vy", 0],
-	["move_emit_2_serial", 0],
-	["move_emit_2_kind", 0],
-	["move_emit_2_item", 0],
-	["move_emit_2_x", 0],
-	["move_emit_2_y", 0],
-	["move_emit_2_angle", 0],
-	["move_emit_2_vx", 0],
-	["move_emit_2_vy", 0],
-	["move_emit_3_serial", 0],
-	["move_emit_3_kind", 0],
-	["move_emit_3_item", 0],
-	["move_emit_3_x", 0],
-	["move_emit_3_y", 0],
-	["move_emit_3_angle", 0],
-	["move_emit_3_vx", 0],
-	["move_emit_3_vy", 0],
-	["move_spread", 0],
-	# Speed after the player's own move, before object contacts: picks the next snow brake.
-	["move_brake_vx", 0],
-	# A buffered jump started after a landing still counts as a jump for the next move.
-	["move_jump_carry", 0],
-	["move_bounce", 0],
-]
+const PLAYER_FIELDS := (
+	[
+		["move_action", NORMAL],
+		["move_action_tick", 0],
+		["move_action_wet", 0],
+		["move_duck", 0],
+		["move_look", 0],
+		["move_posture_tick", 0],
+		["move_turn", 0],
+		["move_turn_ticks", 0],
+		["move_push", 0],
+		["move_pound_delay", 0],
+		["move_impact", 0],
+		["move_impact_x", 0],
+		["move_impact_y", 0],
+		["move_aim", 0],
+		["move_aim_angle", 45000],
+		["move_aim_dir", -1],
+		["move_aim_lock", 0],
+		["move_aim_up", 0],
+		["move_eggs", 0],
+		["move_held_id", 0],
+		["move_digest", 0],
+		["move_instant", 0],
+		["move_digest_ticks", 0],
+		["move_ammo", 0],
+		["move_ammo_count", 0],
+		["move_held_speed", 256 * 60],
+		["move_tongue_axis", 0],
+		["move_tongue_length", 16 * S],
+		["move_tongue_phase", TONGUE_NONE],
+		["move_tongue_block_tick", 0],
+		["move_tongue_hold", 16 * S],
+		["move_swallow_queue", 0],
+		["move_dive", 0],
+		["move_water_jump", 0],
+		["move_water_transition", 0],
+		["move_gravity_tick", 0],
+		["move_snow", 0],
+		["move_flow", 0],
+		["move_flutter_flow", 0],
+	]
+	+ Requests.PLAYER_FIELDS
+	+ [
+		["move_spread", 0],
+		# Speed after the player's own move, before object contacts: picks the next snow brake.
+		["move_brake_vx", 0],
+		# A buffered jump started after a landing still counts as a jump for the next move.
+		["move_jump_carry", 0],
+		["move_bounce", 0],
+	]
+)
 
 
 static func initialize(state: Dictionary) -> void:
@@ -165,30 +138,38 @@ static func interrupt(state: Dictionary) -> void:
 
 
 static func advance(
-	state: Dictionary, input: int, world: Dictionary, pressed: int, released: int
+	state: Dictionary, input: int, world: Dictionary, pressed: int, released: int, frozen := false
 ) -> bool:
 	initialize(state)
-	state.move_pound_delay = maxi(0, state.move_pound_delay - 1)
-	state.flutter_cooldown = maxi(0, state.flutter_cooldown - 1)
-	_tick_action(state, input)
-	state.move_turn_ticks = maxi(0, state.move_turn_ticks - 1)
-	if not state.move_turn_ticks:
-		state.move_turn = 0
+	# A catch stops elapsed simulation time, not the player's event rules. Keep the
+	# same rule order, but do not tick timers, carry supports or integrate motion.
+	if not frozen:
+		state.move_pound_delay = maxi(0, state.move_pound_delay - 1)
+		state.flutter_cooldown = maxi(0, state.flutter_cooldown - 1)
+		_tick_action(state, input)
+		state.move_turn_ticks = maxi(0, state.move_turn_ticks - 1)
+		if not state.move_turn_ticks:
+			state.move_turn = 0
+	if state.move_action == POUND_LAND and not input & InputBits.DOWN:
+		_set_action(state, NORMAL)
+		state.move_pound_delay = 6
 	if state.hurt:
 		interrupt(state)
 	var bounds := player_box(state)
-	var can_move := Collision.prepare(state, world, bounds)
-	# Rules before the move see the floor only once the body stands on it (no vertical
-	# speed). A body still falling onto the floor settles there just before the move.
-	var support := Collision.track_floor(state, world, bounds, false)
-	state.on_floor = int(support != 0 and state.vy == 0)
+	var can_move := false
+	var support := 0
+	if not frozen:
+		can_move = Collision.prepare(state, world, bounds)
+		# Rules see the floor only once the body stands on it (no vertical speed).
+		support = Collision.track_floor(state, world, bounds, false)
+		state.on_floor = int(support != 0 and state.vy == 0)
 	var was_grounded: bool = state.on_floor != 0
 	var carried_jump: bool = state.move_jump_carry != 0
-	state.move_jump_carry = 0
+	state.move_jump_carry = 0  # A pending landing jump is an event, not an elapsed-time timer.
 	_snow(state, world, bounds)
 	var flow_x: int = state.x
 	var flow := Flow.apply(
-		state, world, bounds, pressed, state.move_action in [POUND_START, POUND_FALL]
+		state, world, bounds, pressed, state.move_action in [POUND_START, POUND_FALL], frozen
 	)
 	if state.x != flow_x:  # The move starts from where the flow pushed the body.
 		support = Collision.floor_at(state, world, bounds)
@@ -196,7 +177,10 @@ static func advance(
 	if flow:
 		jump(state)
 		state.vx = flow * 400 * 60
-	state.jump_buffer = 6 if pressed & InputBits.JUMP else maxi(0, state.jump_buffer - 1)
+	if pressed & InputBits.JUMP:
+		state.jump_buffer = 6
+	elif not frozen:
+		state.jump_buffer = maxi(0, state.jump_buffer - 1)
 	if state.frame <= 1:
 		state.flutter_ready = 1
 	# Releasing jump during a flutter still damps this step; the flutter ends after that.
@@ -212,7 +196,7 @@ static func advance(
 		state.boosted_flutter = 0
 	var was_swimming: bool = state.swimming != 0
 	var water := Water.prepare(
-		state, input, world, pressed, state.move_action not in [TONGUE, SPIT, EMIT]
+		state, input, world, pressed, state.move_action not in [TONGUE, SPIT, EMIT], frozen
 	)
 	var bob: int = water.bob
 	if released & InputBits.JUMP and state.vy < 0:
@@ -230,8 +214,8 @@ static func advance(
 		state.move_action in [POUND_START, POUND_FALL, POUND_LAND, TONGUE, SPIT, LAY, EMIT]
 	)
 	if not state.hurt:
-		_actions(state, input, pressed, world)
-	_posture(state, input, world)
+		_actions(state, input, pressed, world, frozen)
+	_posture(state, input, world, frozen)
 	bounds = player_box(state)
 	var jumping := carried_jump
 	if (
@@ -246,9 +230,10 @@ static func advance(
 		jumping = true
 		bounds = player_box(state)
 	var lift := false
-	if not Flutter.after_bounce(state):
-		lift = _flutter(state, input)
-		Flutter.end_bounce(state)
+	if frozen or not Flutter.after_bounce(state):
+		lift = _flutter(state, input, frozen)
+		if not frozen:
+			Flutter.end_bounce(state)
 	if jumping:
 		# A flutter still damps on the step of a jump; then the jump pose ends it, and the
 		# move repeats the jump from the floor it starts on.
@@ -261,6 +246,8 @@ static func advance(
 		state.move_flutter_flow = 0
 		state.move_gravity_tick = 0
 		state.boosted_flutter = 0
+	if frozen:
+		return false
 	var direction := int(bool(input & InputBits.RIGHT)) - int(bool(input & InputBits.LEFT))
 	if state.move_duck or state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 		direction = 0
@@ -462,7 +449,7 @@ static func player_box(state: Dictionary) -> Array:
 	return [-12 * S, -height * S, 12 * S, bottom * S]
 
 
-static func _posture(state: Dictionary, input: int, world: Dictionary) -> void:
+static func _posture(state: Dictionary, input: int, world: Dictionary, frozen := false) -> void:
 	var previous_duck: int = state.move_duck
 	var previous_look: int = state.move_look
 	var down := bool(input & InputBits.DOWN)
@@ -501,7 +488,8 @@ static func _posture(state: Dictionary, input: int, world: Dictionary) -> void:
 		and state.move_look == previous_look
 		and (duck or state.move_look)
 	):
-		state.move_posture_tick = mini(9, state.move_posture_tick + 1)
+		if not frozen:
+			state.move_posture_tick = mini(9, state.move_posture_tick + 1)
 	else:
 		state.move_posture_tick = 0
 
@@ -559,10 +547,10 @@ static func cancel_flutter(state: Dictionary) -> void:
 
 
 ## One flutter step; true when a flutter that landed ends here and the body lifts.
-static func _flutter(state: Dictionary, input: int) -> bool:
+static func _flutter(state: Dictionary, input: int, frozen := false) -> bool:
 	if state.swimming or state.move_action in [POUND_START, POUND_FALL, POUND_LAND]:
 		return false
-	var result := Flutter.step(state, input)
+	var result := Flutter.step(state, input, frozen)
 	if result == Flutter.STARTED and state.move_action == HEAD_BUMP:
 		_set_action(state, NORMAL)  # The flutter pose replaces the head bump pose.
 	return result == Flutter.LANDED
@@ -594,10 +582,6 @@ static func _tick_action(state: Dictionary, input: int) -> void:
 			if state.move_action_tick >= 24:
 				_set_action(state, POUND_FALL)
 				state.vy = 2 * GRAVITY * 60
-		POUND_LAND:
-			if not input & InputBits.DOWN:
-				_set_action(state, NORMAL)
-				state.move_pound_delay = 6
 		TONGUE:
 			var end_tick := 12
 			if state.move_tongue_phase == TONGUE_FAILED:
@@ -644,7 +628,9 @@ static func _tick_action(state: Dictionary, input: int) -> void:
 				_set_action(state, NORMAL)
 
 
-static func _actions(state: Dictionary, input: int, pressed: int, world: Dictionary) -> void:
+static func _actions(
+	state: Dictionary, input: int, pressed: int, world: Dictionary, frozen := false
+) -> void:
 	if (
 		input & InputBits.DOWN
 		and not state.on_floor
@@ -682,7 +668,7 @@ static func _actions(state: Dictionary, input: int, pressed: int, world: Diction
 		elif state.move_aim_up:
 			state.move_aim_up = 0
 			state.move_aim_dir = 1
-		elif not state.move_aim_lock:
+		elif not state.move_aim_lock and not frozen:
 			state.move_aim_angle += state.move_aim_dir * 2250
 			if state.move_aim_angle <= -90000:
 				state.move_aim_angle = -90000

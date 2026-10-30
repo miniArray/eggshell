@@ -144,8 +144,19 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    fall, a countdown or a quick restart, until the restart) the body keeps moving
    without control: the input of the death step steers it once, then it keeps the
    airborne braking it had. A hazard death holds the body. Return when
-   `Life.blocks_step` holds; the last restart step does not block, so it runs the
-   world and moves the body without input.
+   `Life.blocks_step` holds. During REJOIN, first sample input edges and run Moves
+   with `frozen = true`, then finish the player pose. This runs event rules such as
+   jump, jump release, posture and action requests. It does not tick player timers,
+   apply acceleration, gravity or flutter damping, carry supports, move the body,
+   run registry steps or contacts, or change the camera. Consume newly published
+   player requests immediately, so repeated input cannot overflow their saved history.
+   Actors created by those events do not move or tick. Held-enemy spit and consume
+   requests also run without enemy steps. Each type's `on_spit_release` hook applies
+   its instantaneous release state at input time, so later player input cannot
+   change an accepted release. Movement starts only after the freeze. Hurt locks
+   still apply.
+   The last restart step does not block, so it runs the world and moves the body
+   without input.
 3. Sample input edges. Call `Collision.begin_step` immediately before
    `Registry.advance`, capturing the old solid geometry before object motion.
    `Registry.advance` runs `dispatch_loops.gd`: the lifecycle on the reference
@@ -179,8 +190,8 @@ is one tick in and a level that starts in mid-air is already falling at step 0.
    ice shots first, then entity consumers), then `Life.after_step`, then
    `Registry.compact` once outside entity loops. Captured players skip movement/contact paths but
    still reach request cleanup and compaction.
-8. Save the fixed follow point. Finish the movement pose only during uncaptured
-   active play.
+8. Save the fixed follow point. Finish the movement pose during uncaptured active
+   play. The REJOIN event path also finishes the pose, without changing that point.
 
 Hurt locks are saved in `hurt` (steps left) and `hurt_phase`. A first dry-land hit
 starts the knock-back pose with a 38-step lock (`Life.start_hurt(state,
@@ -194,7 +205,12 @@ death fades for 32; input works again on the third step after the respawn. Conta
 immunity lasts 121 steps. The separated countdown loses one unit every 46 steps.
 A rider carried down by a falling runner stops on any top-only ledge its feet cross;
 the original's moving-floor tracking pushes a carried body back out of a solid it
-reaches. A companion catch freezes the world for 51 steps. `move_pose.gd` supplies the
+reaches. A companion catch freezes the world for 51 steps, but accepts player input events.
+Releasing jump cuts rising velocity once. A new ground jump changes velocity and
+pose immediately, without moving the body. The saved `previous_input` consumes
+both edges during the freeze, so resuming does not replay them. These event-only
+steps use the same fixed 60 Hz schedule and snapshot schema as ordinary play.
+`move_pose.gd` supplies the
 companion's reference attachment point. Steady swimming uses 12 px behind and
 30 px above the feet; floating uses 10 px behind and 32 px above. It reads the
 pre-contact velocity in `move_brake_vx`, because damage changes `vx` before
@@ -315,6 +331,13 @@ block the tongue; top-only solids do not add that fallback. After movement and c
 with the tongue sensor, then `consume_requests`, then `compact` once. Type-level
 consumers use `consume_level_requests(state, world)`; entity consumers use
 `consume_requests(entity, state, world)` and save their own cursors.
+
+During REJOIN, `consume_requests(state, world, true)` also applies held-body
+requests without enemy steps. It scans the entity table because some edible
+Body-schema actors do not join the enemy read view. Optional
+`on_spit_release(entity, state)` applies a type's release mode and velocity at
+input time. Normal steps call the same hook at their usual release point. The
+hook must not move actors or advance timers.
 
 A projectile first calls optional `projectile_contact`: 0 ignores, 1 consumes,
 2 redirects and stops travel for the rest of that tick, and 3 reacts and continues.

@@ -53,6 +53,19 @@ static func bounds(_entity: Dictionary) -> Array:
 	return BOX
 
 
+static func on_spit_release(entity: Dictionary, state: Dictionary) -> void:
+	entity.carrier = 0
+	entity.intangible = 0
+	# Mouth release replaces the generic spit bounce with a plain throw.
+	var upward: bool = entity.vx == 0
+	var direction: int = state.facing if upward else signi(entity.vx)
+	entity.spat = 0
+	entity.thrown = 1
+	entity.facing = direction
+	entity.vx = direction * (200 if upward else 320) * 60
+	entity.vy = (-768 if upward else -256) * 60
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	var action := Body.process(entity, state)
 	if action in [Body.HELD, Body.GONE]:
@@ -70,14 +83,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 			entity.vy = 0
 			return
 	if action == Body.RELEASED:
-		# Mouth release replaces the generic spit bounce with a plain throw.
-		var upward: bool = entity.vx == 0
-		var direction: int = state.facing if upward else signi(entity.vx)
-		entity.spat = 0
-		entity.thrown = 1
-		entity.facing = direction
-		entity.vx = direction * (200 if upward else 320) * 60
-		entity.vy = (-768 if upward else -256) * 60
+		on_spit_release(entity, state)
 	if Body.hazards(entity, state, world, BOX):
 		return
 	if entity.sink_window:
