@@ -37,6 +37,7 @@ def main():
         "move_input",
         "life",
         "life_timing",
+        "companion_bubble",
         "lava_family",
         "life_hud",
         "hud_backing",

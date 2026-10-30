@@ -68,7 +68,8 @@ a stale high-water mark fail validation. Armor also saves independent
 `fish_finish` counter. Creation-only culling runs before a flyer's wave moves its
 anchor; it needs no saved cull flag. The hurt phase also distinguishes the final
 recovered knockback tick: movement input is still locked, but the cleared pose
-permits an enemy bounce.
+permits an enemy bounce. `bubble_collision_disabled` keeps border-tween
+collisions disabled through regular events, then restores them at completion.
 Version 10 added the player field `move_bounce` (the flutter tail after an enemy
 bounce) and widens `water_wait` to 0–16 steps. Version 9 added the player fields `hurt_phase` (after `hurt`: none, knock-back pose or
 look-around), `move_brake_vx` and `move_jump_carry`, and widens three validation

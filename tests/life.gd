@@ -2,6 +2,7 @@ extends SceneTree
 ## Pure synthetic lifecycle checks. No game scenes, recordings or rendering.
 
 const Life = preload("res://src/sim/life.gd")
+const Bubble = preload("res://src/sim/companion_bubble.gd")
 const Damage = preload("res://src/sim/damage.gd")
 const World = preload("res://src/sim/world.gd")
 const Collision = preload("res://src/sim/collision.gd")
@@ -152,6 +153,7 @@ func bubble_contact_checks() -> void:
 	state.recovery_y = 200 * S
 	for tick in 30:
 		step(state, world)
+		Bubble.finish_events(state, world)
 	check(
 		state.recovery_x != 176 * S or state.recovery_y != 200 * S,
 		"An embedded bubble escapes instead of remaining stuck"
@@ -200,6 +202,7 @@ func bubble_contact_checks() -> void:
 	state.recovery_y = 250 * S
 	state.companion_age = 100
 	step(state, world)
+	Bubble.finish_events(state, world)
 	check(
 		state.recovery_x == 300 * S - 96 * 60 and state.recovery_y < 250 * S,
 		"An embedded bubble drifts toward the player"
@@ -228,6 +231,7 @@ func bubble_contact_checks() -> void:
 	)
 	for tick in 6:
 		step(state, world)
+		Bubble.finish_events(state, world)
 	check(
 		Life.catch_companion(state, 0, 100 * S, 64 * S, 220 * S),
 		"Bubble catch resumes after border correction"

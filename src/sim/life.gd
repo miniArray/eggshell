@@ -8,6 +8,7 @@ const Polygon = preload("res://src/sim/polygon.gd")
 const Sound = preload("res://src/sim/sound_events.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Pose = preload("res://src/sim/move_pose.gd")
+const Bubble = preload("res://src/sim/companion_bubble.gd")
 const Screen = preload("res://src/sim/screen.gd")
 const PLAY := 0
 const REJOIN := 1
@@ -74,8 +75,8 @@ const STAR := 3
 const MAX_COUNT := 9223372036854775807
 const MAX_POSITION := MAX_COUNT / 16384
 const PLAYER_BOX := [-12 * S, -56 * S, 12 * S, 0]
-const BUBBLE_BOX := [-30 * S, -60 * S, 30 * S, 0]
-const BUBBLE_POINTS := [-22, -52, 0, -60, 22, -52, 30, -30, 22, -8, 0, 0, -22, -8, -30, -30]
+const BUBBLE_BOX := Bubble.BOX
+const BUBBLE_POINTS := Bubble.POINTS
 const RESCUE_OFFSETS := [[-32, -22], [-16, -14], [32, -22], [16, -14]]
 const RESCUER_POINTS := [-4, -12, 0, -24, 3, -12, 13, 0, 11, 19, 0, 23, -10, 17, -12, 0]
 const PLAYER_FIELDS := [
@@ -104,6 +105,7 @@ const PLAYER_FIELDS := [
 	["companion_from_y", 0],
 	["companion_dx", 0],
 	["bubble_bound_ticks", 0],
+	["bubble_collision_disabled", 0],
 	["bubble_bound_from_x", 0],
 	["bubble_bound_to_x", 0],
 	["separation_grace", 0],
@@ -144,8 +146,6 @@ const LEVEL_FIELDS := [
 	["total_play_ticks", 0],
 	["checkpoint_play_ticks", 0]
 ]
-
-static var _bubble_body_cache: Array = []
 
 
 static func ensure_fields(state: Dictionary) -> void:
@@ -249,6 +249,8 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 		)
 	elif state.companion_mode == ATTACHED:
 		_attach_position(state)
+	if state.companion_mode == BUBBLE:
+		Bubble.finish_events(state, world)
 
 
 static func separate(
@@ -264,6 +266,7 @@ static func separate(
 	state.companion_mode = BUBBLE if instant else LAUNCH
 	state.companion_age = 0
 	state.recovery_delay = 0 if instant else 36
+	state.bubble_collision_disabled = 0
 	state.companion_from_x = state.recovery_x
 	state.companion_from_y = state.recovery_y
 	var displacement := -velocity * 15
@@ -285,7 +288,7 @@ static func catch_companion(
 ) -> bool:
 	if state.life_phase != PLAY or state.companion_mode != BUBBLE or state.get("captured_by", 0):
 		return false
-	if left > right or top > bottom or state.bubble_bound_ticks:
+	if left > right or top > bottom or state.bubble_collision_disabled:
 		return false
 	var box := [
 		state.recovery_x - 30 * S,
@@ -523,76 +526,11 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 
 
 static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
-	state.companion_age = 61 if state.companion_age >= 300 else state.companion_age + 1
-	var age: int = state.companion_age
-	if age <= 60:
-		state.companion_vy = -192 * 60 * age / 60
-	else:
-		# The swing starts one step after the ramp ends (the ramp reports its end late).
-		var leg := (age - 61) % 240
-		state.companion_vy = -192 * 60 + 384 * 60 * mini(leg, 240 - leg) / 120
-	if state.bubble_bound_ticks:
-		state.bubble_bound_ticks -= 1
-		var span: int = state.bubble_bound_to_x - state.bubble_bound_from_x
-		state.recovery_x = state.bubble_bound_from_x + span * (6 - state.bubble_bound_ticks) / 6
-		state.recovery_y += state.companion_vy
-		return
-	var bubble_body := _bubble_body()
-	var here := {"x": state.recovery_x, "y": state.recovery_y}
-	# This step's push uses the direction before the wall checks turn it.
-	var control: int = state.companion_direction
-	if state.companion_direction < 0 and Collision.by_wall(here, world, bubble_body, -1, 2, 3):
-		state.companion_direction = 1
-	if state.companion_direction > 0 and Collision.by_wall(here, world, bubble_body, 1, 2, 3):
-		state.companion_direction = -1
-	if Collision.overlaps(here, world, bubble_body):
-		# An embedded bubble drifts toward the player on both axes.
-		state.recovery_x += signi(state.x - state.recovery_x) * 96 * 60
-		state.recovery_y += signi(state.y - state.recovery_y) * 96 * 60
-	var body := {
-		"x": state.recovery_x,
-		"y": state.recovery_y,
-		"vx": state.companion_vx,
-		"vy": state.companion_vy
-	}
-	# A body that cannot get out of terrain does not move or speed up this step.
-	if Collision.prepare(body, world, bubble_body):
-		var previous: int = body.vx
-		var next := clampi(previous + control * 512, -48 * 60, 48 * 60)
-		# The body moves by the mean of the old and new speed, and not at all from rest.
-		var distance: int = (previous + next) / 2 if previous else 0
-		Collision.horizontal(body, world, bubble_body, distance, 0, false, 640 * 60)
-		Collision.vertical(body, world, bubble_body, body.vy)
-		# A blocked body restarts from rest; a wall right ahead stops the new speed.
-		body.vx = (
-			clampi(body.vx + control * 512, -48 * 60, 48 * 60) if body.vx != previous else next
-		)
-		if body.vx != 0 and Collision.by_wall(body, world, bubble_body, signi(body.vx)):
-			body.vx = 0
-	state.recovery_x = body.x
-	state.recovery_y = body.y
-	state.companion_vx = body.vx
-	state.companion_vy = body.vy
-	var left := 32 * S
-	var right: int = maxi(left, world.width - 32 * S)
-	if state.recovery_x < left or state.recovery_x > right:
-		state.bubble_bound_ticks = 6
-		state.bubble_bound_from_x = state.recovery_x
-		state.bubble_bound_to_x = clampi(state.recovery_x, left, right)
-		state.companion_direction = 1 if state.recovery_x < left else -1
-		state.companion_vx = 0
+	Bubble.advance(state, world)
 
 
 static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
-	# The new bubble's first body step: no speed yet, only the push out of terrain; one
-	# still embedded then drifts toward the player at once.
-	var body := {"x": state.recovery_x, "y": state.recovery_y, "vx": 0, "vy": 0}
-	Collision.prepare(body, world, _bubble_body())
-	if Collision.overlaps(body, world, _bubble_body()):
-		body.x += signi(state.x - body.x) * 96 * 60
-		body.y += signi(state.y - body.y) * 96 * 60
-	state.recovery_x = body.x
-	state.recovery_y = body.y
+	Bubble.settle(state, world)
 
 
 static func _start_rescue(state: Dictionary, world: Dictionary) -> void:
@@ -867,7 +805,9 @@ static func valid_state(state: Dictionary) -> bool:
 		or state.companion_direction not in [-1, 1]
 	):
 		return false
-	for name: String in ["separated", "quick_death", "rescue_active", "life_ready"]:
+	for name: String in [
+		"separated", "quick_death", "rescue_active", "life_ready", "bubble_collision_disabled"
+	]:
 		if state[name] not in [0, 1]:
 			return false
 	for name: String in [
@@ -936,15 +876,11 @@ static func _attach_position(state: Dictionary) -> void:
 
 ## The bubble's body against terrain: its octagon inside the box that bounds it.
 static func _bubble_body() -> Array:
-	if _bubble_body_cache.is_empty():
-		_bubble_body_cache = BUBBLE_BOX.duplicate()
-		_bubble_body_cache.append(_bubble_points())
-		_bubble_body_cache.make_read_only()
-	return _bubble_body_cache
+	return Bubble.body()
 
 
 static func _bubble_points() -> PackedInt64Array:
-	return _points(BUBBLE_POINTS)
+	return Bubble.points()
 
 
 static func _points(raw: Array) -> PackedInt64Array:

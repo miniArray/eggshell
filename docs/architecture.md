@@ -197,7 +197,12 @@ companion's reference attachment point. Steady swimming uses 12 px behind and
 30 px above the feet; floating uses 10 px behind and 32 px above. It reads the
 pre-contact velocity in `move_brake_vx`, because damage changes `vx` before
 separation. Other action poses retain the standing reference. The companion
-bubble uses an octagon for terrain contact, not its rectangular hull. Captors first move on the
+bubble uses an octagon for terrain contact, not its rectangular hull.
+`companion_bubble.gd` owns body motion and geometry. Embedded drift runs after
+player motion and catch handling. It evaluates the four ordered source comparisons
+against the current player position; overlap selection runs once. Border tweens
+disable collisions through regular events and restore them at completion.
+Approaching rescuers do not suppress drift; attachment does. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers
 aside with a hop and a 60-step horizontal ease to rest.
 
