@@ -260,6 +260,9 @@ func flyer_checks() -> void:
 	state.invulnerable = 0
 	type.contact(fly, state, world, 0)
 	check(state.invulnerable > 0, "Touching it from below hurts")
+	# The following independent stomp uses a controllable player, not that hurt pose.
+	state.hurt = 0
+	state.hurt_phase = Life.HURT_NONE
 	state.x = fly.x
 	state.y = fly.y - 2 * S
 	state.vy = 3 * S
@@ -306,7 +309,10 @@ func thief_checks() -> void:
 	empty.y = robber.y + 16 * S
 	empty.health = 0
 	type.contact(robber, empty, world, 0)
-	check(empty.rescue_active == 1, "A touch at zero summons the captors at once")
+	# Leave the bubble out of reach so catch does not preempt the later rescue event.
+	empty.x += 128 * S
+	Life.after_step(empty, world)
+	check(empty.rescue_active == 1, "A touch at zero summons captors in the same step's events")
 	Collision.begin_step(state, world, Registry)
 	type.step(thief, state, world)
 	check(state.recovery_x == thief.x, "The bubble rides on the thief")
