@@ -208,7 +208,8 @@ follows drift. Captor movement and attachment follow both. Bubble recovery searc
 use the physical 64 px width and height while contact keeps its 60 px octagon;
 recovery memo keys include those physical dimensions. Bubble movement carries
 prior floor support through both axes, including a descending ramp during upward
-sway. Horizontal displacement integrates the uncapped accelerated endpoint, then
+sway. The simulation prepares registered solids before companion physics, then
+rebuilds them after life transitions so map changes cannot retain stale bindings. Horizontal displacement integrates the uncapped accelerated endpoint, then
 caps displacement separately; stored velocity is capped after movement. Other callers keep their
 existing recovery extents unless they explicitly supply them. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers

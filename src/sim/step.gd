@@ -30,6 +30,8 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 	state.frame += 1
 	if Registry.modal_step(state, world, input):
 		return
+	# Companion physics runs in before_step and needs this frame's registered solids.
+	Collision.begin_step(state, world, Registry)
 	if Life.before_step(state, world, Registry.spawn_map, Maps.change.bind(Registry.spawn_map)):
 		Moves.reset(state)
 	if Life.body_moves(state):
