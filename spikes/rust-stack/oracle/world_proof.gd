@@ -64,6 +64,9 @@ func _initialize() -> void:
 					"layer": source.layer
 				}
 			)
+		var bridges := []
+		for bridge: Dictionary in map.bridges:
+			bridges.append({"left": bridge.left, "right": bridge.right, "top": bridge.top})
 		var probes := []
 		for x in range(-32 * 3600, map.width + 32 * 3600, 31 * 3600):
 			for y in range(-32 * 3600, map.height + 32 * 3600, 29 * 3600):
@@ -83,6 +86,7 @@ func _initialize() -> void:
 				"height_pixels": map.height / 3600,
 				"layers": layers,
 				"placements": placements,
+				"bridges": bridges,
 				"probes": probes
 			}
 		)

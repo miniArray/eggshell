@@ -112,6 +112,30 @@ fn unchanged_target_placements_terrain_transforms_and_contacts_match() {
         assert_eq!(map.width_pixels, integer(&expected["width_pixels"]));
         assert_eq!(map.height_pixels, integer(&expected["height_pixels"]));
         assert_eq!(map.placements.len(), 204);
+        let bridges = expected["bridges"].as_array().unwrap();
+        assert_eq!(map.bridges.len(), bridges.len());
+        for (actual, expected) in map.bridges.iter().zip(bridges) {
+            assert_eq!(
+                [actual.left, actual.right, actual.top],
+                [
+                    integer(&expected["left"]),
+                    integer(&expected["right"]),
+                    integer(&expected["top"])
+                ]
+            );
+        }
+        let linked: Vec<usize> = map
+            .placements
+            .iter()
+            .filter_map(|p| match p.prepared {
+                eggshell_spike_core::PreparedPlacement::Bridge { geometry_index } => {
+                    Some(geometry_index)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(linked, (0..map.bridges.len()).collect::<Vec<_>>());
+        println!("PREPARED_BRIDGES_DONE map={} immutable_bridges={} zero_based_placement_order=true units=1/3600px",map.name,map.bridges.len());
         for (p, e) in map
             .placements
             .iter()

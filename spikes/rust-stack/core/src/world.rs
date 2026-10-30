@@ -4,8 +4,8 @@ use crate::{
     math::{floor_div, round_integer, round_units},
     polygon,
     schema::{hash, invalid},
-    DrawSlot, Error, Map, Placement, Position, PropertyValue, TerrainHazard, TileCollision,
-    TileLayer, World, SCALE,
+    BridgeGeometry, DrawSlot, Error, Map, Placement, Position, PreparedPlacement, PropertyValue,
+    TerrainHazard, TileCollision, TileLayer, World, SCALE,
 };
 use serde_json::{Map as JsonObject, Value};
 use std::collections::BTreeSet;
@@ -119,6 +119,7 @@ impl World {
                 "objects",
             )?;
             let mut placements = Vec::new();
+            let mut bridges = Vec::new();
             for (id, raw) in objects {
                 let raw = object(raw, "placement")?;
                 let code = text(raw.get("A"), "placement.A")?.to_string();
@@ -136,6 +137,50 @@ impl World {
                         .checked_add(16 * SCALE)
                         .ok_or_else(|| invalid("stilt position"))?;
                 }
+                let prepared = match code.as_str() {
+                    "p1" => {
+                        let width = numeric_option(raw.get("E1"), "bridge width")?;
+                        if width < 0.0 {
+                            return Err(invalid("negative bridge width"));
+                        }
+                        let size = round_units(width)?;
+                        let left = position
+                            .x
+                            .checked_sub(size / 2)
+                            .ok_or_else(|| invalid("bridge left overflow"))?;
+                        let right = position
+                            .x
+                            .checked_add(size / 2)
+                            .ok_or_else(|| invalid("bridge right overflow"))?;
+                        let top = position
+                            .y
+                            .checked_sub(16 * SCALE)
+                            .ok_or_else(|| invalid("bridge top overflow"))?;
+                        let geometry_index = bridges.len();
+                        bridges.push(BridgeGeometry { left, right, top });
+                        PreparedPlacement::Bridge { geometry_index }
+                    }
+                    "o11" => {
+                        let form = optional_number(raw, "F", 0.0)?;
+                        if form < 0.0 || form.fract() != 0.0 {
+                            return Err(invalid("pad variant must be a nonnegative integer"));
+                        }
+                        if form > 3.0 {
+                            return Err(Error::Unsupported {
+                                requirements: vec!["pad variant F exceeds 3".into()],
+                            });
+                        }
+                        position.y = position
+                            .y
+                            .checked_add(16 * SCALE)
+                            .ok_or_else(|| invalid("pad position overflow"))?;
+                        PreparedPlacement::Pad {
+                            large: variant % 2 != 0,
+                            single_use: variant >= 2,
+                        }
+                    }
+                    _ => PreparedPlacement::None,
+                };
                 let layer = match code.as_str() {
                     "d1" | "d2" | "d4" => 7,
                     _ if code.starts_with('e') => 8,
@@ -150,6 +195,7 @@ impl World {
                     rotation,
                     layer,
                     properties: properties(raw),
+                    prepared,
                 });
             }
             let mut layers = Vec::new();
@@ -294,6 +340,7 @@ impl World {
                 source_properties: properties(source),
                 layers,
                 placements,
+                bridges,
             });
         }
         Ok(Self {
@@ -478,6 +525,18 @@ fn number(value: &Value, label: &str) -> Result<f64, Error> {
 }
 fn number_required(object: &JsonObject<String, Value>, key: &str) -> Result<f64, Error> {
     number(object.get(key).ok_or_else(|| invalid(key))?, key)
+}
+fn numeric_option(value: Option<&Value>, label: &str) -> Result<f64, Error> {
+    let value = value.ok_or_else(|| invalid(label))?;
+    let n = if let Some(text) = value.as_str() {
+        text.trim().parse::<f64>().map_err(|_| invalid(label))?
+    } else {
+        number(value, label)?
+    };
+    if !n.is_finite() || n.abs() > (i64::MAX / SCALE - 1) as f64 {
+        return Err(invalid(label));
+    }
+    Ok(n)
 }
 fn optional_number(
     object: &JsonObject<String, Value>,

@@ -45,6 +45,24 @@ simulation rules. Renderer must not write back any packet data.
 - World carries spawn, initial map and player palette. Map retains cave shimmer,
   dice colours and original immutable properties for effect bindings.
 
+## Immutable preparation API (bridge/support gate)
+
+`Placement.prepared: PreparedPlacement` has `None`,
+`Bridge { geometry_index: usize }`, and `Pad { large: bool, single_use: bool }`.
+The bridge index is zero-based into `Map.bridges: Vec<BridgeGeometry>`.
+`BridgeGeometry { left, right, top }` uses saved integer simulation units.
+Bridge order is registry/placement order, not drawing order. The saved positive
+`support_bridge` value is `geometry_index + 1`; do not confuse those conventions.
+The compiler rounds width once as `roundi(E1 * 3600)`, divides that integer by
+2 for left/right, and sets top to source y minus 16 pixels. Rendering must not
+round these facts again. Raw source properties remain unchanged.
+
+Map owns the immutable geometry. Live entity solids and their old/new geometry
+belong to separate typed transient simulation caches, never writes into Map.
+Pad flags are immutable source facts; squash/active/velocity are saved entity
+state. `None` is not waived admission. o11 Pad is a verification-only dependency
+of Bounce; p1 Bridge is also required by the selected target.
+
 ## Current implemented vertical slice (not target admission)
 
 `Session::load` admits only the exact unchanged public Stride world, the pinned

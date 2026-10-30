@@ -259,6 +259,27 @@ pub struct Placement {
     pub rotation: i64,
     pub layer: i64,
     pub properties: Vec<(String, PropertyValue)>,
+    pub prepared: PreparedPlacement,
+}
+/// Immutable source facts. None does not mean that gameplay admission is granted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PreparedPlacement {
+    None,
+    /// Zero-based index into this map's bridges, in registry placement order.
+    Bridge {
+        geometry_index: usize,
+    },
+    /// o11 is a verification-only dependency of the Bounce fixture.
+    Pad {
+        large: bool,
+        single_use: bool,
+    },
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BridgeGeometry {
+    pub left: i64,
+    pub right: i64,
+    pub top: i64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DrawSlot {
@@ -307,6 +328,8 @@ pub struct Map {
     pub source_properties: Vec<(String, PropertyValue)>,
     pub layers: Vec<TileLayer>,
     pub placements: Vec<Placement>,
+    /// One immutable geometry owner. Saved support_bridge uses index + 1.
+    pub bridges: Vec<BridgeGeometry>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct World {
