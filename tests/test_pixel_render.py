@@ -20,6 +20,9 @@ class PixelRenderTests(unittest.TestCase):
     def test_pack_backings_and_background_compositing(self):
         self.render("pack_view_render", "PACK_VIEW_RENDER_RESULT:")
 
+    def test_viewport_aware_presentation_matches_full_updates(self):
+        self.render("view_visibility_render", "VIEW_VISIBILITY_RENDER_RESULT:")
+
     def render(self, script, marker):
         read_fd, write_fd = os.pipe()
         server = subprocess.Popen(

@@ -148,9 +148,82 @@ func _run() -> void:
 		check(plan.positions[0].y == floorf(minf(8, size.x / 16)), "Health stays first and at top")
 		check(plan.positions[1].y >= plan.positions[0].y, "HUD wraps instead of shrinking")
 	viewport.free()
+	_placed_frame_checks(path)
+	_terrain_texture_checks(path)
 	InputPack.remove(path)
 	print("PACK_DENSITY_RESULT: %d assertions, %d failures" % [_checks, _failures])
 	quit(1 if _failures else 0)
+
+
+func _placed_frame_checks(path: String) -> void:
+	var manifest: Dictionary = JSON.parse_string(
+		FileAccess.get_file_as_string(path.path_join("manifest.json"))
+	)
+	manifest.objects.o15 = {
+		"default_animation": "Off",
+		"animations":
+		{
+			"Off": {"fps": 0, "frames": [{"file": "object.png"}]},
+			"On": {"fps": 0, "frames": [{"file": "player.png"}]}
+		},
+		"states": {"Off": "Off", "On": "On"}
+	}
+	InputPack.write_json(path, "manifest.json", manifest)
+	var code: Dictionary = JSON.parse_string(InputPack.Fixtures.code("stride"))
+	code.maps.map1.objects["block"] = {"A": "o15", "X": 400, "Y": 300}
+	var built := InputPack.World.build(JSON.stringify(code), InputPack.Collision.read())
+	check(built.ok, "Stateful animation fixture loads: " + str(built.get("error", "")))
+	if not built.ok:
+		return
+	var state := State.create(built.world)
+	for entity: Dictionary in state.entities:
+		if entity.id == "block":
+			entity.enabled = 1
+	var view := View.new()
+	root.add_child(view)
+	view.setup(built.world, path)
+	view.render(state)
+	var node: Sprite2D = view._placed_nodes.block
+	var texture := node.texture
+	var changes := {"count": 0}
+	node.texture_changed.connect(func() -> void: changes.count += 1)
+	view.render(state)
+	check(node.texture == texture, "Stateful block keeps its selected picture")
+	check(changes.count == 0, "An unchanged stateful picture does not upload a transient default")
+	view.free()
+
+
+func _terrain_texture_checks(path: String) -> void:
+	var world := InputPack.world()
+	world.layers.append(world.layers[0].duplicate(true))
+	var view := View.new()
+	root.add_child(view)
+	view.setup(world, path)
+	var layers: Array[TileMapLayer] = []
+	for node: Node in view._root.get_children():
+		if node is TileMapLayer:
+			layers.append(node)
+	check(layers.size() == 2, "Repeated terrain keeps both drawing layers")
+	var first: Texture2D = layers[0].tile_set.get_source(0).texture
+	var second: Texture2D = layers[1].tile_set.get_source(0).texture
+	check(is_same(first, second), "Repeated terrain shares one decoded texture per map build")
+	check(
+		not is_same(layers[0].tile_set, layers[1].tile_set),
+		"Repeated terrain keeps independent atlases and cells"
+	)
+	var cells := layers[1].get_used_cells()
+	layers[0].clear()
+	check(layers[1].get_used_cells() == cells, "Changing one drawing layer keeps the other intact")
+	# A new build must observe replacement files, not retain a process-wide texture cache.
+	InputPack.image(path, "tile.png", 256, 64)
+	view.setup(world, path)
+	for node: Node in view._root.get_children():
+		if node is TileMapLayer:
+			check(
+				node.tile_set.get_source(0).texture.get_width() == 256,
+				"A map rebuild reloads external terrain textures"
+			)
+	view.free()
 
 
 func check(condition: bool, label: String) -> void:

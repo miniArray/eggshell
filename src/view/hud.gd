@@ -416,7 +416,7 @@ static func bitmap_ok(entry: Dictionary) -> bool:
 
 
 func _setup_companion(world_root: Node2D) -> void:
-	for node: Sprite2D in [_companion, _bubble] + _rescuers:
+	for node: Variant in [_companion, _bubble] + _rescuers:
 		if is_instance_valid(node):
 			node.queue_free()
 	_world_root = world_root

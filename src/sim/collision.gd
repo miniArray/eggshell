@@ -13,6 +13,9 @@ const POUND_FALL := 2
 const CELL := 128 * S
 ## A probe covering more cells than this scans every row, as the unindexed path did.
 const MAX_PROBE_CELLS := 64
+## Escape signatures include live geometry, so bound both entry count and key size.
+const MAX_ESCAPE_RESULTS := 256
+const MAX_ESCAPE_BOXES := 64
 const NO_CONTEXT := {}
 ## Tests and the identity proof set this to compare every indexed query with a full scan.
 static var verify_index := false
@@ -430,32 +433,34 @@ static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 	_carry(body, world, bounds)
 	if not overlaps(body, world, bounds):
 		return true
-	# Without solid rows near the body, the search below only reads static terrain, so its
-	# outcome for this position and box is remembered per map. Bodies held inside terrain
-	# repeat the same search every step.
+	# The search only reads terrain and full solid boxes; it has no bump callbacks.
+	# Key its answer by the live boxes within every possible probe, so trapped bodies
+	# reuse the search but moving, removed and toggled solids change the key immediately.
+	# A custom narrow phase is not determined by boxes, so it keeps the uncached search.
 	var memo: Variant = world.get("terrain_escapes")
 	var key: Array = []
-	if memo != null and _no_solids_near(world, body, bounds):
-		key = [
-			body.x,
-			body.y,
-			bounds[0],
-			bounds[1],
-			bounds[2],
-			bounds[3],
-			body.get("recovery_width", bounds[2] - bounds[0]),
-			body.get("recovery_height", bounds[3] - bounds[1])
-		]
-		var known: Variant = memo.get(key)
-		if known != null:
-			body.x = known[1]
-			body.y = known[2]
-			if known[0] == 2:
-				body.vy = 0
-			return known[0] != 0
+	if memo != null:
+		var solids: Variant = _escape_boxes(world, body, bounds)
+		if solids != null:
+			# Physical recovery extents change the search, so they are part of the key.
+			key = [
+				body.x,
+				body.y,
+				bounds.duplicate(true),
+				body.get("recovery_width", bounds[2] - bounds[0]),
+				body.get("recovery_height", bounds[3] - bounds[1]),
+				solids
+			]
+			var known: Variant = memo.get(key)
+			if known != null:
+				body.x = known[1]
+				body.y = known[2]
+				if known[0] == 2:
+					body.vy = 0
+				return known[0] != 0
 	var outcome := _escape(body, world, bounds)
 	if not key.is_empty():
-		if memo.size() >= World.MAX_TERRAIN_HITS:
+		if memo.size() >= MAX_ESCAPE_RESULTS:
 			memo.clear()
 		memo[key] = [outcome, body.x, body.y]
 	if outcome == 2:
@@ -478,13 +483,11 @@ static func _escape(body: Dictionary, world: Dictionary, bounds: Array) -> int:
 	return 1 if push_nearest(body, world, bounds, maxi(width, height) / 2) else 0
 
 
-## Whether no solid row can take part in _escape(): none filed near any position it
-## probes (the body box grown by its largest push distance plus refinement), and none
-## dispatching. Then every probe there reads terrain only.
-static func _no_solids_near(world: Dictionary, body: Dictionary, bounds: Array) -> bool:
-	var context := _context(world)
-	if context.is_empty():
-		return true
+## Full solid boxes that can take part in _escape(), or null for a custom narrow phase.
+## The reach exceeds the largest push distance, pixel rounding and fractional refinement.
+## Top-only solids are absent because _escape() never supplies a one-way support handle.
+static func _escape_boxes(world: Dictionary, body: Dictionary, bounds: Array) -> Variant:
+	# Physical recovery extents (a bubble's 64 px) can push farther than its contact box.
 	var reach: int = (
 		maxi(
 			maxi(bounds[2] - bounds[0], bounds[3] - bounds[1]),
@@ -492,16 +495,22 @@ static func _no_solids_near(world: Dictionary, body: Dictionary, bounds: Array) 
 		)
 		+ 4 * S
 	)
-	return (
-		_candidates(
-			context,
-			body.x + bounds[0] - reach,
-			body.y + bounds[1] - reach,
-			body.x + bounds[2] + reach,
-			body.y + bounds[3] + reach
-		)
-		. is_empty()
-	)
+	var probe := [
+		body.x + bounds[0] - reach,
+		body.y + bounds[1] - reach,
+		body.x + bounds[2] + reach,
+		body.y + bounds[3] + reach
+	]
+	var boxes := []
+	for shape: Dictionary in _shapes(world, probe[0], probe[1], probe[2], probe[3]):
+		if shape.mode != 1 or is_same(body, shape.row.entity) or not _touches(shape.box, probe):
+			continue
+		if shape.row.type.has_method("solid_touches"):
+			return null
+		if boxes.size() >= MAX_ESCAPE_BOXES:
+			return null
+		boxes.append(shape.box.duplicate())
+	return boxes
 
 
 static func horizontal(
