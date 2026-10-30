@@ -283,6 +283,8 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			and not child.get_meta("stateful", false)
 			and not child.has_meta("placed_id")
 		):
+			# Establish the initial art origin even if this picture starts off-screen.
+			Frames.apply(child, 0)
 			_static_nodes.append({"node": child, "bounds": VisualBounds.tree(child, false)})
 
 

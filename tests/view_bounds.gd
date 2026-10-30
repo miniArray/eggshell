@@ -74,6 +74,8 @@ func geometry_checks(density: int) -> void:
 		if entity.id not in ["coin", "cloud", "stem", "spikes"]:
 			continue
 		var node: Sprite2D = view._placed_nodes[entity.id]
+		if entity.id == "coin":
+			snap_checks(node, density)
 		var shape := Bounds.geometry(node)
 		check(not shape.is_empty(), "Stress art has a proven shape: " + entity.id)
 		for size: float in [0, 0.001, 0.1, 1, 16, 100, 1000]:
@@ -106,6 +108,29 @@ func geometry_checks(density: int) -> void:
 	view.free()
 	viewport.free()
 	InputPack.remove(path)
+
+
+func snap_checks(node: Sprite2D, density: int) -> void:
+	var saved := node.transform
+	for scale: Vector2 in [Vector2(-0.03, 0.8), Vector2(0.8, 0.03), Vector2(1.2, -0.2)]:
+		for rotation: float in [45, 135]:
+			node.position = Vector2.ZERO
+			node.scale = scale
+			node.rotation_degrees = rotation
+			var envelope: Rect2 = Bounds.tree(node, false)
+			for frame in 3:
+				for multiple in 3:
+					Frames.unsnap(node)
+					Frames.apply(node, frame)
+					if density > 1:
+						Frames.snap(node, density * (multiple + 1))
+					check(
+						envelope.grow(0.001).encloses(drawn_bounds(node)),
+						"Independent dense scale rounding stays inside the bound"
+					)
+			Frames.unsnap(node)
+	node.transform = saved
+	Frames.apply(node, 0)
 
 
 ## Read the final submitted geometry, not the production envelope implementation.

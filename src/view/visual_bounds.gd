@@ -240,10 +240,16 @@ static func tree(node: Node, include_position := true) -> Variant:
 		var density := int(node.get_meta("pack_density"))
 		# Snap quantizes both scale axes, and then moves the corner by <= half a
 		# screen pixel. ScreenPlan's world scale is always at least the density.
-		var expanded := Transform2D(
-			node.rotation, snapped_extent(node.scale, density), 0, transform.origin
-		)
-		bounds = bounds.merge(expanded * (result as Rect2)).grow(1.0 / density)
+		var maximum := snapped_extent(node.scale, density)
+		# The two axes quantize independently. Expanding both at once can miss a
+		# rotated corner whose positive and negative terms used to cancel.
+		for x: float in [0.0, maximum.x]:
+			for y: float in [0.0, maximum.y]:
+				var expanded := Transform2D(
+					node.rotation, Vector2(x, y), node.skew, transform.origin
+				)
+				bounds = bounds.merge(expanded * (result as Rect2))
+		bounds = bounds.grow(1.0 / density)
 	return bounds
 
 

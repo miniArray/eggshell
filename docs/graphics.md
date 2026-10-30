@@ -61,6 +61,31 @@ the placed object's `F` value. A state map may use `walk`, `idle`, `turn`, `fly`
 The view uses the saved tick as its animation clock. It does not write an
 animation clock, change simulation state or add fields to saves.
 
+### Viewport-aware presentation
+
+`LevelView` updates proven off-screen pictures only when they enter the current
+camera rectangle. The rectangle uses the actual rounded camera translation,
+container size and zoom, with a two-world-pixel guard. Entry always samples the
+current saved tick before drawing. This policy never changes simulation state.
+
+`view_visibility.gd` is the pure visibility policy. `visual_bounds.gd` unions all
+animation frames and origins, transformed scenery children, and pixel-snap scale
+rounding. Sized looks use the current `view_state` result and each frame's size
+and origin ratios. Span bounds include stalks, spikes and nine-patch minimum
+sizes. Inactive enemies use their placement origin, not their live position.
+
+Only audited geometry-invariant `view_state` implementations can bypass look
+selection while hidden. If one gains a size or position change, remove it from
+`FIXED_LOOKS` or add a new proof. Unproven geometry stays on the full update path;
+this includes independent snow puffs and separate enemy heads. Runtime suffix
+nodes use the same proof where their art is position-anchored. Caches belong to
+the map build, not to saved state or the simulation's entity index.
+
+`LevelView.viewport_aware = false` is a drawing-only reference for GPU parity
+tests. It is not a gameplay option. Public tests generate their own art and
+compare full updates with viewport-aware updates, including map changes,
+restores, interpolation, dense packs, resize and the goal sequence.
+
 Two span parts come from the placement's `E2`, drawn by `src/view/span_dressing.gd`.
 `p6`, `p7` and `p8` hang a stalk `E2` pixels tall from the ledge's bottom edge,
 32 pixels wide; the entry `<code>_stem` repeats down that height. `p11` and `p12`
