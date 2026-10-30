@@ -25,6 +25,9 @@ impl Run {
             run.entities.push(entity);
         }
         for (Field(name, default), value) in schema.level().iter().zip(&wire.level) {
+            if run.checkpoint.set_field(name, *value) {
+                continue;
+            }
             match name.as_str() {
                 "frame" => run.frame = *value,
                 "camera_x" => run.camera.x = *value,
@@ -73,6 +76,7 @@ impl Run {
                     Kind::Pickup(p) => p.set_field(name, *value),
                     Kind::Star(p) => p.set_field(name, *value),
                     Kind::Walker(p) => p.set_field(name, *value),
+                    Kind::Checkpoint(p) => p.set_field(name, *value),
                     _ => false,
                 };
                 let handled = if specific || e.set_common(name, *value) {

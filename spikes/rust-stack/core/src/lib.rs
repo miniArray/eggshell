@@ -3,6 +3,7 @@ use std::fmt;
 
 mod actors;
 mod body;
+mod checkpoint;
 mod entity;
 mod items;
 mod life;

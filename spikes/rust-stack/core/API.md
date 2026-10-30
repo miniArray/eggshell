@@ -154,6 +154,46 @@ at saved frame750. Knock transition restore cuts are25/26/27 and77/78/79.
 Source actor/body/size/head and player-pose samples compare independently each
 tick. Stale serial, duplicate runtime id, mismatched token and unsupported request
 cursor restores refuse atomically from a normally reached live runtime state. These courses are not
-unchanged-target coverage, a GPU proof or a benchmark. Checkpoints, posts,
-clouds, old/live entity solids and the remaining request/projectile closure
-still block the selected target.
+unchanged-target coverage, a GPU proof or a benchmark. Posts, clouds, old/live
+entity solids and the remaining request/projectile closure still block the
+selected target.
+
+## Checkpoint verification slice
+
+The shared table retains typed o6 respawn coordinates and health bonus. Contact
+in phase2 latches checkpoint coordinates, counts, level time and collection
+flags. Phase6 freezes normal gameplay while it awards health and waits. Death
+reconstructs the placed prefix from checkpoint flags, removes runtime rows,
+keeps the runtime serial, and restores checkpoint position/counts/health/time.
+It keeps total time and ordinary coins, as the original does. o6 visibility is
+sampled from the original placed-node collected rule. The existing numeric
+life_phase and HUD status expose checkpoint state; public DTO signatures do
+not change.
+
+`EntityPicture.visible` also applies original `LevelView.inactive_shown` for
+placed enemies: WAITING, or QUEUED with can_respawn, show only when not held or
+hidden. Active rows keep their type view-state visibility. Defeated rows and
+inactive runtime/non-respawning queued rows stay hidden. Inactive plant heads
+stay hidden. This correction does not alter positions, v10 or gameplay. The
+renderer does not infer can_respawn. An independent original-policy oracle
+calls `LevelView.inactive_shown` and original type view_state for 320 deliberate
+boundary cases. Separate course sampling compares normally reached waiting
+and queued visibility each tick. `actors_target` contains638 waiting and352
+queued row-samples under this policy; boundary cases are not legal-route
+coverage. This is semantic visibility evidence, not a GPU-picture proof.
+
+`checkpoint_target` is a verification-only course with normal RIGHT controls.
+It matches 2,401 literal states across 2,400 accepted calls and saved frame2400.
+Checkpoint activates at53, awards ten health points at59..113 in steps of6,
+then returns to play at158. Death occurs at1334, fade starts at1574, reset
+occurs at1635 and input resumes at1638. The pre-checkpoint coin/redcoin/flower
+flags persist through recovery. The post-checkpoint coin resets and collects
+again at1673; final counts are coins3/redcoins1/flowers1. The course has105
+checkpoint snapshots, three fade-in snapshots and one death. Both restore
+directions bracket these changes, including the post-reset collection. Each
+reset snapshot checks persistent flags and retained health/counts. Only the
+initial reset snapshot requires the exact stored respawn y; the last fade-in
+step runs ordinary floor refinement, as the literal original trace shows.
+Original player-pose, actor/head and checkpoint visibility samples compare
+independently each tick. Invalid checkpoint id, marker bonus and award count
+restore atomically. This is not unchanged-target admission or a benchmark.

@@ -14,7 +14,8 @@ fn run(restores: bool) {
         "collections",
         "actors_target",
         "stilts_target",
-        "stilts_target.knock"
+        "stilts_target.knock",
+        "checkpoint_target"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -30,12 +31,14 @@ fn run(restores: bool) {
     let mut session = Session::load(&level, &collision, &metadata).unwrap_or_else(|error| {
         panic!("{name} next support/action gate at initialization: {error}")
     });
-    let pictures: Option<Vec<serde_json::Value>> =
-        if name == "actors_target" || name.starts_with("stilts_target") {
-            Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
-        } else {
-            None
-        };
+    let pictures: Option<Vec<serde_json::Value>> = if name == "actors_target"
+        || name.starts_with("stilts_target")
+        || name == "checkpoint_target"
+    {
+        Some(serde_json::from_slice(&fs::read(root.join("pictures.json")).unwrap()).unwrap())
+    } else {
+        None
+    };
     let mut cursor = 0;
     let mut bridge_ticks = 0;
     let mut squash_ticks = 0;
@@ -44,6 +47,8 @@ fn run(restores: bool) {
     let mut captured_ticks = 0;
     let mut head_ticks = 0;
     let mut rescuer_ticks = 0;
+    let mut inactive_waiting_samples = 0;
+    let mut inactive_queued_samples = 0;
     let mut phases = BTreeSet::new();
     let mut modes = BTreeSet::new();
     let mut max_runtime = 0;
@@ -53,6 +58,15 @@ fn run(restores: bool) {
     let mut previous_runtime = 0;
     let mut last_serial = 1;
     let mut knock_ticks = 0;
+    let mut checkpoint_ticks = 0;
+    let mut checkpoint_respawn_ticks = 0;
+    let mut previous_phase = 0;
+    let mut previous_health = 10;
+    let mut checkpoint_transitions = Vec::new();
+    let mut checkpoint_award_ticks = Vec::new();
+    let mut checkpoint_coin_changes = Vec::new();
+    let mut previous_coins = 0;
+    let mut checkpoint_flags_seen = false;
     let mut first_knock = None;
     let mut last_knock = None;
     let mut restore_ticks = vec![0, 1, 6, 11, 66, 70, 75, 90, 160, 220, 350, 500];
@@ -70,6 +84,14 @@ fn run(restores: bool) {
     if name == "stilts_target.knock" {
         restore_ticks.extend([25, 26, 27, 77, 78, 79]);
         branch_ticks.extend([25, 26, 27, 77, 78, 79]);
+    }
+    if name == "checkpoint_target" {
+        let cuts = [
+            52, 53, 54, 58, 59, 60, 112, 113, 114, 157, 158, 159, 1333, 1334, 1335, 1573, 1574,
+            1575, 1634, 1635, 1636, 1637, 1638, 1639, 174, 175, 176, 1672, 1673, 1674,
+        ];
+        restore_ticks.extend(cuts);
+        branch_ticks.extend(cuts);
     }
     for tick in 0..=inputs.len() {
         let size = u32::from_le_bytes(stream[cursor..cursor + 4].try_into().unwrap()) as usize;
@@ -120,6 +142,18 @@ fn run(restores: bool) {
                 );
                 if let Some(size) = e["view"]["size_y"].as_f64() {
                     assert_eq!(picture.visual.size_pixels[1], Some(size));
+                }
+                if let Some(visible) = e["visible"].as_bool() {
+                    assert_eq!(picture.visible, visible);
+                }
+                if e["inactive"].as_bool() == Some(true) {
+                    assert!(picture.visible);
+                    assert!(picture.auxiliary.iter().all(|head| !head.picture.visible));
+                    match picture.status {
+                        eggshell_spike_core::EntityStatus::Waiting => inactive_waiting_samples += 1,
+                        eggshell_spike_core::EntityStatus::Queued => inactive_queued_samples += 1,
+                        _ => panic!("original inactive policy marked active/defeated row"),
+                    }
                 }
                 let h = e["head"].as_array().unwrap();
                 if h.is_empty() {
@@ -182,6 +216,48 @@ fn run(restores: bool) {
                 first_knock = Some(tick);
             }
             last_knock = Some(tick);
+        }
+        checkpoint_ticks += usize::from(packet.player.life_phase == 6);
+        checkpoint_respawn_ticks +=
+            usize::from(packet.hud.deaths > 0 && packet.player.life_phase == 5);
+        if packet.player.life_phase != previous_phase {
+            checkpoint_transitions.push((tick, packet.player.life_phase));
+            previous_phase = packet.player.life_phase;
+        }
+        if packet.player.life_phase == 6 && packet.hud.health != previous_health {
+            checkpoint_award_ticks.push(tick);
+        }
+        previous_health = packet.hud.health;
+        if packet.hud.coins != previous_coins {
+            checkpoint_coin_changes.push((tick, packet.hud.coins));
+            previous_coins = packet.hud.coins;
+        }
+        if name == "checkpoint_target" && packet.hud.deaths > 0 && packet.player.life_phase == 5 {
+            for (id, collected) in [
+                ("coin_before", 1),
+                ("redcoin_before", 1),
+                ("flower_before", 1),
+                ("checkpoint", 1),
+                ("coin_after", 0),
+            ] {
+                let row = wire.entities.iter().find(|e| e.id == id).unwrap();
+                let fields = schema.entity_fields(&row.code);
+                assert_eq!(
+                    required(&row.values, fields, "collected").unwrap(),
+                    collected
+                );
+                assert_eq!(
+                    required(&row.values, fields, "checkpoint_collected").unwrap(),
+                    collected
+                );
+            }
+            assert_eq!(packet.player.motion.current.x, 288 * 3600);
+            if required(&wire.player, schema.player(), "life_ticks").unwrap() == 3 {
+                assert_eq!(packet.player.motion.current.y, 384 * 3600);
+            }
+            assert_eq!(packet.hud.health, 20);
+            assert_eq!((packet.hud.redcoins, packet.hud.flowers), (1, 1));
+            checkpoint_flags_seen = true;
         }
         phases.insert(packet.player.life_phase);
         modes.insert(packet.companions.mode);
@@ -272,6 +348,11 @@ fn run(restores: bool) {
             ),
             (1, 1, 1, 11, 22, 4)
         );
+    } else if name == "checkpoint_target" {
+        println!("CHECKPOINT_COVERAGE checkpoint_ticks={checkpoint_ticks} respawn_ticks={checkpoint_respawn_ticks} transitions={checkpoint_transitions:?} award_ticks={checkpoint_award_ticks:?} coin_changes={checkpoint_coin_changes:?} persistence_seen={checkpoint_flags_seen} deaths={} coins={} redcoins={} flowers={}",session.presentation().hud.deaths,session.presentation().hud.coins,session.presentation().hud.redcoins,session.presentation().hud.flowers);
+        assert!(checkpoint_ticks > 0 && checkpoint_respawn_ticks > 0 && checkpoint_flags_seen);
+        let hud = session.presentation().hud;
+        assert!(hud.coins >= 3 && hud.redcoins == 1 && hud.flowers == 1);
     } else if name == "stilts_target.knock" {
         println!("STILT_KNOCK_COVERAGE knocked_ticks={knock_ticks} tongue_ticks={tongue_ticks} first={first_knock:?} last={last_knock:?}");
         assert!(knock_ticks > 0 && tongue_ticks > 0);
@@ -299,6 +380,9 @@ fn run(restores: bool) {
         if name == "lagoon" {
             assert!(swimming_ticks > 0);
         }
+    }
+    if pictures.is_some() {
+        println!("LEGAL_INACTIVE_VISIBILITY_COVERAGE fixture={name} waiting_samples={inactive_waiting_samples} queued_samples={inactive_queued_samples} original_policy=true");
     }
     println!("FIXTURE_VERTICAL_DONE fixture={name} snapshots={} accepted_ticks={} saved_frame={} uninterrupted={} A_to_B_restores={} bridge_support_ticks={bridge_ticks} pad_squash_ticks={squash_ticks} tongue_ticks={tongue_ticks} swimming_ticks={swimming_ticks} target_admission=refused",inputs.len()+1,session.stats().completed_ticks,session.stats().tick,!restores,session.stats().restore_count);
 }

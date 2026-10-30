@@ -34,6 +34,7 @@ impl Origin {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
+    Checkpoint(crate::checkpoint::Marker),
     Decor,
     Pickup(Pickup),
     Star(Star),

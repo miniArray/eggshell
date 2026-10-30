@@ -25,6 +25,7 @@ pub(crate) struct Run {
     pub goal_reached: i64,
     pub deaths: i64,
     pub dynamic_serial: i64,
+    pub checkpoint: crate::checkpoint::Memory,
 }
 fn unsupported(reason: &str) -> Error {
     Error::Unsupported {
@@ -57,7 +58,11 @@ impl Run {
         let stilts_identity = crate::schema::hash(
             include_str!("../tests/fixtures/stilts_target.level.json").as_bytes(),
         );
+        let checkpoint_identity = crate::schema::hash(
+            include_str!("../tests/fixtures/checkpoint_target.level.json").as_bytes(),
+        );
         if world.identity != identity
+            && world.identity != checkpoint_identity
             && world.identity != stilts_identity
             && world.identity != actors_identity
             && world.identity != bounce_identity
@@ -94,6 +99,7 @@ impl Run {
             goal_reached: 0,
             deaths: 0,
             dynamic_serial: 1,
+            checkpoint: crate::checkpoint::Memory::default(),
         };
         let map = crate::body::Probe::new(&world.maps[0]);
         for _ in 0..2 {
@@ -120,6 +126,7 @@ impl Run {
             .map(|(source, p)| {
                 let kind = match p.code.as_str() {
                     "o5" => Kind::Goal,
+                    "o6" => Kind::Checkpoint(crate::checkpoint::Marker::new(p)?),
                     "d1" | "d2" | "d4" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
                         Kind::Decor
                     }
@@ -184,19 +191,39 @@ impl Run {
             .collect()
     }
     fn respawn(&mut self, world: &World) -> Result<(), Error> {
+        let flags: Vec<i64> = self
+            .entities
+            .iter()
+            .take(world.maps[0].placements.len())
+            .map(|e| e.checkpoint_collected)
+            .collect();
         self.entities = Self::spawn_rows(world)?;
+        for (entity, flag) in self.entities.iter_mut().zip(flags) {
+            entity.collected = flag;
+            entity.checkpoint_collected = flag;
+        }
+        let spawn = if self.checkpoint.id != 0 {
+            self.checkpoint.position
+        } else {
+            world.spawn
+        };
         let previous = self.player.previous_input;
         let pressed = self.player.pressed_input;
         let hits = self.player.life.hits;
         let quick = self.player.life.quick_death;
         self.player = Player::new(
             Body {
-                x: world.spawn.x,
-                y: world.spawn.y,
+                x: spawn.x,
+                y: spawn.y,
                 ..Body::default()
             },
             world.spawn_facing,
         );
+        self.player.life.health = if self.checkpoint.id != 0 {
+            self.checkpoint.health
+        } else {
+            10
+        };
         self.player.previous_input = previous;
         self.player.pressed_input = pressed;
         self.player.life.hits = hits;
@@ -206,13 +233,13 @@ impl Run {
         self.player.life_ticks = 3;
         self.player.attach();
         self.attempt_ticks = 0;
-        self.play_ticks = 0;
-        self.redcoins = 0;
-        self.flowers = 0;
+        self.play_ticks = self.checkpoint.play_ticks;
+        self.redcoins = self.checkpoint.redcoins;
+        self.flowers = self.checkpoint.flowers;
         self.goal_reached = 0;
         self.camera = Position {
-            x: world.spawn.x,
-            y: world.spawn.y - 28 * S,
+            x: spawn.x,
+            y: spawn.y - 28 * S,
         };
         Ok(())
     }
@@ -311,11 +338,10 @@ impl Run {
                 self.deaths = self.deaths.saturating_add(1);
             }
         } else {
-            if self.player.life_phase == 6 {
-                return Err(unsupported("checkpoint lifetime is not yet admitted"));
-            }
             let goal = self.player.life_phase == 7;
-            if self.player.phase_tick(&mut self.sound) {
+            if self.player.life_phase == 6 {
+                self.checkpoint.step(&mut self.player);
+            } else if self.player.phase_tick(&mut self.sound) {
                 self.respawn(world)?;
             }
             if goal {
@@ -481,7 +507,15 @@ impl Run {
                     w.contact = 0;
                 }
             }
-            for e in &self.entities {
+            for phase2_index in 0..self.entities.len() {
+                if matches!(self.entities[phase2_index].kind, Kind::Checkpoint(_))
+                    && self.entities[phase2_index].status == 1
+                {
+                    stats.contacts += 1;
+                    self.touch_checkpoint(phase2_index);
+                    continue;
+                }
+                let e = &self.entities[phase2_index];
                 if !matches!(e.kind, Kind::Goal) || e.status != 1 {
                     continue;
                 }
@@ -651,6 +685,9 @@ impl Run {
         }
     }
     fn level_value(&self, n: &str, world: &World) -> Option<i64> {
+        if let Some(value) = self.checkpoint.field(n) {
+            return Some(value);
+        }
         Some(match n {
             "frame" => self.frame,
             "camera_x" => self.camera.x,
@@ -689,6 +726,7 @@ impl Run {
             Kind::Pickup(p) => p.field(n),
             Kind::Star(p) => p.field(n),
             Kind::Walker(p) => p.field(n),
+            Kind::Checkpoint(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -797,6 +835,9 @@ impl Run {
     }
     pub fn validate(&self, world: &World) -> Result<(), Error> {
         let p = &self.player;
+        if !self.checkpoint.valid(&self.entities) {
+            return Err(unsupported("checkpoint memory"));
+        }
         let position_limit = i64::MAX / 16384;
         if self.frame < 0
             || self.play_ticks < 0
@@ -849,7 +890,6 @@ impl Run {
             || !(0..=6).contains(&p.pound_delay)
             || !(0..=1).contains(&p.push)
             || !p.life.valid(p.life_phase, p.life_ticks)
-            || p.life_phase == 6
             || (p.life_phase == 0 && p.life_ticks != 0)
             || (p.life_phase == 8) != (self.goal_reached != 0)
             || !(-2000 * 60..=2000 * 60).contains(&p.body.vx)
@@ -930,6 +970,11 @@ impl Run {
                 || !(-position_limit..=position_limit).contains(&e.body.y)
             {
                 return Err(unsupported("entity lifecycle validation"));
+            }
+            if let Kind::Checkpoint(p) = &e.kind {
+                if !p.valid() {
+                    return Err(unsupported("checkpoint marker fields"));
+                }
             }
             if let Kind::Pickup(p) = &e.kind {
                 if !p.valid()

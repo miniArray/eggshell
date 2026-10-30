@@ -1,4 +1,7 @@
 //! Pure semantic sampling. Pack frame binding and screen planning stay in the player.
+#[cfg(test)]
+#[path = "presentation_policy_tests.rs"]
+mod policy_tests;
 use crate::{entity::Kind, state::Run, *};
 #[derive(Clone, Debug)]
 pub(crate) struct Previous {
@@ -133,6 +136,15 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         },
         ..VisualState::default()
     }
+}
+fn actor_visible(e: &crate::entity::Entity) -> bool {
+    let Kind::Walker(w) = &e.kind else {
+        return false;
+    };
+    let eligible = w.held == 0 && w.hidden == 0;
+    let inactive =
+        e.origin.placed().is_some() && (e.status == 0 || (e.status == 2 && e.can_respawn != 0));
+    eligible && (e.status == 1 || inactive)
 }
 fn plant_head(
     e: &crate::entity::Entity,
@@ -380,7 +392,7 @@ pub(crate) fn sample(
                 .copied()
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
-                Kind::Goal | Kind::Decor => ([0; 4], VisualState::default()),
+                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
                 Kind::Pickup(pickup) => (pickup.bounds(), pickup_visual(pickup, e.collected)),
                 Kind::Star(star) => (
                     star.bounds(),
@@ -441,6 +453,7 @@ pub(crate) fn sample(
                 },
                 visible: e.status != 3
                     && match &e.kind {
+                        Kind::Checkpoint(_) => e.collected == 0,
                         Kind::Pad(pad) => pad.active,
                         Kind::Pickup(p) => {
                             e.status == 1
@@ -448,7 +461,7 @@ pub(crate) fn sample(
                                 && (e.collected == 0 || p.collect_ticks > 0)
                         }
                         Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
-                        Kind::Walker(w) => e.status == 1 && w.held == 0 && w.hidden == 0,
+                        Kind::Walker(_) => actor_visible(e),
                         _ => true,
                     },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
