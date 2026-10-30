@@ -68,8 +68,12 @@ static func advance(state: Dictionary, world: Dictionary, platform_enabled: bool
 	var support := Collision.floor_at(moving, world, bounds)
 	if Collision.prepare(moving, world, bounds):
 		var previous: int = moving.vx
-		var next := clampi(previous + control * 512, -48 * 60, 48 * 60)
-		var distance: int = (previous + next) / 2 if previous else 0
+		var accelerated: int = previous + control * 512
+		var next := clampi(accelerated, -48 * 60, 48 * 60)
+		# Platform caps displacement separately, after integrating acceleration.
+		var distance: int = (
+			clampi((previous + accelerated) / 2, -48 * 60, 48 * 60) if previous else 0
+		)
 		Collision.horizontal(moving, world, bounds, distance, support, false, 640 * 60)
 		Collision.vertical(moving, world, bounds, moving.vy, support)
 		moving.vx = (
