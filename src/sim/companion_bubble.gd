@@ -64,12 +64,14 @@ static func advance(state: Dictionary, world: Dictionary, platform_enabled: bool
 		"recovery_width": PHYSICAL_WIDTH,
 		"recovery_height": PHYSICAL_HEIGHT
 	}
+	# Platform keeps the pre-recovery floor for ramp following, even while rising.
+	var support := Collision.floor_at(moving, world, bounds)
 	if Collision.prepare(moving, world, bounds):
 		var previous: int = moving.vx
 		var next := clampi(previous + control * 512, -48 * 60, 48 * 60)
 		var distance: int = (previous + next) / 2 if previous else 0
-		Collision.horizontal(moving, world, bounds, distance, 0, false, 640 * 60)
-		Collision.vertical(moving, world, bounds, moving.vy)
+		Collision.horizontal(moving, world, bounds, distance, support, false, 640 * 60)
+		Collision.vertical(moving, world, bounds, moving.vy, support)
 		moving.vx = (
 			clampi(moving.vx + control * 512, -48 * 60, 48 * 60) if moving.vx != previous else next
 		)
