@@ -12,6 +12,7 @@ pub mod schema;
 mod state;
 mod state_restore;
 mod tongue;
+mod water;
 pub mod wire;
 pub mod world;
 mod world_polygon;

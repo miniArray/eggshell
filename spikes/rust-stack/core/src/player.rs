@@ -1,5 +1,5 @@
-//! Typed dry-land player motion for the admitted Stride/Bounce slices.
-//! Tongue and lifetime rules share this authoritative Player; water is a separate gate.
+//! Typed player motion for admitted Stride/Bounce/Lagoon slices.
+//! Tongue, water and lifetime rules share this authoritative Player.
 use crate::{body::Body, math::approach, SCALE as S};
 pub(crate) const NORMAL: [i64; 4] = [-12 * S, -56 * S, 12 * S, 0];
 #[derive(Clone, Debug, Default)]
@@ -26,6 +26,8 @@ pub(crate) struct Player {
     pub body: Body,
     pub life: crate::life::Life,
     pub tongue: crate::tongue::Tongue,
+    pub water: crate::water::Water,
+    pub action_wet: i64,
     pub facing: i64,
     pub movement: i64,
     pub on_floor: i64,
@@ -62,6 +64,8 @@ impl Player {
             body,
             life: crate::life::Life::default(),
             tongue: crate::tongue::Tongue::default(),
+            water: crate::water::Water::default(),
+            action_wet: 0,
             facing,
             movement: 0,
             on_floor: 0,
@@ -103,6 +107,16 @@ impl Player {
             ]
         } else if self.action == 9 && (3..=5).contains(&self.action_tick) {
             [-14 * S, -56 * S, 10 * S, 0]
+        } else if self.action == 0 && self.water.swimming != 0 {
+            let mut height = 56;
+            let mut bottom = 0;
+            if self.water.transition != 0 {
+                height = [54, 50, 54][(2).min((9 - self.water.transition) * 20 / 60) as usize];
+            } else if self.water.dive != 0 {
+                height = if self.body.vx != 0 { 42 } else { 54 };
+                bottom = if self.body.vx != 0 { 14 } else { 0 };
+            }
+            [-12 * S, -height * S, 12 * S, bottom * S]
         } else {
             NORMAL
         }
@@ -120,6 +134,7 @@ impl Player {
         }
         self.action = action;
         self.action_tick = 0;
+        self.action_wet = self.water.swimming;
     }
     fn cancel_flutter(&mut self) {
         if self.flutter_remaining != 0 {
@@ -141,6 +156,9 @@ impl Player {
         }
     }
     fn flutter(&mut self, input: u8, sound: &mut Sound) -> bool {
+        if self.water.swimming != 0 {
+            return false;
+        }
         if self.flutter_remaining != 0 && self.on_floor != 0 {
             self.body.vx = self.body.vx.clamp(-256 * 60, 256 * 60);
             self.cancel_flutter();
@@ -265,16 +283,24 @@ impl Player {
             self.flutter_ready = 1;
             self.boosted_flutter = 0;
         }
+        let (bob, water_jump) = self.prepare_water(map, input, pressed);
         if released & 4 != 0 && self.body.vy < 0 {
             self.body.vy /= 4;
+        }
+        if water_jump {
+            self.jump(sound);
+        }
+        if self.water.swimming != 0 {
+            self.cancel_flutter();
         }
         let right = input & 2 != 0;
         let left = input & 1 != 0;
         let free = self.on_floor == 0;
-        if self.action != 4 && right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
+        let face_locked = self.action == 4 || self.water.swimming != 0;
+        if !face_locked && right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
             self.facing = 1;
         }
-        if self.action != 4 && left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
+        if !face_locked && left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
             self.facing = -1;
         }
         if self.life.hurt == 0 && pressed & 8 != 0 && self.action != 4 && self.push == 0 {
@@ -282,7 +308,8 @@ impl Player {
         }
         let mut bounds = self.bounds();
         let mut jumping = carried;
-        if self.on_floor != 0
+        if self.water.swimming == 0
+            && self.on_floor != 0
             && self.jump_buffer != 0
             && input & 4 != 0
             && !self.body.overlaps(map, NORMAL, 0, -S)
@@ -315,8 +342,12 @@ impl Player {
             self.boosted_flutter = 0;
         }
         let direction = i64::from(right) - i64::from(left);
-        let deceleration = if self.life.hurt != 0 {
+        let liquid = self.water.swimming != 0 || self.liquid_body(map, bounds);
+        let speed = if liquid { 200 * 60 } else { 400 * 60 };
+        let deceleration = if self.life.hurt != 0 || self.water.swimming != 0 {
             self.life.hurt_deceleration
+        } else if liquid {
+            128
         } else if self.on_floor == 0 {
             if input & 3 != 0 {
                 1296
@@ -330,7 +361,7 @@ impl Player {
             self.body.vx = self.body.vx.clamp(-200 * 60, 200 * 60);
         }
         let acceleration = if direction != 0 {
-            512 * direction
+            (if liquid { 256 } else { 512 }) * direction
                 + if self.body.vx * direction < 0 {
                     direction * deceleration
                 } else {
@@ -349,11 +380,12 @@ impl Player {
         }
         self.body.settle(map, bounds, support);
         let dx = if self.body.vx != 0 {
-            (self.body.vx + acceleration / 2).clamp(-400 * 60, 400 * 60)
+            (self.body.vx + acceleration / 2).clamp(-speed, speed)
         } else {
             0
         };
-        let gravity = if self.flutter_remaining != 0 && self.bounce == 0 {
+        let gravity = if self.water.swimming != 0 || self.flutter_remaining != 0 && self.bounce == 0
+        {
             0
         } else {
             if self.gravity_tick != 0 && self.action != 0 {
@@ -385,15 +417,18 @@ impl Player {
                 crate::body::HorizontalMove::Player { jumping },
             );
         }
+        let vertical = dy + bob;
         let moved = if can_move {
-            self.body.vertical_support(map, bounds, dy, support)
+            self.body.vertical_support(map, bounds, vertical, support)
         } else {
             0
         };
         let floor = self.body.floor(map, bounds);
-        self.on_floor = i64::from(can_move && (dy > 0 && moved != dy || dy == 0 && floor != 0));
+        self.on_floor = i64::from(
+            can_move && (vertical > 0 && moved != vertical || vertical == 0 && floor != 0),
+        );
         self.support_bridge = if self.on_floor != 0 { floor.max(0) } else { 0 };
-        if moved != dy && dy < 0 && self.action == 0 && self.flutter_remaining == 0 {
+        if moved != vertical && vertical < 0 && self.action == 0 && self.flutter_remaining == 0 {
             self.set_action(9, sound);
         }
         if self.on_floor != 0 {
@@ -409,7 +444,7 @@ impl Player {
         if direction == 0 {
             self.body.vx = approach(self.body.vx, 0, deceleration);
         }
-        self.body.vx = (self.body.vx + acceleration).clamp(-400 * 60, 400 * 60);
+        self.body.vx = (self.body.vx + acceleration).clamp(-speed, speed);
         if self.body.vx != 0 && self.body.wall(map, bounds, self.body.vx.signum()) {
             self.body.vx = 0;
         }
@@ -418,7 +453,17 @@ impl Player {
             self.turn = 0;
             self.turn_ticks = 0;
         }
-        if self.on_floor != 0
+        if self.water.swimming != 0 && self.action != 4 {
+            self.facing = if self.body.vx > 0 {
+                1
+            } else if self.body.vx < 0 {
+                -1
+            } else {
+                self.facing
+            };
+        }
+        if self.water.swimming == 0
+            && self.on_floor != 0
             && self.jump_buffer != 0
             && input & 4 != 0
             && !self.body.overlaps(map, NORMAL, 0, -S)
@@ -427,6 +472,7 @@ impl Player {
             self.jump_carry = 1;
         }
         self.brake_vx = self.body.vx;
+        self.finish_water(map);
         self.advance_tongue(map);
     }
     pub fn finish(&mut self, map: &crate::body::Probe, input: u8) {

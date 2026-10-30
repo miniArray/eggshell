@@ -136,10 +136,22 @@ impl Player {
         let separated = self.life.separated == 1;
         self.life.invulnerable = 121;
         sound.player(self.body);
-        self.life.hurt = if separated { 63 } else { 38 };
-        self.life.hurt_phase = if separated { 0 } else { 1 };
-        self.life.hurt_deceleration = 1296;
-        if self.body.x < damager_x {
+        self.life.hurt = if separated {
+            63
+        } else if self.water.swimming != 0 {
+            0
+        } else {
+            38
+        };
+        self.life.hurt_phase = if separated || self.life.hurt == 0 {
+            0
+        } else {
+            1
+        };
+        self.life.hurt_deceleration = if self.water.swimming != 0 { 128 } else { 1296 };
+        if self.water.swimming != 0 {
+            self.body.vx = -self.facing * 200 * 60;
+        } else if self.body.x < damager_x {
             self.body.vx = -self.body.vx - 256 * 60;
         } else if self.body.x > damager_x {
             self.body.vx = -self.body.vx + 256 * 60;
@@ -563,15 +575,16 @@ impl Player {
         if self.life_phase != 0 {
             return false;
         }
-        let pit_height = if self.on_floor != 0 || ![0, 10].contains(&self.action) {
-            62 * S
-        } else if self.life.hurt != 0 {
-            64 * S
-        } else if self.flutter_remaining != 0 {
-            68 * S
-        } else {
-            66 * S
-        };
+        let pit_height =
+            if self.on_floor != 0 || self.water.swimming != 0 || ![0, 10].contains(&self.action) {
+                62 * S
+            } else if self.life.hurt != 0 {
+                64 * S
+            } else if self.flutter_remaining != 0 {
+                68 * S
+            } else {
+                66 * S
+            };
         if self.body.y > map.height_pixels * S + pit_height {
             return self.kill(1, false, sound);
         }

@@ -39,7 +39,13 @@ fn overlaps(map: &Probe, b: [i64; 4]) -> bool {
 impl Player {
     pub fn tongue_end_tick(&self) -> i64 {
         match self.tongue.phase {
-            3 => 5,
+            3 => {
+                if self.action_wet != 0 {
+                    3
+                } else {
+                    5
+                }
+            }
             2 => 18 + self.tongue.block_tick,
             _ => 12,
         }
@@ -49,7 +55,11 @@ impl Player {
             self.body.x
                 + self.facing
                     * if self.tongue.axis != 0 {
-                        14 * S
+                        if self.action_wet != 0 {
+                            4 * S
+                        } else {
+                            14 * S
+                        }
                     } else {
                         24 * S
                     },
@@ -96,6 +106,8 @@ impl Player {
         Some(b)
     }
     pub fn start_tongue(&mut self, map: &Probe, sound: &mut Sound) {
+        self.water.dive = 0;
+        self.water.transition = 0;
         self.set_action(4, sound);
         self.tongue = Tongue {
             phase: 1,

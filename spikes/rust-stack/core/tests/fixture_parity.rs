@@ -46,6 +46,10 @@ fn run(restores: bool) {
         bridge_ticks +=
             usize::from(required(&wire.player, schema.player(), "support_bridge").unwrap() != 0);
         tongue_ticks += usize::from(packet.player.action == 4);
+        assert_eq!(
+            packet.player.swimming,
+            required(&wire.player, schema.player(), "swimming").unwrap() != 0
+        );
         swimming_ticks += usize::from(packet.player.swimming);
         for (entity, picture) in wire.entities.iter().zip(&packet.entities) {
             if entity.code == "o11" {
@@ -95,6 +99,9 @@ fn run(restores: bool) {
         );
     } else {
         assert!(tongue_ticks > 0);
+        if name == "lagoon" {
+            assert!(swimming_ticks > 0);
+        }
     }
     println!("FIXTURE_VERTICAL_DONE fixture={name} snapshots={} accepted_ticks={} saved_frame={} uninterrupted={} A_to_B_restores={} bridge_support_ticks={bridge_ticks} pad_squash_ticks={squash_ticks} tongue_ticks={tongue_ticks} swimming_ticks={swimming_ticks} target_admission=refused",inputs.len()+1,session.stats().completed_ticks,session.stats().tick,!restores,session.stats().restore_count);
 }

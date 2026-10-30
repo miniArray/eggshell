@@ -67,8 +67,14 @@ impl Run {
         let bounce_identity = crate::schema::hash(
             include_str!("../../../../tests/fixtures/bounce.level.json").as_bytes(),
         );
-        if world.identity != identity && world.identity != bounce_identity {
-            return Err(unsupported("Only unchanged Stride/Bounce fixtures are admitted; target gameplay closure is not implemented"));
+        let lagoon_identity = crate::schema::hash(
+            include_str!("../../../../tests/fixtures/lagoon.level.json").as_bytes(),
+        );
+        if world.identity != identity
+            && world.identity != bounce_identity
+            && world.identity != lagoon_identity
+        {
+            return Err(unsupported("Only unchanged Stride/Bounce/Lagoon fixtures are admitted; target gameplay closure is not implemented"));
         }
         let entities = Self::spawn_rows(world)?;
         let player = Player::new(
@@ -651,6 +657,8 @@ impl Run {
             || !(0..=15).contains(&p.pressed_input)
             || ![0, 4, 9, 10].contains(&p.action)
             || !p.tongue.valid(p.action)
+            || !p.water.valid()
+            || ![0, 1].contains(&p.action_wet)
             || p.action_tick < 0
             || p.action_tick
                 >= if p.action == 9 {
@@ -748,6 +756,7 @@ fields! {
 "x"=>body.x,"y"=>body.y,"vx"=>body.vx,"vy"=>body.vy,"facing"=>facing,"movement"=>movement,"on_floor"=>on_floor,"support_bridge"=>support_bridge,"previous_input"=>previous_input,"pressed_input"=>pressed_input,
 "jump_buffer"=>jump_buffer,"flutter_remaining"=>flutter_remaining,"flutter_cooldown"=>flutter_cooldown,"flutter_ready"=>flutter_ready,"boosted_flutter"=>boosted_flutter,
 "move_tongue_axis"=>tongue.axis,"move_tongue_length"=>tongue.length,"move_tongue_phase"=>tongue.phase,"move_tongue_block_tick"=>tongue.block_tick,"move_tongue_hold"=>tongue.hold,
+"swimming"=>water.swimming,"water_wait"=>water.wait,"water_phase"=>water.phase,"water_deep"=>water.deep,"move_dive"=>water.dive,"move_water_jump"=>water.jump,"move_water_transition"=>water.transition,"move_action_wet"=>action_wet,
 "move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_jump_carry"=>jump_carry,
 "life_phase"=>life_phase,"life_ticks"=>life_ticks,"recovery_x"=>recovery_x,"recovery_y"=>recovery_y,"goal_from_x"=>goal_from_x,"goal_from_y"=>goal_from_y,"goal_x"=>goal_x,"goal_y"=>goal_y
 }

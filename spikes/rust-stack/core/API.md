@@ -69,9 +69,9 @@ of Bounce; p1 Bridge is also required by the selected target.
 
 ## Current implemented vertical slice (not target admission)
 
-`Session::load` admits only the exact unchanged public Stride/Bounce worlds,
+`Session::load` admits only the exact unchanged public Stride/Bounce/Lagoon worlds,
 the pinned collision table and complete original v10 schema. Authoritative Rust
-state runs both uncounted start ticks. `advance` implements dry LEFT/RIGHT/JUMP,
+state runs both uncounted start ticks. `advance` implements LEFT/RIGHT/JUMP,
 empty-mouth USE/tongue/terrain blocking, terrain-body/legacy bridge motion,
 jump/release/flutter/landing/facing, ordered walker activation/motion/contact,
 Pad gravity/contact/squash, damage and hurt input locks, companion launch/bubble/
@@ -79,9 +79,11 @@ catch/rejoin, goal conversion and goal lifetime motion. Tongue food capture and
 request consumers refuse explicitly. Stride damage and Bounce have every-tick
 parity and both restore directions. Original Bounce has 1 bridge-support tick,
 12 tongue ticks, but no pad compression. Named `bounce.pad` normal controls
-activate 12 squash ticks and verify the sampled ratio on every tick.
+activate 12 squash ticks and verify the sampled ratio on every tick. Lagoon
+adds actual water contact, integer buoyancy/wait/bobbing, liquid motion caps,
+water jump/exit and wet pose sampling, including 91 swimming snapshots.
 Captor/death/respawn code is typed but needs its normally reached route proof.
-Water, other actions, other fixtures and the target remain unsupported.
+Other actions, other fixtures and the target remain unsupported.
 An unsupported step returns an error without changing state or accepted-tick count.
 
 Snapshots reconstruct the literal complete v10 payload from this typed state.

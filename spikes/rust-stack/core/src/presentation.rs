@@ -58,13 +58,39 @@ pub(crate) fn sample(
         if p.tongue.phase == 3 {
             literal_frame = 1 + (tick * 24 / 60).min(1);
         }
-        if p.tongue.axis != 0 {
-            "TongueUp0"
-        } else {
-            "Tongue0"
+        match (p.tongue.axis != 0, p.action_wet != 0) {
+            (true, true) => "TongueUp1",
+            (true, false) => "TongueUp0",
+            (false, true) => "Tongue1",
+            (false, false) => "Tongue0",
         }
     } else if p.action == 9 {
         "HeadBump0"
+    } else if p.water.swimming != 0 {
+        if p.water.jump != 0 {
+            "Jump0"
+        } else if p.water.transition != 0 {
+            tick = 9 - p.water.transition;
+            if p.water.dive != 0 {
+                "Submerge0"
+            } else {
+                "Unsubmerge0"
+            }
+        } else if p.water.dive != 0 {
+            tick = if p.body.vx != 0 { frame } else { 9 };
+            if p.body.vx != 0 {
+                "SwimSubmerged"
+            } else {
+                "Submerge0"
+            }
+        } else {
+            tick = frame;
+            if p.body.vx != 0 {
+                "Swim0"
+            } else {
+                "Float0"
+            }
+        }
     } else if p.push != 0 {
         tick = frame;
         "Push0"
@@ -122,7 +148,7 @@ pub(crate) fn sample(
         },
         life_phase: p.life_phase,
         on_floor: p.on_floor != 0,
-        swimming: false,
+        swimming: p.water.swimming != 0,
         visible: p.life.invulnerable == 0 || (120 - p.life.invulnerable) % 6 < 3,
         companion,
         companion_phase: p.life.companion_mode,

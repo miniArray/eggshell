@@ -500,6 +500,14 @@ impl Map {
             .iter()
             .any(|layer| layer.solid && layer.overlaps_box(bounds))
     }
+    pub(crate) fn water_overlaps(&self, bounds: [i64; 4]) -> bool {
+        self.layers
+            .iter()
+            .any(|layer| layer.water && layer.overlaps_box(bounds))
+    }
+    pub(crate) fn water_at(&self, x: i64, y: i64) -> bool {
+        self.water_overlaps([x, y, x, y])
+    }
     pub fn border_overlaps(&self, [left, top, right, bottom]: [i64; 4]) -> bool {
         top < self.height_pixels * SCALE
             && bottom > -480 * SCALE
