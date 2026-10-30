@@ -22,6 +22,24 @@ Positions and velocity use saved integer 1/3600 pixel units. Layer, code,
 variant and placement properties select pack art; the pack does not select
 simulation rules. Renderer must not write back any packet data.
 
+## Interface refinement 2
+
+- `TileLayer.source_layer` replaces ambiguous `name`; `tilemap` is the family.
+  Exact `tile_size_pixels`, `DrawSlot`, solid/water/hazard flags and transformed
+  integer collision polygons come from immutable compilation, not name guesses.
+- `EntityPicture.source_index` binds `Map.placements` (None for runtime rows).
+  Placement properties retain nested original JSON shapes. `body_bounds` is
+  relative integer geometry; `visual.head_box` is world-space geometry.
+- Visual flip overrides are `Option<bool>` for each axis. Default alpha is 1.
+  Optional semantic asset/origin/slice/palette overrides do not replace pack
+  binding. Player owns pack texture/frame/origin/slice interpretation.
+- `PlayerPicture.selected_pose` is the exact semantic `PlayerPose.select`
+  name/tick/frame. Player must not repeat the action-to-pose state machine.
+- Presentation has explicit companion, bubble and four rescuer packets,
+  HUD lifetime/readouts/status, and optional message text and saved paging.
+- World carries spawn, initial map and player palette. Map retains cave shimmer,
+  dice colours and original immutable properties for effect bindings.
+
 Initial skeleton: load, advance and both codecs return explicit
 `Error::NotImplemented`. No Session can be constructed successfully yet;
 `presentation` cannot be called without a Session. No successful idle fake.
