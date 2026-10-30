@@ -216,7 +216,11 @@ rebuilds them after life transitions so map changes cannot retain stale bindings
 caps displacement separately; stored velocity is capped after movement. Other callers keep their
 existing recovery extents unless they explicitly supply them. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers
-aside with a hop and a 60-step horizontal ease to rest.
+aside with a hop and a 60-step horizontal ease to rest. Its terminal zero remains
+eligible for first-picked family selection until the late completion hook. Armor
+and soft walkers save that pending completion independently of their new tween
+counter. Explicit stop/restart cancels the pending callback; adding a tween
+without stopping retains it.
 
 Movement, damage, life and some types emit sound events during these phases
 (`SoundEvents.emit`). Listeners compare their saved serial in their own step, so

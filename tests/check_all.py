@@ -74,6 +74,7 @@ def main():
         "flower_contacts",
         "roller_shell_contacts",
         "fish_armored_contacts",
+        "knockback_completion",
         "damage",
         "elements",
     ]:

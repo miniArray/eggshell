@@ -64,7 +64,10 @@ The registry saves the `birth_serial` high-water mark. Every birth, including
 camera recreation, gets a new serial. Activation and restore retain it. Family
 selection uses that identity, not the current dispatch row; duplicate serials and
 a stale high-water mark fail validation. Armor also saves independent
-`knock_ticks`; actors save the fish patrol origin `home_x` and the jump-tail
+`knock_ticks`. Armor and soft walkers also save `knock_pending`, which retains a
+natural terminal tween through the family event until late completion. Explicit
+stop/restart clears the pending completion; registering another tween without a
+stop does not. Actors save the fish patrol origin `home_x` and the jump-tail
 `fish_finish` counter. Creation-only culling runs before a flyer's wave moves its
 anchor; it needs no saved cull flag. The hurt phase also distinguishes the final
 recovered knockback tick: movement input is still locked, but the cleared pose
