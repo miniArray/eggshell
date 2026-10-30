@@ -350,6 +350,8 @@ impl World {
             spawn,
             spawn_facing,
             player_palette,
+            flowers_target: optional_number(level, "flowers", 0.0)?.max(0.0) as i64,
+            redcoins_target: optional_number(level, "redcoins", 0.0)?.max(0.0) as i64,
         })
     }
 }

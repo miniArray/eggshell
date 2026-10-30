@@ -23,6 +23,8 @@ func _initialize() -> void:
 		"initial_map": world.initial_map,
 		"spawn_x": world.spawn_x,
 		"spawn_y": world.spawn_y,
+		"flowers_target": world.flowers_target,
+		"redcoins_target": world.redcoins_target,
 		"maps": []
 	}
 	var probe_count := 0

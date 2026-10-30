@@ -345,6 +345,9 @@ pub struct World {
     pub spawn: Position,
     pub spawn_facing: i64,
     pub player_palette: Vec<[u8; 3]>,
+    /// Source goals after original bounded-integer validation and max(0, value).
+    pub flowers_target: i64,
+    pub redcoins_target: i64,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AdmissionReport {

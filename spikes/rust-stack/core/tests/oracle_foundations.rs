@@ -99,6 +99,8 @@ fn unchanged_target_placements_terrain_transforms_and_contacts_match() {
     let value: Value =
         serde_json::from_slice(&fs::read(root().join("world.json")).unwrap()).unwrap();
     assert_eq!(actual.initial_map, integer(&value["initial_map"]) as usize);
+    assert_eq!(actual.flowers_target, integer(&value["flowers_target"]));
+    assert_eq!(actual.redcoins_target, integer(&value["redcoins_target"]));
     assert_eq!(
         actual.spawn,
         Position {

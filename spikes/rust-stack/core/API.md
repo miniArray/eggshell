@@ -46,7 +46,12 @@ simulation rules. Renderer must not write back any packet data.
   name/tick/frame. Player must not repeat the action-to-pose state machine.
 - Presentation has explicit companion, bubble and four rescuer packets,
   HUD lifetime/readouts/status, and optional message text and saved paging.
-- World carries spawn, initial map and player palette. Map retains cave shimmer,
+- World carries spawn, initial map and player palette. `flowers_target: i64`
+  and `redcoins_target: i64` preserve original source counts: absent defaults to
+  zero, the reader requires bounded integral numbers, then the compiler applies
+  max(0, value). They are not counts inferred from placements. Existing saved
+  level fields and HUD consume these immutable facts; no v10 fields are added.
+  Map retains cave shimmer,
   dice colours and original immutable properties for effect bindings.
 
 ## Immutable preparation API (bridge/support gate)

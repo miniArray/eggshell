@@ -532,6 +532,8 @@ impl Run {
             "play_ticks" => self.play_ticks,
             "total_play_ticks" => self.total_play_ticks,
             "coins" => self.coins,
+            "flowers_target" => world.flowers_target,
+            "redcoins_target" => world.redcoins_target,
             "sound_serial" => self.sound.serial,
             "sound_kind" => self.sound.kind,
             "sound_x" => self.sound.x,
