@@ -13,7 +13,7 @@ old saves are not migrated.
 | Level fields | int64 values in `PlayState.level_fields()` order |
 | Player fields | int64 values in `PlayState.player_fields()` order |
 | Entity count | u32 |
-| Each entity | code string, stable id string, field count (u32), common then type-specific int64 values |
+| Each entity | code string, stable id string, scalar field count (u32), common then type-specific int64 values, then declared typed collections |
 | Checksum | SHA-256 of all preceding bytes (32 bytes) |
 
 Both strings use a u32 byte length followed by UTF-8, with a 4096-byte limit
@@ -28,9 +28,16 @@ their ids and state round trip like known types. A known code with an unbuilt
 form saves as its `?`-prefixed placeholder code with the same common schema. Placement properties stay in the immutable world,
 which the level identity binds to the snapshot.
 
+Each type's `COLLECTION_FIELDS` declares any ordered row collections after its
+scalar fields. Each collection stores a u32 row count, then int64 row values in
+its declared field order. Collection names and row schemas are in the schema
+digest, not repeated in each payload. The decoder checks row counts against the
+remaining bounded payload before allocation. It never decodes Variants.
+
 The schema digest covers ordered level/player declarations, common entity
-fields, type codes and type fields. A changed schema rejects incompatible bytes
-even if someone forgot to change the version. Deliberate layout changes still
+fields, type codes, scalar fields and collection declarations. A changed schema rejects incompatible bytes
+even if someone forgot to change the version. This undelivered version 11 draft
+retains its version while its schema is completed. Layout changes after delivery
 require a version bump.
 
 The codec rejects oversized data, invalid UTF-8, wrong lengths, counts, field
@@ -63,11 +70,24 @@ and soft walkers.
 The registry saves the `birth_serial` high-water mark. Every birth, including
 camera recreation, gets a new serial. Activation and restore retain it. Family
 selection uses that identity, not the current dispatch row; duplicate serials and
-a stale high-water mark fail validation. Armor also saves independent
-`knock_ticks`. Armor and soft walkers also save `knock_pending`, which retains a
-natural terminal tween through the family event until late completion. Explicit
-stop/restart clears the pending completion; registering another tween without a
-stop does not. Actors save the fish patrol origin `home_x` and the jump-tail
+a stale high-water mark fail validation. Armor and soft walkers save independent
+`knock_active` eligibility and an ordered `knock_tweens` collection. Each row saves
+`from_vx`, `remaining`, `total`, and `phase` (0 scheduled, 1 playing, 2 stopped
+and waiting for release, 3 naturally finished and waiting for release). Repeated
+same-tag registrations append rows; they do not overwrite an older tween.
+Lookup selects active rows in registration order before waiting rows in release
+order. A playing terminal zero stays in the family pick through regular events.
+Its late completion clears eligibility and moves only that row out of active.
+It waits until the following behavior tick2 for release. Other rows survive and
+keep ticking while ineligible. A
+subsequent burst reactivates eligibility but still reads the oldest active
+survivor, even if the new burst points the other way. Regular-event Stop moves
+all matching active rows to waiting release; it suppresses their completion
+callbacks but does not itself clear eligibility. An active replacement takes
+precedence over those waiting rows. There is no fixed gameplay overlap-count
+limit; the existing 64 MiB snapshot envelope still bounds encoded data. The
+former single `knock_ticks`/`knock_pending` approximation is not part of this
+draft schema. Actors save the fish patrol origin `home_x` and the jump-tail
 `fish_finish` counter. Creation-only culling runs before a flyer's wave moves its
 anchor; it needs no saved cull flag. The hurt phase also distinguishes the final
 recovered knockback tick: movement input is still locked, but the cleared pose

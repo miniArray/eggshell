@@ -111,6 +111,7 @@ const EntityLifecycle = preload("res://src/sim/entity_lifecycle.gd")
 const DispatchLoops = preload("res://src/sim/dispatch_loops.gd")
 const Constants = preload("res://src/sim/script_constants.gd")
 const LEVEL_FIELDS := [["dynamic_serial", 1], ["modal_token", 0], ["birth_serial", 0]]
+const EMPTY_COLLECTIONS := []
 const TOKEN_BASE := 1_000_000
 const MAX_DYNAMIC_SERIAL := 0x7fffffffffffffff - TOKEN_BASE
 const Units = preload("res://src/sim/units.gd")
@@ -224,6 +225,11 @@ static func fields(code: String) -> Array:
 		_fields_by_code[code] = result
 		cached = result
 	return cached
+
+
+## Constants already have recursively read-only rows; ScriptConstants caches the lookup.
+static func collection_fields(code: String) -> Array:
+	return constant(lookup(code), "COLLECTION_FIELDS", EMPTY_COLLECTIONS)
 
 
 static func level_fields() -> Array:
@@ -729,6 +735,9 @@ static func create(source: Dictionary, world: Dictionary) -> Dictionary:
 		assert(pair.size() == 2 and pair[0] is String and pair[1] is int)
 		assert(not entity.has(pair[0]), "Duplicate entity field")
 		entity[pair[0]] = pair[1]
+	for pair: Array in collection_fields(source.code):
+		assert(not entity.has(pair[0]), "Duplicate entity collection")
+		entity[pair[0]] = []
 	for key: String in ["source_index", "x", "y", "layer", "family_index"]:
 		entity[key] = int(source.get(key, entity[key]))
 	entity.token = entity.source_index + 1
@@ -882,11 +891,21 @@ static func valid(entity: Dictionary) -> bool:
 	if not entity.get("code") is String or not entity.get("id") is String:
 		return false
 	var declared := fields(entity.code)
-	if entity.size() != declared.size() + 2:
+	var collections := collection_fields(entity.code)
+	if entity.size() != declared.size() + collections.size() + 2:
 		return false
 	for pair: Array in declared:
 		if not entity.get(pair[0]) is int:
 			return false
+	for pair: Array in collections:
+		if not entity.get(pair[0]) is Array:
+			return false
+		for row: Variant in entity[pair[0]]:
+			if not row is Dictionary or row.size() != pair[1].size():
+				return false
+			for field: Array in pair[1]:
+				if not row.get(field[0]) is int:
+					return false
 	for key: String in [
 		"collected", "checkpoint_collected", "offscreen", "spawn_mode", "can_despawn", "can_respawn"
 	]:

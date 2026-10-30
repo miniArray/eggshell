@@ -148,25 +148,21 @@ func _soft_walker_knock_checks() -> void:
 	soft.timer = 1
 	soft.pin_dx = 0
 	Collision.begin_step(state, world, Registry)
-	type.step(soft, state, world)
+	Registry.advance(state, world, 0)
+	Registry.after_step(state, world)
 	check(
 		soft.status == Registry.DEFEATED and other.mode == type.KNOCKED,
 		"A burst knocks a soft walker within 128 px aside"
 	)
-	Collision.begin_step(state, world, Registry)
-	type.step(other, state, world)
 	check(other.vy == -384 * 60, "A standing knocked walker hops at -(448 / 2 + 160)")
 	var before: int = other.x
-	Collision.begin_step(state, world, Registry)
-	type.step(other, state, world)
+	Sim.advance(state, 0, world)
 	check(other.x - before == 448 * 60, "It first moves away from the burst at 448 px/s")
 	before = other.x
-	Collision.begin_step(state, world, Registry)
-	type.step(other, state, world)
+	Sim.advance(state, 0, world)
 	check(other.x - before == 448 * 60 * 59 / 60, "The knock speed eases linearly over 1 s")
 	for _tick in 70:
-		Collision.begin_step(state, world, Registry)
-		type.step(other, state, world)
+		Sim.advance(state, 0, world)
 	check(
 		other.mode == type.WALK and other.facing == 1,
 		"After the knock-back it walks toward the player again"

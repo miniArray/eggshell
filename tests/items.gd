@@ -720,6 +720,9 @@ func _replace_saved_entity_field(
 					body.append_array(Snapshot.checksum(body))
 					return body
 		cursor += schema.size() * 8
+		for collection: Array in Registry.collection_fields(code.value):
+			var rows := body.decode_u32(cursor)
+			cursor += 4 + rows * collection[1].size() * 8
 	_check(false, "A requested saved field exists in the schema")
 	return bytes
 

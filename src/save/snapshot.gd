@@ -29,7 +29,7 @@ static func schema_hash() -> PackedByteArray:
 			"code-and-id-utf8", State.level_fields(), State.player_fields(), Registry.COMMON_FIELDS
 		]
 		for code: String in Registry.codes():
-			schema.append([code, Registry.fields(code)])
+			schema.append([code, Registry.fields(code), Registry.collection_fields(code)])
 		_schema_hash = checksum(JSON.stringify(schema).to_utf8_buffer())
 	return _schema_hash
 
@@ -49,6 +49,8 @@ static func encode(state: Dictionary) -> PackedByteArray:
 		body_size += (
 			12 + code_bytes.size() + id_bytes.size() + Registry.fields(entity.code).size() * 8
 		)
+		for collection: Array in Registry.collection_fields(entity.code):
+			body_size += 4 + entity[collection[0]].size() * collection[1].size() * 8
 	if body_size + CHECKSUM_SIZE > MAX_BYTES:
 		push_warning("Cannot encode oversized snapshot")
 		return PackedByteArray()
@@ -83,6 +85,14 @@ static func encode(state: Dictionary) -> PackedByteArray:
 		for pair: Array in fields:
 			bytes.encode_s64(cursor, entity[pair[0]])
 			cursor += 8
+		for collection: Array in Registry.collection_fields(entity.code):
+			var rows: Array = entity[collection[0]]
+			bytes.encode_u32(cursor, rows.size())
+			cursor += 4
+			for row: Dictionary in rows:
+				for pair: Array in collection[1]:
+					bytes.encode_s64(cursor, row[pair[0]])
+					cursor += 8
 	bytes.append_array(checksum(bytes))
 	return bytes
 
@@ -136,6 +146,22 @@ static func decode(bytes: PackedByteArray, identity: String, world: Dictionary =
 		for pair: Array in fields:
 			entity[pair[0]] = bytes.decode_s64(cursor)
 			cursor += 8
+		for collection: Array in Registry.collection_fields(code):
+			if cursor + 4 > end:
+				return error("Snapshot entity collection/truncation")
+			var rows := bytes.decode_u32(cursor)
+			cursor += 4
+			var row_bytes: int = collection[1].size() * 8
+			# The existing payload byte bound limits allocation, not a gameplay row cap.
+			if rows > (end - cursor) / row_bytes:
+				return error("Snapshot entity collection count/truncation")
+			entity[collection[0]] = []
+			for row_index in rows:
+				var row := {}
+				for pair: Array in collection[1]:
+					row[pair[0]] = bytes.decode_s64(cursor)
+					cursor += 8
+				entity[collection[0]].append(row)
 		state.entities.append(entity)
 	if cursor != end:
 		return error("Snapshot trailing bytes/count")

@@ -8,6 +8,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Grid = preload("res://src/sim/entity_grid.gd")
 const Birth = preload("res://src/sim/entity_lifecycle.gd")
+const Knockback = preload("res://src/sim/knockback.gd")
 const S := State.SCALE
 var checks := 0
 var failures := 0
@@ -199,7 +200,7 @@ func armor_group(reverse: bool, older_right: bool) -> void:
 	soft.timer = 1
 	Sim.advance(unit.state, 0, unit.world)
 	check(
-		(right.knock_ticks < 0) == (not older_right),
+		(right.knock_tweens[0].total == 90) == (not older_right),
 		"The first created knocked body's sign controls the group's wall filter, not table order"
 	)
 	check(right.vx == 448 * 60, "A rebound changes the tween, not this frame's assigned velocity")
@@ -225,12 +226,16 @@ func armor_tween_age(reverse: bool) -> void:
 	rebirth(unit, right, 20)
 	left.roll_direction = -1
 	right.roll_direction = 1
-	left.knock_ticks = 9
-	right.knock_ticks = 30
+	Knockback.start(left, -448 * 60, 60)
+	left.knock_tweens[0].remaining = 9
+	left.knock_tweens[0].phase = Knockback.PLAYING
+	Knockback.start(right, 448 * 60, 60)
+	right.knock_tweens[0].remaining = 30
+	right.knock_tweens[0].phase = Knockback.PLAYING
 	unit.state.frame = 40
 	Sim.advance(unit.state, 0, unit.world)
 	check(
-		right.knock_ticks == 29,
+		right.knock_tweens[0].remaining == 29,
 		"The group's oldest tween has aged below the wall threshold, even when it steps last"
 	)
 	restored_future(unit)
@@ -250,9 +255,10 @@ func soft_group_selection() -> void:
 	var older := by_id(unit.state, "older_soft")
 	rebirth(unit, older, 10)
 	older.mode = type.KNOCKED
-	older.slide_from = -448 * 60
-	older.slide_total = 60
-	older.slide_ticks = 40
+	Knockback.start(older, -448 * 60, 60)
+	older.knock_tweens[0].remaining = 40
+	older.knock_tweens[0].phase = Knockback.PLAYING
+	older.vx = Knockback.value(older)
 	var armor := by_id(unit.state, "armor")
 	rebirth(unit, armor, 20)
 	unit.state.frame = 30
@@ -261,7 +267,8 @@ func soft_group_selection() -> void:
 	soft.timer = 1
 	Sim.advance(unit.state, 0, unit.world)
 	check(
-		armor.knock_ticks == -90, "An older knocked soft body participates in the family comparison"
+		armor.knock_tweens[0].total == 90,
+		"An older knocked soft body participates in the family comparison"
 	)
 	restored_future(unit)
 
@@ -421,7 +428,10 @@ func same_frame_runtime_armor() -> void:
 	soft.mode = Registry.lookup("e23").SQUASH
 	soft.timer = 1
 	Sim.advance(unit.state, 0, unit.world)
-	check(right.knock_ticks < 0, "The older runtime body's sign wins after dispatch reordering")
+	check(
+		right.knock_tweens[0].total == 90,
+		"The older runtime body's sign wins after dispatch reordering"
+	)
 	restored_future(unit)
 
 

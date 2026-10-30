@@ -12,6 +12,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const World = preload("res://src/sim/world.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Knockback = preload("res://src/sim/knockback.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e23"]
 const ENEMY := true
@@ -31,6 +32,7 @@ const KNOCK_TICKS := 60  # 1 s
 const KNOCK_RANGE := 128
 const KNOCK_PAUSE := 2  # Standing ticks before it walks again.
 const SQUASH_TICKS := 15  # Two frames at 8 per second.
+const COLLECTION_FIELDS := Knockback.COLLECTION_FIELDS
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -41,7 +43,7 @@ const FIELDS := (
 		["slide_from", 0],
 		["slide_ticks", 0],
 		["slide_total", 0],
-		["knock_pending", 0],
+		["knock_active", 0],
 		["birth_frame", 0],
 		["birth_serial", 0],
 		["birth_phase", Birth.EVENTS_BIRTH]
@@ -65,29 +67,38 @@ static func create(source: Dictionary, _world: Dictionary) -> Dictionary:
 ## Milde uses the same GameObjects knockBackTimer as armor: zero stays picked
 ## through Global99 until Global102's late natural-completion trigger clears it.
 static func knockback_active(entity: Dictionary) -> bool:
-	return entity.mode == KNOCKED and (entity.slide_ticks > 0 or entity.knock_pending == 1)
+	return entity.mode == KNOCKED and entity.knock_active == 1
 
 
 static func after_advance(state: Dictionary, _world: Dictionary) -> void:
 	for entity: Dictionary in state.entities:
-		if entity.code in CODES and entity.status == Birth.ACTIVE and entity.knock_pending:
-			entity.vx = 0
+		if (
+			entity.code in CODES
+			and entity.status == Birth.ACTIVE
+			and knockback_active(entity)
+			and not entity.held
+			and not entity.spat
+			and not entity.hidden
+			and not entity.frozen
+		):
+			entity.vx = Knockback.value(entity)
 
 
 static func after_step(state: Dictionary, _world: Dictionary) -> void:
 	for entity: Dictionary in state.entities:
-		if entity.code in CODES and entity.knock_pending:
-			entity.knock_pending = 0
-			if entity.mode == KNOCKED:
-				# A same-step burst adds a tween; the older queued finish still clears it.
-				entity.slide_ticks = 0
+		if entity.code in CODES:
+			var ended := Knockback.pending(entity)
+			Knockback.finish(entity)
+			if ended and entity.mode == KNOCKED:
 				entity.timer = KNOCK_PAUSE
 
 
 static func knockback_velocity(entity: Dictionary) -> int:
-	if entity.mode != KNOCKED or entity.slide_ticks <= 0 or entity.knock_pending:
-		return 0
-	return entity.slide_from * entity.slide_ticks / entity.slide_total
+	return Knockback.value(entity)
+
+
+static func recreated(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> void:
+	Knockback.clear(entity)
 
 
 static func bounds(entity: Dictionary) -> Array:
@@ -129,7 +140,9 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		pin(entity, state)
 		return
 	# A body knocked in this step's earlier burst still takes its own step now.
-	var pending: bool = entity.mode == KNOCKED and entity.timer > 0 and entity.slide_ticks > 0
+	var pending: bool = (
+		entity.mode == KNOCKED and entity.knock_active == 1 and Knockback.deferred(entity)
+	)
 	if entity.mode == KNOCKED and not pending:
 		_knocked_step(entity, state, world, box)
 		return
@@ -170,7 +183,7 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 static func _knocked_step(
 	entity: Dictionary, state: Dictionary, world: Dictionary, box: Array
 ) -> void:
-	if entity.slide_ticks == 0:
+	if not entity.knock_active:
 		entity.vx = 0
 		Motion.gravity_box(entity, world, box)
 		entity.timer -= 1
@@ -180,22 +193,17 @@ static func _knocked_step(
 			if entity.x != state.x:
 				entity.facing = -1 if entity.x > state.x else 1
 		return
-	var speed: int = entity.slide_from * entity.slide_ticks / entity.slide_total
-	entity.slide_ticks -= 1
-	entity.vx = speed
+	# Body motion consumes the velocity assigned by the preceding family event.
+	var speed: int = entity.vx
 	if speed and Motion.move(entity, world, box, speed, true) != speed and absi(speed) > 64 * 60:
 		entity.facing = -signi(speed)
-		entity.slide_from = entity.facing * 48 * 60
-		entity.slide_total = 90
-		entity.slide_ticks = 89
+		Knockback.stop(entity)
+		Knockback.start(entity, entity.facing * 48 * 60, 90)
 	_hop(entity, Motion.gravity_box(entity, world, box))
-	if entity.slide_ticks == 0:
-		entity.timer = KNOCK_PAUSE
-		entity.knock_pending = 1
 
 
 static func _hop(entity: Dictionary, landed: bool) -> void:
-	var speed: int = absi(entity.slide_from * entity.slide_ticks / entity.slide_total)
+	var speed := absi(Knockback.value(entity))
 	if landed and speed > 24 * 60:
 		entity.vy = -(speed / 2 + 160 * 60)
 
@@ -229,11 +237,12 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 				type.knockback(other, state, world, entity.x, later)
 				Collision.refresh(world, other)
 			continue
-		# Global98 starts another value tween; it does not cancel a pending finish.
 		other.mode = KNOCKED
-		other.slide_from = KNOCK_SPEED * (1 if other.x > entity.x else -1)
-		other.slide_total = KNOCK_TICKS
-		other.slide_ticks = KNOCK_TICKS
+		# The copy's tumble slide is separate from all same-tag knockback value tweens.
+		other.slide_from = 0
+		other.slide_total = 0
+		other.slide_ticks = 0
+		Knockback.start(other, KNOCK_SPEED * (1 if other.x > entity.x else -1), KNOCK_TICKS)
 		other.timer = int(later)
 		if not later:
 			_hop(other, Collision.floor_at(other, world, bounds(other)) != 0)
@@ -322,8 +331,7 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_total <= 600
 		and entity.slide_ticks >= 0
 		and entity.slide_ticks <= entity.slide_total
-		and entity.knock_pending in [0, 1]
-		and (not entity.knock_pending or entity.slide_total > 0)
+		and Knockback.valid(entity)
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
 		and entity.birth_phase in Birth.BIRTH_PHASES

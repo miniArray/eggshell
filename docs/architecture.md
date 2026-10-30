@@ -218,9 +218,17 @@ existing recovery extents unless they explicitly supply them. Captors first move
 step after they start. A soft walker that bursts knocks nearby soft walkers
 aside with a hop and a 60-step horizontal ease to rest. Its terminal zero remains
 eligible for first-picked family selection until the late completion hook. Armor
-and soft walkers save that pending completion independently of their new tween
-counter. Explicit stop/restart cancels the pending callback; adding a tween
-without stopping retains it.
+and soft walkers keep ordered `knock_tweens` separately from `knock_active`
+eligibility. `knockback.gd` owns this small same-tag value-tween collection, not a
+general tween engine. Pretick advances every surviving row, even while its owner
+is ineligible. The late finish clears eligibility and moves only completed
+rows from active to waiting release; replacements survive. Those completed zeros
+wait for the following behavior tick2. A later opposite burst appends behind
+active survivors. Value lookup checks active registration order first, then
+waiting release order. Regular-event Stop queues release before completion
+callbacks, so explicit stop/restart suppresses the old callback. Adding a tween
+without stopping does not suppress it. These typed int64 collections are saved
+inside their owners; they are not extra world actors.
 
 Movement, damage, life and some types emit sound events during these phases
 (`SoundEvents.emit`). Listeners compare their saved serial in their own step, so

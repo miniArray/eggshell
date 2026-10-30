@@ -75,6 +75,7 @@ def main():
         "roller_shell_contacts",
         "fish_armored_contacts",
         "knockback_completion",
+        "knockback_lifetime",
         "damage",
         "elements",
     ]:

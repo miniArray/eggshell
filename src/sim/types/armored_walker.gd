@@ -11,6 +11,7 @@ const Collision = preload("res://src/sim/collision.gd")
 const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const World = preload("res://src/sim/world.gd")
 const Hits = preload("res://src/sim/hits.gd")
+const Knockback = preload("res://src/sim/knockback.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e11"]
 const ENEMY := true
@@ -27,18 +28,14 @@ const AIR := 2
 const PUSH := 3
 const ROLL := 4
 const RECOVER := 5
-## Positive: the 60-tick burst tween; negative: the 90-tick wall rebound.
-## 61 defers a burst until this body's normal motion has finished this tick.
-## knock_pending saves a natural finish until tick2, even if Global98 starts a new
-## value tween in the meantime. An explicit Stop (Global100/101) cancels that finish.
+const COLLECTION_FIELDS := Knockback.COLLECTION_FIELDS
 const FIELDS := (
 	Body.FIELDS
 	+ [
 		["mode", WALK],
 		["timer", 0],
 		["roll_direction", -1],
-		["knock_ticks", 0],
-		["knock_pending", 0],
+		["knock_active", 0],
 		["birth_frame", 0],
 		["birth_serial", 0],
 		["birth_phase", Birth.EVENTS_BIRTH]
@@ -61,6 +58,15 @@ static func bounds(_entity: Dictionary) -> Array:
 	return [-14 * S, -14 * S, 14 * S, 16 * S]
 
 
+## The shared value-tween collection advances once, before any family body moves.
+static func before_advance(state: Dictionary, _world: Dictionary) -> void:
+	Knockback.advance(state)
+
+
+static func recreated(entity: Dictionary, _state: Dictionary, _world: Dictionary) -> void:
+	Knockback.clear(entity)
+
+
 static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
 	if (
 		Body.process(entity, state) in [Body.HELD, Body.GONE]
@@ -71,12 +77,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	var box := bounds(entity)
 	var grounded := Collision.floor_at(entity, world, box) != 0
-	var knocked: bool = entity.knock_ticks != 0 and entity.knock_ticks != 61
+	var knocked: bool = entity.knock_active == 1 and not Knockback.deferred(entity)
 	var old_vx: int = entity.vx
-	if knocked:
-		entity.knock_ticks -= signi(entity.knock_ticks)
-		if entity.knock_ticks == 0:
-			entity.knock_pending = 1
 	match entity.mode:
 		ROLL:
 			entity.vx = entity.roll_direction * 256 * 60 * entity.timer * entity.timer / 8100
@@ -130,19 +132,16 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 	elif entity.variant % 2 == 1 and entity.mode == AIR and landed:
 		entity.mode = PREPARE
 		entity.timer = 5
-	if entity.knock_ticks == 61:
-		entity.knock_ticks = 60
 
 
 ## Burst knockback is independent of the jumping animation and its queued jump.
 static func knockback(
-	entity: Dictionary, _state: Dictionary, _world: Dictionary, from_x: int, later: bool
+	entity: Dictionary, _state: Dictionary, _world: Dictionary, from_x: int, _later: bool
 ) -> void:
 	if entity.held or entity.spat or entity.hidden or entity.frozen or entity.status != 1:
 		return
 	entity.roll_direction = 1 if entity.x > from_x else -1
-	# Global98 adds a value tween without stopping a queued natural completion.
-	entity.knock_ticks = 61 if later else 60
+	Knockback.start(entity, entity.roll_direction * 448 * 60, 60)
 
 
 static func after_advance(state: Dictionary, world: Dictionary) -> void:
@@ -164,26 +163,17 @@ static func after_advance(state: Dictionary, world: Dictionary) -> void:
 ## Global99 still picks a naturally completed tween at value zero. Global102
 ## clears beingKnockedBack only in the late completion trigger, after regular events.
 static func knockback_active(entity: Dictionary) -> bool:
-	return entity.knock_ticks != 0 or entity.knock_pending == 1
+	return entity.knock_active == 1
 
 
 static func after_step(state: Dictionary, _world: Dictionary) -> void:
 	for entity: Dictionary in state.entities:
-		if entity.code in CODES and entity.knock_pending:
-			entity.knock_pending = 0
-			# Global102 clears the flag even when Global98 registered a newer tween.
-			entity.knock_ticks = 0
+		if entity.code in CODES:
+			Knockback.finish(entity)
 
 
 static func knockback_velocity(entity: Dictionary) -> int:
-	if entity.knock_pending:
-		return 0
-	var ticks: int = mini(entity.knock_ticks, 60)
-	return (
-		entity.roll_direction * 448 * 60 * ticks / 60
-		if ticks > 0
-		else entity.roll_direction * 48 * 60 * -ticks / 90
-	)
+	return Knockback.value(entity)
 
 
 static func _first_knock_velocity(state: Dictionary) -> int:
@@ -205,8 +195,8 @@ static func _first_knock_velocity(state: Dictionary) -> int:
 
 
 static func _knock_events(entity: Dictionary, world: Dictionary, first_speed: int) -> void:
-	var speed := absi(knockback_velocity(entity))
-	entity.vx = entity.roll_direction * speed
+	entity.vx = knockback_velocity(entity)
+	var speed: int = absi(entity.vx)
 	var box := bounds(entity)
 	# The signed comparison reads the family's first picked body, before the wall
 	# condition filters the group. A body can rebound from the wall behind it.
@@ -220,9 +210,8 @@ static func _knock_events(entity: Dictionary, world: Dictionary, first_speed: in
 	):
 		entity.roll_direction = -wall_direction
 		entity.facing = entity.roll_direction
-		entity.knock_ticks = -90
-		# The wall event explicitly Stops the old tween before starting its rebound.
-		entity.knock_pending = 0
+		Knockback.stop(entity)
+		Knockback.start(entity, entity.roll_direction * 48 * 60, 90)
 		speed = 48 * 60
 	if speed > 24 * 60 and Collision.floor_at(entity, world, box) != 0:
 		entity.vy = -speed / 2 - 160 * 60
@@ -236,7 +225,7 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 
 
 static func tongue(entity: Dictionary, state: Dictionary, _world: Dictionary) -> int:
-	entity.knock_ticks = 0
+	entity.knock_active = 0
 	entity.mode = PUSH
 	entity.timer = 30
 	entity.vx = state.facing * 128 * 60
@@ -256,7 +245,7 @@ static func hit(
 
 
 static func start_roll(entity: Dictionary, direction: int) -> void:
-	entity.knock_ticks = 0
+	entity.knock_active = 0
 	entity.mode = ROLL
 	entity.timer = 90
 	entity.roll_direction = direction
@@ -292,10 +281,7 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.timer >= 0
 		and entity.timer <= 275
 		and entity.roll_direction in [-1, 1]
-		and entity.knock_ticks >= -90
-		and entity.knock_ticks <= 61
-		and entity.knock_pending in [0, 1]
-		and (not entity.knock_pending or entity.knock_ticks >= 0)
+		and Knockback.valid(entity)
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
 		and entity.birth_phase in Birth.BIRTH_PHASES
