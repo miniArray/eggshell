@@ -4,12 +4,14 @@ use std::fmt;
 mod body;
 mod life;
 pub mod math;
+mod pad;
 mod player;
 pub mod polygon;
 mod presentation;
 pub mod schema;
 mod state;
 mod state_restore;
+mod tongue;
 pub mod wire;
 pub mod world;
 mod world_polygon;
@@ -100,6 +102,8 @@ pub struct VisualState {
     pub frame: Option<i64>,
     pub offset_pixels: [f64; 2],
     pub size_pixels: [Option<f64>; 2],
+    /// Multiplicative local ratio after frame/size selection, before placement/camera.
+    pub scale: Option<[f64; 2]>,
     pub rotation_degrees: Option<f64>,
     /// None preserves the pack/source setting; Some(false) overrides it.
     pub flip_h: Option<bool>,
@@ -120,6 +124,7 @@ impl Default for VisualState {
             frame: None,
             offset_pixels: [0.0; 2],
             size_pixels: [None; 2],
+            scale: None,
             rotation_degrees: None,
             flip_h: None,
             flip_v: None,
@@ -388,10 +393,16 @@ impl Session {
         let world = World::compile(level_json, collision_json)?;
         let mut stats = Stats::default();
         let state = state::Run::create(&world, &mut stats)?;
-        state.validate()?;
+        state.validate(&world)?;
         let previous = presentation::Previous::of(&state);
         let admission = AdmissionReport {
-            admitted_codes: vec!["e1".into(), "o5".into()],
+            admitted_codes: world.maps[0]
+                .placements
+                .iter()
+                .map(|p| p.code.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect(),
             unsupported_requirements: Vec::new(),
             schema_digest: schema.digest(),
             placed_rows: world.maps[0].placements.len(),
@@ -413,7 +424,7 @@ impl Session {
         let mut next = self.state.clone();
         let mut stats = self.stats.clone();
         next.advance(input_mask, &self.world, &mut stats)?;
-        next.validate()?;
+        next.validate(&self.world)?;
         self.previous = presentation::Previous::of(&self.state);
         stats.completed_ticks += 1;
         stats.tick = next.frame;
@@ -423,7 +434,7 @@ impl Session {
         Ok(())
     }
     pub fn snapshot(&self) -> Result<Vec<u8>, Error> {
-        self.state.validate()?;
+        self.state.validate(&self.world)?;
         self.state
             .wire(&self.world, &self.schema)
             .encode(&self.schema)
@@ -459,6 +470,7 @@ mod tests {
     fn visual_defaults_do_not_hide_or_override_pack_flips() {
         let visual = VisualState::default();
         assert_eq!(visual.alpha, 1.0);
+        assert_eq!(visual.scale, None);
         assert_eq!(visual.flip_h, None);
         assert_eq!(visual.flip_v, None);
         assert_eq!(visual.rotation_degrees, None);

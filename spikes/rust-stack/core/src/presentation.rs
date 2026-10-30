@@ -28,6 +28,17 @@ impl Previous {
 fn pos(b: crate::body::Body) -> Position {
     Position { x: b.x, y: b.y }
 }
+fn pad_visual(large: bool, remaining: i64) -> VisualState {
+    let size = if large { 48.0 } else { 32.0 };
+    let squash = remaining.min(12 - remaining) as f64;
+    VisualState {
+        scale: Some([
+            (size + 16.0 * squash / 6.0) / size,
+            (size - 16.0 * squash / 6.0) / size,
+        ]),
+        ..VisualState::default()
+    }
+}
 fn motion(previous: Position, current: Position) -> Motion {
     Motion { previous, current }
 }
@@ -40,8 +51,18 @@ pub(crate) fn sample(
     let p = &run.player;
     let frame = run.frame;
     let mut tick = p.action_tick;
+    let mut literal_frame = 0;
     let name = if p.life.hurt != 0 {
         "Hurt0"
+    } else if p.action == 4 {
+        if p.tongue.phase == 3 {
+            literal_frame = 1 + (tick * 24 / 60).min(1);
+        }
+        if p.tongue.axis != 0 {
+            "TongueUp0"
+        } else {
+            "Tongue0"
+        }
     } else if p.action == 9 {
         "HeadBump0"
     } else if p.push != 0 {
@@ -63,7 +84,7 @@ pub(crate) fn sample(
     let selected_pose = PoseSelection {
         name: name.into(),
         tick,
-        frame: 0,
+        frame: literal_frame,
     };
     let companion = motion(
         previous.companion,
@@ -181,6 +202,28 @@ pub(crate) fn sample(
             let source = &world.maps[0].placements[e.source];
             let (bounds, visual) = match &e.kind {
                 Kind::Goal => ([0; 4], VisualState::default()),
+                Kind::Bridge => {
+                    let crate::PreparedPlacement::Bridge { geometry_index } = source.prepared
+                    else {
+                        unreachable!("compiler-owned bridge geometry")
+                    };
+                    let b = world.maps[0].bridges[geometry_index];
+                    (
+                        [
+                            b.left - e.body.x,
+                            b.top - e.body.y,
+                            b.right - e.body.x,
+                            b.top + 2 * SCALE - e.body.y,
+                        ],
+                        VisualState::default(),
+                    )
+                }
+                Kind::Pad(pad) => {
+                    let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
+                        unreachable!("compiler-owned pad facts")
+                    };
+                    (crate::pad::bounds(large), pad_visual(large, pad.squash))
+                }
                 Kind::Walker(w) => (
                     [-10 * SCALE, -18 * SCALE, 10 * SCALE, 16 * SCALE],
                     VisualState {
@@ -197,15 +240,19 @@ pub(crate) fn sample(
                 body_bounds: bounds,
                 motion: motion(previous.entities[index], pos(e.body)),
                 facing: e.facing,
-                layer: if matches!(e.kind, Kind::Goal) { 7 } else { 8 },
-                variant: 0,
+                layer: source.layer,
+                variant: source.variant,
                 status: match e.status {
                     0 => EntityStatus::Waiting,
                     1 => EntityStatus::Active,
                     2 => EntityStatus::Queued,
                     _ => EntityStatus::Defeated,
                 },
-                visible: e.status != 3,
+                visible: e.status != 3
+                    && match &e.kind {
+                        Kind::Pad(pad) => pad.active,
+                        _ => true,
+                    },
                 held: false,
                 hidden: false,
                 visual,
@@ -231,5 +278,24 @@ pub(crate) fn sample(
                 y: run.sound.y,
             },
         },
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn pad_squash_matches_original_ratios_and_reversal() {
+        for large in [false, true] {
+            assert_eq!(pad_visual(large, 0).scale, Some([1.0, 1.0]));
+            assert_eq!(pad_visual(large, 12).scale, Some([1.0, 1.0]));
+            for tick in 0..=12 {
+                assert_eq!(
+                    pad_visual(large, tick).scale,
+                    pad_visual(large, 12 - tick).scale
+                );
+            }
+        }
+        assert_eq!(pad_visual(false, 6).scale, Some([1.5, 0.5]));
+        assert_eq!(pad_visual(true, 6).scale, Some([64.0 / 48.0, 32.0 / 48.0]));
     }
 }

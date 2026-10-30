@@ -38,6 +38,10 @@ simulation rules. Renderer must not write back any packet data.
   and pack anchors first, then present live semantic overrides. Optional sizes,
   flips and palette swaps follow the same rule. Empty palette means no swap.
   Offset zero and alpha one are the current target's safe identity defaults.
+  `scale: Option<[f64; 2]>` is an asset-independent multiplicative ratio after
+  bound-frame/absolute-size selection and before placement/camera transforms.
+  None and Some([1.0, 1.0]) preserve output. Pad squash samples the original
+  nonuniform ratio; this adds no v10 fields and does not change gameplay.
 - `PlayerPicture.selected_pose` is the exact semantic `PlayerPose.select`
   name/tick/frame. Player must not repeat the action-to-pose state machine.
 - Presentation has explicit companion, bubble and four rescuer packets,
@@ -65,15 +69,19 @@ of Bounce; p1 Bridge is also required by the selected target.
 
 ## Current implemented vertical slice (not target admission)
 
-`Session::load` admits only the exact unchanged public Stride world, the pinned
-collision table and the complete original v10 schema. Authoritative Rust state
-runs both uncounted start ticks. `advance` implements dry LEFT/RIGHT/JUMP,
-terrain-body motion, jump/release/flutter/landing/facing, ordered walker
-activation/motion/contact, damage and hurt input locks, companion launch/bubble/
-catch/rejoin, goal conversion and goal lifetime motion. The original Stride damage
-recording now has uninterrupted every-tick parity and both restore directions.
+`Session::load` admits only the exact unchanged public Stride/Bounce worlds,
+the pinned collision table and complete original v10 schema. Authoritative Rust
+state runs both uncounted start ticks. `advance` implements dry LEFT/RIGHT/JUMP,
+empty-mouth USE/tongue/terrain blocking, terrain-body/legacy bridge motion,
+jump/release/flutter/landing/facing, ordered walker activation/motion/contact,
+Pad gravity/contact/squash, damage and hurt input locks, companion launch/bubble/
+catch/rejoin, goal conversion and goal lifetime motion. Tongue food capture and
+request consumers refuse explicitly. Stride damage and Bounce have every-tick
+parity and both restore directions. Original Bounce has 1 bridge-support tick,
+12 tongue ticks, but no pad compression. Named `bounce.pad` normal controls
+activate 12 squash ticks and verify the sampled ratio on every tick.
 Captor/death/respawn code is typed but needs its normally reached route proof.
-Other actions, other fixtures and the target remain unsupported.
+Water, other actions, other fixtures and the target remain unsupported.
 An unsupported step returns an error without changing state or accepted-tick count.
 
 Snapshots reconstruct the literal complete v10 payload from this typed state.

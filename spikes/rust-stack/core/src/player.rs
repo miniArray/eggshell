@@ -1,5 +1,5 @@
-//! Typed dry-land player rules for the first admitted Stride slice.
-//! Unsupported water/actions/lifetime paths fail at Session's boundary.
+//! Typed dry-land player motion for the admitted Stride/Bounce slices.
+//! Tongue and lifetime rules share this authoritative Player; water is a separate gate.
 use crate::{body::Body, math::approach, SCALE as S};
 pub(crate) const NORMAL: [i64; 4] = [-12 * S, -56 * S, 12 * S, 0];
 #[derive(Clone, Debug, Default)]
@@ -25,9 +25,11 @@ impl Sound {
 pub(crate) struct Player {
     pub body: Body,
     pub life: crate::life::Life,
+    pub tongue: crate::tongue::Tongue,
     pub facing: i64,
     pub movement: i64,
     pub on_floor: i64,
+    pub support_bridge: i64,
     pub previous_input: i64,
     pub pressed_input: i64,
     pub jump_buffer: i64,
@@ -59,9 +61,11 @@ impl Player {
         Self {
             body,
             life: crate::life::Life::default(),
+            tongue: crate::tongue::Tongue::default(),
             facing,
             movement: 0,
             on_floor: 0,
+            support_bridge: 0,
             previous_input: 0,
             pressed_input: 0,
             jump_buffer: 0,
@@ -90,7 +94,14 @@ impl Player {
         }
     }
     pub fn bounds(&self) -> [i64; 4] {
-        if self.action == 9 && (3..=5).contains(&self.action_tick) {
+        if self.action == 4 {
+            [
+                -12 * S,
+                -if self.tongue.axis != 0 { 60 } else { 50 } * S,
+                12 * S,
+                0,
+            ]
+        } else if self.action == 9 && (3..=5).contains(&self.action_tick) {
             [-14 * S, -56 * S, 10 * S, 0]
         } else {
             NORMAL
@@ -100,9 +111,12 @@ impl Player {
         self.recovery_x = self.body.x - self.facing * 10 * S;
         self.recovery_y = self.body.y - 24 * S;
     }
-    fn set_action(&mut self, action: i64, sound: &mut Sound) {
-        if action != self.action && action == 9 {
+    pub(crate) fn set_action(&mut self, action: i64, sound: &mut Sound) {
+        if action != self.action && [4, 9].contains(&action) {
             sound.player(self.body);
+        }
+        if self.action == 4 && action != 4 {
+            self.tongue.phase = 0;
         }
         self.action = action;
         self.action_tick = 0;
@@ -201,6 +215,10 @@ impl Player {
         if self.action != 0 {
             self.action_tick = (self.action_tick + 1).min(35);
         }
+        if self.action == 4 && self.action_tick >= self.tongue_end_tick() {
+            self.set_action(0, sound);
+            self.tongue.length = 16 * S;
+        }
         if self.action == 9 && self.action_tick >= 10 || self.action == 10 && self.action_tick >= 4
         {
             self.set_action(0, sound);
@@ -212,6 +230,8 @@ impl Player {
         if self.life.hurt != 0 {
             self.action = 0;
             self.action_tick = 0;
+            self.tongue.phase = 0;
+            self.tongue.length = 16 * S;
             self.turn = 0;
             self.turn_ticks = 0;
             self.gravity_tick = 0;
@@ -220,7 +240,7 @@ impl Player {
         }
         let bounds = self.bounds();
         let can_move = self.body.prepare(map, bounds);
-        let mut support = self.body.floor(map, bounds);
+        let mut support = self.body.track(map, bounds, false);
         self.on_floor = i64::from(support != 0 && self.body.vy == 0);
         let was_grounded = self.on_floor != 0;
         let carried = self.jump_carry != 0;
@@ -251,13 +271,16 @@ impl Player {
         let right = input & 2 != 0;
         let left = input & 1 != 0;
         let free = self.on_floor == 0;
-        if right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
+        if self.action != 4 && right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
             self.facing = 1;
         }
-        if left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
+        if self.action != 4 && left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
             self.facing = -1;
         }
-        let bounds = self.bounds();
+        if self.life.hurt == 0 && pressed & 8 != 0 && self.action != 4 && self.push == 0 {
+            self.start_tongue(map, sound);
+        }
+        let mut bounds = self.bounds();
         let mut jumping = carried;
         if self.on_floor != 0
             && self.jump_buffer != 0
@@ -266,6 +289,7 @@ impl Player {
         {
             self.jump(sound);
             jumping = true;
+            bounds = self.bounds();
         }
         let lift = if self.bounce == 2 {
             self.bounce = 1;
@@ -302,6 +326,9 @@ impl Player {
         } else {
             1296
         };
+        if self.action == 4 {
+            self.body.vx = self.body.vx.clamp(-200 * 60, 200 * 60);
+        }
         let acceleration = if direction != 0 {
             512 * direction
                 + if self.body.vx * direction < 0 {
@@ -359,12 +386,13 @@ impl Player {
             );
         }
         let moved = if can_move {
-            self.body.vertical(map, bounds, dy)
+            self.body.vertical_support(map, bounds, dy, support)
         } else {
             0
         };
         let floor = self.body.floor(map, bounds);
         self.on_floor = i64::from(can_move && (dy > 0 && moved != dy || dy == 0 && floor != 0));
+        self.support_bridge = if self.on_floor != 0 { floor.max(0) } else { 0 };
         if moved != dy && dy < 0 && self.action == 0 && self.flutter_remaining == 0 {
             self.set_action(9, sound);
         }
@@ -399,6 +427,7 @@ impl Player {
             self.jump_carry = 1;
         }
         self.brake_vx = self.body.vx;
+        self.advance_tongue(map);
     }
     pub fn finish(&mut self, map: &crate::body::Probe, input: u8) {
         let direction = i64::from(input & 2 != 0) - i64::from(input & 1 != 0);

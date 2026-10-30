@@ -25,4 +25,4 @@ if [[ "${CORE_STRIDE:-0}" == 1 ]]; then
 fi
 cargo clippy --locked --manifest-path spikes/rust-stack/core/Cargo.toml --all-targets -- -D warnings
 printf 'CORE_CHECK_DONE\n'
-printf 'CORE_API_READY source=%s rotation_degrees=Option-f64 auxiliary=PlantHead scope=Stride-only target=refused\n' "$(git rev-parse HEAD)"
+printf 'CORE_API_READY source=%s rotation_degrees=Option-f64 scale=Option-ratio auxiliary=PlantHead scope=Stride+Bounce target=refused\n' "$(git rev-parse HEAD)"

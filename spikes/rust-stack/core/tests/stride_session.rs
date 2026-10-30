@@ -64,7 +64,10 @@ fn unsupported_input_and_target_refuse_without_fake_success() {
     let (level, collision, metadata, _) = data();
     let mut session = Session::load(&level, &collision, &metadata).unwrap();
     let before = session.snapshot().unwrap();
-    assert!(matches!(session.advance(8), Err(Error::Unsupported { .. })));
+    assert!(matches!(
+        session.advance(64),
+        Err(Error::Unsupported { .. })
+    ));
     assert_eq!(before, session.snapshot().unwrap());
     let target = fs::read_to_string(
         PathBuf::from(std::env::var("HOME").unwrap())

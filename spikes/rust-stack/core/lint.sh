@@ -10,4 +10,4 @@ ruff check --fix spikes/rust-stack/oracle/*.py
 gdlint spikes/rust-stack/oracle/*.gd
 shellcheck -s bash spikes/rust-stack/core/*.sh spikes/rust-stack/oracle/*.sh
 printf 'CORE_LINT_DONE\n'
-printf 'CORE_TARGET_ADMISSION_BLOCKED Only original Stride dry-land slice is implemented; no target gameplay/performance admission\n'
+printf 'CORE_TARGET_ADMISSION_BLOCKED Only original Stride/Bounce dry-land slices are implemented; no target gameplay/performance admission\n'

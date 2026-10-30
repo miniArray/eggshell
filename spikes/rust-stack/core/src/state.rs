@@ -19,6 +19,8 @@ pub(crate) struct Walker {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
+    Bridge,
+    Pad(crate::pad::Pad),
     Walker(Walker),
 }
 #[derive(Clone, Debug)]
@@ -62,8 +64,11 @@ impl Run {
         let identity = crate::schema::decode_hash(
             "75c8a5af059df0550d21119c4bcd962a46c1549839da6d09da9aa74cf7b0e0fd",
         )?;
-        if world.identity != identity {
-            return Err(unsupported("Only unchanged Stride dry-land fixture is admitted; target gameplay closure is not implemented"));
+        let bounce_identity = crate::schema::hash(
+            include_str!("../../../../tests/fixtures/bounce.level.json").as_bytes(),
+        );
+        if world.identity != identity && world.identity != bounce_identity {
+            return Err(unsupported("Only unchanged Stride/Bounce fixtures are admitted; target gameplay closure is not implemented"));
         }
         let entities = Self::spawn_rows(world)?;
         let player = Player::new(
@@ -115,6 +120,12 @@ impl Run {
             .map(|(source, p)| {
                 let kind = match p.code.as_str() {
                     "o5" => Kind::Goal,
+                    "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
+                        Kind::Bridge
+                    }
+                    "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
+                        Kind::Pad(crate::pad::Pad::default())
+                    }
                     "e1" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
                         Kind::Walker(Walker::default())
                     }
@@ -127,8 +138,12 @@ impl Run {
                         y: p.position.y,
                         ..Body::default()
                     },
-                    facing: -1,
-                    status: if matches!(kind, Kind::Goal) { 1 } else { 0 },
+                    facing: if p.mirror == 1 { 1 } else { -1 },
+                    status: if matches!(kind, Kind::Walker(_)) {
+                        0
+                    } else {
+                        1
+                    },
                     offscreen: 0,
                     kind,
                 })
@@ -272,6 +287,20 @@ impl Run {
                 }
             }
         }
+        // Step phase 1, still in saved table order. Pad has no activation lifecycle.
+        for e in &mut self.entities {
+            if let Kind::Pad(pad) = &mut e.kind {
+                if e.status == 1 {
+                    stats.entity_steps += 1;
+                    let crate::PreparedPlacement::Pad { large, .. } =
+                        map.placements[e.source].prepared
+                    else {
+                        unreachable!("compiler-owned pad flags")
+                    };
+                    pad.advance(&mut e.body, map, large);
+                }
+            }
+        }
     }
     pub fn advance(
         &mut self,
@@ -279,9 +308,9 @@ impl Run {
         world: &World,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
-        if input & !7 != 0 {
+        if input & !15 != 0 {
             return Err(unsupported(
-                "Stride slice supports LEFT/RIGHT/JUMP only; actions are not implemented",
+                "fixture slice supports LEFT/RIGHT/JUMP/empty-mouth USE only; remaining actions are not implemented",
             ));
         }
         if self.goal_reached != 0 {
@@ -339,6 +368,20 @@ impl Run {
         let (pressed, released) = if locked { (0, 0) } else { (pressed, released) };
         self.player
             .advance(&map, action, pressed, released, self.frame, &mut self.sound);
+        // Contact phase 0 precedes actors (phase 1), regardless of placement order.
+        for e in &mut self.entities {
+            if let Kind::Pad(pad) = &mut e.kind {
+                if e.status == 1 {
+                    stats.contacts += 1;
+                    let crate::PreparedPlacement::Pad { large, single_use } =
+                        world.maps[0].placements[e.source].prepared
+                    else {
+                        unreachable!("compiler-owned pad flags")
+                    };
+                    pad.contact(e.body, &mut self.player, action, large, single_use);
+                }
+            }
+        }
         for e in &mut self.entities {
             let Kind::Walker(w) = &mut e.kind else {
                 continue;
@@ -363,7 +406,7 @@ impl Run {
             }
         }
         for e in &self.entities {
-            if !matches!(e.kind, Kind::Goal) {
+            if !matches!(e.kind, Kind::Goal) || e.status != 1 {
                 continue;
             }
             stats.contacts += 1;
@@ -404,6 +447,21 @@ impl Run {
                     self.coins = self.coins.saturating_add(1);
                 }
             }
+        }
+        if let Some(sensor) = self.player.tongue_box() {
+            for e in &self.entities {
+                if e.status == 1
+                    && matches!(e.kind, Kind::Walker(_))
+                    && overlap(e.body, WALKER_BOX, Body::default(), sensor)
+                {
+                    return Err(unsupported(
+                        "tongue food capture/request consumer is not implemented",
+                    ));
+                }
+            }
+        }
+        if let Some(reach) = self.player.tongue_reach() {
+            self.player.catch_companion(reach);
         }
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
@@ -550,10 +608,31 @@ impl Run {
                     return None;
                 }
             }
+            "squash" => {
+                if let Kind::Pad(pad) = &e.kind {
+                    pad.squash
+                } else {
+                    return None;
+                }
+            }
+            "active" => {
+                if let Kind::Pad(pad) = &e.kind {
+                    i64::from(pad.active)
+                } else {
+                    return None;
+                }
+            }
+            "large" | "single_use" => {
+                if let crate::PreparedPlacement::Pad { large, single_use } = p.prepared {
+                    i64::from(if n == "large" { large } else { single_use })
+                } else {
+                    return None;
+                }
+            }
             _ => return None,
         })
     }
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self, world: &World) -> Result<(), Error> {
         let p = &self.player;
         let position_limit = i64::MAX / 16384;
         if self.frame < 0
@@ -565,14 +644,19 @@ impl Run {
             || !(0..=1).contains(&self.goal_reached)
             || ![-1, 1].contains(&p.facing)
             || !(0..=1).contains(&p.on_floor)
+            || p.support_bridge < 0
+            || p.support_bridge > world.maps[0].bridges.len() as i64
             || !(0..=6).contains(&p.movement)
-            || !(0..=7).contains(&p.previous_input)
-            || !(0..=7).contains(&p.pressed_input)
-            || ![0, 9, 10].contains(&p.action)
+            || !(0..=15).contains(&p.previous_input)
+            || !(0..=15).contains(&p.pressed_input)
+            || ![0, 4, 9, 10].contains(&p.action)
+            || !p.tongue.valid(p.action)
             || p.action_tick < 0
             || p.action_tick
                 >= if p.action == 9 {
                     10
+                } else if p.action == 4 {
+                    p.tongue_end_tick()
                 } else if p.action == 10 {
                     4
                 } else {
@@ -629,6 +713,14 @@ impl Run {
             {
                 return Err(unsupported("entity lifecycle validation"));
             }
+            if let Kind::Pad(pad) = &e.kind {
+                if !(0..=12).contains(&pad.squash)
+                    || e.body.vx != 0
+                    || !(0..=704 * 60).contains(&e.body.vy)
+                {
+                    return Err(unsupported("pad validation"));
+                }
+            }
             if let Kind::Walker(w) = &e.kind {
                 if !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
@@ -653,8 +745,9 @@ impl Player{
     pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>self.life.set_field(n,v)}}
 }};}
 fields! {
-"x"=>body.x,"y"=>body.y,"vx"=>body.vx,"vy"=>body.vy,"facing"=>facing,"movement"=>movement,"on_floor"=>on_floor,"previous_input"=>previous_input,"pressed_input"=>pressed_input,
+"x"=>body.x,"y"=>body.y,"vx"=>body.vx,"vy"=>body.vy,"facing"=>facing,"movement"=>movement,"on_floor"=>on_floor,"support_bridge"=>support_bridge,"previous_input"=>previous_input,"pressed_input"=>pressed_input,
 "jump_buffer"=>jump_buffer,"flutter_remaining"=>flutter_remaining,"flutter_cooldown"=>flutter_cooldown,"flutter_ready"=>flutter_ready,"boosted_flutter"=>boosted_flutter,
+"move_tongue_axis"=>tongue.axis,"move_tongue_length"=>tongue.length,"move_tongue_phase"=>tongue.phase,"move_tongue_block_tick"=>tongue.block_tick,"move_tongue_hold"=>tongue.hold,
 "move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_jump_carry"=>jump_carry,
 "life_phase"=>life_phase,"life_ticks"=>life_ticks,"recovery_x"=>recovery_x,"recovery_y"=>recovery_y,"goal_from_x"=>goal_from_x,"goal_from_y"=>goal_from_y,"goal_x"=>goal_x,"goal_y"=>goal_y
 }

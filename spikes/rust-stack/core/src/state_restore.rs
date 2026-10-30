@@ -81,6 +81,22 @@ impl Run {
                         e.offscreen = *value;
                         true
                     }
+                    "squash" | "active" => {
+                        if let Kind::Pad(pad) = &mut e.kind {
+                            if name == "squash" {
+                                pad.squash = *value;
+                            } else {
+                                match value {
+                                    0 => pad.active = false,
+                                    1 => pad.active = true,
+                                    _ => return Err(refuse("pad active flag")),
+                                }
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     "phase" | "timer" | "cycles" | "mode" | "started" | "contact" => {
                         if let Kind::Walker(w) = &mut e.kind {
                             match name.as_str() {
@@ -95,6 +111,16 @@ impl Run {
                         } else {
                             false
                         }
+                    }
+                    "large" | "single_use" => {
+                        let crate::PreparedPlacement::Pad { large, single_use } = source.prepared
+                        else {
+                            return Err(refuse("pad source flags"));
+                        };
+                        if *value != i64::from(if name == "large" { large } else { single_use }) {
+                            return Err(refuse("pad source flags differ"));
+                        }
+                        true
                     }
                     "source_index" => {
                         if *value != e.source as i64 {
@@ -151,7 +177,7 @@ impl Run {
                 }
             }
         }
-        run.validate()?;
+        run.validate(world)?;
         // Compare the entire declared payload after typed reconstruction. This catches
         // constants, unsupported unused fields and cross-field assumptions in one seam.
         if let Some(diff) = wire.first_difference(&run.wire(world, schema), schema) {

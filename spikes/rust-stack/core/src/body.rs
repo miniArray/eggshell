@@ -1,4 +1,4 @@
-//! Terrain-body motion. Full/top-only entity supports are not admitted yet.
+//! Integer terrain and immutable legacy bridge motion. Entity solids remain a separate gate.
 use crate::{math::floor_div, Map, SCALE as S};
 use std::cell::Cell;
 pub(crate) struct Probe<'a> {
@@ -83,12 +83,55 @@ impl Body {
             true
         }
     }
+    fn bridge_overlap(
+        &self,
+        bridge: &crate::BridgeGeometry,
+        b: [i64; 4],
+        dx: i64,
+        dy: i64,
+    ) -> bool {
+        self.x + b[2] + dx >= bridge.left
+            && self.x + b[0] + dx <= bridge.right
+            && self.y + b[3] + dy >= bridge.top
+            && self.y + b[1] + dy <= bridge.top + 2 * S
+    }
+    fn bridges_at(&self, map: &Probe, b: [i64; 4]) -> Vec<i64> {
+        map.bridges
+            .iter()
+            .enumerate()
+            .filter_map(|(index, bridge)| {
+                self.bridge_overlap(bridge, b, 0, 0)
+                    .then_some(index as i64 + 1)
+            })
+            .collect()
+    }
+    fn overlaps_support(&self, map: &Probe, b: [i64; 4], support: i64) -> bool {
+        self.overlaps(map, b, 0, 0)
+            || support > 0 && self.bridge_overlap(&map.bridges[support as usize - 1], b, 0, 0)
+    }
     pub fn floor(&self, map: &Probe, b: [i64; 4]) -> i64 {
-        if !self.overlaps(map, b, 0, 0) && self.overlaps(map, b, 0, S) {
-            -1
-        } else {
-            0
+        if self.overlaps(map, b, 0, 0) {
+            return 0;
         }
+        if self.overlaps(map, b, 0, S) {
+            return -1;
+        }
+        for (index, bridge) in map.bridges.iter().enumerate() {
+            if self.y + b[3] <= bridge.top && self.bridge_overlap(bridge, b, 0, S) {
+                return index as i64 + 1;
+            }
+        }
+        0
+    }
+    pub fn track(&mut self, map: &Probe, b: [i64; 4], settle: bool) -> i64 {
+        let support = self.floor(map, b);
+        if support > 0 && self.y + b[3] == map.bridges[support as usize - 1].top {
+            self.push_support(map, b, 0, -1, 2 * S, support);
+        }
+        if settle {
+            self.settle(map, b, support);
+        }
+        support
     }
     pub fn wall(&self, map: &Probe, b: [i64; 4], direction: i64) -> bool {
         self.wall_probe(map, b, direction, 1, 1)
@@ -105,13 +148,16 @@ impl Body {
             && self.overlaps(map, b, direction * reach * S, -lift * S)
     }
     pub fn refine(&mut self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) {
+        self.refine_support(map, b, dx, dy, 0);
+    }
+    fn refine_support(&mut self, map: &Probe, b: [i64; 4], dx: i64, dy: i64, support: i64) {
         let (mut sx, mut sy) = (self.x, self.y);
         let mut blocked = false;
         for divisor in [2, 4, 8, 16] {
             let offset = S / divisor * if blocked { 1 } else { -1 };
             self.x += dx * offset;
             self.y += dy * offset;
-            blocked = self.overlaps(map, b, 0, 0);
+            blocked = self.overlaps_support(map, b, support);
             if !blocked {
                 sx = self.x;
                 sy = self.y;
@@ -123,15 +169,26 @@ impl Body {
         }
     }
     pub fn push(&mut self, map: &Probe, b: [i64; 4], dx: i64, dy: i64, limit: i64) -> bool {
+        self.push_support(map, b, dx, dy, limit, 0)
+    }
+    fn push_support(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        dx: i64,
+        dy: i64,
+        limit: i64,
+        support: i64,
+    ) -> bool {
         let (sx, sy) = (self.x, self.y);
         let mut touched = false;
         let mut offset = 0;
         while offset < limit {
             self.x = sx + dx * offset;
             self.y = sy + dy * offset;
-            if !self.overlaps(map, b, 0, 0) {
+            if !self.overlaps_support(map, b, support) {
                 if touched {
-                    self.refine(map, b, dx, dy);
+                    self.refine_support(map, b, dx, dy, support);
                 }
                 return true;
             }
@@ -205,7 +262,7 @@ impl Body {
     }
     pub fn settle(&mut self, map: &Probe, b: [i64; 4], support: i64) {
         if support != 0 && self.vy > 0 {
-            self.refine(map, b, 0, -1);
+            self.refine_support(map, b, 0, -1, support.max(0));
             self.vy = 0;
         }
     }
@@ -226,18 +283,28 @@ impl Body {
         }
         let (sx, sy) = (self.x, self.y);
         let direction = distance.signum();
+        let old_bridges = self.bridges_at(map, b);
         let wall = self.overlaps(map, b, direction * S, -S);
         self.x += distance;
-        if self.overlaps(map, b, 0, 0) {
+        let obstacle = self.overlaps(map, b, 0, 0);
+        let bridge = if !obstacle && support > 0 {
+            self.bridges_at(map, b)
+                .into_iter()
+                .find(|index| !old_bridges.contains(index))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        if obstacle || bridge != 0 {
             let climb = distance.abs() + 2 * S;
-            if !wall && self.push(map, b, 0, -1, climb) {
+            if !wall && self.push_support(map, b, 0, -1, climb, bridge) {
                 if !jumping && self.vy.abs() < (jump_speed / 4).abs() {
                     self.vy = 0;
                 }
             } else {
                 let retreat = (distance.abs() * 5 / 2).max(b[2] - b[0]);
                 if self.push(map, b, -direction, 0, retreat) {
-                    if support < 0 {
+                    if support < 0 && bridge == 0 {
                         let y = self.y;
                         self.y += S;
                         if !self.overlaps(map, b, 0, 0) || !self.push(map, b, 0, -1, 3 * S) {
@@ -248,7 +315,9 @@ impl Body {
                     self.x = sx;
                     self.y = sy;
                 }
-                self.vx = 0;
+                if bridge == 0 {
+                    self.vx = 0;
+                }
             }
         } else {
             let floor = self.floor(map, b);
@@ -256,11 +325,22 @@ impl Body {
                 let drop = ((distance.abs() + S - 1) / S + 2) * S;
                 let y = self.y;
                 self.y += drop;
-                if !self.overlaps(map, b, 0, 0) || !self.push(map, b, 0, -1, drop + 2 * S) {
+                let mut snapped = false;
+                for index in self.bridges_at(map, b) {
+                    if !old_bridges.contains(&index)
+                        && self.push_support(map, b, 0, -1, drop + 2 * S, index)
+                    {
+                        snapped = true;
+                        break;
+                    }
+                }
+                if !snapped
+                    && (!self.overlaps(map, b, 0, 0) || !self.push(map, b, 0, -1, drop + 2 * S))
+                {
                     self.y = y;
                 }
             } else if floor != 0 && self.vy == 0 {
-                self.refine(map, b, 0, -1);
+                self.refine_support(map, b, 0, -1, floor.max(0));
             }
         }
         if touch_stops && self.vx != 0 && self.wall(map, b, self.vx.signum()) {
@@ -269,14 +349,33 @@ impl Body {
         self.x - sx
     }
     pub fn vertical(&mut self, map: &Probe, b: [i64; 4], distance: i64) -> i64 {
+        self.vertical_support(map, b, distance, 0)
+    }
+    pub fn vertical_support(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        distance: i64,
+        support: i64,
+    ) -> i64 {
         if distance == 0 {
             return 0;
         }
         let sy = self.y;
+        let old_bridges = self.bridges_at(map, b);
         self.y += distance;
-        if self.overlaps(map, b, 0, 0) {
-            let limit = (distance.abs() * 11 / 10).max(2 * S);
-            if !self.push(map, b, 0, if distance < 0 { 1 } else { -1 }, limit) {
+        let obstacle = self.overlaps(map, b, 0, 0);
+        let bridge = if !obstacle && distance > 0 && support == 0 {
+            self.bridges_at(map, b)
+                .into_iter()
+                .find(|index| !old_bridges.contains(index))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        if obstacle || bridge != 0 {
+            let limit = (distance.abs() * if bridge != 0 { 20 } else { 11 } / 10).max(2 * S);
+            if !self.push_support(map, b, 0, if distance < 0 { 1 } else { -1 }, limit, bridge) {
                 self.y = sy;
             }
             self.vy = 0;
@@ -288,8 +387,7 @@ impl Body {
             self.vy = 0;
             return false;
         }
-        let support = self.floor(map, b);
-        self.settle(map, b, support);
+        let support = self.track(map, b, true);
         if support != 0 && self.vy >= 0 {
             self.vy = 0;
             return true;
@@ -302,7 +400,7 @@ impl Body {
         } else {
             0
         };
-        let actual = self.vertical(map, b, distance);
+        let actual = self.vertical_support(map, b, distance, support);
         let landed = distance >= 0 && (actual != distance || self.floor(map, b) != 0);
         if landed || actual != distance {
             self.vy = 0;

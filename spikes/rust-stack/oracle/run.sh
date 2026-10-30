@@ -25,6 +25,10 @@ if [[ "$fixture" == target ]]; then
   python3 spikes/rust-stack/oracle/target_route.py "$out/target.input.json"
   level="$HOME/.local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"
   input="$out/target.input.json"
+elif [[ "$fixture" == bounce.pad ]]; then
+  python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"
+  level="$PWD/tests/fixtures/bounce.level.json"
+  input="$out/$fixture.input.json"
 elif [[ "$fixture" == stride.damage ]]; then
   level="$PWD/tests/fixtures/stride.level.json"
   input="$PWD/tests/fixtures/stride.damage.input.json"
