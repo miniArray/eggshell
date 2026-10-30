@@ -88,7 +88,12 @@ activate 12 squash ticks and verify the sampled ratio on every tick. Lagoon
 adds actual water contact, integer buoyancy/wait/bobbing, liquid motion caps,
 water jump/exit and wet pose sampling, including 91 swimming snapshots.
 Captor/death/respawn code is typed but needs its normally reached route proof.
-Other actions, other fixtures and the target remain unsupported.
+A separate authored `collections` verification course exercises required target
+coin/red-coin/flower collection, health-drop activation/motion/contact, popup
+tweening, source counters/score, sound serials and semantic item pictures. It is
+not the unchanged target and is never a benchmark substitute. Default d1/d2/d4
+scenery has its actual no-step/no-contact rules. Other actions, requests, captures
+and the unchanged 204-placement target remain unsupported.
 An unsupported step returns an error without changing state or accepted-tick count.
 
 Snapshots reconstruct the literal complete v10 payload from this typed state.

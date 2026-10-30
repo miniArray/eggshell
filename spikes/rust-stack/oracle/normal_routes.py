@@ -16,11 +16,13 @@ def main() -> None:
     ):
         raise RuntimeError("Route processing requires aka with builders disabled")
     name, destination = sys.argv[1:]
-    if name != "bounce.pad":
+    if name == "bounce.pad":
+        # Existing Bounce flies over the pad. Tap/release jump to fall onto it.
+        inputs = [2] * 60 + [6] + [2] * 739
+    elif name == "collections":
+        inputs = [2] * 800
+    else:
         raise ValueError(f"unknown verification route: {name}")
-    # Walk to the pad, tap/release jump, then fall onto it. Existing Bounce
-    # controls touch its bridge but fly over the pad without compressing it.
-    inputs = [2] * 60 + [6] + [2] * 739
     Path(destination).write_text(json.dumps(inputs, separators=(",", ":")) + "\n")
     print(f"NORMAL_ROUTE_DONE route={name} inputs={len(inputs)} state_edits=0")
 

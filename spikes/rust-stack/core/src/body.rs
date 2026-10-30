@@ -382,6 +382,41 @@ impl Body {
         }
         self.y - sy
     }
+    pub fn fall_item(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        gravity: i64,
+        max_fall: i64,
+        ignore_terrain: bool,
+    ) -> bool {
+        if ignore_terrain {
+            self.vy = (self.vy + gravity).min(max_fall);
+            self.x += self.vx;
+            self.y += self.vy;
+            return false;
+        }
+        if !self.prepare(map, b) {
+            self.vx = 0;
+            self.vy = 0;
+            return false;
+        }
+        let support = self.track(map, b, true);
+        let grounded = support != 0 && self.vy >= 0;
+        if grounded {
+            self.vy = 0;
+        } else {
+            self.vy = (self.vy + gravity).min(max_fall);
+        }
+        self.horizontal(map, b, self.vx, support, HorizontalMove::Actor);
+        let desired = self.vy;
+        let actual = self.vertical_support(map, b, desired, support);
+        let landed = desired >= 0 && (actual != desired || self.floor(map, b) != 0);
+        if actual != desired || landed {
+            self.vy = 0;
+        }
+        grounded || landed
+    }
     pub fn gravity(&mut self, map: &Probe, b: [i64; 4], started_on_floor: bool) -> bool {
         if !self.prepare(map, b) {
             self.vy = 0;

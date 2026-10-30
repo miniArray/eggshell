@@ -11,14 +11,17 @@ pub(crate) struct Sound {
 }
 impl Sound {
     pub fn player(&mut self, b: Body) {
+        self.emit(1, b.x, b.y - 28 * S);
+    }
+    pub fn emit(&mut self, kind: i64, x: i64, y: i64) {
         self.serial = if self.serial == i64::MAX {
             1
         } else {
             self.serial + 1
         };
-        self.kind = 1;
-        self.x = b.x;
-        self.y = b.y - 28 * S;
+        self.kind = kind;
+        self.x = x;
+        self.y = y;
     }
 }
 #[derive(Clone, Debug)]

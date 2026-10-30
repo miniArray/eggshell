@@ -19,6 +19,9 @@ pub(crate) struct Walker {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
+    Decor,
+    Pickup(crate::items::Pickup),
+    Star(crate::items::Star),
     Bridge,
     Pad(crate::pad::Pad),
     Walker(Walker),
@@ -30,6 +33,8 @@ pub(crate) struct Entity {
     pub facing: i64,
     pub status: i64,
     pub offscreen: i64,
+    pub collected: i64,
+    pub checkpoint_collected: i64,
     pub kind: Kind,
 }
 #[derive(Clone, Debug)]
@@ -44,6 +49,8 @@ pub(crate) struct Run {
     pub total_play_ticks: i64,
     pub attempt_ticks: i64,
     pub coins: i64,
+    pub redcoins: i64,
+    pub flowers: i64,
     pub goal_reached: i64,
     pub deaths: i64,
 }
@@ -70,11 +77,15 @@ impl Run {
         let lagoon_identity = crate::schema::hash(
             include_str!("../../../../tests/fixtures/lagoon.level.json").as_bytes(),
         );
+        let collections_identity = crate::schema::hash(
+            include_str!("../tests/fixtures/collections.level.json").as_bytes(),
+        );
         if world.identity != identity
             && world.identity != bounce_identity
             && world.identity != lagoon_identity
+            && world.identity != collections_identity
         {
-            return Err(unsupported("Only unchanged Stride/Bounce/Lagoon fixtures are admitted; target gameplay closure is not implemented"));
+            return Err(unsupported("Only admitted public/verification worlds are supported; selected target runtime closure is not implemented"));
         }
         let entities = Self::spawn_rows(world)?;
         let player = Player::new(
@@ -99,6 +110,8 @@ impl Run {
             total_play_ticks: 0,
             attempt_ticks: 0,
             coins: 0,
+            redcoins: 0,
+            flowers: 0,
             goal_reached: 0,
             deaths: 0,
         };
@@ -126,6 +139,25 @@ impl Run {
             .map(|(source, p)| {
                 let kind = match p.code.as_str() {
                     "o5" => Kind::Goal,
+                    "d1" | "d2" | "d4" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
+                        Kind::Decor
+                    }
+                    "o1" => Kind::Pickup(crate::items::Pickup::new(
+                        crate::items::PickupKind::Coin,
+                        p.variant,
+                        p.position.y,
+                    )),
+                    "o2" => Kind::Pickup(crate::items::Pickup::new(
+                        crate::items::PickupKind::RedCoin,
+                        p.variant,
+                        p.position.y,
+                    )),
+                    "o3" => Kind::Pickup(crate::items::Pickup::new(
+                        crate::items::PickupKind::Flower,
+                        p.variant,
+                        p.position.y,
+                    )),
+                    "o4" => Kind::Star(crate::items::Star::default()),
                     "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
                         Kind::Bridge
                     }
@@ -145,12 +177,14 @@ impl Run {
                         ..Body::default()
                     },
                     facing: if p.mirror == 1 { 1 } else { -1 },
-                    status: if matches!(kind, Kind::Walker(_)) {
+                    status: if matches!(kind, Kind::Walker(_) | Kind::Star(_)) {
                         0
                     } else {
                         1
                     },
                     offscreen: 0,
+                    collected: 0,
+                    checkpoint_collected: 0,
                     kind,
                 })
             })
@@ -180,6 +214,8 @@ impl Run {
         self.player.attach();
         self.attempt_ticks = 0;
         self.play_ticks = 0;
+        self.redcoins = 0;
+        self.flowers = 0;
         self.goal_reached = 0;
         self.camera = Position {
             x: world.spawn.x,
@@ -194,6 +230,69 @@ impl Run {
     fn entities_step(&mut self, map: &crate::body::Probe, stats: &mut crate::Stats) {
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
         for e in &mut self.entities {
+            if let Kind::Pickup(p) = &mut e.kind {
+                if e.status == 1 {
+                    stats.entity_steps += 1;
+                    p.advance(&mut e.body, &mut e.status, e.collected, map);
+                }
+                continue;
+            }
+            if let Kind::Star(star) = &mut e.kind {
+                let awake = e.status == 1;
+                let source = &map.placements[e.source];
+                if e.status != 3 {
+                    let far = (e.body.x - centre.x).abs() > 832 * S
+                        || (e.body.y - centre.y).abs() > 832 * S;
+                    if e.status == 1 && far {
+                        e.status = 2;
+                        e.offscreen = 0;
+                    }
+                    if e.status == 2 {
+                        if (source.position.x - centre.x).abs() > 416 * S
+                            || (source.position.y - centre.y).abs() > 224 * S
+                        {
+                            e.offscreen = 1;
+                        }
+                        if e.offscreen != 0
+                            && (source.position.x - centre.x).abs() < 624 * S
+                            && (source.position.y - centre.y).abs() < 624 * S
+                        {
+                            *star = crate::items::Star::default();
+                            e.body = Body {
+                                x: source.position.x,
+                                y: source.position.y,
+                                ..Body::default()
+                            };
+                            e.facing = if source.mirror == 1 { 1 } else { -1 };
+                            e.status = 0;
+                            e.offscreen = 0;
+                        }
+                    }
+                    let b = star.bounds();
+                    if e.status == 0
+                        && e.body.x + b[2] > centre.x - 416 * S
+                        && e.body.x + b[0] < centre.x + 416 * S
+                        && e.body.y + b[3] > centre.y - 224 * S
+                        && e.body.y + b[1] < centre.y + 224 * S
+                    {
+                        e.status = 1;
+                        if source.mirror == 2 {
+                            e.facing = if self.player.body.x < e.body.x { -1 } else { 1 };
+                        }
+                    }
+                }
+                if awake && e.status == 1 {
+                    stats.entity_steps += 1;
+                    star.advance(
+                        &mut e.body,
+                        &mut e.facing,
+                        &mut e.status,
+                        self.player.body.x,
+                        map,
+                    );
+                }
+                continue;
+            }
             let Kind::Walker(w) = &mut e.kind else {
                 continue;
             };
@@ -389,12 +488,62 @@ impl Run {
             }
         }
         for e in &mut self.entities {
-            let Kind::Walker(w) = &mut e.kind else {
-                continue;
-            };
             if e.status != 1 {
                 continue;
             }
+            if let Kind::Pickup(p) = &mut e.kind {
+                stats.contacts += 1;
+                let b = self.player.bounds();
+                let box_ = [
+                    self.player.body.x + b[0],
+                    self.player.body.y + b[1],
+                    self.player.body.x + b[2],
+                    self.player.body.y + b[3],
+                ];
+                if self.player.life_phase == 0 && p.touches(e.body, e.collected, box_) {
+                    e.collected = 1;
+                    match p.kind {
+                        crate::items::PickupKind::Coin => self.coins = self.coins.saturating_add(1),
+                        crate::items::PickupKind::RedCoin => {
+                            self.redcoins = self.redcoins.saturating_add(1)
+                        }
+                        crate::items::PickupKind::Flower => {
+                            self.flowers = self.flowers.saturating_add(1)
+                        }
+                    }
+                    self.sound.emit(2, e.body.x, e.body.y);
+                    p.held = 0;
+                    if p.kind == crate::items::PickupKind::RedCoin {
+                        p.phase = 0;
+                        p.collect_y = e.body.y;
+                        p.collect_ticks = 60;
+                    } else {
+                        e.status = 3;
+                    }
+                    stats.collections += 1;
+                }
+                continue;
+            }
+            if let Kind::Star(p) = &mut e.kind {
+                stats.contacts += 1;
+                if e.collected == 0
+                    && p.pickup_delay == 0
+                    && p.held == 0
+                    && self.player.life_phase == 0
+                    && overlap(e.body, p.bounds(), self.player.body, self.player.bounds())
+                {
+                    e.collected = 1;
+                    self.player.life.health = (self.player.life.health + 1).min(30);
+                    self.sound.emit(2, e.body.x, e.body.y);
+                    p.held = 0;
+                    e.status = 3;
+                    stats.collections += 1;
+                }
+                continue;
+            }
+            let Kind::Walker(w) = &mut e.kind else {
+                continue;
+            };
             stats.contacts += 1;
             let touching = overlap(self.player.body, self.player.bounds(), e.body, WALKER_BOX);
             if touching {
@@ -456,9 +605,27 @@ impl Run {
         }
         if let Some(sensor) = self.player.tongue_box() {
             for e in &self.entities {
+                let food_bounds = match &e.kind {
+                    Kind::Walker(_) => Some(WALKER_BOX),
+                    Kind::Star(p)
+                        if e.collected == 0
+                            && p.pickup_delay == 0
+                            && !self.player.blocks_step() =>
+                    {
+                        Some(p.bounds())
+                    }
+                    Kind::Pickup(p)
+                        if p.moving != 0
+                            && e.collected == 0
+                            && p.pickup_delay == 0
+                            && !self.player.blocks_step() =>
+                    {
+                        Some(p.bounds())
+                    }
+                    _ => None,
+                };
                 if e.status == 1
-                    && matches!(e.kind, Kind::Walker(_))
-                    && overlap(e.body, WALKER_BOX, Body::default(), sensor)
+                    && food_bounds.is_some_and(|b| overlap(e.body, b, Body::default(), sensor))
                 {
                     return Err(unsupported(
                         "tongue food capture/request consumer is not implemented",
@@ -481,6 +648,17 @@ impl Run {
         }
         stats.terrain_queries += map.terrain_queries.get();
         Ok(())
+    }
+    pub fn score(&self) -> i64 {
+        let remaining = i64::MAX - self.player.life.health;
+        if self.redcoins > remaining {
+            return i64::MAX;
+        }
+        let remaining = remaining - self.redcoins;
+        if self.flowers > remaining / 10 {
+            return i64::MAX;
+        }
+        self.player.life.health + self.redcoins + 10 * self.flowers
     }
     pub fn wire(&self, world: &World, schema: &Schema) -> WireSnapshot {
         let level = schema
@@ -532,6 +710,8 @@ impl Run {
             "play_ticks" => self.play_ticks,
             "total_play_ticks" => self.total_play_ticks,
             "coins" => self.coins,
+            "redcoins" => self.redcoins,
+            "flowers" => self.flowers,
             "flowers_target" => world.flowers_target,
             "redcoins_target" => world.redcoins_target,
             "sound_serial" => self.sound.serial,
@@ -549,6 +729,14 @@ impl Run {
         }
     }
     fn entity_value(&self, e: &Entity, n: &str, world: &World) -> Option<i64> {
+        let specific = match &e.kind {
+            Kind::Pickup(p) => p.field(n),
+            Kind::Star(p) => p.field(n),
+            _ => None,
+        };
+        if specific.is_some() {
+            return specific;
+        }
         let p = &world.maps[0].placements[e.source];
         Some(match n {
             "source_index" => e.source as i64,
@@ -562,8 +750,10 @@ impl Run {
             "facing" => e.facing,
             "status" => e.status,
             "offscreen" => e.offscreen,
+            "collected" => e.collected,
+            "checkpoint_collected" => e.checkpoint_collected,
             "spawn_mode" | "can_despawn" | "can_respawn" => {
-                i64::from(matches!(e.kind, Kind::Walker(_)))
+                i64::from(matches!(e.kind, Kind::Walker(_) | Kind::Star(_)))
             }
             "layer" => {
                 if matches!(e.kind, Kind::Walker(_)) {
@@ -648,6 +838,8 @@ impl Run {
             || self.total_play_ticks < self.play_ticks
             || self.attempt_ticks < 0
             || self.coins < 0
+            || self.redcoins < 0
+            || self.flowers < 0
             || self.deaths < 0
             || !(0..=1).contains(&self.goal_reached)
             || ![-1, 1].contains(&p.facing)
@@ -718,10 +910,37 @@ impl Run {
             if !(0..=3).contains(&e.status)
                 || ![-1, 1].contains(&e.facing)
                 || !(0..=1).contains(&e.offscreen)
+                || ![0, 1].contains(&e.collected)
+                || ![0, 1].contains(&e.checkpoint_collected)
                 || !(-position_limit..=position_limit).contains(&e.body.x)
                 || !(-position_limit..=position_limit).contains(&e.body.y)
             {
                 return Err(unsupported("entity lifecycle validation"));
+            }
+            if let Kind::Pickup(p) = &e.kind {
+                if !p.valid()
+                    || !(-position_limit..=position_limit).contains(&p.collect_y)
+                    || p.collect_ticks != 0
+                        && (p.kind != crate::items::PickupKind::RedCoin || e.collected != 1)
+                    || p.held != 0
+                    || p.request_cursor != 0
+                    || p.origin_token != 0
+                    || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
+                    || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
+                {
+                    return Err(unsupported("pickup state/request path"));
+                }
+            }
+            if let Kind::Star(p) = &e.kind {
+                if !p.valid()
+                    || p.held != 0
+                    || p.request_cursor != 0
+                    || p.origin_token != 0
+                    || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
+                    || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
+                {
+                    return Err(unsupported("health-drop state/request path"));
+                }
             }
             if let Kind::Pad(pad) = &e.kind {
                 if !(0..=12).contains(&pad.squash)

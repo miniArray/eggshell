@@ -7,12 +7,10 @@ use eggshell_spike_core::{
 use std::{fs, path::PathBuf};
 fn run(restores: bool) {
     let name = std::env::var("CORE_FIXTURE").unwrap();
-    assert!(["bounce", "bounce.pad", "lagoon"].contains(&name.as_str()));
-    let base = name.split('.').next().unwrap();
+    assert!(["bounce", "bounce.pad", "lagoon", "collections"].contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let root = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
-    let level =
-        fs::read_to_string(project.join(format!("tests/fixtures/{base}.level.json"))).unwrap();
+    let level = fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap();
     let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
     let metadata = fs::read_to_string(root.join("schema.json")).unwrap();
     let schema = Schema::parse(&metadata).unwrap();
@@ -97,6 +95,28 @@ fn run(restores: bool) {
             squash_ticks > 0,
             "named normal route must actually activate the pad"
         );
+    } else if name == "collections" {
+        let hud = session.presentation().hud;
+        println!(
+            "COLLECTION_READOUT coins={} redcoins={} flowers={} health={} score={} collections={}",
+            hud.coins,
+            hud.redcoins,
+            hud.flowers,
+            hud.health,
+            hud.score,
+            session.stats().collections
+        );
+        assert_eq!(
+            (
+                hud.coins,
+                hud.redcoins,
+                hud.flowers,
+                hud.health,
+                hud.score,
+                session.stats().collections
+            ),
+            (1, 1, 1, 11, 22, 4)
+        );
     } else {
         assert!(tongue_ticks > 0);
         if name == "lagoon" {
@@ -114,6 +134,39 @@ fn admitted_fixture_has_uninterrupted_every_tick_parity() {
 #[ignore = "requires original Godot fixture stream"]
 fn admitted_fixture_has_original_restore_continuation() {
     run(true);
+}
+#[test]
+#[ignore = "requires original schema and collection verification course"]
+fn popup_coordinate_headroom_refuses_atomically() {
+    if std::env::var("CORE_FIXTURE").unwrap() != "collections" {
+        return;
+    }
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let root = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
+    let metadata = fs::read_to_string(root.join("schema.json")).unwrap();
+    let schema = Schema::parse(&metadata).unwrap();
+    let mut session = Session::load(
+        &fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap(),
+        &fs::read_to_string(project.join("src/level/collision_table.json")).unwrap(),
+        &metadata,
+    )
+    .unwrap();
+    let before = session.snapshot().unwrap();
+    let mut wire = WireSnapshot::decode(&before, session.world().identity, &schema).unwrap();
+    let red = wire.entities.iter_mut().find(|e| e.code == "o2").unwrap();
+    let fields = schema.entity_fields("o2");
+    for (name, value) in [
+        ("collect_y", i64::MIN),
+        ("collect_ticks", 1),
+        ("collected", 1),
+    ] {
+        let index = fields.iter().position(|f| f.0 == name).unwrap();
+        red.values[index] = value;
+    }
+    let malformed = wire.encode(&schema).unwrap();
+    assert!(session.restore(&malformed).is_err());
+    assert_eq!(session.snapshot().unwrap(), before);
+    assert_eq!(session.stats().restore_count, 0);
 }
 #[test]
 #[ignore = "requires original Godot schema"]

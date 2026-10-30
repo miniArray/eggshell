@@ -28,6 +28,44 @@ impl Previous {
 fn pos(b: crate::body::Body) -> Position {
     Position { x: b.x, y: b.y }
 }
+fn item_alpha(remaining: i64) -> f64 {
+    let period = if remaining < 120 { 6 } else { 12 };
+    if remaining > 0 && remaining < 240 && remaining % period >= period / 2 {
+        0.0
+    } else {
+        1.0
+    }
+}
+fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
+    let flower = p.kind == crate::items::PickupKind::Flower;
+    let red = p.kind == crate::items::PickupKind::RedCoin;
+    let animation = if flower {
+        "Animation 1"
+    } else if collected != 0 {
+        "RedCollected"
+    } else if p.enabled == 0 {
+        if red {
+            "RedDotted"
+        } else {
+            "Dotted"
+        }
+    } else if red {
+        "Red"
+    } else {
+        "Yellow"
+    };
+    VisualState {
+        animation: Some(animation.into()),
+        frame: Some(if flower { 0 } else { p.phase * 8 / 60 % 4 }),
+        rotation_degrees: Some(if flower {
+            crate::math::sine(p.phase, 60, 10000).expect("bounded flower sway") as f64 / 1000.0
+        } else {
+            0.0
+        }),
+        alpha: item_alpha(p.despawn_ticks),
+        ..VisualState::default()
+    }
+}
 fn pad_visual(large: bool, remaining: i64) -> VisualState {
     let size = if large { 48.0 } else { 32.0 };
     let squash = remaining.min(12 - remaining) as f64;
@@ -154,8 +192,8 @@ pub(crate) fn sample(
         companion_phase: p.life.companion_mode,
         health: p.life.health,
         coins: run.coins,
-        red_coins: 0,
-        flowers: 0,
+        red_coins: run.redcoins,
+        flowers: run.flowers,
     };
     let aux = |visible, layer, facing, animation: &str, motion| AuxiliaryPicture {
         motion,
@@ -199,17 +237,17 @@ pub(crate) fn sample(
         2..=5 => "Respawn".to_string(),
         6 => "Checkpoint".to_string(),
         7 if p.life_ticks > 60 => "Goal".to_string(),
-        7 => format!("Score {}", p.life.health),
-        8 => format!("Complete  Score {}", p.life.health),
+        7 => format!("Score {}", run.score()),
+        8 => format!("Complete  Score {}", run.score()),
         _ if p.life.separated != 0 => "Rescue".to_string(),
         _ => String::new(),
     };
     let hud = HudPicture {
         health: p.life.health,
         coins: run.coins,
-        redcoins: 0,
+        redcoins: run.redcoins,
         redcoins_target: world.redcoins_target,
-        flowers: 0,
+        flowers: run.flowers,
         flowers_target: world.flowers_target,
         hits: p.life.hits,
         deaths: run.deaths,
@@ -217,7 +255,7 @@ pub(crate) fn sample(
         life_phase: p.life_phase,
         life_ticks: p.life_ticks,
         separated: p.life.separated != 0,
-        score: p.life.health,
+        score: run.score(),
         status,
     };
     let entities = run
@@ -227,7 +265,18 @@ pub(crate) fn sample(
         .map(|(index, e)| {
             let source = &world.maps[0].placements[e.source];
             let (bounds, visual) = match &e.kind {
-                Kind::Goal => ([0; 4], VisualState::default()),
+                Kind::Goal | Kind::Decor => ([0; 4], VisualState::default()),
+                Kind::Pickup(pickup) => (pickup.bounds(), pickup_visual(pickup, e.collected)),
+                Kind::Star(star) => (
+                    star.bounds(),
+                    VisualState {
+                        animation: Some("Jump".into()),
+                        frame: Some((star.phase / 5).min(2)),
+                        flip_h: Some(e.facing > 0),
+                        alpha: item_alpha(star.despawn_ticks),
+                        ..VisualState::default()
+                    },
+                ),
                 Kind::Bridge => {
                     let crate::PreparedPlacement::Bridge { geometry_index } = source.prepared
                     else {
@@ -277,6 +326,12 @@ pub(crate) fn sample(
                 visible: e.status != 3
                     && match &e.kind {
                         Kind::Pad(pad) => pad.active,
+                        Kind::Pickup(p) => {
+                            e.status == 1
+                                && p.held == 0
+                                && (e.collected == 0 || p.collect_ticks > 0)
+                        }
+                        Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
                         _ => true,
                     },
                 held: false,
