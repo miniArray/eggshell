@@ -90,12 +90,17 @@ impl Player {
             ]
         }
     }
+    /// moves.gd tongue_box: the eating tip, only with an empty mouth.
     pub fn tongue_box(&self) -> Option<[i64; 4]> {
-        (self.action == 4 && [1, 2].contains(&self.tongue.phase))
+        (self.action == 4 && [1, 2].contains(&self.tongue.phase) && self.food.held_id == 0)
             .then(|| self.tongue_sensor(self.tongue.length))
     }
+    /// moves.gd tongue_reach_box: rescue uses the whole reach, held food or not.
     pub fn tongue_reach(&self) -> Option<[i64; 4]> {
-        let mut b = self.tongue_box()?;
+        if self.action != 4 || ![1, 2].contains(&self.tongue.phase) {
+            return None;
+        }
+        let mut b = self.tongue_sensor(self.tongue.length);
         let [x, y] = self.mouth();
         if self.tongue.axis != 0 {
             b[3] = b[3].max(y);
@@ -105,17 +110,17 @@ impl Player {
         }
         Some(b)
     }
-    pub fn start_tongue(&mut self, map: &Probe, sound: &mut Sound) {
-        self.water.dive = 0;
-        self.water.transition = 0;
+    /// The tongue branch of moves.gd _actions (axis, dive and transition are set by the caller).
+    pub fn start_tongue_at(&mut self, map: &Probe, pressed: u8, sound: &mut Sound) {
         self.set_action(4, sound);
+        let axis = self.tongue.axis;
         self.tongue = Tongue {
+            axis,
             phase: 1,
             ..Tongue::default()
         };
-        let x = self.body.x + self.facing * 32 * S;
-        let y = self.body.y - 24 * S;
-        if overlaps(map, [x - 12 * S, y - 12 * S, x + 12 * S, y + 12 * S]) {
+        self.food.swallow_queue = i64::from(pressed & 32 != 0);
+        if overlaps(map, self.probe(false)) {
             self.tongue.phase = 3;
         }
     }
@@ -148,7 +153,7 @@ impl Player {
         }
         let mut last_clear = (16 * S).min(desired);
         let mut candidate = last_clear;
-        while candidate < desired + S {
+        while self.food.held_id == 0 && candidate < desired + S {
             let length = candidate.min(desired);
             if overlaps(map, self.tongue_sensor(length)) {
                 desired = last_clear;

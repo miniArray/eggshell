@@ -61,14 +61,8 @@ fn stride_session_produces_original_every_tick_state_and_restores() {
 #[test]
 #[ignore = "requires fresh original Godot Stride schema"]
 fn unsupported_input_and_target_refuse_without_fake_success() {
-    let (level, collision, metadata, _) = data();
-    let mut session = Session::load(&level, &collision, &metadata).unwrap();
-    let before = session.snapshot().unwrap();
-    assert!(matches!(
-        session.advance(64),
-        Err(Error::Unsupported { .. })
-    ));
-    assert_eq!(before, session.snapshot().unwrap());
+    let (_, collision, metadata, _) = data();
+    // THROW (64) is a supported input since P1; only the target load is still refused.
     let target = fs::read_to_string(
         PathBuf::from(std::env::var("HOME").unwrap())
             .join(".local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"),

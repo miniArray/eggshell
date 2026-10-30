@@ -30,6 +30,7 @@ pub(crate) struct Player {
     pub life: crate::life::Life,
     pub tongue: crate::tongue::Tongue,
     pub water: crate::water::Water,
+    pub food: crate::food::Food,
     pub action_wet: i64,
     pub facing: i64,
     pub movement: i64,
@@ -75,6 +76,7 @@ impl Player {
             life: crate::life::Life::default(),
             tongue: crate::tongue::Tongue::default(),
             water: crate::water::Water::default(),
+            food: crate::food::Food::default(),
             action_wet: 0,
             facing,
             movement: 0,
@@ -114,32 +116,70 @@ impl Player {
             goal_y: 0,
         }
     }
+    /// moves.gd player_box: pose heights, empty or full mouth.
     pub fn bounds(&self) -> [i64; 4] {
-        if let Some(bounds) = self.pound_bounds() {
-            return bounds;
-        }
-        if self.action == 4 {
-            [
-                -12 * S,
-                -if self.tongue.axis != 0 { 60 } else { 50 } * S,
-                12 * S,
-                0,
-            ]
-        } else if self.action == 9 && (3..=5).contains(&self.action_tick) {
-            [-14 * S, -56 * S, 10 * S, 0]
+        let full = self.food.full();
+        let tick = self.action_tick;
+        let mut height = 56;
+        let mut bottom = 0;
+        if self.duck != 0 {
+            let heights = if full { [56, 56, 32] } else { [52, 48, 32] };
+            height = heights[(self.posture_tick * 24 / 60).min(2) as usize];
+        } else if [1, 2].contains(&self.action) {
+            let frame = if self.action == 2 {
+                6
+            } else {
+                (tick * 36 / 60).min(6)
+            } as usize;
+            height = if full {
+                [52, 52, 56, 50, 48, 58, 54][frame]
+            } else {
+                [52, 52, 56, 50, 48, 54, 50][frame]
+            };
+            bottom = if full {
+                [0, 4, 2, 0, 0, 2, 0][frame]
+            } else {
+                0
+            };
+        } else if self.action == 3 {
+            height = if full {
+                [44, 38, 40][(tick * 16 / 60).min(2) as usize]
+            } else if tick < 4 {
+                40
+            } else {
+                36
+            };
+        } else if self.action == 4 {
+            height = if self.tongue.axis != 0 { 60 } else { 50 };
+        } else if self.action == 5 {
+            height = if self.tongue.axis != 0 {
+                if self.action_wet != 0 {
+                    54
+                } else {
+                    56
+                }
+            } else {
+                50
+            };
+        } else if self.action == 7 {
+            height = if self.tongue.axis != 0 {
+                56
+            } else if self.water.swimming != 0 {
+                50
+            } else {
+                54
+            };
+        } else if self.action == 9 && (3..=5).contains(&tick) {
+            return [-14 * S, -56 * S, 10 * S, 0];
         } else if self.action == 0 && self.water.swimming != 0 {
-            let mut height = 56;
-            let mut bottom = 0;
             if self.water.transition != 0 {
                 height = [54, 50, 54][(2).min((9 - self.water.transition) * 20 / 60) as usize];
             } else if self.water.dive != 0 {
                 height = if self.body.vx != 0 { 42 } else { 54 };
                 bottom = if self.body.vx != 0 { 14 } else { 0 };
             }
-            [-12 * S, -height * S, 12 * S, bottom * S]
-        } else {
-            NORMAL
         }
+        [-12 * S, -height * S, 12 * S, bottom * S]
     }
     pub fn attach(&mut self) {
         self.recovery_x = self.body.x - self.facing * 10 * S;
@@ -246,6 +286,7 @@ impl Player {
         self.boosted_flutter = 1;
         self.gravity_tick = 0;
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn advance(
         &mut self,
         map: &crate::body::Probe,
@@ -253,35 +294,29 @@ impl Player {
         pressed: u8,
         released: u8,
         frame: i64,
+        rng: &mut crate::math::Rng,
         sound: &mut Sound,
     ) {
         self.pound_delay = (self.pound_delay - 1).max(0);
         self.flutter_cooldown = (self.flutter_cooldown - 1).max(0);
-        if self.action != 0 {
-            self.action_tick = (self.action_tick + 1).min(35);
-        }
-        self.tick_pound(input, sound);
-        if self.action == 4 && self.action_tick >= self.tongue_end_tick() {
-            self.set_action(0, sound);
-            self.tongue.length = 16 * S;
-        }
-        if self.action == 9 && self.action_tick >= 10 || self.action == 10 && self.action_tick >= 4
-        {
-            self.set_action(0, sound);
-        }
+        self.tick_action(input, rng, sound);
         self.turn_ticks = (self.turn_ticks - 1).max(0);
         if self.turn_ticks == 0 {
             self.turn = 0;
         }
+        self.tick_pound(input, sound);
         if self.life.hurt != 0 {
+            // moves.gd interrupt(): held food and eggs stay.
             self.action = 0;
             self.action_tick = 0;
+            self.food.aim = 0;
             self.duck = 0;
             self.look = 0;
-            self.tongue.phase = 0;
-            self.tongue.length = 16 * S;
             self.turn = 0;
             self.turn_ticks = 0;
+            self.tongue.length = 16 * S;
+            self.tongue.phase = 0;
+            self.food.swallow_queue = 0;
             self.gravity_tick = 0;
             self.jump_buffer = 0;
             self.cancel_flutter();
@@ -323,28 +358,27 @@ impl Player {
         }
         if self.water.swimming != 0 {
             self.cancel_flutter();
+            self.food.aim = 0;
             if [1, 2, 3].contains(&self.action) {
                 self.set_action(0, sound);
             }
         }
+        // move_facing.gd update (move_snow is refused at admission, so "free" is air only).
         let right = input & 2 != 0;
         let left = input & 1 != 0;
         let free = self.on_floor == 0;
-        let face_locked = [1, 2, 3, 4].contains(&self.action) || self.water.swimming != 0;
+        let face_locked = [1, 2, 3, 4, 5, 6, 7].contains(&self.action)
+            || self.food.aim != 0
+            || self.water.swimming != 0
+            || self.duck != 0;
         if !face_locked && right && (free && !left || self.on_floor != 0 && self.body.vx > 0) {
             self.facing = 1;
         }
         if !face_locked && left && (free && !right || self.on_floor != 0 && self.body.vx < 0) {
             self.facing = -1;
         }
-        let pounding = self.life.hurt == 0 && self.start_pound(input, sound);
-        if !pounding
-            && self.life.hurt == 0
-            && pressed & 8 != 0
-            && ![1, 2, 3, 4].contains(&self.action)
-            && self.push == 0
-        {
-            self.start_tongue(map, sound);
+        if self.life.hurt == 0 {
+            self.actions(map, input, pressed, false, rng, sound);
         }
         self.update_posture(map, input, sound);
         let mut bounds = self.bounds();
@@ -407,7 +441,7 @@ impl Player {
         } else {
             1296
         };
-        if self.action == 4 {
+        if [4, 5, 7, 6].contains(&self.action) {
             self.body.vx = self.body.vx.clamp(-200 * 60, 200 * 60);
         }
         let acceleration = if direction != 0 {
@@ -420,7 +454,11 @@ impl Player {
         } else {
             0
         };
-        if was_grounded && self.action == 0 && direction * self.body.vx < -320 * 60 {
+        if was_grounded
+            && self.food.aim == 0
+            && self.action == 0
+            && direction * self.body.vx < -320 * 60
+        {
             self.turn = direction;
             self.turn_ticks = 30;
         }
@@ -445,7 +483,7 @@ impl Player {
             if self.action == 2 {
                 4096
             } else {
-                if self.gravity_tick != 0 && self.action != 0 {
+                if self.gravity_tick != 0 && (self.action != 0 || self.food.aim != 0) {
                     self.gravity_tick = 0;
                 }
                 if self.gravity_tick != 0 {
@@ -524,7 +562,7 @@ impl Player {
             self.turn = 0;
             self.turn_ticks = 0;
         }
-        if self.water.swimming != 0 && self.action != 4 {
+        if self.water.swimming != 0 && self.food.aim == 0 && ![4, 5, 7].contains(&self.action) {
             self.facing = if self.body.vx > 0 {
                 1
             } else if self.body.vx < 0 {

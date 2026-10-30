@@ -71,6 +71,10 @@ impl Rng {
     pub fn saved(self) -> i64 {
         self.0
     }
+    /// One step of the shared LCG, returning the new state (moves.gd seed spread).
+    pub fn lcg_step(&mut self) -> i64 {
+        self.next()
+    }
     fn next(&mut self) -> i64 {
         self.0 = self.0.wrapping_mul(1_103_515_245).wrapping_add(12_345) & 0x7fff_ffff;
         self.0

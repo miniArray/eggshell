@@ -6,6 +6,7 @@ mod body;
 mod checkpoint;
 mod collision_grid;
 mod entity;
+mod food;
 mod items;
 mod life;
 pub mod math;

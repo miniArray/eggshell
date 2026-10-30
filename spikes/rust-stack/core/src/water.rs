@@ -76,7 +76,8 @@ impl Player {
             }
         }
         w.deep = i64::from(deep);
-        if self.action != 4 {
+        // posture_allowed: not during the tongue, a spit or an emission.
+        if ![4, 5, 7].contains(&self.action) {
             let dive = i64::from(input & 32 != 0 && w.jump == 0);
             if dive != w.dive {
                 w.dive = dive;

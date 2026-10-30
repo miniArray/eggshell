@@ -590,13 +590,27 @@ impl Player {
         if self.life_phase != 0 {
             return false;
         }
+        // move_pose.gd pit_height: the airborne pose heights, empty or full mouth.
+        let full = self.food.full();
         let pit_height =
             if self.on_floor != 0 || self.water.swimming != 0 || ![0, 10].contains(&self.action) {
                 62 * S
             } else if self.life.hurt != 0 {
                 64 * S
             } else if self.flutter_remaining != 0 {
-                68 * S
+                if full {
+                    70 * S
+                } else {
+                    68 * S
+                }
+            } else if self.body.vy < 0 {
+                if full {
+                    72 * S
+                } else {
+                    66 * S
+                }
+            } else if full {
+                64 * S
             } else {
                 66 * S
             };
@@ -609,8 +623,7 @@ impl Player {
             self.body.x + 12 * S,
             self.body.y,
         ];
-        if map.hazard_overlaps(rect)
-        {
+        if map.hazard_overlaps(rect) {
             return self.kill(3, false, sound);
         }
         if self.life.hurt_phase == 1 && self.on_floor != 0 {
@@ -624,7 +637,14 @@ impl Player {
         }
         false
     }
-    pub fn dead_body(&mut self, map: &Probe, input: u8, frame: i64, sound: &mut Sound) {
+    pub fn dead_body(
+        &mut self,
+        map: &Probe,
+        input: u8,
+        frame: i64,
+        rng: &mut crate::math::Rng,
+        sound: &mut Sound,
+    ) {
         if ![2, 3].contains(&self.life_phase) || ![1, 2, 5].contains(&self.life.death_cause) {
             return;
         }
@@ -640,7 +660,7 @@ impl Player {
         } else {
             0
         };
-        self.advance(map, steer, 0, 0, frame, sound);
+        self.advance(map, steer, 0, 0, frame, rng, sound);
         if steer == 0 && self.on_floor == 0 && self.previous_input & 3 != 0 {
             self.body.vx = approach(self.body.vx, 0, 1296);
         }

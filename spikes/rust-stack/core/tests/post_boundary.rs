@@ -45,7 +45,8 @@ fn post_and_pound_boundaries_refuse_atomically() {
         ("height", -1, false),
         ("colour", 17, false),
         ("spiked", 2, false),
-        ("move_look", 1, true),
+        // move_look=1 became legal with the UP input (P1); an out-of-range value stays refused.
+        ("move_look", 2, true),
         ("move_impact", -1, true),
         ("move_impact_x", i64::MAX, true),
     ] {
@@ -69,13 +70,8 @@ fn post_and_pound_boundaries_refuse_atomically() {
         assert_eq!(session.stats(), &stats);
         assert_eq!(session.presentation(), picture);
     }
-    for input in [16, 64, 128, 48] {
-        assert!(session.advance(input).is_err());
-        assert_eq!(session.snapshot().unwrap(), before);
-        assert_eq!(session.stats(), &stats);
-        assert_eq!(session.presentation(), picture);
-    }
-    println!("POST_POUND_REFUSAL_DONE malformed_restore=6 unsupported_input=4 normally_reached_impact=1 atomic_snapshot_stats_presentation=true");
+    // UP/THROW/LOCK inputs are supported since P1 (moves.gd actions), so no input refusal here.
+    println!("POST_POUND_REFUSAL_DONE malformed_restore=6 normally_reached_impact=1 atomic_snapshot_stats_presentation=true");
 }
 
 #[test]

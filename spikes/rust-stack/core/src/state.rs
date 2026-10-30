@@ -127,7 +127,8 @@ impl Run {
         for _ in 0..2 {
             solids.borrow_mut().begin(&run.entities);
             run.entities_step(&map, stats)?;
-            run.player.advance(&map, 0, 0, 0, 0, &mut run.sound);
+            run.player
+                .advance(&map, 0, 0, 0, 0, &mut run.rng, &mut run.sound);
             run.apply_post_updates(map.post_updates())?;
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
@@ -364,11 +365,6 @@ impl Run {
         world: &World,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
-        if input & !47 != 0 {
-            return Err(unsupported(
-                "admitted input is LEFT/RIGHT/JUMP/empty-mouth USE/DOWN; UP/THROW/LOCK actions remain unsupported",
-            ));
-        }
         if self.goal_reached != 0 {
             return Ok(());
         }
@@ -406,7 +402,7 @@ impl Run {
             }
         }
         self.player
-            .dead_body(&map, input, self.frame, &mut self.sound);
+            .dead_body(&map, input, self.frame, &mut self.rng, &mut self.sound);
         // The frozen world still receives callbacks from its moving dead player body.
         self.apply_post_updates(map.post_updates())?;
         if self.player.blocks_step() {
@@ -427,8 +423,15 @@ impl Run {
         };
         let (pressed, released) = if locked { (0, 0) } else { (pressed, released) };
         if self.player.captured_by == 0 {
-            self.player
-                .advance(&map, action, pressed, released, self.frame, &mut self.sound);
+            self.player.advance(
+                &map,
+                action,
+                pressed,
+                released,
+                self.frame,
+                &mut self.rng,
+                &mut self.sound,
+            );
             self.apply_post_updates(map.post_updates())?;
             // Contact phase 0 precedes actors (phase 1), regardless of placement order.
             for e in &mut self.entities {
@@ -952,28 +955,28 @@ impl Run {
             || p.support_bridge < 0
             || p.support_bridge > world.maps[0].bridges.len() as i64
             || !(0..=6).contains(&p.movement)
-            || !(0..=47).contains(&p.previous_input)
-            || p.previous_input & 16 != 0
-            || !(0..=47).contains(&p.pressed_input)
-            || p.pressed_input & 16 != 0
-            || ![0, 1, 2, 3, 4, 9, 10].contains(&p.action)
+            || !(0..=255).contains(&p.previous_input)
+            || !(0..=255).contains(&p.pressed_input)
+            || !(0..=11).contains(&p.action)
             || ![0, 1].contains(&p.duck)
-            || p.look != 0
+            || ![0, 1].contains(&p.look)
             || !(0..=9).contains(&p.posture_tick)
+            || !p.food.valid(p.water.swimming, p.duck)
             || !(0..=position_limit).contains(&p.impact)
             || !p.tongue.valid(p.action)
             || !p.water.valid()
             || ![0, 1].contains(&p.action_wet)
             || p.action_tick < 0
             || p.action_tick
-                >= if p.action == 9 {
-                    10
-                } else if p.action == 4 {
-                    p.tongue_end_tick()
-                } else if p.action == 10 {
-                    4
-                } else {
-                    36
+                >= match p.action {
+                    1 => 24,
+                    4 => p.tongue_end_tick(),
+                    5 | 9 => 10,
+                    6 => 25,
+                    8 => 13,
+                    10 => 4,
+                    11 => 35,
+                    _ => 36,
                 }
             || !(0..=6).contains(&p.jump_buffer)
             || !(0..=72).contains(&p.flutter_remaining)
@@ -1160,8 +1163,8 @@ impl Run {
 }
 macro_rules! fields {($($name:literal=>$($path:ident).+),*$(,)?)=>{
 impl Player{
-    pub fn field(&self,n:&str)->Option<i64>{Some(match n{$($name=>self.$($path).+,)*_=>return self.life.field(n)})}
-    pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>self.life.set_field(n,v)}}
+    pub fn field(&self,n:&str)->Option<i64>{Some(match n{$($name=>self.$($path).+,)*_=>return self.food.field(n).or_else(||self.life.field(n))})}
+    pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>self.food.set_field(n,v)||self.life.set_field(n,v)}}
 }};}
 fields! {
 "captured_by"=>captured_by,

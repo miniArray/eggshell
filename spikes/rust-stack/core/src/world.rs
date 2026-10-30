@@ -346,6 +346,17 @@ impl World {
                 });
             }
             let dice_colours = Vec::new();
+            // Snow braking (moves.gd _snow) and flowing water (water_flow.gd) change player
+            // motion; refuse until ported instead of moving the player wrongly.
+            if !omit_dice_colours
+                && layers
+                    .iter()
+                    .any(|l| ["snow64", "flowWater"].contains(&l.tilemap.as_str()))
+            {
+                return Err(Error::Unsupported {
+                    requirements: vec!["snow64/flowWater player motion".into()],
+                });
+            }
             maps.push(Map {
                 name: name.clone(),
                 width_pixels: width as i64,
