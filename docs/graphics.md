@@ -72,14 +72,17 @@ current saved tick before drawing. This policy never changes simulation state.
 animation frames and origins, transformed scenery children, and pixel-snap scale
 rounding. Sized looks use the current `view_state` result and each frame's size
 and origin ratios. Span bounds include stalks, spikes and nine-patch minimum
-sizes. Inactive enemies use their placement origin, not their live position.
+sizes. Spring bounds cover every squash and animation frame. Inactive enemies
+use their placement origin, not their live position.
 
 Only audited geometry-invariant `view_state` implementations can bypass look
 selection while hidden. If one gains a size or position change, remove it from
 `FIXED_LOOKS` or add a new proof. Unproven geometry stays on the full update path;
 this includes independent snow puffs and separate enemy heads. Runtime suffix
 nodes use the same proof where their art is position-anchored. Caches belong to
-the map build, not to saved state or the simulation's entity index.
+the map build. Pictures bind to the fixed placement prefix; they never use or
+change the simulation's spatial index. Hidden nodes receive a visibility write
+only when they leave the presented set, not on every render.
 
 `LevelView.viewport_aware = false` is a drawing-only reference for GPU parity
 tests. It is not a gameplay option. Public tests generate their own art and

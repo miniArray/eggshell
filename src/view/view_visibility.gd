@@ -12,7 +12,16 @@ static func needed(envelope: Variant, origin: Vector2, camera_rect: Variant) -> 
 	if not envelope is Rect2 or not camera_rect is Rect2:
 		return true
 	var bounds: Rect2 = envelope
-	return camera_rect.intersects(Rect2(bounds.position + origin, bounds.size), true)
+	bounds.position += origin
+	# Pack numbers can be finite doubles yet overflow the engine's Vector2 precision.
+	if (
+		not bounds.is_finite()
+		or not bounds.end.is_finite()
+		or bounds.size.x < 0
+		or bounds.size.y < 0
+	):
+		return true
+	return camera_rect.intersects(bounds, true)
 
 
 ## Rotation- and mirror-independent envelope for a rectangle about its origin.

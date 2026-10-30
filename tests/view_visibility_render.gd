@@ -54,6 +54,7 @@ func _run() -> void:
 					Vector2.ZERO,
 					Vector2(200, 250),
 					Vector2(700, 700),
+					Vector2(500, 1200),
 					Vector2(1500, 1500),
 					Vector2(2000, 2300),
 					Vector2(3300, 3300),
@@ -64,6 +65,8 @@ func _run() -> void:
 						Sim.advance(state, 0, world)
 						state.camera_x = roundi(point.x * State.SCALE)
 						state.camera_y = roundi(point.y * State.SCALE)
+						for spring: Dictionary in state.springs:
+							spring.squash = 6 * tick
 						for entity: Dictionary in state.entities:
 							if entity.code in ["o1", "o3"]:
 								entity.phase = 8 * tick
@@ -74,6 +77,15 @@ func _run() -> void:
 								% [density, size, zoom, point, tick]
 							)
 						)
+		# Geometry can change while its origin remains outside the camera. Cached
+		# look bounds must be replaced before the enlarged picture can draw.
+		state.camera_x = 0
+		state.camera_y = 1000 * State.SCALE
+		for width: int in [16, 2300, 16]:
+			for entity: Dictionary in state.entities:
+				if entity.id == "cloud":
+					entity.width = width * State.SCALE
+			await parity(state, "resized off-screen placement %d" % width)
 		# A restore, a map switch, and a return to an already built map cannot retain
 		# hidden nodes or stale animation frames from the previous camera.
 		var restored := Snapshot.decode(Snapshot.encode(state), world.identity, world)

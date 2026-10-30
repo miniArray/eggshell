@@ -31,7 +31,7 @@ static func create(density: int = 2) -> String:
 		}
 	}
 	for code: String in [
-		"o1", "o3", "o10", "o18", "o24", "e1", "e5", "e5_head", "d28", "d29", "d22", "d1"
+		"o1", "o3", "o10", "o11", "o18", "o24", "e1", "e5", "e5_head", "d28", "d29", "d22", "d1"
 	]:
 		manifest.objects[code] = art.duplicate(true)
 	for code: String in ["p2", "p6", "p11"]:
@@ -57,6 +57,7 @@ static func world() -> Dictionary:
 			"message": {"A": "o18", "X": 700, "Y": 600, "E1": "Visibility"},
 			"sized": {"A": "o24", "X": 800, "Y": 700},
 			"cloud": {"A": "p2", "X": 1000, "Y": 1000, "E1": 120},
+			"spring": {"A": "o11", "X": 500, "Y": 1200, "F": 3},
 			"stem": {"A": "p6", "X": 1400, "Y": 1400, "E1": 12, "E2": 900, "R": 30},
 			"spikes": {"A": "p11", "X": 1600, "Y": 1600, "E1": 8, "E2": 0},
 			"decor": {"A": "d28", "X": 2000, "Y": 2500, "E1": 600},

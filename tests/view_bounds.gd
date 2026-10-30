@@ -37,6 +37,10 @@ func _run() -> void:
 			"Top boundary at %s" % edge
 		)
 	check(Policy.needed(null, Vector2(999999, 999999), camera), "Unproven bounds always update")
+	for invalid: Rect2 in [Rect2(INF, 0, 1, 1), Rect2(0, 0, INF, 1), Rect2(10000, 0, -1, 1)]:
+		check(
+			Policy.needed(invalid, Vector2.ZERO, camera), "Unprovable numeric geometry fails open"
+		)
 	check(
 		Policy.needed(Rect2(10000, 10000, 1, 1), Vector2.ZERO, null),
 		"Reference mode always updates"
@@ -78,7 +82,7 @@ func geometry_checks(density: int) -> void:
 			snap_checks(node, density)
 		var shape := Bounds.geometry(node)
 		check(not shape.is_empty(), "Stress art has a proven shape: " + entity.id)
-		for size: float in [0, 0.001, 0.1, 1, 16, 100, 1000]:
+		for size: float in [0, 0.001, 0.01, 0.1, 1, 16, 100, 1000]:
 			for rotation: float in [0, 45, 90, 180]:
 				for frame in 3:
 					var look := {
@@ -105,9 +109,27 @@ func geometry_checks(density: int) -> void:
 								% [entity.id, density, size, rotation, frame]
 							)
 						)
+	spring_checks(view, state)
 	view.free()
 	viewport.free()
 	InputPack.remove(path)
+
+
+func spring_checks(view: Node2D, state: Dictionary) -> void:
+	view.viewport_aware = false
+	var envelope: Rect2 = view._spring_bounds[0]
+	var node: Sprite2D = view._spring_nodes[0]
+	for frame in 3:
+		state.frame = frame
+		for squash: int in [0, 3, 6, 9, 12]:
+			state.springs[0].squash = squash
+			view.render(state)
+			var actual := drawn_bounds(node)
+			actual.position -= Vector2(state.springs[0].x, state.springs[0].y) / State.SCALE
+			check(
+				envelope.grow(0.001).encloses(actual),
+				"Spring bound covers every squash and animation frame"
+			)
 
 
 func snap_checks(node: Sprite2D, density: int) -> void:

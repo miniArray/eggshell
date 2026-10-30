@@ -44,12 +44,16 @@ var _background := Background.new()
 var _hud_manifest: Dictionary = {}
 var _hud_pack := ""
 var _spring_nodes: Array[Sprite2D] = []
+var _spring_bounds: Array = []
+var _shown_springs: Dictionary = {}
 var _enemy_nodes: Array[Sprite2D] = []
 var _head_nodes: Array[Sprite2D] = []
 var _placed_nodes: Dictionary = {}
-var _placed_bounds: Dictionary = {}
-var _placed_geometry: Dictionary = {}
+var _placed_rows: Array[Dictionary] = []
+var _shown_placed: Dictionary = {}
 var _enemy_bounds: Array = []
+var _enemy_art: Array[Dictionary] = []
+var _shown_enemies: Dictionary = {}
 var _enemy_types: Array[Script] = []
 var _enemy_body_bounds: Array[Array] = []
 var _static_nodes: Array[Dictionary] = []
@@ -77,12 +81,16 @@ func _build_map(world: Dictionary, pack: String) -> void:
 	_player = Sprite2D.new()
 	_background = Background.new()
 	_spring_nodes.clear()
+	_spring_bounds.clear()
+	_shown_springs.clear()
 	_enemy_nodes.clear()
 	_head_nodes.clear()
 	_placed_nodes.clear()
-	_placed_bounds.clear()
-	_placed_geometry.clear()
+	_placed_rows.clear()
+	_shown_placed.clear()
 	_enemy_bounds.clear()
+	_enemy_art.clear()
+	_shown_enemies.clear()
 	_enemy_types.clear()
 	_enemy_body_bounds.clear()
 	_static_nodes.clear()
@@ -189,8 +197,26 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		if node.has_meta("placed_id"):
 			var id: String = node.get_meta("placed_id")
 			_placed_nodes[id] = node
-			_placed_bounds[id] = VisualBounds.placed(node, node.get_meta("placed_code"))
-			_placed_geometry[id] = VisualBounds.geometry(node)
+	# Placement rows are the same fixed prefix used by Runtime. Binding nodes to
+	# row indices avoids a whole-table walk and repeated id lookups every render.
+	for index in world.entities.size():
+		var source: Dictionary = world.entities[index]
+		if not _placed_nodes.has(source.id):
+			continue
+		var node: Sprite2D = _placed_nodes[source.id]
+		var envelope: Variant = VisualBounds.placed(node, node.get_meta("placed_code"))
+		node.visible = false
+		_placed_rows.append(
+			{
+				"index": index,
+				"node": node,
+				"type": Registry.lookup(source.code),
+				"envelope": envelope,
+				"geometry": VisualBounds.geometry(node) if envelope == null else {},
+				"last_look": null,
+				"look_bounds": null
+			}
+		)
 	# Packs without object art keep the diagnostic flat textures.
 	var spring_art := Dressing.object_art(manifest, pack, "o11")
 	for spring: Dictionary in world.springs:
@@ -212,6 +238,13 @@ func _build_map(world: Dictionary, pack: String) -> void:
 			Frames.apply(node, 0)
 			node.set_meta("base", size / float(node.texture.get_height()))
 		_root.add_child(node)
+		var transform := node.transform
+		# Squash ranges from 0 to 6: the widest picture adds 16 world pixels.
+		node.scale = Vector2((size + 16.0) / size, 1) * float(node.get_meta("base"))
+		var envelope: Variant = VisualBounds.tree(node, false)
+		_spring_bounds.append(Visibility.radial(envelope) if envelope is Rect2 else null)
+		node.transform = transform
+		node.visible = false
 		_spring_nodes.append(node)
 	var bridge_art := Dressing.object_art(manifest, pack, "p1")
 	for bridge: Dictionary in world.bridges:
@@ -239,6 +272,7 @@ func _build_map(world: Dictionary, pack: String) -> void:
 		var art := Dressing.object_art(manifest, pack, enemy.code, int(enemy.variant))
 		_enemy_nodes.append(actor_node(art, placeholder(enemy.code, 32)))
 		_enemy_nodes[-1].set_meta("entity_art", art)
+		_enemy_art.append(art)
 		_enemy_nodes[-1].set_meta("pack_variant", int(enemy.variant))
 		_enemy_bounds.append(VisualBounds.enemy(_enemy_nodes[-1], enemy.code))
 		var type := Registry.lookup(enemy.code)
@@ -251,6 +285,8 @@ func _build_map(world: Dictionary, pack: String) -> void:
 				else actor_node(head_art, _enemy_nodes[-1].texture)
 			)
 		)
+		_enemy_nodes[-1].visible = false
+		_head_nodes[-1].visible = false
 	_player.centered = false
 	_player.z_index = 11
 	_root.add_child(_player)
@@ -319,23 +355,36 @@ func render(state: Dictionary) -> void:
 		if child.visible:
 			Frames.apply(child, state.frame)
 	_player.position = Vector2(state.x, state.y) / State.SCALE
-	for entity: Dictionary in state.entities:
-		if _placed_nodes.has(entity.id):
-			var node: Sprite2D = _placed_nodes[entity.id]
-			var envelope: Variant = _placed_bounds[entity.id]
-			var look: Variant = null
-			if envelope == null and not (_placed_geometry[entity.id] as Dictionary).is_empty():
-				var type := Registry.lookup(entity.code)
-				look = type.view_state(entity, state) if type.has_method("view_state") else {}
-				envelope = VisualBounds.with_look(_placed_geometry[entity.id], look)
-			if not Visibility.needed(envelope, Vector2(entity.x, entity.y) / State.SCALE, camera):
-				node.visible = false
-				continue
-			node.position = Vector2(entity.x, entity.y) / State.SCALE
-			node.visible = not entity.collected
-			Dressing.update_placed(node, entity, state, look)
+	var shown := {}
+	for entry: Dictionary in _placed_rows:
+		var entity: Dictionary = state.entities[entry.index]
+		var envelope: Variant = entry.envelope
+		var look: Variant = null
+		if envelope == null and not (entry.geometry as Dictionary).is_empty():
+			var type: Script = entry.type
+			look = type.view_state(entity, state) if type.has_method("view_state") else {}
+			if look != entry.last_look:
+				entry.last_look = look.duplicate()
+				entry.look_bounds = VisualBounds.with_look(entry.geometry, look)
+			envelope = entry.look_bounds
+		if not Visibility.needed(envelope, Vector2(entity.x, entity.y) / State.SCALE, camera):
+			continue
+		var node: Sprite2D = entry.node
+		shown[entry.index] = node
+		Dressing.update_placed(node, entity, state, look)
+	# Only nodes that left the visible set need a scene-server visibility write.
+	for index: int in _shown_placed:
+		if not shown.has(index):
+			_shown_placed[index].visible = false
+	_shown_placed = shown
+	var shown_springs := {}
 	for index in _spring_nodes.size():
 		var ball: Dictionary = state.springs[index]
+		if not Visibility.needed(
+			_spring_bounds[index], Vector2(ball.x, ball.y) / State.SCALE, camera
+		):
+			continue
+		shown_springs[index] = true
 		var node := _spring_nodes[index]
 		Frames.apply(node, state.frame)
 		var size := 48.0 if _world.springs[index].large else 32.0
@@ -346,13 +395,18 @@ func render(state: Dictionary) -> void:
 			Vector2((size + 16.0 * squash / 6) / size, (size - 16.0 * squash / 6) / size)
 			* float(node.get_meta("base"))
 		)
+	for index: int in _shown_springs:
+		if not shown_springs.has(index):
+			_spring_nodes[index].visible = false
+	_shown_springs = shown_springs
+	var shown_enemies := {}
 	for index in _enemy_nodes.size():
 		var enemy: Dictionary = state.enemies[index]
 		var code: String = _world.enemies[index].code
 		var type := _enemy_types[index]
 		var bounds: Array = _enemy_body_bounds[index]
 		var node := _enemy_nodes[index]
-		var art: Dictionary = node.get_meta("entity_art", {})
+		var art: Dictionary = _enemy_art[index]
 		var head := _head_nodes[index]
 		var origin := Vector2(enemy.x, enemy.y) / State.SCALE
 		var inactive := inactive_shown(enemy)
@@ -365,9 +419,8 @@ func render(state: Dictionary) -> void:
 				bounds = type.bounds(enemy)
 			envelope = VisualBounds.at_body(envelope, art, bounds)
 		if not Visibility.needed(envelope, origin, camera):
-			node.visible = false
-			head.visible = false
 			continue
+		shown_enemies[index] = true
 		if bounds.is_empty():
 			bounds = type.bounds(enemy)
 		# Keep any tint another view helper gave the node while it is active.
@@ -410,6 +463,11 @@ func render(state: Dictionary) -> void:
 				)
 			else:
 				place_actor(head, enemy, Plant.head_box(enemy), false)
+	for index: int in _shown_enemies:
+		if not shown_enemies.has(index):
+			_enemy_nodes[index].visible = false
+			_head_nodes[index].visible = false
+	_shown_enemies = shown_enemies
 	_player.visible = (
 		not state.captured_by and (not state.invulnerable or (120 - state.invulnerable) % 6 < 3)
 	)

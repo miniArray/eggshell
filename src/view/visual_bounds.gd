@@ -198,7 +198,7 @@ static func with_look(shape: Dictionary, look: Dictionary) -> Variant:
 			extent[axis] = maxf(
 				extent[axis] + shape.raw[axis] * 0.5 / density, shape.raw[axis] / density
 			)
-			if minimum_scale[axis] > 0.0001:
+			if minimum_scale[axis] > 0:
 				snap_ratio[axis] = maxf(
 					1 + 0.5 / (density * minimum_scale[axis]), 1.0 / (density * minimum_scale[axis])
 				)
