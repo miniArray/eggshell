@@ -8,7 +8,7 @@ out="$HOME/eggshell-remote/artifacts/full-rust-ab/core"
 mkdir -p "$out"
 chmod 700 "$out"
 printf 'ORACLE_ENV host=%s NIX_CONFIG=%s source=%s\n' "$(hostname)" "$NIX_CONFIG" "$(git rev-parse HEAD)"
-GODOT=${GODOT:-godot}
+GODOT=$(command -v "${GODOT:-godot}")
 version=$("$GODOT" --version)
 [[ "$version" == 4.7.2.* ]] || { printf 'Expected reference Godot 4.7.2, got %s\n' "$version" >&2; exit 1; }
 printf 'ORACLE_GODOT executable=%s version=%s\n' "$(command -v "$GODOT")" "$version"
