@@ -4,17 +4,36 @@ use std::cell::Cell;
 pub(crate) struct Probe<'a> {
     map: &'a Map,
     pub terrain_queries: Cell<u64>,
+    polygon: Option<&'a [crate::Position]>,
+    parent_counter: Option<&'a Cell<u64>>,
 }
 impl<'a> Probe<'a> {
     pub fn new(map: &'a Map) -> Self {
         Self {
             map,
             terrain_queries: Cell::new(0),
+            polygon: None,
+            parent_counter: None,
+        }
+    }
+    pub fn with_polygon<'b>(&'b self, points: &'b [crate::Position]) -> Probe<'b> {
+        Probe {
+            map: self.map,
+            terrain_queries: Cell::new(0),
+            polygon: Some(points),
+            parent_counter: Some(&self.terrain_queries),
         }
     }
     pub fn terrain_overlaps(&self, bounds: [i64; 4]) -> bool {
         self.terrain_queries.set(self.terrain_queries.get() + 1);
         self.map.terrain_overlaps(bounds)
+    }
+}
+impl Drop for Probe<'_> {
+    fn drop(&mut self) {
+        if let Some(parent) = self.parent_counter {
+            parent.set(parent.get() + self.terrain_queries.get());
+        }
     }
 }
 impl std::ops::Deref for Probe<'_> {
@@ -43,7 +62,26 @@ impl Body {
             self.x + b[2] + dx,
             self.y + b[3] + dy,
         ];
-        map.border_overlaps(q) || map.terrain_overlaps(q)
+        let border = map.border_overlaps(q);
+        if !border && !map.terrain_overlaps(q) {
+            return false;
+        }
+        if let Some(polygon) = map.polygon {
+            if border {
+                return true;
+            }
+            let points: Vec<_> = polygon
+                .iter()
+                .map(|p| crate::Position {
+                    x: p.x + self.x + dx,
+                    y: p.y + self.y + dy,
+                })
+                .collect();
+            map.terrain_queries.set(map.terrain_queries.get() + 1);
+            map.map.terrain_polygon_overlaps(&points, q)
+        } else {
+            true
+        }
     }
     pub fn floor(&self, map: &Probe, b: [i64; 4]) -> i64 {
         if !self.overlaps(map, b, 0, 0) && self.overlaps(map, b, 0, S) {
@@ -53,7 +91,18 @@ impl Body {
         }
     }
     pub fn wall(&self, map: &Probe, b: [i64; 4], direction: i64) -> bool {
-        self.overlaps(map, b, direction * S, 0) && self.overlaps(map, b, direction * S, -S)
+        self.wall_probe(map, b, direction, 1, 1)
+    }
+    pub fn wall_probe(
+        &self,
+        map: &Probe,
+        b: [i64; 4],
+        direction: i64,
+        reach: i64,
+        lift: i64,
+    ) -> bool {
+        self.overlaps(map, b, direction * reach * S, 0)
+            && self.overlaps(map, b, direction * reach * S, -lift * S)
     }
     pub fn refine(&mut self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) {
         let (mut sx, mut sy) = (self.x, self.y);

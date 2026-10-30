@@ -9,6 +9,7 @@ pub(crate) struct Previous {
     pub companion: Position,
     pub follow: Position,
     pub entities: Vec<Position>,
+    pub rescuers: [Position; 4],
 }
 impl Previous {
     pub fn of(run: &Run) -> Self {
@@ -20,6 +21,7 @@ impl Previous {
             },
             follow: run.camera,
             entities: run.entities.iter().map(|e| pos(e.body)).collect(),
+            rescuers: run.player.life.rescuers,
         }
     }
 }
@@ -38,7 +40,9 @@ pub(crate) fn sample(
     let p = &run.player;
     let frame = run.frame;
     let mut tick = p.action_tick;
-    let name = if p.action == 9 {
+    let name = if p.life.hurt != 0 {
+        "Hurt0"
+    } else if p.action == 9 {
         "HeadBump0"
     } else if p.push != 0 {
         tick = frame;
@@ -82,19 +86,26 @@ pub(crate) fn sample(
         pose_ticks: p.action_tick,
         selected_pose,
         body_bounds: p.bounds(),
-        visual: VisualState::default(),
-        lifetime: if p.life_phase == 0 {
-            Lifetime::Active
-        } else {
-            Lifetime::Goal
+        visual: VisualState {
+            alpha: if p.life.invulnerable != 0 { 0.5 } else { 1.0 },
+            ..VisualState::default()
+        },
+        lifetime: match p.life_phase {
+            1 => Lifetime::Rescuing,
+            2 | 3 => Lifetime::Dying,
+            4 | 5 => Lifetime::Respawning,
+            7 | 8 => Lifetime::Goal,
+            _ if p.life.hurt != 0 => Lifetime::Hurt,
+            _ if p.life.separated != 0 => Lifetime::Separated,
+            _ => Lifetime::Active,
         },
         life_phase: p.life_phase,
         on_floor: p.on_floor != 0,
         swimming: false,
-        visible: true,
+        visible: p.life.invulnerable == 0 || (120 - p.life.invulnerable) % 6 < 3,
         companion,
-        companion_phase: 0,
-        health: 10,
+        companion_phase: p.life.companion_mode,
+        health: p.life.health,
         coins: run.coins,
         red_coins: 0,
         flowers: 0,
@@ -109,37 +120,58 @@ pub(crate) fn sample(
         visual: VisualState::default(),
     };
     let companions = CompanionPictures {
-        mode: 0,
-        companion: aux(true, 13, p.facing, "idle", companion),
-        bubble: aux(false, 12, 1, "", companion),
-        rescuers: std::array::from_fn(|_| aux(false, 13, 1, "", Motion::default())),
+        mode: p.life.companion_mode,
+        companion: aux(
+            true,
+            13,
+            if p.life.companion_mode == 0 {
+                p.facing
+            } else {
+                1
+            },
+            if p.life.companion_mode == 2 {
+                "cry"
+            } else {
+                "idle"
+            },
+            companion,
+        ),
+        bubble: aux(p.life.companion_mode == 2, 12, 1, "", companion),
+        rescuers: std::array::from_fn(|index| {
+            aux(
+                p.life.rescue_active != 0 && [2, 4].contains(&p.life.companion_mode),
+                13,
+                1,
+                "",
+                motion(previous.rescuers[index], p.life.rescuers[index]),
+            )
+        }),
     };
-    let status = if p.life_phase == 7 {
-        if p.life_ticks > 60 {
-            "Goal"
-        } else {
-            "Score 10"
-        }
-    } else if p.life_phase == 8 {
-        "Complete  Score 10"
-    } else {
-        ""
+    let status = match p.life_phase {
+        1 => "Rescued".to_string(),
+        2..=5 => "Respawn".to_string(),
+        6 => "Checkpoint".to_string(),
+        7 if p.life_ticks > 60 => "Goal".to_string(),
+        7 => format!("Score {}", p.life.health),
+        8 => format!("Complete  Score {}", p.life.health),
+        _ if p.life.separated != 0 => "Rescue".to_string(),
+        _ => String::new(),
     };
     let hud = HudPicture {
-        health: 10,
+        health: p.life.health,
         coins: run.coins,
         redcoins: 0,
         redcoins_target: 0,
         flowers: 0,
         flowers_target: 0,
-        hits: 0,
-        deaths: 0,
+        hits: p.life.hits,
+        deaths: run.deaths,
         total_play_ticks: run.total_play_ticks,
         life_phase: p.life_phase,
         life_ticks: p.life_ticks,
-        separated: false,
-        score: 10,
-        status: status.into(),
+        separated: p.life.separated != 0,
+        score: p.life.health,
+        status,
     };
     let entities = run
         .entities

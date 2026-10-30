@@ -24,6 +24,7 @@ impl Sound {
 #[derive(Clone, Debug)]
 pub(crate) struct Player {
     pub body: Body,
+    pub life: crate::life::Life,
     pub facing: i64,
     pub movement: i64,
     pub on_floor: i64,
@@ -57,6 +58,7 @@ impl Player {
     pub fn new(body: Body, facing: i64) -> Self {
         Self {
             body,
+            life: crate::life::Life::default(),
             facing,
             movement: 0,
             on_floor: 0,
@@ -207,6 +209,15 @@ impl Player {
         if self.turn_ticks == 0 {
             self.turn = 0;
         }
+        if self.life.hurt != 0 {
+            self.action = 0;
+            self.action_tick = 0;
+            self.turn = 0;
+            self.turn_ticks = 0;
+            self.gravity_tick = 0;
+            self.jump_buffer = 0;
+            self.cancel_flutter();
+        }
         let bounds = self.bounds();
         let can_move = self.body.prepare(map, bounds);
         let mut support = self.body.floor(map, bounds);
@@ -280,7 +291,9 @@ impl Player {
             self.boosted_flutter = 0;
         }
         let direction = i64::from(right) - i64::from(left);
-        let deceleration = if self.on_floor == 0 {
+        let deceleration = if self.life.hurt != 0 {
+            self.life.hurt_deceleration
+        } else if self.on_floor == 0 {
             if input & 3 != 0 {
                 1296
             } else {

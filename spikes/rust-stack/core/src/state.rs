@@ -43,6 +43,7 @@ pub(crate) struct Run {
     pub attempt_ticks: i64,
     pub coins: i64,
     pub goal_reached: i64,
+    pub deaths: i64,
 }
 const WALKER_BOX: [i64; 4] = [-10 * S, -18 * S, 10 * S, 16 * S];
 fn unsupported(reason: &str) -> Error {
@@ -64,29 +65,7 @@ impl Run {
         if world.identity != identity {
             return Err(unsupported("Only unchanged Stride dry-land fixture is admitted; target gameplay closure is not implemented"));
         }
-        let mut entities = Vec::new();
-        for (source, p) in world.maps[0].placements.iter().enumerate() {
-            let kind = match p.code.as_str() {
-                "o5" => Kind::Goal,
-                "e1" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
-                    Kind::Walker(Walker::default())
-                }
-                _ => return Err(unsupported("fixture entity form")),
-            };
-            let status = if matches!(kind, Kind::Goal) { 1 } else { 0 };
-            entities.push(Entity {
-                source,
-                body: Body {
-                    x: p.position.x,
-                    y: p.position.y,
-                    ..Body::default()
-                },
-                facing: -1,
-                status,
-                offscreen: 0,
-                kind,
-            });
-        }
+        let entities = Self::spawn_rows(world)?;
         let player = Player::new(
             Body {
                 x: world.spawn.x,
@@ -110,12 +89,15 @@ impl Run {
             attempt_ticks: 0,
             coins: 0,
             goal_reached: 0,
+            deaths: 0,
         };
         let map = crate::body::Probe::new(&world.maps[0]);
         for _ in 0..2 {
             run.entities_step(&map, stats);
             run.player.advance(&map, 0, 0, 0, 0, &mut run.sound);
-            run.player.attach();
+            if run.player.after_life(&map, &mut run.sound) {
+                run.deaths = run.deaths.saturating_add(1);
+            }
             run.player.finish(&map, 0);
         }
         stats.terrain_queries += map.terrain_queries.get();
@@ -124,6 +106,65 @@ impl Run {
             y: run.player.body.y - 28 * S,
         };
         Ok(run)
+    }
+    fn spawn_rows(world: &World) -> Result<Vec<Entity>, Error> {
+        world.maps[0]
+            .placements
+            .iter()
+            .enumerate()
+            .map(|(source, p)| {
+                let kind = match p.code.as_str() {
+                    "o5" => Kind::Goal,
+                    "e1" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
+                        Kind::Walker(Walker::default())
+                    }
+                    _ => return Err(unsupported("fixture entity form")),
+                };
+                Ok(Entity {
+                    source,
+                    body: Body {
+                        x: p.position.x,
+                        y: p.position.y,
+                        ..Body::default()
+                    },
+                    facing: -1,
+                    status: if matches!(kind, Kind::Goal) { 1 } else { 0 },
+                    offscreen: 0,
+                    kind,
+                })
+            })
+            .collect()
+    }
+    fn respawn(&mut self, world: &World) -> Result<(), Error> {
+        self.entities = Self::spawn_rows(world)?;
+        let previous = self.player.previous_input;
+        let pressed = self.player.pressed_input;
+        let hits = self.player.life.hits;
+        let quick = self.player.life.quick_death;
+        self.player = Player::new(
+            Body {
+                x: world.spawn.x,
+                y: world.spawn.y,
+                ..Body::default()
+            },
+            world.spawn_facing,
+        );
+        self.player.previous_input = previous;
+        self.player.pressed_input = pressed;
+        self.player.life.hits = hits;
+        self.player.life.quick_death = quick;
+        self.player.flutter_ready = 1;
+        self.player.life_phase = 5;
+        self.player.life_ticks = 3;
+        self.player.attach();
+        self.attempt_ticks = 0;
+        self.play_ticks = 0;
+        self.goal_reached = 0;
+        self.camera = Position {
+            x: world.spawn.x,
+            y: world.spawn.y - 28 * S,
+        };
+        Ok(())
     }
     fn activate(w: &mut Walker, rng: &mut Rng) {
         w.timer = rng.ticks(60, 150);
@@ -249,38 +290,55 @@ impl Run {
         self.frame = self.frame.checked_add(1).ok_or_else(|| {
             unsupported("saved frame increment exceeds the admitted Stride state range")
         })?;
-        if self.player.life_phase == 7 {
-            let p = &mut self.player;
-            p.life_ticks = (p.life_ticks - 1).max(0);
-            let age = (180 - p.life_ticks).min(60);
-            let blend = age * (120 - age);
-            p.body.x = p.goal_from_x + (p.goal_x - p.goal_from_x) * blend / 3600;
-            p.body.y = p.goal_from_y + (p.goal_y - p.goal_from_y) * blend / 3600;
-            p.attach();
-            self.camera = Position {
-                x: p.body.x,
-                y: p.body.y - 28 * S,
-            };
-            if p.life_ticks == 0 {
-                self.goal_reached = 1;
-                p.life_phase = 8;
+        let map = crate::body::Probe::new(&world.maps[0]);
+        if self.player.life_phase == 0 {
+            self.play_ticks = self.play_ticks.saturating_add(1);
+            self.total_play_ticks = self.total_play_ticks.saturating_add(1);
+            self.attempt_ticks = self.attempt_ticks.saturating_add(1);
+            if self
+                .player
+                .before_play_life(&map, self.camera, &mut self.sound)
+            {
+                self.deaths = self.deaths.saturating_add(1);
             }
+        } else {
+            if self.player.life_phase == 6 {
+                return Err(unsupported("checkpoint lifetime is not yet admitted"));
+            }
+            let goal = self.player.life_phase == 7;
+            if self.player.phase_tick(&mut self.sound) {
+                self.respawn(world)?;
+            }
+            if goal {
+                self.camera = Position {
+                    x: self.player.body.x,
+                    y: self.player.body.y - 28 * S,
+                };
+                if self.player.life_phase == 8 {
+                    self.goal_reached = 1;
+                }
+            }
+        }
+        self.player
+            .dead_body(&map, input, self.frame, &mut self.sound);
+        if self.player.blocks_step() {
+            stats.terrain_queries += map.terrain_queries.get();
             return Ok(());
         }
-        if self.player.life_phase != 0 {
-            return Err(unsupported("lifetime phase"));
-        }
-        self.play_ticks = self.play_ticks.saturating_add(1);
-        self.total_play_ticks = self.total_play_ticks.saturating_add(1);
-        self.attempt_ticks = self.attempt_ticks.saturating_add(1);
         let pressed = input & !(self.player.previous_input as u8);
         let released = self.player.previous_input as u8 & !input;
         self.player.previous_input = input as i64;
         self.player.pressed_input = pressed as i64;
-        let map = crate::body::Probe::new(&world.maps[0]);
         self.entities_step(&map, stats);
+        let locked = self.player.locks_input();
+        let action = if locked {
+            self.player.locked_action(input)
+        } else {
+            input
+        };
+        let (pressed, released) = if locked { (0, 0) } else { (pressed, released) };
         self.player
-            .advance(&map, input, pressed, released, self.frame, &mut self.sound);
+            .advance(&map, action, pressed, released, self.frame, &mut self.sound);
         for e in &mut self.entities {
             let Kind::Walker(w) = &mut e.kind else {
                 continue;
@@ -292,12 +350,12 @@ impl Run {
             let touching = overlap(self.player.body, self.player.bounds(), e.body, WALKER_BOX);
             if touching {
                 if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
-                    self.player.stomp(e.body.vy, input, &mut self.sound);
+                    self.player.stomp(e.body.vy, action, &mut self.sound);
                     e.status = 3;
-                } else if e.body.y < self.player.body.y - 8 * S {
-                    return Err(unsupported(
-                        "walker damage/separation/rescue is not implemented",
-                    ));
+                } else if e.body.y < self.player.body.y - 8 * S
+                    && self.player.hurt(e.body.x, &mut self.sound)
+                {
+                    stats.damage_events += 1;
                 }
                 w.contact = 1;
             } else {
@@ -309,12 +367,15 @@ impl Run {
                 continue;
             }
             stats.contacts += 1;
-            if overlap(
-                self.player.body,
-                [-12 * S, -56 * S, 12 * S, 0],
-                e.body,
-                [-8 * S, -8 * S, 8 * S, 8 * S],
-            ) {
+            if self.player.life_phase == 0
+                && self.player.life.separated == 0
+                && overlap(
+                    self.player.body,
+                    [-12 * S, -56 * S, 12 * S, 0],
+                    e.body,
+                    [-8 * S, -8 * S, 8 * S, 8 * S],
+                )
+            {
                 let p = &mut self.player;
                 p.life_phase = 7;
                 p.life_ticks = 180;
@@ -344,18 +405,15 @@ impl Run {
                 }
             }
         }
-        if self.player.life_phase == 0 {
-            if self.player.body.y > map.height_pixels * S + 66 * S {
-                return Err(unsupported("pit death/lifetime is not implemented"));
-            }
-            self.player.attach();
+        if self.player.after_life(&map, &mut self.sound) {
+            self.deaths = self.deaths.saturating_add(1);
         }
         self.camera = Position {
             x: self.player.body.x,
             y: self.player.body.y - 28 * S,
         };
-        if self.player.life_phase == 0 {
-            self.player.finish(&map, input);
+        if !self.player.blocks_step() {
+            self.player.finish(&map, action);
         }
         stats.terrain_queries += map.terrain_queries.get();
         Ok(())
@@ -402,6 +460,7 @@ impl Run {
             "camera_y" => self.camera.y,
             "rng" => self.rng.saved(),
             "goal_reached" => self.goal_reached,
+            "deaths" => self.deaths,
             "life_ready" => 1,
             "run_spawn_x" => world.spawn.x,
             "run_spawn_y" => world.spawn.y,
@@ -502,6 +561,7 @@ impl Run {
             || self.total_play_ticks < self.play_ticks
             || self.attempt_ticks < 0
             || self.coins < 0
+            || self.deaths < 0
             || !(0..=1).contains(&self.goal_reached)
             || ![-1, 1].contains(&p.facing)
             || !(0..=1).contains(&p.on_floor)
@@ -530,11 +590,11 @@ impl Run {
             || !(0..=30).contains(&p.turn_ticks)
             || !(0..=6).contains(&p.pound_delay)
             || !(0..=1).contains(&p.push)
-            || ![0, 7, 8].contains(&p.life_phase)
-            || !(0..=180).contains(&p.life_ticks)
+            || !p.life.valid(p.life_phase, p.life_ticks)
+            || p.life_phase == 6
             || (p.life_phase == 0 && p.life_ticks != 0)
             || (p.life_phase == 8) != (self.goal_reached != 0)
-            || !(-400 * 60..=400 * 60).contains(&p.body.vx)
+            || !(-2000 * 60..=2000 * 60).contains(&p.body.vx)
             || p.body.vy < -2000 * 60
             || p.body.vy > 704 * 60
             || self.sound.serial < 0
@@ -589,8 +649,8 @@ impl Run {
 }
 macro_rules! fields {($($name:literal=>$($path:ident).+),*$(,)?)=>{
 impl Player{
-    pub fn field(&self,n:&str)->Option<i64>{Some(match n{$($name=>self.$($path).+,)*_=>return None})}
-    pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>false}}
+    pub fn field(&self,n:&str)->Option<i64>{Some(match n{$($name=>self.$($path).+,)*_=>return self.life.field(n)})}
+    pub fn set_field(&mut self,n:&str,v:i64)->bool{match n{$($name=>{self.$($path).+ = v;true},)*_=>self.life.set_field(n,v)}}
 }};}
 fields! {
 "x"=>body.x,"y"=>body.y,"vx"=>body.vx,"vy"=>body.vy,"facing"=>facing,"movement"=>movement,"on_floor"=>on_floor,"previous_input"=>previous_input,"pressed_input"=>pressed_input,

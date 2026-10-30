@@ -17,6 +17,7 @@ impl Run {
                 "camera_y" => run.camera.y = *value,
                 "rng" => run.rng = crate::math::Rng::from_saved(*value)?,
                 "goal_reached" => run.goal_reached = *value,
+                "deaths" => run.deaths = *value,
                 "play_ticks" => run.play_ticks = *value,
                 "total_play_ticks" => run.total_play_ticks = *value,
                 "coins" => run.coins = *value,

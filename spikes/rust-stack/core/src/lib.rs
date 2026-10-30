@@ -2,6 +2,7 @@
 use std::fmt;
 
 mod body;
+mod life;
 pub mod math;
 mod player;
 pub mod polygon;
@@ -11,6 +12,7 @@ mod state;
 mod state_restore;
 pub mod wire;
 pub mod world;
+mod world_polygon;
 
 pub const SCALE: i64 = 3600;
 pub const TICKS_PER_SECOND: u32 = 60;

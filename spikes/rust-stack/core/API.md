@@ -51,8 +51,11 @@ simulation rules. Renderer must not write back any packet data.
 collision table and the complete original v10 schema. Authoritative Rust state
 runs both uncounted start ticks. `advance` implements dry LEFT/RIGHT/JUMP,
 terrain-body motion, jump/release/flutter/landing/facing, ordered walker
-activation/motion/contact, goal conversion and goal lifetime motion. Damage,
-separation/rescue, other actions, other fixtures and the target remain unsupported.
+activation/motion/contact, damage and hurt input locks, companion launch/bubble/
+catch/rejoin, goal conversion and goal lifetime motion. The original Stride damage
+recording now has uninterrupted every-tick parity and both restore directions.
+Captor/death/respawn code is typed but needs its normally reached route proof.
+Other actions, other fixtures and the target remain unsupported.
 An unsupported step returns an error without changing state or accepted-tick count.
 
 Snapshots reconstruct the literal complete v10 payload from this typed state.
