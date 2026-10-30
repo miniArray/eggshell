@@ -17,6 +17,7 @@ const Small = preload("res://src/sim/types/soft_walker.gd")
 const S := preload("res://src/sim/units.gd").SCALE
 const CODES := ["e24"]
 const ENEMY := true
+const DYNAMIC := true
 const ELEMENT_REACTIONS := Elements.FREEZES
 const GOAL_COIN := true
 const STEP_PHASE := 0
@@ -28,6 +29,9 @@ const SQUASH := 3
 const WAIT_TICKS := 5  # 0.075 s before walking resumes.
 const PAUSE_TICKS := 30  # 0.5 s stall after a plain landing.
 const SQUASH_TICKS := 15  # 0.25 s to half height.
+## Latest allocated start batch; nonzero ordinal means its starts await a pretick drain.
+const LEVEL_FIELDS := [["soft_squash_batch", 0], ["soft_squash_ordinal", 0]]
+const MAX_SCHEDULE := 0x7ffffffffffffffe
 const FIELDS := (
 	Body.FIELDS
 	+ [
@@ -38,7 +42,9 @@ const FIELDS := (
 		["slide_from", 0],
 		["slide_to", 0],
 		["slide_ticks", 0],
-		["slide_total", 0]
+		["slide_total", 0],
+		["squash_batch", 0],
+		["squash_ordinal", 0]
 	]
 )
 const BOX := [-24 * S, -56 * S, 24 * S, 0]
@@ -81,10 +87,8 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		return
 	if entity.mode == SQUASH:
 		entity.vx = 0
-		entity.timer -= 1
+		entity.timer = maxi(0, entity.timer - 1)
 		pin(entity, state)
-		if entity.timer <= 0:
-			burst(entity, state, world)
 		return
 	if entity.mode in [WAIT, PAUSE]:
 		entity.timer -= 1
@@ -116,6 +120,35 @@ static func step(entity: Dictionary, state: Dictionary, world: Dictionary) -> vo
 		entity.slide_from = -entity.slide_from
 		entity.slide_to = -entity.slide_to
 	Motion.gravity_box(entity, world, BOX)
+
+
+## TimelineManager drains pending starts at the next pretick, not at a birth/frame
+## boundary. The next registration opens a new batch, even within begin_level's frame 0.
+static func before_advance(state: Dictionary, _world: Dictionary) -> void:
+	state.soft_squash_ordinal = 0
+
+
+## ScheduleTimeline pushes; pretick pops into playing, then ticks playing backwards.
+## Tick2 dispatches the removal queue forwards: newer batches first, each in start order.
+## Timer zero is the saved natural-completion queue; the parent stays pinned until here.
+static func after_step(state: Dictionary, world: Dictionary) -> void:
+	var pending := []
+	for entity: Dictionary in state.entities:
+		if (
+			entity.code in CODES
+			and entity.status == Birth.ACTIVE
+			and entity.mode == SQUASH
+			and entity.timer == 0
+		):
+			pending.append(entity)
+	pending.sort_custom(
+		func(a: Dictionary, b: Dictionary) -> bool:
+			if a.squash_batch != b.squash_batch:
+				return a.squash_batch > b.squash_batch
+			return a.squash_ordinal < b.squash_ordinal
+	)
+	for entity: Dictionary in pending:
+		burst(entity, state, world)
 
 
 static func pin(entity: Dictionary, state: Dictionary) -> void:
@@ -152,10 +185,22 @@ static func contact(entity: Dictionary, state: Dictionary, _world: Dictionary, i
 	if Reactions.frozen_contact(entity, state, input, bounds(entity)):
 		return
 	if entity.mode == SQUASH:
+		pin(entity, state)
 		return
 	var touching := Body.player_overlap(entity, state, BOX)
 	if touching and not entity.contact and entity.y > state.y + 24 * S:
 		if Body.pounding(state):
+			if (
+				state.soft_squash_ordinal == MAX_SCHEDULE
+				or (state.soft_squash_ordinal == 0 and state.soft_squash_batch == MAX_SCHEDULE)
+			):
+				push_warning("Large soft squash scheduling is exhausted")
+				return
+			if state.soft_squash_ordinal == 0:
+				state.soft_squash_batch += 1
+			state.soft_squash_ordinal += 1
+			entity.squash_batch = state.soft_squash_batch
+			entity.squash_ordinal = state.soft_squash_ordinal
 			entity.mode = SQUASH
 			entity.timer = SQUASH_TICKS
 			entity.vx = 0
@@ -205,7 +250,13 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.variant == 0
 		and entity.mode in [WAIT, WALK, PAUSE, SQUASH]
 		and entity.timer >= 0
-		and entity.timer <= PAUSE_TICKS
+		and entity.timer <= (SQUASH_TICKS if entity.mode == SQUASH else PAUSE_TICKS)
+		and entity.squash_batch >= 0
+		and entity.squash_batch <= MAX_SCHEDULE
+		and entity.squash_ordinal >= 0
+		and entity.squash_ordinal <= MAX_SCHEDULE
+		and ((entity.squash_batch > 0 and entity.squash_ordinal > 0) == (entity.mode == SQUASH))
+		and ((entity.squash_batch == 0) == (entity.squash_ordinal == 0))
 		and entity.contact in [0, 1]
 		and absi(entity.pin_dx) <= 32 * S
 		and absi(entity.slide_from) <= MAX_SLIDE
@@ -215,3 +266,34 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_ticks >= 0
 		and entity.slide_ticks <= entity.slide_total
 	)
+
+
+static func valid_state(state: Dictionary) -> bool:
+	for key: String in ["soft_squash_batch", "soft_squash_ordinal"]:
+		if not state.get(key) is int or state[key] < 0 or state[key] > MAX_SCHEDULE:
+			return false
+	if state.soft_squash_ordinal > 0 and state.soft_squash_batch == 0:
+		return false
+	if not state.get("entities") is Array:
+		return false
+	var registrations := {}
+	for entity: Variant in state.entities:
+		if not entity is Dictionary or entity.get("code") not in CODES:
+			continue
+		if not entity.get("squash_batch") is int or not entity.get("squash_ordinal") is int:
+			return false
+		if entity.squash_batch > state.soft_squash_batch:
+			return false
+		if entity.squash_batch == 0:
+			continue
+		if (
+			entity.squash_batch == state.soft_squash_batch
+			and state.soft_squash_ordinal > 0
+			and entity.squash_ordinal > state.soft_squash_ordinal
+		):
+			return false
+		var registration := "%d:%d" % [entity.squash_batch, entity.squash_ordinal]
+		if registrations.has(registration):
+			return false
+		registrations[registration] = true
+	return true

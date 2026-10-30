@@ -254,6 +254,7 @@ func _soft_giant_checks() -> void:
 	check(big.mode == type.SQUASH, "A ground pound squashes it")
 	for _tick in 15:
 		type.step(big, state, world)
+	Registry.after_step(state, world)
 	check(big.status == Registry.DEFEATED, "The squashed walker bursts")
 	var copies: Array = state.entities.filter(
 		func(entity: Dictionary) -> bool: return entity.code == "e23"

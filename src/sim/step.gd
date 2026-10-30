@@ -58,6 +58,7 @@ static func advance(state: Dictionary, input: int, world: Dictionary) -> void:
 			Life.catch_companion(state, tongue[0], tongue[1], tongue[2], tongue[3])
 	Registry.consume_requests(state, world)
 	Life.after_step(state, world)
+	Registry.after_step(state, world)
 	Registry.compact(state)
 	# Store the desired focus only. View-size-dependent clamping belongs to the view.
 	state.camera_x = state.x
@@ -89,6 +90,7 @@ static func begin_level(state: Dictionary, world: Dictionary) -> void:
 		Moves.advance(state, 0, world, 0, 0)
 		Registry.consume_requests(state, world)
 		Life.after_step(state, world)
+		Registry.after_step(state, world)
 		Registry.compact(state)
 		Moves.finish(state, 0, world)
 	state.camera_x = state.x

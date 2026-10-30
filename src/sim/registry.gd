@@ -159,6 +159,12 @@ static var _facts_by_code := {}
 static var _level_consumers := TYPES.filter(
 	func(type: Script) -> bool: return type.has_method("consume_level_requests")
 )
+static var _pretick_handlers := TYPES.filter(
+	func(type: Script) -> bool: return type.has_method("before_advance")
+)
+static var _after_step_handlers := TYPES.filter(
+	func(type: Script) -> bool: return type.has_method("after_step")
+)
 
 
 static func lookup(code: String) -> Script:
@@ -826,7 +832,15 @@ static func phase_for(type: Script, key: String, fallback: int) -> int:
 
 
 static func advance(state: Dictionary, world: Dictionary, pressed: int) -> void:
+	for type: Script in _pretick_handlers:
+		type.before_advance(state, world)
 	DispatchLoops.advance(state, world, pressed)
+
+
+## Tick2 runs after all regular sheets, including Life, and before table compaction.
+static func after_step(state: Dictionary, world: Dictionary) -> void:
+	for type: Script in _after_step_handlers:
+		type.after_step(state, world)
 
 
 static func lifecycle(entity: Dictionary, state: Dictionary, world: Dictionary) -> void:
