@@ -6,19 +6,19 @@ set -euo pipefail
 if [[ -n "${EXPECTED_SOURCE_SHA:-}" ]]; then test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"; fi
 git diff --exit-code 297ada9a022d0ddc297dd2d4091c5dccfab4531e -- src tests/fixtures
 fixture=${1:-bounce}
-[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "$fixture" == posts_target || "$fixture" == posts_target.pound || "$fixture" == posts_target.duck ]]
+[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "$fixture" == posts_target || "$fixture" == posts_target.pound || "$fixture" == posts_target.duck ]]
 base=${fixture%%.*}
 authored=0
 case "$base" in collections|actors_target|stilts_target|checkpoint_target|posts_target) authored=1 ;; esac
 export CORE_FIXTURE_INPUT="$PWD/tests/fixtures/$fixture.input.json"
 export CORE_FIXTURE_LEVEL="$PWD/tests/fixtures/$base.level.json"
-if [[ "$fixture" == bounce.pad || "$authored" == 1 ]]; then export CORE_FIXTURE_INPUT="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture.input.json"; fi
+if [[ "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$authored" == 1 ]]; then export CORE_FIXTURE_INPUT="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture.input.json"; fi
 if [[ "$authored" == 1 ]]; then export CORE_FIXTURE_LEVEL="$PWD/spikes/rust-stack/core/tests/fixtures/$base.level.json"; fi
 export CORE_FIXTURE="$fixture"
 export CORE_FIXTURE_DIR="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture-4.7.2"
 need_export=0
 if [[ ! -f "$CORE_FIXTURE_DIR/snapshots.v10.stream" ]]; then need_export=1; fi
-if [[ "$fixture" == bounce.pad || "$authored" == 1 ]]; then
+if [[ "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$authored" == 1 ]]; then
   mkdir -p "$CORE_FIXTURE_DIR"
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$CORE_FIXTURE_DIR/expected.input.json"
   if ! cmp -s "$CORE_FIXTURE_DIR/expected.input.json" "$CORE_FIXTURE_INPUT"; then need_export=1; fi

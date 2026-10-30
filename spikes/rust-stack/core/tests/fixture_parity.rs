@@ -10,6 +10,7 @@ fn run(restores: bool) {
     assert!([
         "bounce",
         "bounce.pad",
+        "bounce.moves",
         "lagoon",
         "collections",
         "actors_target",

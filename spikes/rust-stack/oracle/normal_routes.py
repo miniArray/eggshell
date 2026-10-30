@@ -16,7 +16,47 @@ def main() -> None:
     ):
         raise RuntimeError("Route processing requires aka with builders disabled")
     name, destination = sys.argv[1:]
-    if name == "bounce.pad":
+    if name == "bounce.moves":
+        # P1 player actions without food: look up, upward tongue, toss and aim
+        # without eggs, aim lock, duck + throw, airborne throw and tongues.
+        inputs = (
+            [0] * 30
+            + [2] * 40
+            + [0] * 20
+            + [16] * 30
+            + [0] * 10
+            + [24]
+            + [16] * 20
+            + [0] * 20
+            + [64]
+            + [0] * 20
+            + [128]
+            + [0] * 10
+            + [66]
+            + [2] * 20
+            + [6]
+            + [4] * 10
+            + [68]
+            + [4] * 10
+            + [0] * 30
+            + [32] * 20
+            + [96]
+            + [32] * 5
+            + [0] * 20
+            + [4] * 9
+            + [28]
+            + [4] * 10
+            + [0] * 30
+            + [1] * 60
+            + [9]
+            + [0] * 20
+            + [8]
+            + [0] * 5
+            + [8]
+            + [0] * 20
+        )
+        inputs += [2] * (800 - len(inputs))
+    elif name == "bounce.pad":
         # Existing Bounce flies over the pad. Tap/release jump to fall onto it.
         inputs = [2] * 60 + [6] + [2] * 739
     elif name == "collections":

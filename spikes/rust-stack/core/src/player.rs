@@ -186,7 +186,8 @@ impl Player {
         self.recovery_y = self.body.y - 24 * S;
     }
     pub(crate) fn set_action(&mut self, action: i64, sound: &mut Sound) {
-        if action != self.action && [1, 3, 4, 9].contains(&action) {
+        // moves.gd SOUNDING_ACTIONS: pound start, pound land, tongue, toss, head bump.
+        if action != self.action && [1, 3, 4, 8, 9].contains(&action) {
             sound.player(self.body);
         }
         if self.action == 4 && action != 4 {
