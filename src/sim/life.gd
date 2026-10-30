@@ -250,11 +250,16 @@ static func after_step(state: Dictionary, world: Dictionary) -> void:
 	elif state.companion_mode == ATTACHED:
 		_attach_position(state)
 	if state.companion_mode == BUBBLE:
-		Bubble.finish_events(state, world)
+		Bubble.events(state, world)
+		if state.rescue_active:
+			_rescue_step(state)
+		elif state.health == 0:
+			_start_rescue(state, world)
+		Bubble.complete_events(state)
 
 
 static func separate(
-	state: Dictionary, velocity: int, instant: bool = false, world: Dictionary = {}
+	state: Dictionary, velocity: int, instant: bool = false, _world: Dictionary = {}
 ) -> void:
 	ensure_fields(state)
 	if state.separated or state.life_phase != PLAY:
@@ -278,9 +283,6 @@ static func separate(
 	state.companion_vy = 0
 	if instant:
 		state.companion_direction = 1 if state.recovery_x >= state.x else -1
-	# Without the world the next companion step summons the captors.
-	if state.health == 0 and instant and not world.is_empty():
-		_start_rescue(state, world)
 
 
 static func catch_companion(
@@ -467,7 +469,7 @@ static func _look_around_on_landing(state: Dictionary) -> void:
 		state.hurt = LOOK_AROUND_LOCK
 
 
-static func _countdown_step(state: Dictionary, world: Dictionary) -> void:
+static func _countdown_step(state: Dictionary, _world: Dictionary) -> void:
 	if state.separated:
 		if state.health > 0:
 			if state.health_wait <= 0:
@@ -476,8 +478,6 @@ static func _countdown_step(state: Dictionary, world: Dictionary) -> void:
 			if state.health_wait <= 0:
 				state.health -= 1
 				state.health_wait = COUNTDOWN_STEPS if state.health else 0
-				if state.health == 0 and state.companion_mode == BUBBLE:
-					_start_rescue(state, world)
 	elif state.health < 10:
 		if state.health_wait <= 0:
 			state.health_wait = 120
@@ -502,19 +502,7 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 				state.companion_mode = BUBBLE
 				state.companion_age = 0
 				_bubble_settle(state, world)
-				if state.health == 0:
-					_start_rescue(state, world)
 		BUBBLE:
-			if state.health == 0 and not state.rescue_active:
-				_start_rescue(state, world)
-			if state.rescue_active:
-				# Contact still wins while the capture agents have not taken the companion.
-				if catch_companion(
-					state, state.x - 12 * S, state.y - 56 * S, state.x + 12 * S, state.y
-				):
-					return
-				_rescue_step(state)
-				return
 			_bubble_step(state, world)
 		TAKEN:
 			state.recovery_y -= 256 * 60
@@ -526,7 +514,7 @@ static func _companion_step(state: Dictionary, world: Dictionary) -> void:
 
 
 static func _bubble_step(state: Dictionary, world: Dictionary) -> void:
-	Bubble.advance(state, world)
+	Bubble.advance(state, world, not state.rescue_active)
 
 
 static func _bubble_settle(state: Dictionary, world: Dictionary) -> void:
@@ -572,7 +560,10 @@ static func _rescue_step(state: Dictionary) -> void:
 		else:
 			state[x_key] += nx * 1024 * 60 / distance
 			state[y_key] += ny * 1024 * 60 / distance
-		if _rescuer_overlaps(state[x_key] - state.recovery_x, state[y_key] - state.recovery_y):
+		if (
+			not state.bubble_collision_disabled
+			and _rescuer_overlaps(state[x_key] - state.recovery_x, state[y_key] - state.recovery_y)
+		):
 			state[x_key] = target_x
 			state[y_key] = target_y
 			state.rescue_mask |= 1 << index
@@ -776,7 +767,7 @@ static func valid_state(state: Dictionary) -> bool:
 		or state.life_ticks > 240
 	):
 		return false
-	if state.bubble_bound_ticks < 0 or state.bubble_bound_ticks > 6:
+	if state.bubble_bound_ticks < -1 or state.bubble_bound_ticks > 6:
 		return false
 	if (
 		state.recovery_delay < 0

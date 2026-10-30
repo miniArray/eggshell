@@ -38,6 +38,8 @@ def main():
         "life",
         "life_timing",
         "companion_bubble",
+        "recovery_dimensions",
+        "soft_giant_scheduling",
         "lava_family",
         "life_hud",
         "hud_backing",

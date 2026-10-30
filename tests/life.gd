@@ -225,6 +225,7 @@ func bubble_contact_checks() -> void:
 	state.recovery_x = 10 * S
 	state.recovery_y = 200 * S
 	step(state, world)
+	Bubble.finish_events(state, world)
 	check(
 		not Life.catch_companion(state, 0, 100 * S, 64 * S, 220 * S),
 		"Bubble cannot be caught during its border correction"
@@ -302,9 +303,9 @@ func rescue_checks() -> void:
 	far.health_wait = 1
 	far.camera_x = 1000000000000
 	var far_start: int = far.camera_x - 120 * S
-	step(far, wide)
+	_rescue_tick(far, wide)
 	check(far.rescue_1_x == far_start, "Captors appear without moving on the step they come")
-	step(far, wide)
+	_rescue_tick(far, wide)
 	check(
 		far.rescue_1_x < far_start and far.rescue_1_x >= far_start - 1024 * 60,
 		(
@@ -318,7 +319,7 @@ func rescue_checks() -> void:
 	state.recovery_y = 200 * S
 	state.health = 1
 	state.health_wait = 1
-	step(state, world)
+	_rescue_tick(state, world)
 	check(state.health == 0 and state.rescue_active == 1, "Zero starts the last rescue window")
 	# The course is 448 px high: the screen centre is held at 224 px, and at x 64 the
 	# centre is held 416 px from the left edge.
@@ -364,7 +365,7 @@ func rescue_checks() -> void:
 	state.recovery_y = 200 * S
 	state.health = 1
 	state.health_wait = 1
-	step(state, world)
+	_rescue_tick(state, world)
 	Life.collect(state, Life.STAR)
 	step(state, world)
 	check(
@@ -381,10 +382,10 @@ func rescue_checks() -> void:
 	state.recovery_y = 200 * S
 	state.health = 1
 	state.health_wait = 1
-	step(state, world)
+	_rescue_tick(state, world)
 	var ticks := 0
 	while state.companion_mode != Life.TAKEN and ticks < 120:
-		step(state, world)
+		_rescue_tick(state, world)
 		ticks += 1
 	check(
 		ticks > 1 and ticks < 120 and state.rescue_mask == 15,
@@ -412,6 +413,8 @@ func rescue_spawn_checks() -> void:
 	fresh.camera_y = fresh.y - 28 * S
 	fresh.health = 0
 	Life.separate(fresh, 0, true, world)
+	fresh.recovery_x += 256 * S
+	Life.after_step(fresh, world)
 	check(
 		fresh.rescue_active == 1 and fresh.rescue_1_y == (1000 - 64 - 304) * S,
 		"Mid-map captors start 304 px above the screen centre, 64 px above the player"
@@ -432,6 +435,8 @@ func rescue_spawn_checks() -> void:
 	edge.camera_y = edge.y - 28 * S
 	edge.health = 0
 	Life.separate(edge, 0, true, world)
+	edge.recovery_x += 256 * S
+	Life.after_step(edge, world)
 	check(
 		edge.rescue_1_x == (416 - 120) * S and edge.rescue_1_y == (2000 - 224 - 304) * S,
 		"Near a corner the captors start from the screen held inside the map"
@@ -444,7 +449,9 @@ func rescue_spawn_checks() -> void:
 	deferred.recovery_y = 600 * S
 	check(deferred.rescue_active == 0, "Without the world the summons waits for the step")
 	Life.before_step(deferred, world)
-	check(deferred.rescue_active == 1, "The next companion step summons the captors")
+	check(deferred.rescue_active == 0, "Body motion does not summon captors before regular events")
+	Life.after_step(deferred, world)
+	check(deferred.rescue_active == 1, "Regular events summon the captors after body motion")
 
 
 func death_checks() -> void:
@@ -764,6 +771,11 @@ func validation_checks() -> void:
 
 func step(state: Dictionary, world: Dictionary) -> void:
 	Life.before_step(state, world, reset_entities, change_map)
+
+
+func _rescue_tick(state: Dictionary, world: Dictionary) -> void:
+	step(state, world)
+	Life.after_step(state, world)
 
 
 func reset_entities(state: Dictionary, _world: Dictionary, keep_flags: bool = false) -> void:

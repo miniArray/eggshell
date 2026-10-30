@@ -436,7 +436,16 @@ static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 	var memo: Variant = world.get("terrain_escapes")
 	var key: Array = []
 	if memo != null and _no_solids_near(world, body, bounds):
-		key = [body.x, body.y, bounds[0], bounds[1], bounds[2], bounds[3]]
+		key = [
+			body.x,
+			body.y,
+			bounds[0],
+			bounds[1],
+			bounds[2],
+			bounds[3],
+			body.get("recovery_width", bounds[2] - bounds[0]),
+			body.get("recovery_height", bounds[3] - bounds[1])
+		]
 		var known: Variant = memo.get(key)
 		if known != null:
 			body.x = known[1]
@@ -457,8 +466,9 @@ static func prepare(body: Dictionary, world: Dictionary, bounds: Array) -> bool:
 ## The push-out search of prepare(): 0 when no free place was found (the body is back at
 ## its start), 1 when it moved to one, 2 when it moved up and its vertical speed stops.
 static func _escape(body: Dictionary, world: Dictionary, bounds: Array) -> int:
-	var width: int = bounds[2] - bounds[0]
-	var height: int = bounds[3] - bounds[1]
+	# Native recovery uses physical dimensions, not the collision polygon's hull.
+	var width: int = body.get("recovery_width", bounds[2] - bounds[0])
+	var height: int = body.get("recovery_height", bounds[3] - bounds[1])
 	if push_out(body, world, bounds, 0, -1, height / 8):
 		return 2
 	if push_axis(body, world, bounds, true, width / 2):
@@ -475,7 +485,13 @@ static func _no_solids_near(world: Dictionary, body: Dictionary, bounds: Array) 
 	var context := _context(world)
 	if context.is_empty():
 		return true
-	var reach: int = maxi(bounds[2] - bounds[0], bounds[3] - bounds[1]) + 4 * S
+	var reach: int = (
+		maxi(
+			maxi(bounds[2] - bounds[0], bounds[3] - bounds[1]),
+			maxi(body.get("recovery_width", 0), body.get("recovery_height", 0))
+		)
+		+ 4 * S
+	)
 	return (
 		_candidates(
 			context,

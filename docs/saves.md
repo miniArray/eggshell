@@ -69,7 +69,12 @@ a stale high-water mark fail validation. Armor also saves independent
 anchor; it needs no saved cull flag. The hurt phase also distinguishes the final
 recovered knockback tick: movement input is still locked, but the cleared pose
 permits an enemy bounce. `bubble_collision_disabled` keeps border-tween
-collisions disabled through regular events, then restores them at completion.
+collisions disabled through regular events. `bubble_bound_ticks = -1` queues
+natural completion, which restores collisions. Cancelling the tween clears the
+timer without restoring collisions, matching the source cancellation path.
+Large-soft walkers save `squash_batch` and `squash_ordinal`; the level saves
+`soft_squash_batch` and `soft_squash_ordinal`. These preserve pending natural
+completion order independently of actor birth and dispatch position.
 Version 10 added the player field `move_bounce` (the flutter tail after an enemy
 bounce) and widens `water_wait` to 0–16 steps. Version 9 added the player fields `hurt_phase` (after `hurt`: none, knock-back pose or
 look-around), `move_brake_vx` and `move_jump_carry`, and widens three validation

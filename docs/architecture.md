@@ -201,8 +201,13 @@ bubble uses an octagon for terrain contact, not its rectangular hull.
 `companion_bubble.gd` owns body motion and geometry. Embedded drift runs after
 player motion and catch handling. It evaluates the four ordered source comparisons
 against the current player position; overlap selection runs once. Border tweens
-disable collisions through regular events and restore them at completion.
-Approaching rescuers do not suppress drift; attachment does. Captors first move on the
+disable collisions through regular events and restore them only on natural
+completion. Cancellation does not fire that completion callback.
+Approaching rescuers do not suppress drift; attachment does. Border selection
+follows drift. Captor movement and attachment follow both. Bubble recovery searches
+use the physical 64 px width and height while contact keeps its 60 px octagon;
+recovery memo keys include those physical dimensions. Other callers keep their
+existing recovery extents unless they explicitly supply them. Captors first move on the
 step after they start. A soft walker that bursts knocks nearby soft walkers
 aside with a hop and a 60-step horizontal ease to rest.
 
@@ -212,6 +217,14 @@ they react one step later. Any code in these phases that moves another entity, o
 changes a field its `bounds` read, calls `Collision.refresh(world, entity)`, and
 no phase replaces or removes elements of `state.entities` in place (see
 [query indexes](#query-indexes)).
+
+`Registry.after_step` runs cached type completion handlers after all regular
+rules, including `Life.after_step`, and before compaction. Large-soft squash
+starts retain a saved scheduler batch and start ordinal. Pretick drains each
+registration batch. Natural completions dispatch newer batches first, then start
+order within each batch; a pending parent stays pinned at half height through
+regular events. Split children retain their four-action order and `tick2` birth
+phase. This models natural completion, not forced completion before activation.
 
 Life and Maps call their callbacks immediately. They never store callbacks in
 state or world. `move_tongue.gd` supplies read-only tongue geometry; movement
