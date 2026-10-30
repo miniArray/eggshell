@@ -295,13 +295,28 @@ static func codes() -> Array[String]:
 	return result
 
 
+## Native Object.entries lists canonical uint32 indices first, then other keys.
+static func source_ids(objects: Dictionary) -> Array:
+	var indexed := []
+	var others := []
+	for key: Variant in objects:
+		if key is String and key.is_valid_int():
+			var index: int = key.to_int()
+			if index >= 0 and index < 4294967295 and str(index) == key:
+				indexed.append(key)
+				continue
+		others.append(key)
+	indexed.sort_custom(func(a: String, b: String) -> bool: return a.to_int() < b.to_int())
+	return indexed + others
+
+
 static func compile_map(objects: Dictionary, world: Dictionary) -> Dictionary:
 	world.entities = []
 	world.enemies = []
 	world.springs = []
 	world.bridges = []
 	world.goals = []
-	for source_id: Variant in objects:
+	for source_id: Variant in source_ids(objects):
 		var compiled := compile_object(source_id, objects[source_id], world)
 		if not compiled.ok:
 			return {"ok": false, "error": compiled.error}
@@ -436,8 +451,16 @@ static func degraded(source: Dictionary) -> bool:
 
 
 static func spawn_dynamic(
-	state: Dictionary, world: Dictionary, code: String, x: int, y: int, options: Dictionary
+	state: Dictionary,
+	world: Dictionary,
+	code: String,
+	x: int,
+	y: int,
+	options: Dictionary,
+	birth_phase: int = EntityLifecycle.EVENTS_BIRTH
 ) -> Dictionary:
+	if birth_phase not in EntityLifecycle.BIRTH_PHASES:
+		return spawn_error("Invalid runtime creation phase")
 	var type := lookup(code)
 	if type == Inert or not constant(type, "DYNAMIC", false):
 		return spawn_error("Object type does not permit runtime creation: " + code)
@@ -494,7 +517,9 @@ static func spawn_dynamic(
 	entity.spawn_mode = 0
 	entity.can_respawn = 0
 	entity.status = ACTIVE
-	EntityLifecycle.created(entity, state, world)
+	if not valid(entity):
+		return spawn_error("Runtime options produce invalid entity state")
+	EntityLifecycle.created(entity, state, world, false, birth_phase)
 	if not valid(entity):
 		return spawn_error("Runtime options produce invalid entity state")
 	if entity.status == ACTIVE and type.has_method("activate"):

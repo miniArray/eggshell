@@ -7,6 +7,7 @@ const Sim = preload("res://src/sim/step.gd")
 const Collision = preload("res://src/sim/collision.gd")
 const Snapshot = preload("res://src/save/snapshot.gd")
 const Grid = preload("res://src/sim/entity_grid.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const S := State.SCALE
 var checks := 0
 var failures := 0
@@ -32,6 +33,9 @@ func _initialize() -> void:
 	same_frame_runtime_armor()
 	same_frame_recreation()
 	birth_validation()
+	_native_birth_phases()
+	_split_birth_phase()
+	_initial_object_order()
 	print("FISH_ARMORED_CONTACTS_RESULT: %d assertions, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -463,6 +467,74 @@ func birth_validation() -> void:
 			later.birth_serial > serial,
 			"Restored allocation never reuses an existing birth identity"
 		)
+
+
+func _native_birth_phases() -> void:
+	var unit := fixture({"camera": {"A": "e20", "X": 700, "Y": 300}})
+	unit.state.frame = 20
+	var late := Registry.spawn_dynamic(
+		unit.state, unit.world, "e20", 720 * S, 300 * S, {}, Birth.TICK2_BIRTH
+	)
+	var camera := by_id(unit.state, "camera")
+	rebirth(unit, camera, 20)
+	var early := Registry.spawn_dynamic(
+		unit.state, unit.world, "e21", 740 * S, 300 * S, {}, Birth.TICK_BIRTH
+	)
+	check(
+		early.birth_serial > camera.birth_serial,
+		"The fixture deliberately reverses callback arrival"
+	)
+	check(
+		Birth.born_before(early, camera),
+		"Native plugin tick births precede regular-sheet recreation"
+	)
+	check(
+		Birth.born_before(camera, late), "Native tween completion follows regular-sheet recreation"
+	)
+	for fish: Dictionary in [late, camera, early]:
+		prepare_crossing(unit, fish, -1)
+	reverse_runtime(unit)
+	Sim.advance(unit.state, 0, unit.world)
+	check(
+		early.mode == 1 and camera.mode == 0 and late.mode == 0,
+		"Source phase order controls first picking"
+	)
+	restored_future(unit)
+
+
+func _split_birth_phase() -> void:
+	var unit := fixture({"giant": {"A": "e24", "X": 400, "Y": 300}})
+	Registry.lookup("e24").burst(by_id(unit.state, "giant"), unit.state, unit.world)
+	var serial := 0
+	var children := 0
+	for entity: Dictionary in unit.state.entities:
+		if entity.code == "e23":
+			check(
+				entity.birth_phase == Birth.TICK2_BIRTH,
+				"Split children retain their tween-completion phase"
+			)
+			check(entity.birth_serial > serial, "The four split children retain action order")
+			serial = entity.birth_serial
+			children += 1
+	check(children == 4, "The real large-soft burst creates four children")
+	restored_future(unit)
+
+
+func _initial_object_order() -> void:
+	var unit := fixture(
+		{
+			"10": {"A": "e20", "X": 700, "Y": 300},
+			"2": {"A": "e20", "X": 710, "Y": 300},
+			"plain": {"A": "e20", "X": 720, "Y": 300},
+			"01": {"A": "e20", "X": 730, "Y": 300},
+			"0": {"A": "e20", "X": 740, "Y": 300}
+		}
+	)
+	var ids: Array = unit.state.entities.map(func(entity: Dictionary) -> String: return entity.id)
+	check(
+		ids == ["0", "2", "10", "plain", "01"],
+		"Initial creation follows native Object.entries key order"
+	)
 
 
 func restored_future(unit: Dictionary) -> void:

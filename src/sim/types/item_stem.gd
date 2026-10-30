@@ -5,6 +5,7 @@ const CODES := ["o17"]
 const S := preload("res://src/sim/units.gd").SCALE
 const Motion = preload("res://src/sim/item_motion.gd")
 const Math = preload("res://src/sim/enemy_motion.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const PAYLOADS := ["o7", "o4", "e40", ""]
 const FIELDS := [
@@ -94,7 +95,13 @@ static func release(entity: Dictionary, state: Dictionary, world: Dictionary) ->
 	if entity.payload == 1:
 		options.wait_for_land = 1
 	var made: Dictionary = registry().spawn_dynamic(
-		state, world, PAYLOADS[entity.payload], entity.x, entity.y - 40 * S, options
+		state,
+		world,
+		PAYLOADS[entity.payload],
+		entity.x,
+		entity.y - 40 * S,
+		options,
+		Birth.TICK_BIRTH
 	)
 	if made.is_empty():
 		entity.unavailable = 1

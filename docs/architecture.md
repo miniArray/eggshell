@@ -43,6 +43,12 @@ lifecycle stamps `birth_frame` and a unique saved serial before the type callbac
 The registry saves its high-water mark. Recreation renews identity; activation
 does not. First-picked family rules compare birth identity, not mutable dispatch
 positions. Validation rejects duplicate identities and stale high-water marks.
+Birth keys compare frame, native phase, then serial. Initial creation precedes
+plugin `tick`, regular sheets and `tick2`. Producers supply their source phase:
+egg-plant callbacks use `tick`; large-soft split callbacks use `tick2`. Camera
+recreation belongs to regular sheets. Initial placements use native
+`Object.entries` ordering: canonical uint32 index keys first, then other keys in
+insertion order. Runtime birth is not one universal phase.
 `CREATION_CULL = true` opts into a distance check at birth, even before activation;
 a mixed type can instead supply `creation_cull(entity)` to choose by code.
 Ordinary distance despawn still requires an active entity. Birth culling runs

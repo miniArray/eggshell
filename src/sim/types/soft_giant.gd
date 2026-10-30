@@ -4,6 +4,7 @@ extends RefCounted
 ## Thrown eggs and objects shove it sideways instead of defeating it.
 
 const Body = preload("res://src/sim/enemy_body.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const Reactions = preload("res://src/sim/element_reactions.gd")
 const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
@@ -135,7 +136,8 @@ static func burst(entity: Dictionary, state: Dictionary, world: Dictionary) -> v
 			"e23",
 			entity.x + copy[0] * S,
 			entity.y + copy[1] * S,
-			Small.tumble_options(signi(copy[2]), copy[2] * 60, copy[3] * 60, 30)
+			Small.tumble_options(signi(copy[2]), copy[2] * 60, copy[3] * 60, 30),
+			Birth.TICK2_BIRTH
 		)
 
 

@@ -9,6 +9,7 @@ const Elements = preload("res://src/sim/elements.gd")
 const Options = preload("res://src/sim/enemy_options.gd")
 const Motion = preload("res://src/sim/enemy_motion.gd")
 const Collision = preload("res://src/sim/collision.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const World = preload("res://src/sim/world.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const S := preload("res://src/sim/units.gd").SCALE
@@ -41,7 +42,8 @@ const FIELDS := (
 		["slide_ticks", 0],
 		["slide_total", 0],
 		["birth_frame", 0],
-		["birth_serial", 0]
+		["birth_serial", 0],
+		["birth_phase", Birth.EVENTS_BIRTH]
 	]
 )
 const WALK_BOX := [-14 * S, -14 * S, 14 * S, 16 * S]
@@ -297,4 +299,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.slide_ticks <= entity.slide_total
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
+		and entity.birth_phase in Birth.BIRTH_PHASES
 	)

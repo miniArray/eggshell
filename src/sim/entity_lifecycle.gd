@@ -9,6 +9,11 @@ const WAITING := 0
 const ACTIVE := 1
 const QUEUED := 2
 const DEFEATED := 3
+const INITIAL_BIRTH := 0
+const TICK_BIRTH := 1
+const EVENTS_BIRTH := 2
+const TICK2_BIRTH := 3
+const BIRTH_PHASES := [INITIAL_BIRTH, TICK_BIRTH, EVENTS_BIRTH, TICK2_BIRTH]
 static var _registry: Script = null
 
 
@@ -22,7 +27,11 @@ static func registry() -> Script:
 ## Birth notification is separate from activation: inactive instances already exist.
 ## Only opted-in types use the source's initial distance cull.
 static func created(
-	entity: Dictionary, state: Dictionary, world: Dictionary, initial_map: bool = false
+	entity: Dictionary,
+	state: Dictionary,
+	world: Dictionary,
+	initial_map: bool = false,
+	birth_phase: int = EVENTS_BIRTH
 ) -> void:
 	var dispatch := registry()
 	var type: Script = dispatch.lookup(entity.code)
@@ -30,6 +39,7 @@ static func created(
 		state.birth_serial += 1
 		entity.birth_serial = state.birth_serial
 		entity.birth_frame = state.frame
+		entity.birth_phase = INITIAL_BIRTH if initial_map else birth_phase
 	if type.has_method("created"):
 		type.created(entity, state, world, initial_map)
 	var cull: bool = dispatch.constant(type, "CREATION_CULL", false)
@@ -47,6 +57,10 @@ static func created(
 
 ## Birth identity does not change when dispatch rows are reordered.
 static func born_before(candidate: Dictionary, current: Dictionary) -> bool:
+	if candidate.birth_frame != current.birth_frame:
+		return candidate.birth_frame < current.birth_frame
+	if candidate.birth_phase != current.birth_phase:
+		return candidate.birth_phase < current.birth_phase
 	return candidate.birth_serial < current.birth_serial
 
 

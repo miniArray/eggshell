@@ -37,7 +37,8 @@ const FIELDS := (
 		["roll_direction", -1],
 		["knock_ticks", 0],
 		["birth_frame", 0],
-		["birth_serial", 0]
+		["birth_serial", 0],
+		["birth_phase", Birth.EVENTS_BIRTH]
 	]
 )
 static var _registry: Script = null
@@ -271,4 +272,5 @@ static func valid(entity: Dictionary) -> bool:
 		and entity.knock_ticks <= 61
 		and entity.birth_frame >= 0
 		and entity.birth_serial >= 0
+		and entity.birth_phase in Birth.BIRTH_PHASES
 	)

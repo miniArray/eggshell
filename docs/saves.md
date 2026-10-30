@@ -58,7 +58,8 @@ pages and shared switch timer/sound state. Sound events own `sound_serial`,
 [architecture](architecture.md#sound-events)). All owner and type validation hooks run. Derived actor and pad views share the entity dictionaries
 and are not encoded a second time.
 
-Version 11 adds `birth_frame` and `birth_serial` to actors, armor and soft walkers.
+Version 11 adds `birth_frame`, `birth_phase` and `birth_serial` to actors, armor
+and soft walkers.
 The registry saves the `birth_serial` high-water mark. Every birth, including
 camera recreation, gets a new serial. Activation and restore retain it. Family
 selection uses that identity, not the current dispatch row; duplicate serials and

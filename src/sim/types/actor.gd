@@ -11,6 +11,7 @@ const Options = preload("res://src/sim/enemy_options.gd")
 const Hits = preload("res://src/sim/hits.gd")
 const Moves = preload("res://src/sim/moves.gd")
 const Damage = preload("res://src/sim/damage.gd")
+const Birth = preload("res://src/sim/entity_lifecycle.gd")
 const CODES := ["e1", "e2", "e3", "e5", "e20", "e21"]
 const ENEMY := true
 ## Every code reacts; `element_reactions` gives each code's own flags.
@@ -27,6 +28,7 @@ const FIELDS := (
 		["ground_form", 0],
 		["birth_frame", -1],
 		["birth_serial", 0],
+		["birth_phase", Birth.EVENTS_BIRTH],
 		["home_x", 0],
 		["fish_finish", 0],
 		["fish_dry", 0],
@@ -231,6 +233,7 @@ static func valid(entity: Dictionary) -> bool:
 			or entity.ground_form not in [0, 1]
 			or entity.birth_frame < -1
 			or entity.birth_serial < 0
+			or entity.birth_phase not in Birth.BIRTH_PHASES
 			or entity.fish_finish < 0
 			or entity.fish_finish > 3
 			or entity.fish_dry not in [0, 1]
