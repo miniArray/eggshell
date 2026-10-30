@@ -1,6 +1,17 @@
 //! Engine-independent fixed-tick experiment. No engine, I/O, or clock dependencies.
 use std::fmt;
 
+mod body;
+pub mod math;
+mod player;
+pub mod polygon;
+mod presentation;
+pub mod schema;
+mod state;
+mod state_restore;
+pub mod wire;
+pub mod world;
+
 pub const SCALE: i64 = 3600;
 pub const TICKS_PER_SECOND: u32 = 60;
 pub const SNAPSHOT_VERSION: u32 = 10;
@@ -153,6 +164,18 @@ pub struct EntityPicture {
     pub held: bool,
     pub hidden: bool,
     pub visual: VisualState,
+    pub auxiliary: Vec<EntityAuxiliaryPicture>,
+}
+/// Separate type-owned pictures, not inferred from contact hulls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntityAuxiliaryPicture {
+    pub kind: EntityAuxiliaryKind,
+    pub picture: AuxiliaryPicture,
+    pub scale: [f64; 2],
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EntityAuxiliaryKind {
+    PlantHead,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SoundEvent {
@@ -320,35 +343,78 @@ pub struct Session {
     world: World,
     admission: AdmissionReport,
     stats: Stats,
+    schema: schema::Schema,
+    state: state::Run,
+    previous: presentation::Previous,
+    interpolate: bool,
 }
 impl Session {
-    pub fn load(
-        _level_json: &str,
-        _collision_json: &str,
-        _schema_json: &str,
-    ) -> Result<Self, Error> {
-        Err(Error::NotImplemented {
-            operation: "load: world compilation and two start ticks",
+    pub fn load(level_json: &str, collision_json: &str, schema_json: &str) -> Result<Self, Error> {
+        let schema = schema::Schema::parse(schema_json)?;
+        if schema::hash(collision_json.as_bytes())
+            != schema::decode_hash(
+                "a143014159ced2f04f82386471c7fbf6e628f4760c4085655b7e9392b0dde6d6",
+            )?
+        {
+            return Err(Error::Unsupported {
+                requirements: vec!["collision table differs from pinned reference".into()],
+            });
+        }
+        let world = World::compile(level_json, collision_json)?;
+        let mut stats = Stats::default();
+        let state = state::Run::create(&world, &mut stats)?;
+        state.validate()?;
+        let previous = presentation::Previous::of(&state);
+        let admission = AdmissionReport {
+            admitted_codes: vec!["e1".into(), "o5".into()],
+            unsupported_requirements: Vec::new(),
+            schema_digest: schema.digest(),
+            placed_rows: world.maps[0].placements.len(),
+        };
+        Ok(Self {
+            world,
+            admission,
+            stats,
+            schema,
+            state,
+            previous,
+            interpolate: false,
         })
     }
-    pub fn advance(&mut self, _input_mask: u8) -> Result<(), Error> {
-        Err(Error::NotImplemented {
-            operation: "advance",
-        })
+    pub fn advance(&mut self, input_mask: u8) -> Result<(), Error> {
+        // Transactional refusal while this narrow vertical slice still has unsupported
+        // contacts. This is a typed-state copy, never snapshot encoding or JSON.
+        // Remove the rollback copy only when the admitted closure cannot fail mid-step.
+        let mut next = self.state.clone();
+        let mut stats = self.stats.clone();
+        next.advance(input_mask, &self.world, &mut stats)?;
+        next.validate()?;
+        self.previous = presentation::Previous::of(&self.state);
+        stats.completed_ticks += 1;
+        stats.tick = next.frame;
+        self.stats = stats;
+        self.state = next;
+        self.interpolate = true;
+        Ok(())
     }
     pub fn snapshot(&self) -> Result<Vec<u8>, Error> {
-        Err(Error::NotImplemented {
-            operation: "v10 snapshot",
-        })
+        self.state.validate()?;
+        self.state
+            .wire(&self.world, &self.schema)
+            .encode(&self.schema)
     }
-    pub fn restore(&mut self, _bytes: &[u8]) -> Result<(), Error> {
-        Err(Error::NotImplemented {
-            operation: "v10 restore",
-        })
+    pub fn restore(&mut self, bytes: &[u8]) -> Result<(), Error> {
+        let wire = wire::WireSnapshot::decode(bytes, self.world.identity, &self.schema)?;
+        let state = state::Run::restored(&wire, &self.world, &self.schema)?;
+        self.previous = presentation::Previous::of(&state);
+        self.state = state;
+        self.stats.tick = self.state.frame;
+        self.stats.restore_count += 1;
+        self.interpolate = false;
+        Ok(())
     }
     pub fn presentation(&self) -> Presentation {
-        // A Session cannot be constructed before the authoritative load exists.
-        unreachable!("load never returns a partially implemented session")
+        presentation::sample(&self.state, &self.world, &self.previous, self.interpolate)
     }
     pub fn world(&self) -> &World {
         &self.world
@@ -372,10 +438,10 @@ mod tests {
         assert_eq!(visual.flip_v, None);
     }
     #[test]
-    fn unfinished_loader_does_not_admit_gameplay() {
+    fn malformed_loader_does_not_admit_gameplay() {
         assert!(matches!(
             Session::load("{}", "{}", "{}"),
-            Err(Error::NotImplemented { .. })
+            Err(Error::InvalidInput { .. })
         ));
     }
 }

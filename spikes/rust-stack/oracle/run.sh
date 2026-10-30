@@ -1,0 +1,40 @@
+#!/usr/bin/env nix-shell
+#! nix-shell ../core/toolchain.nix -i bash
+set -euo pipefail
+[[ $(hostname) == aka ]]
+[[ "$NIX_CONFIG" == *'builders ='* ]]
+git diff --exit-code 297ada9a022d0ddc297dd2d4091c5dccfab4531e -- src tests/fixtures
+out="$HOME/eggshell-remote/artifacts/full-rust-ab/core"
+mkdir -p "$out"
+chmod 700 "$out"
+printf 'ORACLE_ENV host=%s NIX_CONFIG=%s source=%s\n' "$(hostname)" "$NIX_CONFIG" "$(git rev-parse HEAD)"
+GODOT=${GODOT:-godot}
+version=$("$GODOT" --version)
+[[ "$version" == 4.7.2.* ]] || { printf 'Expected reference Godot 4.7.2, got %s\n' "$version" >&2; exit 1; }
+printf 'ORACLE_GODOT executable=%s version=%s\n' "$(command -v "$GODOT")" "$version"
+project=.
+if [[ "${ORACLE_OVERLAY:-0}" == 1 ]]; then
+  project="$out/counter-overlay"
+  python3 spikes/rust-stack/oracle/instrument.py "$project"
+fi
+sha256sum "$GODOT" spikes/rust-stack/oracle/export.gd spikes/rust-stack/oracle/instrument.py
+"$GODOT" --headless --path "$project" --editor --import >"$out/import-4.7.2.log" 2>&1
+if grep -E 'SCRIPT ERROR|Parse Error|Compile Error|ERROR:' "$out/import-4.7.2.log"; then exit 1; fi
+fixture=${1:-stride}
+if [[ "$fixture" == target ]]; then
+  python3 spikes/rust-stack/oracle/target_route.py "$out/target.input.json"
+  level="$HOME/.local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"
+  input="$out/target.input.json"
+elif [[ "$fixture" == stride.damage ]]; then
+  level="$PWD/tests/fixtures/stride.level.json"
+  input="$PWD/tests/fixtures/stride.damage.input.json"
+else
+  level="$PWD/tests/fixtures/$fixture.level.json"
+  input="$PWD/tests/fixtures/$fixture.input.json"
+fi
+suffix=4.7.2
+if [[ "${ORACLE_OVERLAY:-0}" == 1 ]]; then suffix=4.7.2-counters; fi
+"$GODOT" --headless --path "$project" --script spikes/rust-stack/oracle/export.gd -- "$level" "$input" "$out/$fixture-$suffix" 2>&1 | tee "$out/$fixture-$suffix.log"
+if grep -E 'SCRIPT ERROR|Parse Error|Compile Error|ERROR:|ORACLE_FAILED' "$out/$fixture-$suffix.log"; then exit 1; fi
+grep 'ORACLE_DONE' "$out/$fixture-$suffix.log"
+printf 'ORACLE_RUN_DONE fixture=%s\n' "$fixture"

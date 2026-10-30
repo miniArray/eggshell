@@ -40,8 +40,35 @@ simulation rules. Renderer must not write back any packet data.
 - World carries spawn, initial map and player palette. Map retains cave shimmer,
   dice colours and original immutable properties for effect bindings.
 
-Initial skeleton: load, advance and both codecs return explicit
-`Error::NotImplemented`. No Session can be constructed successfully yet;
-`presentation` cannot be called without a Session. No successful idle fake.
-The initial loader deliberately does not accept schema/world-only state as
-playable. Further implementations must retain that admission rule.
+## Current implemented vertical slice (not target admission)
+
+`Session::load` admits only the exact unchanged public Stride world, the pinned
+collision table and the complete original v10 schema. Authoritative Rust state
+runs both uncounted start ticks. `advance` implements dry LEFT/RIGHT/JUMP,
+terrain-body motion, jump/release/flutter/landing/facing, ordered walker
+activation/motion/contact, goal conversion and goal lifetime motion. Damage,
+separation/rescue, other actions, other fixtures and the target remain unsupported.
+An unsupported step returns an error without changing state or accepted-tick count.
+
+Snapshots reconstruct the literal complete v10 payload from this typed state.
+Unused declarations retain their original defaults at the codec boundary;
+restore rejects non-default fields whose semantics are not implemented. This is
+narrow fixture interoperability, not validation/admission of every original state.
+`wire::WireSnapshot` is an inspection codec, not gameplay state or a stepping VM.
+There is no per-tick JSON or schema-name dispatch in gameplay.
+
+`Stats.completed_ticks` counts successful `advance` calls, including calls after
+Godot's saved frame stops at completion. `Stats.tick` is the saved simulation frame.
+Workload counters include actual entity steps and terrain probes during the two
+start ticks; restore setup is excluded. This slice uses a typed rollback copy on
+each step so unsupported contacts cannot partly change the session. It is not a
+candidate performance build. Nearby/runtime-spawn paths are not admitted.
+
+`World::compile` exposes immutable compilation for verification. It is not
+simulation admission. Do not use a successful world compilation or structural
+wire round-trip as evidence of playable target support.
+
+`EntityPicture.auxiliary` contains typed `EntityAuxiliaryPicture` entries. Kind
+`PlantHead` uses an `AuxiliaryPicture` plus nonuniform `scale`; this represents a
+separate e5_head visual, not an inferred head hull. It is not populated until e5
+rules and sampling exist. The target remains refused in the meantime.
