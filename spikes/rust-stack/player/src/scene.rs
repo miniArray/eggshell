@@ -2,7 +2,7 @@
 use crate::{
     background::Background,
     binding::{Anchor, Catalog, Visual},
-    geometry::{Transform, rect_quad, slices, sprite_quad, tile_uv, visible},
+    geometry::{Transform, rect_quad, slices, slices_uniform, sprite_quad, tile_uv, visible},
     gles::{Gles, Quad},
     hud::{Hud, Layout},
     pack::{Image, Pack},
@@ -25,8 +25,8 @@ struct PreparedMap {
     background: Background,
     terrain: Vec<Terrain>,
     gradient_stand_ins: Vec<i64>,
-    terrain_chunks:HashMap<(i64,i64),Vec<usize>>,
-    max_tile_size:f64,
+    terrain_chunks: HashMap<(i64, i64), Vec<usize>>,
+    max_tile_size: f64,
 }
 pub struct Scene {
     catalog: Catalog,
@@ -34,6 +34,10 @@ pub struct Scene {
     objects: HashMap<String, HashMap<i64, Visual>>,
     player: Visual,
     companions: [Option<Visual>; 3],
+    /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
+    tongue: Option<[Visual; 3]>,
+    /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
+    uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
     density: u32,
     palette: Vec<PaletteSwap>,
@@ -42,7 +46,7 @@ pub struct Scene {
     pub(crate) solid: usize,
     bubble: usize,
     art_cull_margin: f64,
-    absolute_origin_guard:i64,
+    absolute_origin_guard: i64,
     benchmark_real_screen: bool,
     pub visual_omissions: Vec<String>,
 }
@@ -282,13 +286,28 @@ impl Scene {
                 });
             }
             terrain.sort_by_key(|t| t.slot);
-            let mut terrain_chunks:HashMap<(i64,i64),Vec<usize>>=HashMap::new();
-            let mut max_tile_size=0.0_f64;
-            for (ti,t)in terrain.iter().enumerate(){let layer=&map.layers[t.layer];let size=layer.tile_size_pixels;max_tile_size=max_tile_size.max(size as f64);let mut chunks=std::collections::BTreeSet::new();
-                for(i,cell)in layer.cells.iter().enumerate(){if *cell == -1{continue;}let x=(i%layer.width)as i64*size;let y=(i/layer.width)as i64*size;
-                    for cy in y/256..=(y+size-1)/256{for cx in x/256..=(x+size-1)/256{chunks.insert((cx,cy));}}
+            let mut terrain_chunks: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+            let mut max_tile_size = 0.0_f64;
+            for (ti, t) in terrain.iter().enumerate() {
+                let layer = &map.layers[t.layer];
+                let size = layer.tile_size_pixels;
+                max_tile_size = max_tile_size.max(size as f64);
+                let mut chunks = std::collections::BTreeSet::new();
+                for (i, cell) in layer.cells.iter().enumerate() {
+                    if *cell == -1 {
+                        continue;
+                    }
+                    let x = (i % layer.width) as i64 * size;
+                    let y = (i / layer.width) as i64 * size;
+                    for cy in y / 256..=(y + size - 1) / 256 {
+                        for cx in x / 256..=(x + size - 1) / 256 {
+                            chunks.insert((cx, cy));
+                        }
+                    }
                 }
-                for key in chunks{terrain_chunks.entry(key).or_default().push(ti);}
+                for key in chunks {
+                    terrain_chunks.entry(key).or_default().push(ti);
+                }
             }
             maps.push(PreparedMap {
                 map: map.clone(),
@@ -373,6 +392,33 @@ impl Scene {
                 .map(|v| catalog.visual(v, 0, density, false))
                 .transpose()?,
         ];
+        let tongue = {
+            let visuals = pack.manifest.get("visuals").and_then(Value::as_object);
+            let find = |name: &str| {
+                visuals.and_then(|v| {
+                    v.values().find(|e| {
+                        e.get("source_type").and_then(Value::as_str) == Some(name)
+                            && e.get("slices").is_some()
+                    })
+                })
+            };
+            match (
+                find("YoshiTongueL"),
+                find("YoshiTongueR"),
+                find("YoshiTongueU"),
+            ) {
+                (Some(l), Some(r), Some(u)) => Some([
+                    catalog.visual(l, 0, density, false)?,
+                    catalog.visual(r, 0, density, false)?,
+                    catalog.visual(u, 0, density, false)?,
+                ]),
+                _ => {
+                    visual_omissions
+                        .push("tongue: pack has no YoshiTongueL/R/U nine-patches".into());
+                    None
+                }
+            }
+        };
         let hud = Hud::prepare(&pack.manifest, &mut catalog, metrics, density)?;
         let keys = [[0, 248, 0], [0, 168, 0], [0, 96, 0]];
         let palette = if world.player_palette.is_empty() {
@@ -392,6 +438,8 @@ impl Scene {
             objects,
             player,
             companions,
+            tongue,
+            uniform: HashMap::new(),
             hud,
             density,
             palette,
@@ -401,7 +449,7 @@ impl Scene {
             bubble: 0,
             benchmark_real_screen,
             art_cull_margin: f64::INFINITY,
-            absolute_origin_guard:1,
+            absolute_origin_guard: 1,
             visual_omissions,
         })
     }
@@ -420,13 +468,62 @@ impl Scene {
             serde_json::json!({"mode":"asset-binding-only-no-gameplay-no-GPU","image_count":files.len(),"rgba_payload_bytes":total,"maximum_dimensions":max,"files":files,"visual_omissions":self.visual_omissions,"benchmark_real_screen":self.benchmark_real_screen,"faithful_real_level":false}),
         )
     }
-    pub fn absolute_origin_guard(&self)->i64{self.absolute_origin_guard}
+    pub fn absolute_origin_guard(&self) -> i64 {
+        self.absolute_origin_guard
+    }
+    /// Nine-patch cuts of every bound image that is drawn in slices.
+    fn sliced_images(&self) -> HashMap<usize, crate::binding::Slices> {
+        let mut result = HashMap::new();
+        let visuals = self
+            .objects
+            .values()
+            .flat_map(|variants| variants.values())
+            .chain(self.tongue.iter().flatten());
+        for v in visuals {
+            if let Some(cuts) = v.slices {
+                for (_, a) in &v.animations {
+                    for f in &a.frames {
+                        result.insert(f.image, cuts);
+                    }
+                }
+            }
+        }
+        result
+    }
+    /// Whether the tiled middle columns (x) and rows (y) of an image are all identical.
+    fn uniform_bands(image: &Image, cuts: crate::binding::Slices) -> [bool; 2] {
+        let (w, h) = (image.width as usize, image.height as usize);
+        let pixel = |x: usize, y: usize| &image.rgba[(y * w + x) * 4..(y * w + x) * 4 + 4];
+        let band = |start: f64, end: f64, length: usize| {
+            let a = (start.max(0.0) as usize).min(length);
+            let b = ((length as f64 - end).max(0.0) as usize).min(length);
+            (a < b).then_some((a, b))
+        };
+        let columns = band(cuts.left, cuts.right, w)
+            .is_some_and(|(a, b)| (0..h).all(|y| (a..b).all(|x| pixel(x, y) == pixel(a, y))));
+        let rows = band(cuts.top, cuts.bottom, h)
+            .is_some_and(|(a, b)| (a..b).all(|y| (0..w).all(|x| pixel(x, y) == pixel(x, a))));
+        [columns, rows]
+    }
+    fn uniform_for(&self, image: usize) -> [bool; 2] {
+        self.uniform.get(&image).copied().unwrap_or([false; 2])
+    }
     /// Private pack file of each bound image, by image index.
     pub fn image_files(&self) -> &[String] {
         &self.catalog.files
     }
     fn prepare_art_cull_margin(&mut self) {
-        self.absolute_origin_guard=self.objects.values().flat_map(|variants|variants.values()).flat_map(|v|v.animations.iter().flat_map(|(_,a)|&a.frames)).map(|f|{let s=self.sizes[f.image];(1.0+f.origin[0].abs()/s[0]).max(1.0+f.origin[1].abs()/s[1])}).fold(1.0_f64,f64::max).ceil()as i64;
+        self.absolute_origin_guard = self
+            .objects
+            .values()
+            .flat_map(|variants| variants.values())
+            .flat_map(|v| v.animations.iter().flat_map(|(_, a)| &a.frames))
+            .map(|f| {
+                let s = self.sizes[f.image];
+                (1.0 + f.origin[0].abs() / s[0]).max(1.0 + f.origin[1].abs() / s[1])
+            })
+            .fold(1.0_f64, f64::max)
+            .ceil() as i64;
         self.art_cull_margin = 2.0
             + self
                 .objects
@@ -444,8 +541,12 @@ impl Scene {
         if !self.sizes.is_empty() {
             return Err("headless assets already prepared".into());
         }
-        for file in &self.catalog.files {
+        let sliced = self.sliced_images();
+        for (id, file) in self.catalog.files.iter().enumerate() {
             let image = pack.png(file)?;
+            if let Some(cuts) = sliced.get(&id) {
+                self.uniform.insert(id, Self::uniform_bands(&image, *cuts));
+            }
             self.sizes.push([image.width as f64, image.height as f64]);
             self.binary
                 .push(image.rgba.chunks_exact(4).all(|p| p[3] == 0 || p[3] == 255));
@@ -464,8 +565,12 @@ impl Scene {
             return Err("scene assets already uploaded".into());
         }
         let mut bytes = 0usize;
+        let sliced = self.sliced_images();
         for (id, file) in self.catalog.files.iter().enumerate() {
             let image = pack.png(file)?;
+            if let Some(cuts) = sliced.get(&id) {
+                self.uniform.insert(id, Self::uniform_bands(&image, *cuts));
+            }
             self.sizes.push([image.width as f64, image.height as f64]);
             self.binary
                 .push(image.rgba.chunks_exact(4).all(|p| p[3] == 0 || p[3] == 255));
@@ -508,11 +613,32 @@ impl Scene {
         );
         Ok(())
     }
-    pub fn presentation_region(&self,map_index:usize,focus:eggshell_spike_core::Position,container:[f64;2],zoom:i32)->Result<[i64;4],String>{
-        let map=&self.maps.get(map_index.checked_sub(1).ok_or("zero map")?).ok_or("map missing")?.map;
-        let plan=screen::plan(container,[map.width_pixels as f64,map.height_pixels as f64],pixel(focus),self.density,zoom)?;
-        let pad=self.art_cull_margin;
-        Ok([((plan.center[0]-plan.visible[0]/2.0-pad)*SCALE as f64).floor()as i64,((plan.center[1]-plan.visible[1]/2.0-pad)*SCALE as f64).floor()as i64,((plan.center[0]+plan.visible[0]/2.0+pad)*SCALE as f64).ceil()as i64,((plan.center[1]+plan.visible[1]/2.0+pad)*SCALE as f64).ceil()as i64])
+    pub fn presentation_region(
+        &self,
+        map_index: usize,
+        focus: eggshell_spike_core::Position,
+        container: [f64; 2],
+        zoom: i32,
+    ) -> Result<[i64; 4], String> {
+        let map = &self
+            .maps
+            .get(map_index.checked_sub(1).ok_or("zero map")?)
+            .ok_or("map missing")?
+            .map;
+        let plan = screen::plan(
+            container,
+            [map.width_pixels as f64, map.height_pixels as f64],
+            pixel(focus),
+            self.density,
+            zoom,
+        )?;
+        let pad = self.art_cull_margin;
+        Ok([
+            ((plan.center[0] - plan.visible[0] / 2.0 - pad) * SCALE as f64).floor() as i64,
+            ((plan.center[1] - plan.visible[1] / 2.0 - pad) * SCALE as f64).floor() as i64,
+            ((plan.center[0] + plan.visible[0] / 2.0 + pad) * SCALE as f64).ceil() as i64,
+            ((plan.center[1] + plan.visible[1] / 2.0 + pad) * SCALE as f64).ceil() as i64,
+        ])
     }
     pub fn picture(
         &self,
@@ -520,7 +646,7 @@ impl Scene {
         container: [f64; 2],
         zoom: i32,
     ) -> Result<Picture, String> {
-        self.picture_configured(p, container, zoom, true,true)
+        self.picture_configured(p, container, zoom, true, true)
     }
     #[cfg(feature = "benchmark-work-counters")]
     pub fn picture_unculled(
@@ -529,17 +655,24 @@ impl Scene {
         container: [f64; 2],
         zoom: i32,
     ) -> Result<Picture, String> {
-        self.picture_configured(p, container, zoom, false,false)
+        self.picture_configured(p, container, zoom, false, false)
     }
-    #[cfg(feature="benchmark-work-counters")]
-    pub fn picture_before_spatial(&self,p:&Presentation,container:[f64;2],zoom:i32)->Result<Picture,String>{self.picture_configured(p,container,zoom,true,false)}
+    #[cfg(feature = "benchmark-work-counters")]
+    pub fn picture_before_spatial(
+        &self,
+        p: &Presentation,
+        container: [f64; 2],
+        zoom: i32,
+    ) -> Result<Picture, String> {
+        self.picture_configured(p, container, zoom, true, false)
+    }
     fn picture_configured(
         &self,
         p: &Presentation,
         container: [f64; 2],
         zoom: i32,
         cull_art: bool,
-        chunk_layers:bool,
+        chunk_layers: bool,
     ) -> Result<Picture, String> {
         if self.sizes.len() != self.catalog.files.len() + 2 {
             return Err("scene textures not uploaded".into());
@@ -601,17 +734,37 @@ impl Scene {
             commands.push((-30, order, q));
             order += 1;
         }
-        let terrain_ids:Vec<usize>=if chunk_layers{
-            let mut ids=std::collections::BTreeSet::new();
-            let min=[((plan.center[0]-plan.visible[0]/2.0)/256.0).floor()as i64,((plan.center[1]-plan.visible[1]/2.0)/256.0).floor()as i64];
-            let max=[((plan.center[0]+plan.visible[0]/2.0+2.0*prepared.max_tile_size)/256.0).floor()as i64,((plan.center[1]+plan.visible[1]/2.0+2.0*prepared.max_tile_size)/256.0).floor()as i64];
-            for y in min[1]..=max[1]{for x in min[0]..=max[0]{if let Some(v)=prepared.terrain_chunks.get(&(x,y)){ids.extend(v.iter().copied());}}}
+        let terrain_ids: Vec<usize> = if chunk_layers {
+            let mut ids = std::collections::BTreeSet::new();
+            let min = [
+                ((plan.center[0] - plan.visible[0] / 2.0) / 256.0).floor() as i64,
+                ((plan.center[1] - plan.visible[1] / 2.0) / 256.0).floor() as i64,
+            ];
+            let max = [
+                ((plan.center[0] + plan.visible[0] / 2.0 + 2.0 * prepared.max_tile_size) / 256.0)
+                    .floor() as i64,
+                ((plan.center[1] + plan.visible[1] / 2.0 + 2.0 * prepared.max_tile_size) / 256.0)
+                    .floor() as i64,
+            ];
+            for y in min[1]..=max[1] {
+                for x in min[0]..=max[0] {
+                    if let Some(v) = prepared.terrain_chunks.get(&(x, y)) {
+                        ids.extend(v.iter().copied());
+                    }
+                }
+            }
             ids.into_iter().collect()
-        }else{(0..prepared.terrain.len()).collect()};
-        #[cfg(feature="benchmark-work-counters")]
-        {work.terrain_layers_total=prepared.terrain.len();work.terrain_layers_selected=terrain_ids.len();work.presentation_entities=p.entities.len();}
+        } else {
+            (0..prepared.terrain.len()).collect()
+        };
+        #[cfg(feature = "benchmark-work-counters")]
+        {
+            work.terrain_layers_total = prepared.terrain.len();
+            work.terrain_layers_selected = terrain_ids.len();
+            work.presentation_entities = p.entities.len();
+        }
         for ti in terrain_ids {
-            let t=&prepared.terrain[ti];
+            let t = &prepared.terrain[ti];
             let layer = &map.layers[t.layer];
             #[cfg(feature = "benchmark-work-counters")]
             let mut tile_work = crate::diagnosis::TileWork {
@@ -914,6 +1067,39 @@ impl Scene {
                             &state.palette,
                         ));
                     }
+                } else if let ("e35", Some(cuts), Some(height)) =
+                    (entity.code.as_str(), visual.slices, state.size_pixels[1])
+                {
+                    // The pack's StiltGuyTop is a nine-patch: a fixed 48-pixel head and a
+                    // tiled pole strip down to the walker's height. Stretching the whole
+                    // image (the Godot port's runtime_objects.gd size_y) is not the original.
+                    let unit = transform.scale[0].abs();
+                    if unit <= 0.0 || !height.is_finite() || height <= 0.0 {
+                        return Err("stilt nine-patch needs a positive height and scale".into());
+                    }
+                    let target = [size[0], height / unit];
+                    let top = -(target[1] - (size[1] - frame.origin[1]));
+                    let upright = Transform {
+                        position: transform.position,
+                        scale: [transform.scale[0], unit],
+                        rotation: transform.rotation,
+                        origin: [0.0; 2],
+                        flip: [false; 2],
+                    };
+                    for patch in slices_uniform(size, target, cuts, self.uniform_for(frame.image))?
+                    {
+                        let d = patch.destination;
+                        quads.push(rect_quad(
+                            frame.image,
+                            patch.source,
+                            size,
+                            [-frame.origin[0] + d[0], top + d[1], d[2], d[3]],
+                            upright,
+                            &plan,
+                            color,
+                            &state.palette,
+                        ));
+                    }
                 } else {
                     quads.push(sprite_quad(
                         frame.image,
@@ -1005,6 +1191,62 @@ impl Scene {
                         work.entity_layers.entry(z).or_default().emitted += 1;
                     }
                 }
+            }
+        }
+        if p.player.visible
+            && let (Some(tongue), Some(art)) = (p.player.tongue, &self.tongue)
+        {
+            // Drawn under Yoshi, from the mouth: R/L grow sideways, U grows upward.
+            let visual = &art[if tongue.up {
+                2
+            } else if p.player.facing < 0 {
+                0
+            } else {
+                1
+            }];
+            let f = visual.sample(0, "", 0, None);
+            let size = self.sizes[f.image];
+            let cuts = visual.slices.ok_or("tongue art lost its slices")?;
+            let unit = 1.0 / self.density as f64;
+            let length = tongue.length as f64 / SCALE as f64 / unit;
+            let (target, corner) = if tongue.up {
+                ([size[0], length], [-f.origin[0], -length])
+            } else if p.player.facing < 0 {
+                ([length, size[1]], [-length, -f.origin[1]])
+            } else {
+                ([length, size[1]], [0.0, -f.origin[1]])
+            };
+            let body = pixel(p.player.motion.current);
+            let mouth = Transform {
+                position: [
+                    body[0] + tongue.mouth[0] as f64 / SCALE as f64,
+                    body[1] + tongue.mouth[1] as f64 / SCALE as f64,
+                ],
+                scale: [unit, unit],
+                ..Transform::default()
+            };
+            let palette = if p.player.visual.palette.is_empty() {
+                &self.palette
+            } else {
+                &p.player.visual.palette
+            };
+            for patch in slices_uniform(size, target, cuts, self.uniform_for(f.image))? {
+                let d = patch.destination;
+                commands.push((
+                    11,
+                    order,
+                    rect_quad(
+                        f.image,
+                        patch.source,
+                        size,
+                        [corner[0] + d[0], corner[1] + d[1], d[2], d[3]],
+                        mouth,
+                        &plan,
+                        [1.0, 1.0, 1.0, p.player.visual.alpha as f32],
+                        palette,
+                    ),
+                ));
+                order += 1;
             }
         }
         if p.player.visible {

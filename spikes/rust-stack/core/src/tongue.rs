@@ -71,6 +71,18 @@ impl Player {
                 },
         ]
     }
+    /// Presentation only: the drawn tongue while it is out or blocked.
+    pub fn tongue_picture(&self) -> Option<crate::TonguePicture> {
+        if self.action != 4 || ![1, 2].contains(&self.tongue.phase) {
+            return None;
+        }
+        let [x, y] = self.mouth();
+        Some(crate::TonguePicture {
+            up: self.tongue.axis != 0,
+            mouth: [x - self.body.x, y - self.body.y],
+            length: self.tongue.length,
+        })
+    }
     fn tongue_sensor(&self, length: i64) -> [i64; 4] {
         let [x, y] = self.mouth();
         if self.tongue.axis != 0 {

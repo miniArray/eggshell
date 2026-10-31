@@ -368,6 +368,7 @@ pub(crate) fn sample_rows(
             && (p.life.invulnerable == 0 || (120 - p.life.invulnerable) % 6 < 3),
         companion,
         companion_phase: p.life.companion_mode,
+        tongue: p.tongue_picture(),
         health: p.life.health,
         coins: run.coins,
         red_coins: run.redcoins,

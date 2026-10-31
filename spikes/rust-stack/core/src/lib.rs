@@ -117,6 +117,16 @@ pub struct PlayerPicture {
     pub coins: i64,
     pub red_coins: i64,
     pub flowers: i64,
+    /// The extended tongue while it is out or blocked (moves.gd TONGUE_OUT/BLOCKED).
+    pub tongue: Option<TonguePicture>,
+}
+/// Where the tongue leaves the mouth, relative to the player body position, and how far
+/// it reaches. The Godot port never drew it; the pack has YoshiTongueL/R/U nine-patches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TonguePicture {
+    pub up: bool,
+    pub mouth: [i64; 2],
+    pub length: i64,
 }
 /// Core samples semantic type view_state. Renderer binds animations/frames to art.
 #[derive(Clone, Debug, PartialEq)]

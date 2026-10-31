@@ -180,6 +180,16 @@ pub struct Patch {
 }
 /// NinePatchRect's minimum margins and partial final tile; no stretched-art shortcut.
 pub fn slices(size: [f64; 2], target: [f64; 2], cuts: Slices) -> Result<Vec<Patch>, String> {
+    slices_uniform(size, target, cuts, [false; 2])
+}
+/// As `slices`, but a tiled middle band whose source columns (x) or rows (y) are all
+/// identical is drawn as one stretched patch: the same pixels with one quad, not many.
+pub fn slices_uniform(
+    size: [f64; 2],
+    target: [f64; 2],
+    cuts: Slices,
+    uniform: [bool; 2],
+) -> Result<Vec<Patch>, String> {
     if size.iter().any(|v| *v <= 0.0 || !v.is_finite())
         || target.iter().any(|v| *v < 0.0 || !v.is_finite())
     {
@@ -207,8 +217,8 @@ pub fn slices(size: [f64; 2], target: [f64; 2], cuts: Slices) -> Result<Vec<Patc
             if sw <= 0.0 || sh <= 0.0 || dw <= 0.0 || dh <= 0.0 {
                 continue;
             }
-            let tile_x = x == 1 && cuts.fill == Fill::Tile;
-            let tile_y = y == 1 && cuts.fill == Fill::Tile;
+            let tile_x = x == 1 && cuts.fill == Fill::Tile && !uniform[0];
+            let tile_y = y == 1 && cuts.fill == Fill::Tile && !uniform[1];
             let step_x = if tile_x { sw } else { dw };
             let step_y = if tile_y { sh } else { dh };
             let mut py = 0.0;

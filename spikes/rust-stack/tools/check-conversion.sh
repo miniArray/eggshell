@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-names-runtime-codes}  # names-2333d44 (= baseline-d34a350 states) plus a wider cull query from runtime-code art; quads equal 600 ticks x 3 zooms
+BASE=${2:-tongue-stilt}  # names-runtime-codes plus PlayerPicture.tongue (debug text) and e35 nine-patch quads; scale-2400 quads and all snapshots unchanged (part digests, 600 ticks)
 failed=0
 step() {
   local name=$1
