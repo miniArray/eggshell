@@ -15,6 +15,8 @@ if [[ -f "$ROOT/locale/en_US.UTF-8/Compose" ]]; then
 fi
 export SDL_VIDEODRIVER=wayland SDL_AUDIODRIVER=dummy SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
 level=${1:-target}
+seconds=${2:-900}
+[[ "$seconds" =~ ^[1-9][0-9]{0,2}$ && "$seconds" -le 900 ]]
 [[ "$level" =~ ^[a-z0-9_.-]+$ && -f "$ROOT/private-input/$level.level.json" ]]
 save="$ROOT/data/playtest-$level"
 mkdir -p "$save"
@@ -23,18 +25,23 @@ play() {
     --level "$ROOT/private-input/$level.level.json" --collision "$ROOT/private-input/collision_table.json" \
     --schema "$ROOT/private-input/schema.json" --pack-root "$ROOT/private-pack" \
     --pack-inventory "$ROOT/private-pack/pack-files.sha256.json" --view-metrics "$ROOT/private-input/view-metrics.json" \
-    --ticks 54000 --seconds 900 --save-dir "$save" --presentation-feedback "$@"
+    --ticks $((seconds * 60)) --seconds "$seconds" --save-dir "$save" --presentation-feedback "$@"
 }
-if [[ -f "$save/autosave.v10" ]]; then
+if [[ "${3:-}" == replay ]]; then
+  # Unattended check: plays the recorded route inputs, from a fresh start, saves aside.
+  save=$(mktemp -d "$ROOT/data/replay-$level-XXXXXX")
+  printf 'PLAYTEST_BEGIN level=%s replay=true seconds=%s\n' "$level" "$seconds"
+  play --replay "$ROOT/private-input/$level.input.json"
+elif [[ -f "$save/autosave.v10" ]]; then
   cp "$save/autosave.v10" "$save/continue.v10"
-  printf 'PLAYTEST_BEGIN level=%s continue=true seconds=900\n' "$level"
+  printf 'PLAYTEST_BEGIN level=%s continue=true seconds=%s\n' "$level" "$seconds"
   if ! play --restore "$save/continue.v10"; then
     mv "$save/continue.v10" "$save/autosave.v10.refused"
     printf 'PLAYTEST_CONTINUE_REFUSED level=%s starting_fresh=true\n' "$level"
     play
   fi
 else
-  printf 'PLAYTEST_BEGIN level=%s continue=false seconds=900\n' "$level"
+  printf 'PLAYTEST_BEGIN level=%s continue=false seconds=%s\n' "$level" "$seconds"
   play
 fi
 printf 'PLAYTEST_DONE level=%s\n' "$level"

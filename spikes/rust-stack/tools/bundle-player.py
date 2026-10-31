@@ -304,6 +304,10 @@ if presentation_bundle:
         provenance["faithful_real_level"] = False
         provenance["real_screen_reconstruction_benchmark_only"] = True
     if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1":
+        # Godot-matched 7200-step route on the target (oracle/target_route.py).
+        sources["target.input.json"] = (
+            Path.home() / "eggshell-remote/artifacts/full-rust-ab/core/target.input.json"
+        )
         launcher = bundle / "launch-playtest"
         shutil.copyfile("spikes/rust-stack/tools/launch-playtest.sh", launcher)
         launcher.chmod(0o755)
