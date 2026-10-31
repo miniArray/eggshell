@@ -421,6 +421,10 @@ impl Scene {
         )
     }
     pub fn absolute_origin_guard(&self)->i64{self.absolute_origin_guard}
+    /// Private pack file of each bound image, by image index.
+    pub fn image_files(&self) -> &[String] {
+        &self.catalog.files
+    }
     fn prepare_art_cull_margin(&mut self) {
         self.absolute_origin_guard=self.objects.values().flat_map(|variants|variants.values()).flat_map(|v|v.animations.iter().flat_map(|(_,a)|&a.frames)).map(|f|{let s=self.sizes[f.image];(1.0+f.origin[0].abs()/s[0]).max(1.0+f.origin[1].abs()/s[1])}).fold(1.0_f64,f64::max).ceil()as i64;
         self.art_cull_margin = 2.0

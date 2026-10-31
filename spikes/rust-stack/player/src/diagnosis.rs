@@ -100,10 +100,22 @@ pub fn trace_host(arguments: impl Iterator<Item = String>) -> Result<(), String>
                     );
                 }
             }
-            h.update(format!(
-                "{:?}{:?}{:?}{}",
-                picture.world, picture.hud, picture.tint, picture.entity_bounds_in_view
-            ));
+            // Images by file name, so binding more art (new codes) keeps old traces.
+            let files = scene.image_files();
+            for quads in [&picture.world, &picture.hud, &picture.tint] {
+                for q in quads.iter() {
+                    h.update(format!(
+                        "{}{:?}{:?}{:?}{:?}",
+                        files.get(q.image).map_or("?", String::as_str),
+                        q.corners,
+                        q.uv,
+                        q.color,
+                        q.palette
+                    ));
+                }
+                h.update(b"|");
+            }
+            h.update(format!("{}", picture.entity_bounds_in_view));
         }
         chain = h.finalize().into();
         if tick % 50 == 0 || tick == ticks {
