@@ -1013,11 +1013,8 @@ impl Run {
         })
     }
     /// actor.gd hit with a spit (no element, not an egg): remove the body.
-    fn hit_actor(&mut self, index: usize) -> Result<(), Error> {
-        let e = &self.entities[index];
     pub(crate) fn hit_actor(&mut self, index: usize) -> Result<(), Error> {
-        let captured_by = self.player.captured_by;
-        let e = &mut self.entities[index];
+        let e = &self.entities[index];
         if e.status != 1 {
             return Ok(());
         }
