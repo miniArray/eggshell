@@ -9,15 +9,16 @@ export NIX_CONFIG='builders ='
 TAG=$1
 BASE=${2:-p2-pads}  # o11 pads get their own family_index (registry.gd springs), so every pad level's snapshot bytes changed; Life.before_step bubble sees no entity solids (target idle trace from tick 100)
 failed=0
+# Logs are per aka tree: lanes gate concurrently on one host.
 step() {
   local name=$1
   shift
-  if "$@" >"/tmp/conversion-$name.log" 2>&1; then
+  if "$@" >"/tmp/$(basename "$PWD")-conversion-$name.log" 2>&1; then
     printf 'GATE_PASS %s\n' "$name"
   else
     failed=$((failed + 1))
     printf 'GATE_FAIL %s\n' "$name"
-    grep -E '^error|^warning|panicked|FAILED|-->|PARITY_FAIL|expected|differ|^[<>] ' "/tmp/conversion-$name.log" | head -30
+    grep -a -E '^error|^warning|panicked|FAILED|-->|PARITY_FAIL|expected|differ|^[<>] ' "/tmp/$(basename "$PWD")-conversion-$name.log" | head -30
   fi
 }
 rust() { nix develop ./spikes/rust-stack/player -c "$@"; }

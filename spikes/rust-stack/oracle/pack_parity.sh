@@ -14,7 +14,8 @@ limit=${3:-100000}
 root="$HOME/eggshell-remote/artifacts/full-rust-ab"
 sweep="$root/speed/pack-sweep-$tag.jsonl"
 corpus="$HOME/.local/share/eggshell-run/corpus/levels"
-out="$root/core/pack-parity"
+# Per aka tree: lanes run pack parity concurrently on one host.
+out="$root/core/pack-parity-$(basename "$PWD")"
 mkdir -p "$out"
 chmod 700 "$out"
 GODOT=$(command -v "${GODOT:-godot}")

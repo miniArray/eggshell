@@ -6,15 +6,16 @@ set -uo pipefail
 [[ $(hostname) == aka ]]
 [[ "$NIX_CONFIG" == *'builders ='* ]]
 failed=0
+# Logs are per aka tree: lanes gate concurrently on one host.
 check() {
   local name=$1
   shift
-  if "$@" >"/tmp/parity-$name.log" 2>&1; then
+  if "$@" >"/tmp/$(basename "$PWD")-parity-$name.log" 2>&1; then
     printf 'PARITY_PASS %s\n' "$name"
   else
     failed=$((failed + 1))
     printf 'PARITY_FAIL %s\n' "$name"
-    grep -E 'panicked|assert|expected|FAILED|ERROR|first|differ' "/tmp/parity-$name.log" | head -12
+    grep -a -E 'panicked|assert|expected|FAILED|ERROR|first|differ' "/tmp/$(basename "$PWD")-parity-$name.log" | head -12
   fi
 }
 check stride nix-shell spikes/rust-stack/oracle/milestone.sh
