@@ -1,7 +1,7 @@
 #!/run/current-system/sw/bin/bash
 # Playtest entry: plays one unchanged level in real time with the device controls.
 # Controls: D-pad move, A/B jump, X/Y tongue, L throw/aim, R aim lock, Down pound/lay,
-# Select+L/R zoom, Select+Start quits. Ends by itself after 15 minutes.
+# Select+L/R zoom, Select+Start quits. Ends after the given seconds of steps (wall limit 15 s more).
 # Continue: the autosave of the last session is restored. A save the build refuses
 # is kept as autosave.v10.refused and the level starts fresh.
 set -euo pipefail
@@ -25,7 +25,7 @@ play() {
     --level "$ROOT/private-input/$level.level.json" --collision "$ROOT/private-input/collision_table.json" \
     --schema "$ROOT/private-input/schema.json" --pack-root "$ROOT/private-pack" \
     --pack-inventory "$ROOT/private-pack/pack-files.sha256.json" --view-metrics "$ROOT/private-input/view-metrics.json" \
-    --ticks $((seconds * 60)) --seconds "$seconds" --save-dir "$save" --presentation-feedback "$@"
+    --ticks $((seconds * 60)) --seconds $((seconds + 15)) --save-dir "$save" --presentation-feedback "$@"
 }
 if [[ "${3:-}" == replay ]]; then
   # Unattended check: plays the recorded route inputs, from a fresh start, saves aside.
