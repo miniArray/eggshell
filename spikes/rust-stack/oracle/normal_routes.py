@@ -178,6 +178,13 @@ def main() -> None:
         inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs += cycle * 20 + [2] * 300
+    elif name == "rejoin_target":
+        # Walk into the walker (the companion separates into a bubble that drifts right
+        # and bobs), hop over the walker, walk ahead of the bubble's low point and lick
+        # it; keep pressing and moving during the frozen rejoin.
+        inputs = [2] * 60 + [0] * 60 + [6] * 14 + [2] * 10 + [0] * 100
+        inputs += [2] * 56 + [0] * 30 + [8] + [0] * 40 + [24] + [0] * 40 + [6] * 20
+        inputs += [0] * 200
     elif name == "decor_target":
         # Hop onto the plain ledge, then across onto the higher mirrored one, then walk on.
         inputs = [2] * 20 + [6] * 14 + [0] * 100 + [6] * 14 + [2] * 8 + [0] * 100

@@ -57,6 +57,7 @@ fn run(restores: bool) {
         "clears_target",
         "dice_target",
         "decor_target",
+        "rejoin_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -192,6 +193,7 @@ fn run(restores: bool) {
     let mut clear_charges = BTreeSet::new();
     let mut dice_states = BTreeSet::new();
     let mut ledge_heights = BTreeSet::new();
+    let mut rejoin_ticks = 0;
     let mut lamp_views = BTreeSet::new();
     let mut dice_lifted = 0;
     let mut dice_tints = BTreeSet::new();
@@ -723,6 +725,8 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // life.gd REJOIN: the world frozen while a caught companion returns.
+        rejoin_ticks += usize::from(packet.player.life_phase == 1);
         // decor_platform.gd / lamp.gd: heights stood on above the floor, lamp views.
         if packet.player.on_floor && packet.player.motion.current.y < 380 * 3600 {
             ledge_heights.insert(packet.player.motion.current.y / 3600);
@@ -1178,6 +1182,9 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "rejoin_target" {
+        println!("REJOIN_COVERAGE rejoin_ticks={rejoin_ticks}");
+        assert!(rejoin_ticks >= 51);
     } else if name == "decor_target" {
         println!("DECOR_COVERAGE ledge_heights={ledge_heights:?} lamp_views={lamp_views:?}");
         // Feet just above the strips' tops (y 322 and 282 px).
