@@ -54,8 +54,7 @@ impl Launcher {
             Some(PropertyValue::String(s)) => s.as_str(),
             Some(_) => return Err(invalid()),
         };
-        if !["Static", "Aim"].contains(&mode) || !(0..=2).contains(&p.variant) || p.mirror != 0
-        {
+        if !["Static", "Aim"].contains(&mode) || !(0..=2).contains(&p.variant) || p.mirror != 0 {
             return Err(Error::Unsupported {
                 requirements: vec![format!("e37 launcher E1={mode} F={}", p.variant)],
             });

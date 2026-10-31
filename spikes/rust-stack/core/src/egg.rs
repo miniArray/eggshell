@@ -680,7 +680,8 @@ impl Run {
                 // flat_walker.gd and hop_sprout.gd projectile_contact: like the flower,
                 // the egg then falls.
                 Kind::Walker(w)
-                    if [ActorKind::Flower, ActorKind::Flat, ActorKind::Sprout].contains(&w.kind) =>
+                    if [ActorKind::Flower, ActorKind::Flat, ActorKind::Sprout]
+                        .contains(&w.kind) =>
                 {
                     Target::Flower
                 }

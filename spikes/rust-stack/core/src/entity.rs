@@ -311,9 +311,7 @@ impl Entity {
                     Kind::Switch(_) => Kind::Switch(crate::switch::Switch::new(source)?),
                     Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
                     Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
-                    Kind::Launcher(_) => {
-                        Kind::Launcher(crate::launcher::Launcher::new(source)?)
-                    }
+                    Kind::Launcher(_) => Kind::Launcher(crate::launcher::Launcher::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);

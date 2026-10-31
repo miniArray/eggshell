@@ -36,7 +36,9 @@ impl Actor {
         Ok(Actor::new(ActorKind::Sprout, 0, p.mirror, p.position))
     }
     pub fn sprout_valid(&self) -> bool {
-        self.variant == 0 && [HOP, WAKE].contains(&self.mode) && (0..=WAKE_TICKS).contains(&self.timer)
+        self.variant == 0
+            && [HOP, WAKE].contains(&self.mode)
+            && (0..=WAKE_TICKS).contains(&self.timer)
     }
     /// hop_sprout.gd view_state: (animation, frame).
     pub fn sprout_view(&self, body: Body) -> (&'static str, Option<i64>) {
