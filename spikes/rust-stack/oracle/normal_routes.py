@@ -93,6 +93,31 @@ def main() -> None:
         inputs = [6] * 45 + [0] * 35 + ([4] * 12 + [32] * 50 + [0] * 10) * 3 + [2] * 504
     elif name == "posts_target":
         inputs = [6] * 45 + [0] * 135 + [2] * 620
+    elif name == "switches_target":
+        # Hop right onto the one-shot switch (holding JUMP for the high bounce), walk
+        # through the toggled block and coin, then hop to the repeating switch and jump
+        # straight up to land on it (restarting the interval); wait for it to return
+        # when the interval ends and press it again.
+        hop = [6] * 14 + [2] * 10 + [0] * 40
+        up = [4] * 14 + [0] * 60
+        inputs = [2] * 20 + hop + [4] * 30 + [0] * 40 + [2] * 60 + [0] * 300
+        inputs += [2] * 30 + hop + up + [0] * 700 + up + [0] * 100 + [2] * 300
+    elif name == "flowers_target":
+        # Catch the e3 (a spat e3 stays spat; a spat e1 rolls), hop left onto the rock,
+        # face right and spit it so it drops into the first flower's cup from above;
+        # wait for the releases; walk on to the egg producer, wait for its eggs, and
+        # throw them at the second flower's open cup.
+        inputs = [0] * 10 + [8] + [0] * 30 + [1] * 8 + [5] * 16 + [0] * 30 + [2] * 2
+        inputs += [0] * 10 + [8] + [0] * 560
+        inputs += [2] * 70 + [0] * 300
+        inputs += ([64] + [0] * 14 + [64] + [0] * 60) * 3 + [2] * 400
+    elif name == "stems_target":
+        # Wait by the egg producers while they release, ground-pound beside them (the
+        # impact starts a burst), collect what lands, walk to the health producer after
+        # the walker bumps into Yoshi, and pound there too.
+        pound = [4] * 12 + [32] * 30 + [0] * 40
+        inputs = [2] * 30 + [0] * 200 + pound + [0] * 120 + [1] * 10 + [2] * 20 + [0] * 60
+        inputs += [2] * 120 + [0] * 200 + pound + [0] * 150 + [2] * 400
     elif name == "ledges_target":
         # Hop right onto each ledge, hop in place on it (each landing after leaving it
         # counts one press), and walk off; a walker stands on the last one.

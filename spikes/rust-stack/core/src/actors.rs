@@ -233,7 +233,13 @@ impl Actor {
         (actual, grounded)
     }
     /// enemy_motion.gd move (horizontal) with an explicit box.
-    fn movement_box(&self, body: &mut Body, b: [i64; 4], map: &Probe, distance: i64) -> (i64, bool) {
+    fn movement_box(
+        &self,
+        body: &mut Body,
+        b: [i64; 4],
+        map: &Probe,
+        distance: i64,
+    ) -> (i64, bool) {
         if !body.prepare(map, b) {
             return (0, false);
         }

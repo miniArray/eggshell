@@ -28,7 +28,10 @@ fn run(restores: bool) {
         "falls_target",
         "grows_target",
         "gates_target",
-        "ledges_target"
+        "ledges_target",
+        "stems_target",
+        "flowers_target",
+        "switches_target"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -70,6 +73,13 @@ fn run(restores: bool) {
     let mut ledge_pressed_ticks = 0;
     let mut ledges_left = usize::MAX;
     let mut ledge_breaks = 0;
+    let mut stem_fast_ticks = 0;
+    let mut stem_frames = 0;
+    let mut flowers_seen = 0;
+    let mut flowers_gone = 0;
+    let mut switch_ticks = 0;
+    let mut switch_restarts = 0;
+    let mut switch_clock = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -384,28 +394,96 @@ fn run(restores: bool) {
                 && required(&wire.player, schema.player(), "y").unwrap() < 380 * 3600,
         );
         // An egg changed a hard block: hard4 cracked (frame 5), or one of the three broke.
-        cracked_ticks += usize::from(packet.entities.iter().filter(|e| e.visible && e.visual.animation.as_deref() == Some("Rock")).count() < 3 || packet.entities.iter().any(|e| {
-            e.visual.animation.as_deref() == Some("Rock") && e.visual.frame == Some(5)
-        }));
+        cracked_ticks += usize::from(
+            packet
+                .entities
+                .iter()
+                .filter(|e| e.visible && e.visual.animation.as_deref() == Some("Rock"))
+                .count()
+                < 3
+                || packet.entities.iter().any(|e| {
+                    e.visual.animation.as_deref() == Some("Rock") && e.visual.frame == Some(5)
+                }),
+        );
         grown_ticks += usize::from(packet.entities.iter().any(|e| {
-            e.visual.animation.as_deref() == Some("Default") && e.visual.size_pixels[0].unwrap_or(0.0) > 40.0
+            e.visual.animation.as_deref() == Some("Default")
+                && e.visual.size_pixels[0].unwrap_or(0.0) > 40.0
         }));
         // one_way_gate.gd: frame 1 while opened; a drop in the open count is a closing.
-        let open = packet.entities.iter().filter(|e| e.visual.rotation_degrees.is_some() && e.visual.animation.is_none() && e.visual.frame == Some(1)).count();
+        let open = packet
+            .entities
+            .iter()
+            .filter(|e| {
+                e.visual.rotation_degrees.is_some()
+                    && e.visual.animation.is_none()
+                    && e.visual.frame == Some(1)
+            })
+            .count();
         gate_open_ticks += usize::from(open > 0);
         gate_closings += usize::from(open < gates_open);
         gates_open = open;
         // count_ledge.gd: Pressed while pressed; a ledge that breaks leaves the view.
-        let ledges = packet.entities.iter().filter(|e| e.visible && matches!(e.visual.animation.as_deref(), Some("Pressed" | "Unpressed"))).count();
-        ledge_pressed_ticks += usize::from(packet.entities.iter().any(|e| e.visual.animation.as_deref() == Some("Pressed")));
+        let ledges = packet
+            .entities
+            .iter()
+            .filter(|e| {
+                e.visible && matches!(e.visual.animation.as_deref(), Some("Pressed" | "Unpressed"))
+            })
+            .count();
+        ledge_pressed_ticks += usize::from(
+            packet
+                .entities
+                .iter()
+                .any(|e| e.visual.animation.as_deref() == Some("Pressed")),
+        );
         ledge_breaks += usize::from(ledges < ledges_left && ledges_left != usize::MAX);
         ledges_left = ledges;
+        // item_stem.gd: FastLoop while bursting; late Loop frames mean a release cycle ran.
+        stem_fast_ticks += usize::from(
+            packet
+                .entities
+                .iter()
+                .any(|e| e.visible && e.visual.animation.as_deref() == Some("FastLoop")),
+        );
+        // star_flower.gd: ticks with a fed flower (phase 1 to 5), and wilted flowers.
+        let flower = |phase: i64| {
+            wire.entities
+                .iter()
+                .filter(|e| {
+                    e.code == "o22"
+                        && required(&e.values, schema.entity_fields("o22"), "phase").unwrap()
+                            == phase
+                })
+                .count()
+        };
+        flowers_seen += usize::from((1..=5).any(|p| flower(p) > 0));
+        flowers_gone = flowers_gone.max(
+            wire.entities
+                .iter()
+                .filter(|e| {
+                    e.code == "o22"
+                        && required(&e.values, schema.entity_fields("o22"), "collected").unwrap()
+                            == 1
+                })
+                .count(),
+        );
+        // timed_switch.gd: ticks with the interval running, and interval (re)starts.
+        let clock = required(&wire.level, schema.level(), "switch_ticks").unwrap();
+        switch_ticks += usize::from(clock > 0);
+        switch_restarts += usize::from(clock == 630 && switch_clock != 630);
+        switch_clock = clock;
+        stem_frames += usize::from(packet.entities.iter().any(|e| {
+            e.visual.animation.as_deref() == Some("Loop") && e.visual.frame.unwrap_or(0) >= 10
+        }));
         falling_ticks += usize::from(packet.entities.iter().any(|e| {
             e.visual.animation.as_deref() == Some("Falling") && e.visual.frame == Some(4)
         }));
-        flat_ticks += usize::from(packet.entities.iter().any(|e| {
-            e.visual.animation.as_deref() == Some("SquashWalk")
-        }));
+        flat_ticks += usize::from(
+            packet
+                .entities
+                .iter()
+                .any(|e| e.visual.animation.as_deref() == Some("SquashWalk")),
+        );
         if let Some(m) = &packet.message {
             message_ticks += 1;
             message_sections = message_sections.max(m.section + 1);
@@ -425,7 +503,13 @@ fn run(restores: bool) {
                 .entities
                 .iter()
                 .filter(|e| e.code == "o7" && e.visible)
-                .map(|e| format!("{},{}", e.motion.current.x / 3600, e.motion.current.y / 3600))
+                .map(|e| {
+                    format!(
+                        "{},{}",
+                        e.motion.current.x / 3600,
+                        e.motion.current.y / 3600
+                    )
+                })
                 .collect();
             if !loose.is_empty() {
                 println!("DUMP_EGGS tick={tick} at={}", loose.join(" "));
@@ -565,6 +649,15 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "switches_target" {
+        println!("SWITCH_COVERAGE clock_ticks={switch_ticks} starts={switch_restarts}");
+        assert!(switch_ticks > 630 && switch_restarts > 1);
+    } else if name == "flowers_target" {
+        println!("FLOWER_COVERAGE fed_ticks={flowers_seen} wilted={flowers_gone} max_runtime={max_runtime}");
+        assert!(flowers_seen > 0 && flowers_gone > 0 && max_runtime > 0);
+    } else if name == "stems_target" {
+        println!("STEM_COVERAGE fast_ticks={stem_fast_ticks} release_frames={stem_frames} max_runtime={max_runtime}");
+        assert!(stem_fast_ticks > 0 && stem_frames > 0 && max_runtime > 0);
     } else if name == "ledges_target" {
         println!("LEDGE_COVERAGE pressed_ticks={ledge_pressed_ticks} breaks={ledge_breaks}");
         assert!(ledge_pressed_ticks > 0 && ledge_breaks > 0);
@@ -575,7 +668,9 @@ fn run(restores: bool) {
         println!("GROW_COVERAGE grown_ticks={grown_ticks} raised_floor_ticks={raised_floor_ticks}");
         assert!(grown_ticks > 0 && raised_floor_ticks > 0);
     } else if name == "falls_target" {
-        println!("FALL_COVERAGE falling_ticks={falling_ticks} raised_floor_ticks={raised_floor_ticks}");
+        println!(
+            "FALL_COVERAGE falling_ticks={falling_ticks} raised_floor_ticks={raised_floor_ticks}"
+        );
         assert!(falling_ticks > 0 && raised_floor_ticks > 0);
     } else if name == "hards_target" {
         println!("HARD_COVERAGE cracked_or_broken_ticks={cracked_ticks} most_eggs={most_eggs}");

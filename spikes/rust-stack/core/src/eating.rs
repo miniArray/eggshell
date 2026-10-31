@@ -60,6 +60,12 @@ pub(crate) enum After {
     RefreshSolid,
     /// one_way_gate.gd step, which reads other bodies.
     GateStep,
+    /// item_stem.gd step, which can release items.
+    StemStep,
+    /// star_flower.gd step, which swallows spat bodies and releases items.
+    FlowerStep,
+    /// timed_switch.gd step, which runs the shared interval.
+    SwitchStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -380,6 +386,11 @@ impl Run {
     }
     /// One held pickup or star: its consume_requests (also run by its own step).
     pub(crate) fn consume_item(&mut self, index: usize) {
+        // item_stem.gd consume_requests runs for every producer, whatever its status.
+        if matches!(self.entities[index].kind, Kind::Stem(_)) {
+            self.stem_consume(index);
+            return;
+        }
         let serial = self.player.food.requests.serial();
         let token = self.entities[index].origin.token();
         let list = match &self.entities[index].kind {
@@ -503,7 +514,8 @@ impl Run {
                 | Kind::Cache(_)
                 | Kind::Redirect(_)
                 | Kind::Hard(_)
-                | Kind::Block(_) => crate::egg::entity_bounds(o),
+                | Kind::Block(_)
+                | Kind::Stem(_) => crate::egg::entity_bounds(o),
                 // Posts, pads, bridges, goals, checkpoints, spans and gates have no hit
                 // rule (one_way_gate.gd projectile_contact runs for ENEMY types only).
                 _ => continue,
@@ -554,7 +566,8 @@ impl Run {
                     Kind::Cache(_) => Target::Cache,
                     // hard/colour/thorn/item blocks are not ENEMY: their `hit` ignores
                     // SPIT but still counts as reaction 3, which breaks the projectile.
-                    Kind::Hard(_) | Kind::Block(_) => Target::Inert,
+                    // item_stem.gd hit reacts to BUMP only.
+                    Kind::Hard(_) | Kind::Block(_) | Kind::Stem(_) => Target::Inert,
                     // item_star.gd has projectile_contact only and is not an ENEMY.
                     _ => Target::Nothing,
                 }

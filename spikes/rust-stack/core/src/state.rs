@@ -28,6 +28,8 @@ pub(crate) struct Run {
     pub checkpoint: crate::checkpoint::Memory,
     pub consumers: crate::consumers::Consumers,
     pub message: crate::blocks::Message,
+    /// timed_switch.gd LEVEL_FIELDS.
+    pub clock: crate::switch::Clock,
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,
 }
@@ -90,6 +92,7 @@ impl Run {
             checkpoint: crate::checkpoint::Memory::default(),
             consumers: crate::consumers::Consumers::default(),
             message: crate::blocks::Message::default(),
+            clock: crate::switch::Clock::default(),
             #[cfg(test)]
             solid_trace: crate::solids::SolidTrace::default(),
         };
@@ -166,8 +169,11 @@ impl Run {
                     "o10" => Kind::Grow(crate::blocks::Grow::default()),
                     "o31" => Kind::Gate(crate::gate::Gate::new(p)?),
                     "o32" => Kind::Ledge(crate::ledge::Ledge::new(p)?),
-                    "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13" | "p14"
-                    | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
+                    "o17" => Kind::Stem(crate::stem::Stem::new(p)?),
+                    "o22" => Kind::StarFlower(crate::flower::Flower::new(p)?),
+                    "o14" => Kind::Switch(crate::switch::Switch::new(p)?),
+                    "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
+                    | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
                     }
                     "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
@@ -242,6 +248,8 @@ impl Run {
         self.consumers.reset_map(self.player.food.requests.serial());
         // item_block.gd reset_map and registry.gd modal_token.
         self.message = crate::blocks::Message::default();
+        // timed_switch.gd reset_map.
+        self.clock = crate::switch::Clock::default();
         let previous = self.player.previous_input;
         let pressed = self.player.pressed_input;
         let hits = self.player.life.hits;
@@ -301,10 +309,19 @@ impl Run {
                     | Kind::Fall(_)
                     | Kind::Grow(_)
                     | Kind::Gate(_)
+                    | Kind::Stem(_)
+                    | Kind::StarFlower(_)
+                    | Kind::Switch(_)
             ) {
                 continue;
             }
-            if !e.lifecycle(map, centre, self.player.body.x, &mut self.rng)? {
+            if !e.lifecycle(
+                map,
+                centre,
+                self.player.body.x,
+                self.player.impact,
+                &mut self.rng,
+            )? {
                 continue;
             }
             stats.entity_steps += 1;
@@ -316,6 +333,9 @@ impl Run {
                 Kind::Block(_) => crate::eating::After::BlockStep,
                 Kind::Fall(_) => crate::eating::After::FallStep,
                 Kind::Gate(_) => crate::eating::After::GateStep,
+                Kind::Stem(_) => crate::eating::After::StemStep,
+                Kind::StarFlower(_) => crate::eating::After::FlowerStep,
+                Kind::Switch(_) => crate::eating::After::SwitchStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -391,6 +411,9 @@ impl Run {
                     self.refresh_block_solid(next - 1, map);
                 }
                 crate::eating::After::RefreshSolid => self.refresh_block_solid(next - 1, map),
+                crate::eating::After::StemStep => self.stem_step(next - 1, map, centre)?,
+                crate::eating::After::FlowerStep => self.flower_step(next - 1)?,
+                crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::GateStep => {
                     self.gate_step(next - 1);
                     self.refresh_block_solid(next - 1, map);
@@ -415,7 +438,13 @@ impl Run {
             if !matches!(e.kind, Kind::Pad(_)) {
                 continue;
             }
-            let awake = e.lifecycle(map, centre, self.player.body.x, &mut self.rng)?;
+            let awake = e.lifecycle(
+                map,
+                centre,
+                self.player.body.x,
+                self.player.impact,
+                &mut self.rng,
+            )?;
             if let Kind::Pad(pad) = &mut e.kind {
                 if awake {
                     stats.entity_steps += 1;
@@ -448,7 +477,7 @@ impl Run {
             unsupported("saved frame increment exceeds the admitted Stride state range")
         })?;
         // step.gd: an open message consumes the whole step.
-        if self.modal_step(input, world) {
+        if self.modal_step(input, world)? {
             return Ok(());
         }
         let solids = std::cell::RefCell::new(crate::solids::SolidFrame::default());
@@ -577,6 +606,11 @@ impl Run {
                 if matches!(e.kind, Kind::Grow(_)) {
                     stats.contacts += 1;
                     self.grow_contact(index)?;
+                    continue;
+                }
+                if matches!(e.kind, Kind::Switch(_)) {
+                    stats.contacts += 1;
+                    self.switch_contact(index);
                     continue;
                 }
                 if matches!(e.kind, Kind::Ledge(_)) {
@@ -952,6 +986,9 @@ impl Run {
         if let Some(value) = self.message.field(n) {
             return Some(value);
         }
+        if let Some(value) = self.clock.field(n) {
+            return Some(value);
+        }
         if let Some(value) = self.consumers.field(n) {
             return Some(value);
         }
@@ -1002,6 +1039,9 @@ impl Run {
             Kind::Grow(p) => p.field(n),
             Kind::Gate(p) => p.field(n),
             Kind::Ledge(p) => p.field(n),
+            Kind::Stem(p) => p.field(n),
+            Kind::StarFlower(p) => p.field(n),
+            Kind::Switch(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1219,6 +1259,9 @@ impl Run {
         if !self.consumers.valid() {
             return Err(unsupported("egg inventory and level request cursors"));
         }
+        if !self.clock.valid() {
+            return Err(unsupported("switch clock"));
+        }
         let mut runtime_serials: Vec<i64> = Vec::new();
         let mut runtime_sorted = true;
         let mut family = 0;
@@ -1281,6 +1324,21 @@ impl Run {
             if let Kind::Gate(g) = &e.kind {
                 if !g.valid() {
                     return Err(unsupported("gate fields"));
+                }
+            }
+            if let Kind::Switch(s) = &e.kind {
+                if !s.valid() {
+                    return Err(unsupported("switch fields"));
+                }
+            }
+            if let Kind::StarFlower(f) = &e.kind {
+                if !f.valid() {
+                    return Err(unsupported("star flower fields"));
+                }
+            }
+            if let Kind::Stem(s) = &e.kind {
+                if !s.valid(e.body) {
+                    return Err(unsupported("producer fields"));
                 }
             }
             if let Kind::Ledge(l) = &e.kind {
@@ -1366,7 +1424,12 @@ impl Run {
                     || !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
-                    || !(0..=if w.kind == crate::actors::ActorKind::Flat { 6 } else { 5 }).contains(&w.mode)
+                    || !(0..=if w.kind == crate::actors::ActorKind::Flat {
+                        6
+                    } else {
+                        5
+                    })
+                        .contains(&w.mode)
                     || (w.held != 0 && w.spat != 0)
                     || w.hidden != 0
                     || w.frozen != 0

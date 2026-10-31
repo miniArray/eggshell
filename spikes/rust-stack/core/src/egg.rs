@@ -288,7 +288,7 @@ impl Run {
         }
         Ok(())
     }
-    fn next_serial(&self) -> Result<i64, Error> {
+    pub(crate) fn next_serial(&self) -> Result<i64, Error> {
         let serial = self.dynamic_serial;
         if !(1..=i64::MAX - TOKEN_BASE).contains(&serial) {
             return Err(Error::Unsupported {
@@ -318,7 +318,7 @@ impl Run {
         Ok(())
     }
     /// registry.gd spawn_dynamic for a loot health drop (item_star.gd create: phase 10).
-    fn spawn_star(
+    pub(crate) fn spawn_star(
         &mut self,
         x: i64,
         y: i64,
@@ -603,6 +603,7 @@ impl Run {
             Block,
             Hard,
             Gate,
+            StarFlower,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -662,6 +663,8 @@ impl Run {
                 Kind::Hard(_) if o.status == 1 => Target::Hard,
                 // one_way_gate.gd projectile_contact.
                 Kind::Gate(_) => Target::Gate,
+                // star_flower.gd projectile_contact.
+                Kind::StarFlower(_) => Target::StarFlower,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -759,11 +762,37 @@ impl Run {
                 }
                 3
             }
+            Target::StarFlower => {
+                // An open cup drops the egg beside it as a resting egg.
+                let o = &self.entities[other];
+                let Kind::StarFlower(f) = &o.kind else {
+                    unreachable!()
+                };
+                let Some((vx, vy)) = f.egg_contact(o.body, projectile) else {
+                    return Ok(0);
+                };
+                let e = &mut self.entities[egg];
+                e.body.vx = vx;
+                e.body.vy = vy;
+                if let Kind::Egg(g) = &mut e.kind {
+                    g.mode = STATIONARY;
+                    g.floating = 0;
+                    g.camera = 0;
+                }
+                2
+            }
             Target::Gate => {
                 let thrown = self.egg(egg).mode == THROWN;
                 let o = &mut self.entities[other];
                 if let Kind::Gate(g) = &mut o.kind {
-                    g.egg_contact((o.status, o.body.x, o.body.y), crate::Position { x: projectile.x, y: projectile.y }, thrown);
+                    g.egg_contact(
+                        (o.status, o.body.x, o.body.y),
+                        crate::Position {
+                            x: projectile.x,
+                            y: projectile.y,
+                        },
+                        thrown,
+                    );
                 }
                 0
             }
@@ -967,6 +996,9 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Grow(p) => p.bounds(),
         Kind::Gate(p) => p.bounds(),
         Kind::Ledge(p) => p.bounds(),
+        Kind::Stem(p) => p.bounds(),
+        Kind::StarFlower(p) => p.bounds(),
+        Kind::Switch(p) => p.bounds(),
         _ => [0; 4],
     }
 }

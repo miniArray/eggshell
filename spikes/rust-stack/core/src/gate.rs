@@ -33,7 +33,12 @@ impl Gate {
             return None;
         }
         let b = turn::bounds(self.angle, BARRIER);
-        Some([e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]])
+        Some([
+            e.body.x + b[0],
+            e.body.y + b[1],
+            e.body.x + b[2],
+            e.body.y + b[3],
+        ])
     }
     /// one_way_gate.gd touches: the turned area.
     pub fn touches(&self, x: i64, y: i64, probe: [i64; 4]) -> bool {
@@ -41,9 +46,7 @@ impl Gate {
     }
     /// one_way_gate.gd tongue: a closed standing barrier stops the tongue (2).
     pub fn tongue(&self, status: i64, at: crate::body::Body, probe: [i64; 4]) -> i64 {
-        if status == 1
-            && self.opened == 0
-            && turn::overlaps(self.angle, BARRIER, probe, at.x, at.y)
+        if status == 1 && self.opened == 0 && turn::overlaps(self.angle, BARRIER, probe, at.x, at.y)
         {
             2
         } else {
@@ -57,7 +60,12 @@ impl Gate {
         if status != 1 || self.opened != 0 || !thrown {
             return;
         }
-        let probe = [egg.x - 12 * S, egg.y - 12 * S, egg.x + 12 * S, egg.y + 12 * S];
+        let probe = [
+            egg.x - 12 * S,
+            egg.y - 12 * S,
+            egg.x + 12 * S,
+            egg.y + 12 * S,
+        ];
         if turn::overlaps(self.angle, ENTRY, probe, x, y) {
             self.opened = 1;
         }
@@ -107,6 +115,7 @@ impl Run {
                     Kind::Star(p) => p.held == 0,
                     Kind::Egg(_) => true,
                     Kind::Pickup(p) => p.held == 0 && p.moving != 0,
+                    Kind::Switch(_) => true,
                     _ => false,
                 };
                 if !actor || o.status != 1 || o.collected != 0 {
@@ -115,7 +124,12 @@ impl Run {
                 let b = crate::egg::entity_bounds(o);
                 b[0] < b[2]
                     && b[1] < b[3]
-                    && hit([o.body.x + b[0], o.body.y + b[1], o.body.x + b[2], o.body.y + b[3]])
+                    && hit([
+                        o.body.x + b[0],
+                        o.body.y + b[1],
+                        o.body.x + b[2],
+                        o.body.y + b[3],
+                    ])
             });
         }
         if let Kind::Gate(g) = &mut self.entities[index].kind {

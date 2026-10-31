@@ -83,8 +83,14 @@ impl Hard {
     }
     pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
         let b = self.bounds();
-        (e.status == 1)
-            .then(|| [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]])
+        (e.status == 1).then(|| {
+            [
+                e.body.x + b[0],
+                e.body.y + b[1],
+                e.body.x + b[2],
+                e.body.y + b[3],
+            ]
+        })
     }
     pub fn animation(&self) -> &'static str {
         match self.kind {
@@ -136,7 +142,12 @@ impl Fall {
     }
     pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
         (e.status == 1).then(|| {
-            [e.body.x - 16 * S, e.body.y - 16 * S, e.body.x + 16 * S, e.body.y - 14 * S]
+            [
+                e.body.x - 16 * S,
+                e.body.y - 16 * S,
+                e.body.x + 16 * S,
+                e.body.y - 14 * S,
+            ]
         })
     }
     pub fn field(&self, n: &str) -> Option<i64> {
@@ -158,7 +169,9 @@ impl Fall {
         true
     }
     pub fn valid(&self, vy: i64) -> bool {
-        (0..=125).contains(&self.age) && [0, 1].contains(&self.respawns) && (0..=192 * 60).contains(&vy)
+        (0..=125).contains(&self.age)
+            && [0, 1].contains(&self.respawns)
+            && (0..=192 * 60).contains(&vy)
     }
     /// falling_span.gd view_state: animation and frame.
     pub fn view(&self) -> (&'static str, i64) {
@@ -224,8 +237,14 @@ impl Grow {
     }
     pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
         let b = self.bounds();
-        (e.status == 1)
-            .then(|| [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]])
+        (e.status == 1).then(|| {
+            [
+                e.body.x + b[0],
+                e.body.y + b[1],
+                e.body.x + b[2],
+                e.body.y + b[3],
+            ]
+        })
     }
     pub fn step(&mut self) {
         if self.phase == 0 {
@@ -480,7 +499,12 @@ impl Run {
                         y: e.body.y,
                     },
                     w.flat_solid(e.body, e.facing).filter(|_| e.status == 1),
-                    [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                    [
+                        e.body.x + r[0],
+                        e.body.y + r[1],
+                        e.body.x + r[2],
+                        e.body.y + r[3],
+                    ],
                 );
             }
             return;
@@ -494,7 +518,12 @@ impl Run {
                     y: e.body.y,
                 },
                 g.solid(e),
-                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
             );
             return;
         }
@@ -507,7 +536,12 @@ impl Run {
                     y: e.body.y,
                 },
                 f.solid(e),
-                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
             );
             return;
         }
@@ -520,7 +554,12 @@ impl Run {
                     y: e.body.y,
                 },
                 l.solid(e),
-                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
             );
             return;
         }
@@ -533,7 +572,12 @@ impl Run {
                     y: e.body.y,
                 },
                 g.solid(e),
-                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
             );
             return;
         }
@@ -546,7 +590,12 @@ impl Run {
                     y: e.body.y,
                 },
                 h.solid(e),
-                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
             );
             return;
         }
@@ -570,7 +619,12 @@ impl Run {
         );
     }
     /// falling_span.gd step.
-    pub(crate) fn fall_step(&mut self, index: usize, map: &crate::body::Probe, centre: crate::Position) {
+    pub(crate) fn fall_step(
+        &mut self,
+        index: usize,
+        map: &crate::body::Probe,
+        centre: crate::Position,
+    ) {
         let Kind::Fall(f) = &mut self.entities[index].kind else {
             return;
         };
@@ -737,18 +791,25 @@ impl Run {
         }
     }
     /// registry.gd modal_step + item_block.gd modal_step. True: the step is consumed.
-    pub(crate) fn modal_step(&mut self, input: u8, world: &crate::World) -> bool {
+    pub(crate) fn modal_step(&mut self, input: u8, world: &crate::World) -> Result<bool, Error> {
         if self.message.modal_token == 0 {
-            return false;
+            return Ok(false);
         }
         let Some(index) = self.find_token(self.message.modal_token) else {
             self.message.modal_token = 0;
-            return false;
+            return Ok(false);
         };
+        if matches!(self.entities[index].kind, Kind::Switch(_)) {
+            return self.switch_modal_step(index, i64::from(input));
+        }
         if !matches!(&self.entities[index].kind, Kind::Block(b) if b.kind == BlockKind::Message) {
             self.message.modal_token = 0;
-            return false;
+            return Ok(false);
         }
+        Ok(self.message_modal_step(index, input, world))
+    }
+    /// item_block.gd modal_step for the open message at `index`.
+    fn message_modal_step(&mut self, index: usize, input: u8, world: &crate::World) -> bool {
         if self.message.stage == OPENING && self.block(index).enabled != 0 {
             let b = self.block_mut(index);
             b.enabled = 0;
@@ -850,7 +911,12 @@ impl Run {
     fn bump_above(&mut self, index: usize) -> Result<(), Error> {
         let e = &self.entities[index];
         let b = self.block(index).bounds();
-        let block = [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]];
+        let block = [
+            e.body.x + b[0],
+            e.body.y + b[1],
+            e.body.x + b[2],
+            e.body.y + b[3],
+        ];
         self.knock_above_box(index, block)
     }
     /// BUMP hits on whatever overlaps `block` raised 8 px (item_block.gd bump_above and
@@ -881,6 +947,7 @@ impl Run {
                     crate::egg::entity_bounds(o)
                 }
                 Kind::Block(bl) => bl.bounds(),
+                Kind::Stem(s) => s.bounds(),
                 _ => continue,
             };
             let ob = [
@@ -914,13 +981,15 @@ impl Run {
                 }
             }
             Kind::Egg(_) => self.egg_bump(index),
+            // item_stem.gd hit with BUMP: a hop.
+            Kind::Stem(_) => e.body.vy = -384 * 60,
             // pickup.gd and release_cloud.gd ignore BUMP; item_block.gd hit is EGG only.
             _ => {}
         }
         Ok(())
     }
     /// item_egg.gd active_count: carried eggs plus loose on-screen eggs.
-    fn active_eggs(&self, centre: crate::Position) -> i64 {
+    pub(crate) fn active_eggs(&self, centre: crate::Position) -> i64 {
         let mut count = self.player.food.eggs;
         for e in &self.entities {
             if let Kind::Egg(_) = &e.kind {

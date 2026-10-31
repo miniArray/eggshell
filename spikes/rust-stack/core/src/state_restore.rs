@@ -28,6 +28,7 @@ impl Run {
             if run.checkpoint.set_field(name, *value)
                 || run.consumers.set_field(name, *value)
                 || run.message.set_field(name, *value)
+                || run.clock.set_field(name, *value)
             {
                 continue;
             }
@@ -87,10 +88,15 @@ impl Run {
                     Kind::Grow(p) => p.set_field(name, *value),
                     Kind::Gate(p) => p.set_field(name, *value),
                     Kind::Ledge(p) => p.set_field(name, *value),
-                    Kind::Hard(p) => name == "form" && {
-                        p.form = *value;
-                        true
-                    },
+                    Kind::Stem(p) => p.set_field(name, *value),
+                    Kind::StarFlower(p) => p.set_field(name, *value),
+                    Kind::Switch(p) => p.set_field(name, *value),
+                    Kind::Hard(p) => {
+                        name == "form" && {
+                            p.form = *value;
+                            true
+                        }
+                    }
                     Kind::Egg(p) => p.set_field(name, *value),
                     Kind::Cache(p) => p.set_field(name, *value),
                     Kind::Redirect(p) => p.set_field(name, *value),

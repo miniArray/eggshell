@@ -52,6 +52,9 @@ pub(crate) enum Kind {
     Grow(crate::blocks::Grow),
     Gate(crate::gate::Gate),
     Ledge(crate::ledge::Ledge),
+    Stem(crate::stem::Stem),
+    StarFlower(crate::flower::Flower),
+    Switch(crate::switch::Switch),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -77,8 +80,15 @@ impl Entity {
     pub fn placed(source: usize, p: &Placement, kind: Kind, family_index: i64) -> Self {
         let lifecycle = i64::from(matches!(
             kind,
-            Kind::Walker(_) | Kind::Star(_) | Kind::Egg(_)
+            Kind::Walker(_)
+                | Kind::Star(_)
+                | Kind::Egg(_)
+                | Kind::Stem(_)
+                | Kind::StarFlower(_)
+                | Kind::Switch(_)
         ));
+        // star_flower.gd create: a flower that left the screen never respawns.
+        let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
         let layer = if matches!(kind, Kind::Post(_)) {
             9
         } else if matches!(kind, Kind::Walker(_)) {
@@ -107,7 +117,7 @@ impl Entity {
             checkpoint_collected: 0,
             spawn_mode: lifecycle,
             can_despawn: lifecycle,
-            can_respawn: lifecycle,
+            can_respawn: i64::from(respawns),
             layer,
             activation_x: 416 * S,
             activation_y: 224 * S,
@@ -191,6 +201,7 @@ impl Entity {
         map: &crate::body::Probe,
         centre: crate::Position,
         player_x: i64,
+        impact: i64,
         rng: &mut crate::math::Rng,
     ) -> Result<bool, crate::Error> {
         let awake = self.status == 1;
@@ -241,6 +252,9 @@ impl Entity {
                         Kind::Pickup(Pickup::new(p.kind, source.variant, source.position.y))
                     }
                     Kind::Pad(_) => Kind::Pad(Pad::default()),
+                    Kind::Stem(_) => Kind::Stem(crate::stem::Stem::new(source)?),
+                    Kind::StarFlower(_) => Kind::StarFlower(crate::flower::Flower::new(source)?),
+                    Kind::Switch(_) => Kind::Switch(crate::switch::Switch::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -256,6 +270,9 @@ impl Entity {
                 Kind::Post(p) => p.bounds(),
                 Kind::Pickup(p) => p.bounds(),
                 Kind::Egg(p) => p.bounds(),
+                Kind::Stem(p) => p.bounds(),
+                Kind::StarFlower(p) => p.bounds(),
+                Kind::Switch(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")
@@ -275,6 +292,9 @@ impl Entity {
                 }
                 if let Kind::Walker(a) = &mut self.kind {
                     a.activate(self.facing, rng);
+                }
+                if let Kind::Stem(s) = &mut self.kind {
+                    s.activate(impact);
                 }
             }
         }

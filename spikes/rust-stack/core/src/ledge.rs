@@ -57,9 +57,9 @@ impl Ledge {
 }
 
 impl Run {
-    /// count_ledge.gd _bodies: enemies, o4 stars and o7 eggs (pads have no bounds; o16
-    /// and o17 are not admitted yet) that are not held, hidden or collected, with each
-    /// body's world box and vertical speed.
+    /// count_ledge.gd _bodies: enemies, o4 stars, o7 eggs and o17 producers (pads have no
+    /// bounds; o16 is not admitted yet) that are not held, hidden or collected, with
+    /// each body's world box and vertical speed.
     fn ledge_bodies(&self, index: usize) -> Vec<([i64; 4], i64, i64)> {
         self.entities
             .iter()
@@ -71,14 +71,19 @@ impl Run {
                     && match &o.kind {
                         Kind::Walker(w) => w.held == 0 && w.hidden == 0,
                         Kind::Star(p) => p.held == 0,
-                        Kind::Egg(_) => true,
+                        Kind::Egg(_) | Kind::Stem(_) => true,
                         _ => false,
                     }
             })
             .map(|(_, o)| {
                 let b = crate::egg::entity_bounds(o);
                 (
-                    [o.body.x + b[0], o.body.y + b[1], o.body.x + b[2], o.body.y + b[3]],
+                    [
+                        o.body.x + b[0],
+                        o.body.y + b[1],
+                        o.body.x + b[2],
+                        o.body.y + b[3],
+                    ],
                     o.body.y,
                     o.body.vy,
                 )
@@ -109,9 +114,7 @@ impl Run {
             // above the top and not moving up.
             let area = [x - 32 * S, y - 26 * S, x + 32 * S, y + 32 * S];
             let player = self.ledge_player_box().is_some_and(|b| {
-                self.player.body.y <= top
-                    && self.player.body.vy >= 0
-                    && overlap(lowered(b), area)
+                self.player.body.y <= top && self.player.body.vy >= 0 && overlap(lowered(b), area)
             });
             let pressing = player
                 || self

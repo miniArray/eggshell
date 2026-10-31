@@ -42,6 +42,9 @@ fn bounds(e: &crate::entity::Entity, w: &World, guard: i64) -> [i64; 4] {
         Kind::Grow(p) => p.bounds(),
         Kind::Gate(p) => p.bounds(),
         Kind::Ledge(p) => p.bounds(),
+        Kind::Stem(p) => p.bounds(),
+        Kind::StarFlower(p) => p.bounds(),
+        Kind::Switch(p) => p.bounds(),
         Kind::Pad(_) => {
             let PreparedPlacement::Pad { large, .. } = source.unwrap().prepared else {
                 unreachable!()

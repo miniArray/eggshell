@@ -197,6 +197,22 @@ impl Player {
         self.action_tick = 0;
         self.action_wet = self.water.swimming;
     }
+    /// moves.gd interrupt(): held food and eggs stay.
+    pub(crate) fn interrupt(&mut self) {
+        self.action = 0;
+        self.action_tick = 0;
+        self.food.aim = 0;
+        self.duck = 0;
+        self.look = 0;
+        self.turn = 0;
+        self.turn_ticks = 0;
+        self.tongue.length = 16 * S;
+        self.tongue.phase = 0;
+        self.food.swallow_queue = 0;
+        self.gravity_tick = 0;
+        self.jump_buffer = 0;
+        self.cancel_flutter();
+    }
     pub(crate) fn cancel_flutter(&mut self) {
         if self.flutter_remaining != 0 {
             self.flutter_cooldown = 17;
@@ -307,20 +323,7 @@ impl Player {
         }
         self.tick_pound(input, sound);
         if self.life.hurt != 0 {
-            // moves.gd interrupt(): held food and eggs stay.
-            self.action = 0;
-            self.action_tick = 0;
-            self.food.aim = 0;
-            self.duck = 0;
-            self.look = 0;
-            self.turn = 0;
-            self.turn_ticks = 0;
-            self.tongue.length = 16 * S;
-            self.tongue.phase = 0;
-            self.food.swallow_queue = 0;
-            self.gravity_tick = 0;
-            self.jump_buffer = 0;
-            self.cancel_flutter();
+            self.interrupt();
         }
         let bounds = self.bounds();
         map.carry_player(&mut self.body, bounds, self.on_floor);

@@ -750,12 +750,47 @@ pub(crate) fn sample_rows(
                         }
                     },
                 ),
+                // timed_switch.gd view_state
+                Kind::Switch(s) => {
+                    let (_, frame, size) = s.view().unwrap_or((false, 0, [40.0, 42.0]));
+                    (
+                        s.bounds(),
+                        VisualState {
+                            animation: Some("Default".into()),
+                            frame: Some(frame),
+                            size_pixels: [Some(size[0]), Some(size[1])],
+                            ..VisualState::default()
+                        },
+                    )
+                }
+                // star_flower.gd view_state
+                Kind::StarFlower(f) => (
+                    f.bounds(),
+                    VisualState {
+                        animation: Some("Default".into()),
+                        ..VisualState::default()
+                    },
+                ),
+                // item_stem.gd view_state
+                Kind::Stem(s) => (
+                    s.bounds(),
+                    VisualState {
+                        animation: Some(s.view().0.into()),
+                        frame: Some(s.view().1),
+                        ..VisualState::default()
+                    },
+                ),
                 // count_ledge.gd view_state
                 Kind::Ledge(l) => (
                     l.bounds(),
                     VisualState {
                         animation: Some(
-                            if l.pressed != 0 { "Pressed" } else { "Unpressed" }.into(),
+                            if l.pressed != 0 {
+                                "Pressed"
+                            } else {
+                                "Unpressed"
+                            }
+                            .into(),
                         ),
                         ..VisualState::default()
                     },
@@ -837,7 +872,11 @@ pub(crate) fn sample_rows(
                                     && c.phase != crate::clouds::HIDDEN
                                     && e.collected == 0
                             }
-                            Kind::Redirect(_) | Kind::Gate(_) | Kind::Ledge(_) => e.status == 1,
+                            Kind::Redirect(_) | Kind::Gate(_) | Kind::Ledge(_) | Kind::Stem(_) => {
+                                e.status == 1
+                            }
+                            Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
+                            Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {
                                 e.status == 1
