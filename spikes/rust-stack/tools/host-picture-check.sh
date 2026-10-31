@@ -9,7 +9,7 @@ export NIX_CONFIG='builders ='
 ROOT="$HOME/eggshell-remote/artifacts/full-rust-ab"
 export CARGO_TARGET_DIR="$ROOT/speed/trace-target"
 nix develop ./spikes/rust-stack/player -c cargo build --release --features benchmark-work-counters --manifest-path spikes/rust-stack/player/Cargo.toml 2>&1 | tail -2
-"$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-trace-host "$1" src/level/collision_table.json \
+TRACE_ZOOM_MIN=${TRACE_ZOOM_MIN:--1} "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-trace-host "$1" src/level/collision_table.json \
   "$ROOT/core/stride-4.7.2/schema.json" "${2:-600}" synthetic \
   "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
   "$ROOT/player/presentation-stage/view-metrics.json"

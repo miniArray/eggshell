@@ -79,7 +79,12 @@ pub fn trace_host(arguments: impl Iterator<Item = String>) -> Result<(), String>
             Ok(bytes) => h.update(&bytes),
             Err(e) => h.update(format!("snapshot-error {e:?}")),
         }
-        for zoom in 0..=2 {
+        // TRACE_ZOOM_MIN=-1 also checks the 1x zoom-out (not part of the gate trace).
+        let first_zoom: i32 = std::env::var("TRACE_ZOOM_MIN")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        for zoom in first_zoom..=2 {
             let (map, focus) = session.presentation_view();
             let region = scene.presentation_region(map, focus, [640.0, 480.0], zoom)?;
             let p = session.presentation_region(region);

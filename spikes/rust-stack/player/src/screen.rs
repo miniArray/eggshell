@@ -41,11 +41,20 @@ pub fn plan(
         .min(container[1] / (112.0 * d))
         .floor() as i32;
     let largest = k.max(closest);
-    let multiple = k.saturating_add(zoom).clamp(fit, largest);
+    // Deviation from the Godot camera (user request on the Pro): zooming out may go below
+    // `fit` down to 1x. The default (zoom 0) is unchanged. A view larger than the level
+    // centres the level on that axis; the bands outside it show the clear colour.
+    let smallest = 1;
+    let multiple = k.saturating_add(zoom).clamp(smallest, largest);
     let scale = multiple as f64 * d;
     let visible = [container[0] / scale, container[1] / scale];
-    let center =
-        std::array::from_fn(|i| focus[i].clamp(visible[i] / 2.0, level[i] - visible[i] / 2.0));
+    let center = std::array::from_fn(|i| {
+        if visible[i] >= level[i] {
+            level[i] / 2.0
+        } else {
+            focus[i].clamp(visible[i] / 2.0, level[i] - visible[i] / 2.0)
+        }
+    });
     // Root Node2D uses rounded offset, unlike the unrounded plan value.
     let offset = std::array::from_fn(|i| container[i] / 2.0 - center[i] * scale);
     Ok(Plan {
@@ -55,7 +64,7 @@ pub fn plan(
         offset,
         base_scale: k as f64 * d,
         zoom: multiple - k,
-        zoom_min: fit - k,
+        zoom_min: smallest - k,
         zoom_max: largest - k,
     })
 }
@@ -97,8 +106,16 @@ mod tests {
     fn stress_zoom_clamps_extreme_initial_values() {
         let low = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MIN).unwrap();
         let high = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MAX).unwrap();
-        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (0, 0, 1));
-        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1, 0, 1));
+        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (-1, -1, 1));
+        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1, -1, 1));
+    }
+    #[test]
+    fn zoom_out_reaches_one_to_one_and_centres_a_short_level() {
+        let p = plan([640.0, 480.0], [15040.0, 448.0], [416.0, 224.0], 1, -1).unwrap();
+        assert_eq!(p.scale, 1.0);
+        assert_eq!(p.visible, [640.0, 480.0]);
+        assert_eq!(p.center, [416.0, 224.0]);
+        assert_eq!(p.offset, [-96.0, 16.0]);
     }
     #[test]
     fn godot_half_away_from_zero() {
