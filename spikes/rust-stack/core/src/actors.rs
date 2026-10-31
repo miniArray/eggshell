@@ -35,6 +35,8 @@ pub(crate) enum ActorKind {
     LandFish,
     /// sneak_thief.gd e10.
     Thief,
+    /// hanging_roller.gd e28.
+    Roller,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -120,6 +122,8 @@ pub(crate) struct Actor {
     pub carrying: i64,
     pub get_up: i64,
     pub saw_bubble: i64,
+    // hanging_roller.gd FIELDS (mode, timer and contact are shared above).
+    pub landed: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -208,6 +212,7 @@ impl Actor {
             carrying: 0,
             get_up: 0,
             saw_bubble: 0,
+            landed: 0,
         }
     }
     pub fn valid(&self) -> bool {
@@ -233,6 +238,7 @@ impl Actor {
             && (self.kind != ActorKind::Armored || self.armored_valid())
             && (self.kind != ActorKind::Spear || self.spear_valid())
             && (self.kind != ActorKind::Thief || self.thief_valid())
+            && (self.kind != ActorKind::Roller || self.roller_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
@@ -310,6 +316,7 @@ impl Actor {
             ActorKind::Armored => crate::armored::BOX,
             ActorKind::Spear => crate::spear::BOX,
             ActorKind::Thief => crate::thief::BOX,
+            ActorKind::Roller => crate::roller::BOX,
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
@@ -435,8 +442,9 @@ impl Actor {
             | ActorKind::Runner
             | ActorKind::Armored
             | ActorKind::Spear
-            | ActorKind::Thief => {
-                unreachable!("Run::shell_step, armored_step, spear_step and thief_step step these")
+            | ActorKind::Thief
+            | ActorKind::Roller => {
+                unreachable!("Run::shell_step, armored_step, spear_step, thief_step and roller_step step these")
             }
             ActorKind::Walker => self.walker(body, facing, step),
             ActorKind::Flyer if self.ground_form != 0 => {
@@ -887,5 +895,6 @@ fields!(
     hit_health,
     carrying,
     get_up,
-    saw_bubble
+    saw_bubble,
+    landed
 );

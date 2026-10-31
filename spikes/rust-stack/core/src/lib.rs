@@ -28,6 +28,7 @@ mod pad;
 mod player;
 pub mod polygon;
 mod post;
+mod roller;
 mod pound;
 mod presentation;
 mod render_index;

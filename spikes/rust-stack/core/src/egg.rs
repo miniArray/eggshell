@@ -612,6 +612,7 @@ impl Run {
             Armored,
             Spear,
             Thief,
+            Hanging,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -653,6 +654,8 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
                 // sneak_thief.gd projectile_contact: struck; the egg is used up.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
+                // hanging_roller.gd projectile_contact for an egg: 0 while rolling.
+                Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Hanging,
                 // armored_walker.gd projectile_contact for an egg: it rolls away.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
                 // shell_walker.gd projectile_contact for an egg.
@@ -736,6 +739,16 @@ impl Run {
             Target::Thief => {
                 self.thief_struck(other, projectile.x)?;
                 1
+            }
+            Target::Hanging => {
+                let o = &mut self.entities[other];
+                match &mut o.kind {
+                    Kind::Walker(w) if w.mode != crate::roller::ROLL => {
+                        w.roller_hit();
+                        1
+                    }
+                    _ => 0,
+                }
             }
             Target::Armored => {
                 let direction = if self.entities[egg].body.vx > 0 {

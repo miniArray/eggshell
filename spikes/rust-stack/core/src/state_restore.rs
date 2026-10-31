@@ -103,6 +103,7 @@ impl Run {
                     Kind::Egg(p) => p.set_field(name, *value),
                     Kind::Cache(p) => p.set_field(name, *value),
                     Kind::Redirect(p) => p.set_field(name, *value),
+                    Kind::Overlap(p) => p.set_field(name, *value),
                     _ => false,
                 };
                 let handled = if specific || e.set_common(name, *value) {

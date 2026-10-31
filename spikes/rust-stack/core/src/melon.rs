@@ -213,6 +213,9 @@ impl Run {
             spins: false,
             rolls: false,
             breaks: false,
+            token: self.entities[index].origin.token(),
+            weapon: false,
+            spat_or_roll: false,
         };
         let candidates = self.entities.len();
         for other in 0..candidates {

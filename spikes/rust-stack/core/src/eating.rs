@@ -82,6 +82,10 @@ pub(crate) enum After {
     SpearStep,
     /// sneak_thief.gd step, which reads the companion and other thieves.
     ThiefStep,
+    /// hanging_roller.gd step, which strikes other bodies while rolling.
+    RollerStep,
+    /// enemy_overlap.gd step, which reads the paired bodies.
+    OverlapStep,
     /// timed_switch.gd step, which runs the shared interval.
     SwitchStep,
     /// arrow_lift.gd step, which moves a top-only deck.
@@ -104,6 +108,13 @@ pub(crate) struct Projectile {
     pub rolls: bool,
     /// A spat or rolling body (actor.gd e5 head: consumed).
     pub breaks: bool,
+    /// The projectile's token (enemy_overlap.gd pairs).
+    pub token: i64,
+    /// An e6/e8, e11 or e28 weapon that is not spat (hanging_roller.gd: one strike per
+    /// entry).
+    pub weapon: bool,
+    /// Spat, or an actor.gd roll (hanging_roller.gd projectile_contact: consumed).
+    pub spat_or_roll: bool,
 }
 impl Projectile {
     fn box_(&self) -> [i64; 4] {
@@ -427,6 +438,8 @@ impl Run {
                         0
                     }
                 }
+                // hanging_roller.gd has no tongue rule and is not solid.
+                Kind::Walker(w) if w.kind == ActorKind::Roller => 0,
                 // sneak_thief.gd tongue: the tongue bounces off and shoves the thief away.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => {
                     if w.held != 0 || e.status != 1 {
@@ -665,6 +678,16 @@ impl Run {
                 &self.entities[index].kind,
                 Kind::Walker(w) if w.spat != 0 || w.roll != 0
             ),
+            token: self.entities[index].origin.token(),
+            weapon: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.spat == 0
+                    && [ActorKind::Shell, ActorKind::Armored, ActorKind::Roller].contains(&w.kind)
+            ),
+            spat_or_roll: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.spat != 0 || w.roll != 0
+            ),
         };
         let mut other = 0;
         while other < self.entities.len() {
@@ -721,6 +744,8 @@ impl Run {
         let projectile_spins = projectile.spins;
         let projectile_rolls = projectile.rolls;
         let projectile_breaks = projectile.breaks;
+        let (projectile_token, projectile_weapon, projectile_consumed) =
+            (projectile.token, projectile.weapon, projectile.spat_or_roll);
         let projectile = projectile.body;
         enum Target {
             StiltRider,
@@ -733,6 +758,7 @@ impl Run {
             Armored,
             Spear,
             Thief,
+            Roller,
             Pickup,
             Inert,
             Egg,
@@ -775,6 +801,8 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
                 // sneak_thief.gd projectile_contact: struck; the projectile is used up.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
+                // hanging_roller.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Roller,
                 Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,
@@ -822,6 +850,12 @@ impl Run {
                 self.thief_struck(current, projectile.x)?;
                 1
             }
+            Target::Roller => self.roller_projectile(
+                current,
+                projectile_token,
+                projectile_weapon,
+                projectile_consumed,
+            )?,
             Target::Armored => {
                 // A spit from another e11 removes it; a shell removes it; any other
                 // spit rolls it away from the projectile.

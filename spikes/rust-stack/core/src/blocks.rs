@@ -988,6 +988,11 @@ impl Run {
         {
             return self.thief_struck(index, from_x);
         }
+        // hanging_roller.gd hit ignores BUMP.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Roller)
+        {
+            return Ok(());
+        }
         let e = &mut self.entities[index];
         match &mut e.kind {
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Stilt => {

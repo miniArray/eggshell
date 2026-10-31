@@ -40,6 +40,7 @@ fn run(restores: bool) {
         "fish_target",
         "melons_target",
         "thieves_target",
+        "rollers_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -103,6 +104,9 @@ fn run(restores: bool) {
     let mut thief_struck = 0;
     let mut thief_shoved = 0;
     let mut thief_defeated = 0;
+    let mut roller_modes = [0usize; 3];
+    let mut roller_walled = 0;
+    let mut overlap_ticks = 0;
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -548,6 +552,16 @@ fn run(restores: bool) {
             );
             thief_defeated += usize::from(f("status") == 3);
         }
+        // hanging_roller.gd: ticks per mode (hang, laugh, roll), stopped by a wall (queued
+        // after it started), and enemy_overlap.gd entry-contact rows.
+        for e in wire.entities.iter().filter(|e| e.code == "e28") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e28"), n).unwrap();
+            if f("status") == 1 && (0..3).contains(&f("mode")) {
+                roller_modes[f("mode") as usize] += 1;
+            }
+            roller_walled += usize::from(f("status") == 2 && f("started") == 1);
+        }
+        overlap_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_overlap"));
         // arrow_lift.gd: riding ticks, shrink ticks, and arrow changes while riding.
         for e in wire.entities.iter().filter(|e| e.code == "o21") {
             let f = |n: &str| required(&e.values, schema.entity_fields("o21"), n).unwrap();
@@ -784,6 +798,9 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "rollers_target" {
+        println!("ROLLER_COVERAGE mode_ticks={roller_modes:?} walled_ticks={roller_walled} overlap_ticks={overlap_ticks}");
+        assert!(roller_modes.iter().all(|n| *n > 0) && roller_walled > 0 && overlap_ticks > 0);
     } else if name == "thieves_target" {
         println!("THIEF_COVERAGE plan_ticks={thief_plans:?} carry_ticks={thief_carry} stomped_ticks={thief_stomped} struck_ticks={thief_struck} shoved_ticks={thief_shoved} defeated_ticks={thief_defeated}");
         assert!(

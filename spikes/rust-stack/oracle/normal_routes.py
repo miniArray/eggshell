@@ -124,6 +124,14 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "rollers_target":
+        # Eat the walker, lay an egg and throw it at the first hanging roller (it laughs,
+        # drops, rolls into Yoshi and stops at the border); walk right, hop over the low
+        # roller, and stand under the second: it drops and rolls left through the low
+        # one (entry-contact memory, a laugh) and the respawned first one.
+        inputs = [0] * 20 + [2] * 12 + [8] + [0] * 30 + [32] + [0] * 40
+        inputs += [64] + [0] * 14 + [64] + [0] * 260 + [2] * 103 + [6] * 14 + [2] * 16
+        inputs += [0] * 300
     elif name == "thieves_target":
         # Walk into the walker (the companion launches and floats as a bubble); wait while
         # both thieves race for it, one grabs it and runs to the wall with it and the

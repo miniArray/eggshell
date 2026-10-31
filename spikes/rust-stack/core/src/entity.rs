@@ -61,6 +61,8 @@ pub(crate) enum Kind {
     Lift(crate::lift::Lift),
     Melon(crate::melon::Melon),
     Seed(crate::melon::Seed),
+    /// enemy_overlap.gd: runtime only, never drawn.
+    Overlap(crate::roller::Overlap),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -177,6 +179,7 @@ impl Entity {
                     ActorKind::Armored => "e11",
                     ActorKind::Spear => "e22",
                     ActorKind::Thief => "e10",
+                    ActorKind::Roller => "e28",
                     ActorKind::Fish => "e20",
                     ActorKind::LandFish => "e21",
                 },
@@ -189,6 +192,7 @@ impl Entity {
                 Kind::Switch(_) => "o14",
                 Kind::Egg(_) => "o7",
                 Kind::Seed(_) => "seed_shot",
+                Kind::Overlap(_) => "enemy_overlap",
                 _ => unreachable!("runtime constructors admit only dynamic types"),
             }
         }
@@ -268,6 +272,9 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Thief => {
                         Kind::Walker(Actor::thief(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Roller => {
+                        Kind::Walker(Actor::roller(source)?)
                     }
                     Kind::Walker(a) => {
                         let mut a =

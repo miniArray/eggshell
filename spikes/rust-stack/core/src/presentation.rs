@@ -118,6 +118,10 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
 }
 fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
     use crate::actors::ActorKind;
+    // hanging_roller.gd has no view_state.
+    if w.kind == ActorKind::Roller {
+        return VisualState::default();
+    }
     if w.kind == ActorKind::Stilt {
         return VisualState {
             size_pixels: [None, Some(w.height as f64 / SCALE as f64)],
@@ -168,6 +172,7 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Spear => w.spear_animation(),
         // sneak_thief.gd view_state
         ActorKind::Thief => w.thief_animation().into(),
+        ActorKind::Roller => unreachable!("roller has no view_state"),
         // actor.gd view_state
         ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {
@@ -613,7 +618,9 @@ pub(crate) fn sample_rows(
                 .entity(e.origin.token())
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
-                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
+                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) | Kind::Overlap(_) => {
+                    ([0; 4], VisualState::default())
+                }
                 // grow_block.gd view_state
                 Kind::Grow(g) => (
                     g.bounds(),
@@ -919,6 +926,8 @@ pub(crate) fn sample_rows(
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {
                                 e.status == 1
                             }
+                            // enemy_overlap.gd view_state
+                            Kind::Overlap(_) => false,
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),

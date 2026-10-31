@@ -217,6 +217,7 @@ impl Run {
                     "e11" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::armored(p)?),
                     "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
                     "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
+                    "e28" => Kind::Walker(crate::actors::Actor::roller(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -324,6 +325,7 @@ impl Run {
                     | Kind::Lift(_)
                     | Kind::Melon(_)
                     | Kind::Seed(_)
+                    | Kind::Overlap(_)
             ) {
                 continue;
             }
@@ -356,6 +358,7 @@ impl Run {
                     crate::eating::After::RefreshSolid
                 }
                 Kind::Egg(_) => crate::eating::After::EggStep,
+                Kind::Overlap(_) => crate::eating::After::OverlapStep,
                 Kind::Cache(_) => crate::eating::After::CacheStep,
                 Kind::Redirect(r) => {
                     r.step(&mut self.rng);
@@ -399,6 +402,9 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Thief => {
                     crate::eating::After::ThiefStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Roller => {
+                    crate::eating::After::RollerStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -416,6 +422,7 @@ impl Run {
                             | ActorKind::Armored
                             | ActorKind::Spear
                             | ActorKind::Thief
+                            | ActorKind::Roller
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -459,6 +466,8 @@ impl Run {
                 crate::eating::After::ArmoredStep => self.armored_step(next - 1, map)?,
                 crate::eating::After::SpearStep => self.spear_step(next - 1, map)?,
                 crate::eating::After::ThiefStep => self.thief_step(next - 1, map)?,
+                crate::eating::After::RollerStep => self.roller_step(next - 1, map)?,
+                crate::eating::After::OverlapStep => self.overlap_step(next - 1),
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::LiftStep => {
                     self.lift_step(next - 1, map);
@@ -795,6 +804,10 @@ impl Run {
                     self.thief_contact(index, action, &map)?;
                     continue;
                 }
+                if w.kind == crate::actors::ActorKind::Roller {
+                    self.roller_contact(index, action);
+                    continue;
+                }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
                     continue;
                 }
@@ -1126,6 +1139,7 @@ impl Run {
             Kind::Redirect(p) => p.field(n),
             Kind::Melon(p) => p.field(n),
             Kind::Seed(p) => p.field(n),
+            Kind::Overlap(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
