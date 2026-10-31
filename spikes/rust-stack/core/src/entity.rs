@@ -47,6 +47,11 @@ pub(crate) enum Kind {
     Redirect(crate::clouds::Redirect),
     Block(crate::blocks::Block),
     Span(crate::spans::Span),
+    Hard(crate::blocks::Hard),
+    Fall(crate::blocks::Fall),
+    Grow(crate::blocks::Grow),
+    Gate(crate::gate::Gate),
+    Ledge(crate::ledge::Ledge),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -81,8 +86,8 @@ impl Entity {
         } else if matches!(kind, Kind::Decor) {
             // decor.gd prepare: source.layer = layer_for(code).
             p.layer
-        } else if matches!(kind, Kind::Redirect(_)) {
-            // redirect_cloud.gd create: "layer": 9.
+        } else if matches!(kind, Kind::Redirect(_) | Kind::Gate(_)) {
+            // redirect_cloud.gd and one_way_gate.gd create: "layer": 9.
             9
         } else {
             7
@@ -147,6 +152,7 @@ impl Entity {
                     ActorKind::Flower => "e3",
                     ActorKind::Plant => "e5",
                     ActorKind::Stilt => "e35",
+                    ActorKind::Flat => "e4",
                 },
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
@@ -245,7 +251,7 @@ impl Entity {
         }
         if self.status == 0 {
             let b = match &self.kind {
-                Kind::Walker(a) => a.body_bounds(self.facing),
+                Kind::Walker(a) => a.activation_bounds(self.facing),
                 Kind::Star(p) => p.bounds(),
                 Kind::Post(p) => p.bounds(),
                 Kind::Pickup(p) => p.bounds(),

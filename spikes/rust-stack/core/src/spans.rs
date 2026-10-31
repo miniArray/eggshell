@@ -11,6 +11,8 @@ pub(crate) enum SpanKind {
     Plank,
     /// wide_span.gd: drawn height and support offset from the top, in pixels.
     Wide { height: i64, offset: i64 },
+    /// cloud_span.gd (p3): 48 px drawn, the strip 16 px above the centre.
+    Cloud,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,6 +110,11 @@ impl Span {
                 wide(96, 32, 0)
             }
             "p9" => wide(96, 56, 12),
+            "p3" => Ok(Self {
+                kind: SpanKind::Cloud,
+                width: wide_width(property(p, "E1"), 128)?,
+                stalk: 0,
+            }),
             "p10" => wide(128, 32, 0),
             "p13" => wide(80, 32, 0),
             "p19" => wide(64, 32, 0),
@@ -118,6 +125,7 @@ impl Span {
         match self.kind {
             SpanKind::Plank => 32 * S,
             SpanKind::Wide { height, .. } => height * S,
+            SpanKind::Cloud => 48 * S,
         }
     }
     pub fn bounds(&self) -> [i64; 4] {
@@ -127,6 +135,14 @@ impl Span {
     /// The top-only 2 px support strip.
     pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
         match self.kind {
+            SpanKind::Cloud => (e.status == 1 && self.width != 0).then(|| {
+                [
+                    e.body.x - self.width / 2,
+                    e.body.y - 16 * S,
+                    e.body.x + self.width / 2,
+                    e.body.y - 14 * S,
+                ]
+            }),
             SpanKind::Plank => (e.status == 1 && self.width > 0).then(|| {
                 [
                     e.body.x - self.width / 2,

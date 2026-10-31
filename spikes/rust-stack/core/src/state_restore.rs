@@ -83,6 +83,14 @@ impl Run {
                     Kind::Post(p) => p.set_field(name, *value),
                     Kind::Block(p) => p.set_field(name, *value),
                     Kind::Span(p) => p.set_field(name, *value),
+                    Kind::Fall(p) => p.set_field(name, *value),
+                    Kind::Grow(p) => p.set_field(name, *value),
+                    Kind::Gate(p) => p.set_field(name, *value),
+                    Kind::Ledge(p) => p.set_field(name, *value),
+                    Kind::Hard(p) => name == "form" && {
+                        p.form = *value;
+                        true
+                    },
                     Kind::Egg(p) => p.set_field(name, *value),
                     Kind::Cache(p) => p.set_field(name, *value),
                     Kind::Redirect(p) => p.set_field(name, *value),

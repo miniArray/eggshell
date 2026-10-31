@@ -172,15 +172,15 @@ pub(crate) enum HorizontalMove {
     Item,
 }
 impl Body {
-    fn shape_overlap(&self, b: [i64; 4], box_: [i64; 4], dx: i64, dy: i64) -> bool {
-        let q = [
+    fn shape_overlap(&self, b: [i64; 4], shape: &crate::solids::Shape, dx: i64, dy: i64) -> bool {
+        // The optional body polygon restricts terrain only; original _box_overlap is AABB,
+        // then a turned solid's own narrow phase (solid_touches).
+        shape.touches([
             self.x + b[0] + dx,
             self.y + b[1] + dy,
             self.x + b[2] + dx,
             self.y + b[3] + dy,
-        ];
-        // The optional body polygon restricts terrain only; original _box_overlap is AABB.
-        q[2] >= box_[0] && q[0] <= box_[2] && q[3] >= box_[1] && q[1] <= box_[3]
+        ])
     }
     pub fn overlaps(&self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) -> bool {
         if self.terrain_at(map, b, dx, dy) {
@@ -194,7 +194,7 @@ impl Body {
         ];
         map.solid_shapes(q)
             .into_iter()
-            .any(|s| s.mode == 1 && self.shape_overlap(b, s.box_, dx, dy))
+            .any(|s| s.mode == 1 && self.shape_overlap(b, &s, dx, dy))
     }
     fn terrain_at(&self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) -> bool {
         let q = [
@@ -248,7 +248,7 @@ impl Body {
             .collect();
         let q = [self.x + b[0], self.y + b[1], self.x + b[2], self.y + b[3]];
         for shape in map.solid_shapes(q) {
-            if shape.mode == 2 && self.shape_overlap(b, shape.box_, 0, 0) {
+            if shape.mode == 2 && self.shape_overlap(b, &shape, 0, 0) {
                 found.push(shape.handle);
             }
         }
@@ -260,7 +260,7 @@ impl Body {
             || support <= -2
                 && map
                     .selected(support)
-                    .is_some_and(|s| self.shape_overlap(b, s.box_, 0, 0))
+                    .is_some_and(|s| self.shape_overlap(b, &s, 0, 0))
     }
     pub fn floor(&self, map: &Probe, b: [i64; 4]) -> i64 {
         if self.overlaps(map, b, 0, 0) {
@@ -277,7 +277,7 @@ impl Body {
         ];
         let shapes = map.solid_shapes(below);
         for shape in &shapes {
-            if shape.mode == 1 && self.shape_overlap(b, shape.box_, 0, S) {
+            if shape.mode == 1 && self.shape_overlap(b, shape, 0, S) {
                 return shape.handle;
             }
         }
@@ -289,7 +289,7 @@ impl Body {
         for shape in &shapes {
             if shape.mode == 2
                 && self.y + b[3] <= shape.box_[1]
-                && self.shape_overlap(b, shape.box_, 0, S)
+                && self.shape_overlap(b, shape, 0, S)
             {
                 return shape.handle;
             }

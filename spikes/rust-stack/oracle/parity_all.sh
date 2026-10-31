@@ -18,7 +18,7 @@ check() {
   fi
 }
 check stride nix-shell spikes/rust-stack/oracle/milestone.sh
-for fixture in bounce bounce.pad bounce.moves stride.eat lagoon collections actors_target stilts_target stilts_target.knock checkpoint_target posts_target posts_target.pound posts_target.duck blocks_target spans_target; do
+for fixture in bounce bounce.pad bounce.moves stride.eat lagoon collections actors_target stilts_target stilts_target.knock checkpoint_target posts_target posts_target.pound posts_target.duck blocks_target spans_target flats_target hards_target falls_target grows_target gates_target ledges_target; do
   check "$fixture" nix-shell spikes/rust-stack/oracle/fixture.sh "$fixture"
 done
 printf 'PARITY_ALL_DONE failed=%s source=%s\n' "$failed" "$(git rev-parse HEAD)"

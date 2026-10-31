@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-eggs-trail}  # stilt-anim plus rotated plant heads (original pivot/angle/flip), stilt variant colours (8 palette swaps), carried-egg trail and aim cursor; PlayerPicture gained eggs/aim fields (debug text on every level)
+BASE=${2:-p2-pads}  # o11 pads get their own family_index (registry.gd springs), so every pad level's snapshot bytes changed; Life.before_step bubble sees no entity solids (target idle trace from tick 100)
 failed=0
 step() {
   local name=$1

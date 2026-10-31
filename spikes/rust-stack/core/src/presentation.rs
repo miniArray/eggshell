@@ -143,6 +143,23 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
             }
         }
         ActorKind::Stilt => unreachable!("stilt samples a size, not actor animation"),
+        // flat_walker.gd view_state
+        ActorKind::Flat => {
+            if w.mode == crate::actors::FLAT_AIR && body.vy >= 0 {
+                "Fall".into()
+            } else {
+                [
+                    "Walk",
+                    "PrepareJump",
+                    "Jump",
+                    "Idle",
+                    "Squash",
+                    "SquashWalk",
+                    "Unsquash",
+                ][w.mode.clamp(0, 6) as usize]
+                    .into()
+            }
+        }
         ActorKind::Flower => {
             if w.mode != 0 {
                 "turn".into()
@@ -587,6 +604,37 @@ pub(crate) fn sample_rows(
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
+                // grow_block.gd view_state
+                Kind::Grow(g) => (
+                    g.bounds(),
+                    VisualState {
+                        animation: Some("Default".into()),
+                        offset_pixels: [0.0, g.lift as f64 / SCALE as f64],
+                        size_pixels: [
+                            Some(g.size as f64 / SCALE as f64),
+                            Some(g.size as f64 / SCALE as f64),
+                        ],
+                        ..VisualState::default()
+                    },
+                ),
+                // falling_span.gd view_state
+                Kind::Fall(f) => (
+                    f.bounds(),
+                    VisualState {
+                        animation: Some(f.view().0.into()),
+                        frame: Some(f.view().1),
+                        ..VisualState::default()
+                    },
+                ),
+                // hard_block.gd view_state
+                Kind::Hard(h) => (
+                    h.bounds(),
+                    VisualState {
+                        animation: Some(h.animation().into()),
+                        frame: Some(h.form),
+                        ..VisualState::default()
+                    },
+                ),
                 // plank_bridge.gd / ledge_span.gd / wide_span.gd view_state
                 Kind::Span(s) => (
                     s.bounds(),
@@ -702,6 +750,25 @@ pub(crate) fn sample_rows(
                         }
                     },
                 ),
+                // count_ledge.gd view_state
+                Kind::Ledge(l) => (
+                    l.bounds(),
+                    VisualState {
+                        animation: Some(
+                            if l.pressed != 0 { "Pressed" } else { "Unpressed" }.into(),
+                        ),
+                        ..VisualState::default()
+                    },
+                ),
+                // one_way_gate.gd view_state
+                Kind::Gate(g) => (
+                    g.bounds(),
+                    VisualState {
+                        frame: Some(g.opened),
+                        rotation_degrees: Some(g.angle as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
                 // redirect_cloud.gd view_state
                 Kind::Redirect(r) => (
                     r.bounds(),
@@ -770,9 +837,11 @@ pub(crate) fn sample_rows(
                                     && c.phase != crate::clouds::HIDDEN
                                     && e.collected == 0
                             }
-                            Kind::Redirect(_) => e.status == 1,
+                            Kind::Redirect(_) | Kind::Gate(_) | Kind::Ledge(_) => e.status == 1,
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
-                            Kind::Span(_) => e.status == 1,
+                            Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {
+                                e.status == 1
+                            }
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),

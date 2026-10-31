@@ -22,7 +22,13 @@ fn run(restores: bool) {
         "posts_target.pound",
         "posts_target.duck",
         "blocks_target",
-        "spans_target"
+        "spans_target",
+        "flats_target",
+        "hards_target",
+        "falls_target",
+        "grows_target",
+        "gates_target",
+        "ledges_target"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -54,6 +60,16 @@ fn run(restores: bool) {
     let mut message_ticks = 0;
     let mut message_sections = 0;
     let mut raised_floor_ticks = 0;
+    let mut flat_ticks = 0;
+    let mut cracked_ticks = 0;
+    let mut falling_ticks = 0;
+    let mut grown_ticks = 0;
+    let mut gate_open_ticks = 0;
+    let mut gate_closings = 0;
+    let mut gates_open = 0;
+    let mut ledge_pressed_ticks = 0;
+    let mut ledges_left = usize::MAX;
+    let mut ledge_breaks = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -367,6 +383,29 @@ fn run(restores: bool) {
             required(&wire.player, schema.player(), "on_floor").unwrap() != 0
                 && required(&wire.player, schema.player(), "y").unwrap() < 380 * 3600,
         );
+        // An egg changed a hard block: hard4 cracked (frame 5), or one of the three broke.
+        cracked_ticks += usize::from(packet.entities.iter().filter(|e| e.visible && e.visual.animation.as_deref() == Some("Rock")).count() < 3 || packet.entities.iter().any(|e| {
+            e.visual.animation.as_deref() == Some("Rock") && e.visual.frame == Some(5)
+        }));
+        grown_ticks += usize::from(packet.entities.iter().any(|e| {
+            e.visual.animation.as_deref() == Some("Default") && e.visual.size_pixels[0].unwrap_or(0.0) > 40.0
+        }));
+        // one_way_gate.gd: frame 1 while opened; a drop in the open count is a closing.
+        let open = packet.entities.iter().filter(|e| e.visual.rotation_degrees.is_some() && e.visual.animation.is_none() && e.visual.frame == Some(1)).count();
+        gate_open_ticks += usize::from(open > 0);
+        gate_closings += usize::from(open < gates_open);
+        gates_open = open;
+        // count_ledge.gd: Pressed while pressed; a ledge that breaks leaves the view.
+        let ledges = packet.entities.iter().filter(|e| e.visible && matches!(e.visual.animation.as_deref(), Some("Pressed" | "Unpressed"))).count();
+        ledge_pressed_ticks += usize::from(packet.entities.iter().any(|e| e.visual.animation.as_deref() == Some("Pressed")));
+        ledge_breaks += usize::from(ledges < ledges_left && ledges_left != usize::MAX);
+        ledges_left = ledges;
+        falling_ticks += usize::from(packet.entities.iter().any(|e| {
+            e.visual.animation.as_deref() == Some("Falling") && e.visual.frame == Some(4)
+        }));
+        flat_ticks += usize::from(packet.entities.iter().any(|e| {
+            e.visual.animation.as_deref() == Some("SquashWalk")
+        }));
         if let Some(m) = &packet.message {
             message_ticks += 1;
             message_sections = message_sections.max(m.section + 1);
@@ -377,11 +416,20 @@ fn run(restores: bool) {
         if std::env::var_os("FIXTURE_DUMP").is_some() && !restores {
             let f = |n: &str| required(&wire.player, schema.player(), n).unwrap();
             println!(
-                "DUMP tick={tick} input={} action={} hurt={} held={} digest={} eggs={} serial={} x={} y={} on_floor={}",
+                "DUMP tick={tick} input={} action={} hurt={} held={} digest={} eggs={} serial={} x={} y={} on_floor={} cmode={} cvx={} rx={} ry={}",
                 inputs.get(tick.saturating_sub(1)).copied().unwrap_or(0),
                 f("move_action"), f("hurt"), f("move_held_id"), f("move_digest"), f("move_eggs"),
-                f("move_emit_serial"), f("x"), f("y"), f("on_floor")
+                f("move_emit_serial"), f("x"), f("y"), f("on_floor"), f("companion_mode"), f("companion_vx"), f("recovery_x"), f("recovery_y")
             );
+            let loose: Vec<String> = packet
+                .entities
+                .iter()
+                .filter(|e| e.code == "o7" && e.visible)
+                .map(|e| format!("{},{}", e.motion.current.x / 3600, e.motion.current.y / 3600))
+                .collect();
+            if !loose.is_empty() {
+                println!("DUMP_EGGS tick={tick} at={}", loose.join(" "));
+            }
         }
         requests =
             requests.max(required(&wire.player, schema.player(), "move_emit_serial").unwrap());
@@ -517,6 +565,25 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "ledges_target" {
+        println!("LEDGE_COVERAGE pressed_ticks={ledge_pressed_ticks} breaks={ledge_breaks}");
+        assert!(ledge_pressed_ticks > 0 && ledge_breaks > 0);
+    } else if name == "gates_target" {
+        println!("GATE_COVERAGE open_ticks={gate_open_ticks} closings={gate_closings}");
+        assert!(gate_open_ticks > 0 && gate_closings > 0);
+    } else if name == "grows_target" {
+        println!("GROW_COVERAGE grown_ticks={grown_ticks} raised_floor_ticks={raised_floor_ticks}");
+        assert!(grown_ticks > 0 && raised_floor_ticks > 0);
+    } else if name == "falls_target" {
+        println!("FALL_COVERAGE falling_ticks={falling_ticks} raised_floor_ticks={raised_floor_ticks}");
+        assert!(falling_ticks > 0 && raised_floor_ticks > 0);
+    } else if name == "hards_target" {
+        println!("HARD_COVERAGE cracked_or_broken_ticks={cracked_ticks} most_eggs={most_eggs}");
+        assert!(cracked_ticks > 0 && most_eggs > 0);
+    } else if name == "flats_target" {
+        // The flat route must flatten a walker and stand on a raised (flat) floor.
+        println!("FLAT_COVERAGE flat_ticks={flat_ticks} raised_floor_ticks={raised_floor_ticks}");
+        assert!(flat_ticks > 0 && raised_floor_ticks > 0);
     } else if name == "spans_target" {
         // The span route must stand on top-only spans above the ground.
         println!("SPAN_COVERAGE raised_floor_ticks={raised_floor_ticks}");

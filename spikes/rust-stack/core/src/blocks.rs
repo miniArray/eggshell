@@ -32,6 +32,271 @@ pub(crate) struct Block {
     pub height_from: i64,
 }
 
+/// Static full solids broken by eggs: hard_block.gd (o28), colour_block.gd (o29) and
+/// thorn_block.gd (o12).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HardKind {
+    /// o28: 64 x 64; even forms crack, odd forms break; stops the tongue.
+    Rock,
+    /// o29: 64 x 32; forms 0..2 change colour, the last breaks.
+    Colour,
+    /// o12: 32 x 32; any egg breaks it; touching it kills the player.
+    Thorn,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Hard {
+    pub kind: HardKind,
+    pub form: i64,
+}
+
+impl Hard {
+    pub fn new(p: &Placement) -> Result<Self, Error> {
+        let (kind, last) = match p.code.as_str() {
+            "o28" => (HardKind::Rock, 17),
+            "o29" => (HardKind::Colour, 2),
+            _ => (HardKind::Thorn, 1),
+        };
+        if !(0..=last).contains(&p.variant) {
+            return Err(Error::Unsupported {
+                requirements: vec![format!("{} form F={}", p.code, p.variant)],
+            });
+        }
+        Ok(Self {
+            kind,
+            form: p.variant,
+        })
+    }
+    pub fn last_form(&self) -> i64 {
+        match self.kind {
+            HardKind::Rock => 17,
+            HardKind::Colour => 2,
+            HardKind::Thorn => 1,
+        }
+    }
+    pub fn bounds(&self) -> [i64; 4] {
+        match self.kind {
+            HardKind::Rock => [-32 * S, -32 * S, 32 * S, 32 * S],
+            HardKind::Colour => [-32 * S, -16 * S, 32 * S, 16 * S],
+            HardKind::Thorn => [-16 * S, -16 * S, 16 * S, 16 * S],
+        }
+    }
+    pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
+        let b = self.bounds();
+        (e.status == 1)
+            .then(|| [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]])
+    }
+    pub fn animation(&self) -> &'static str {
+        match self.kind {
+            HardKind::Rock => "Rock",
+            HardKind::Colour => "Color",
+            HardKind::Thorn => "Default",
+        }
+    }
+    /// Whether projectile_contact refunds the bounce its own ricochet spends.
+    pub fn refunds_bounce(&self) -> bool {
+        self.kind != HardKind::Thorn
+    }
+    /// The type's hit with Hits.EGG.
+    pub fn egg_hit(&mut self, status: &mut i64) {
+        if *status != 1 {
+            return;
+        }
+        match self.kind {
+            HardKind::Rock if self.form % 2 == 0 => self.form += 1,
+            HardKind::Colour if self.form < 2 => self.form += 1,
+            _ => *status = 3,
+        }
+    }
+}
+/// falling_span.gd (o20): a 32 px top-only support that arms while stood on, falls from
+/// age 73 and is removed (or reset, form 1) far below the screen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Fall {
+    pub age: i64,
+    pub home_y: i64,
+    pub respawns: i64,
+}
+
+impl Fall {
+    pub fn new(p: &Placement) -> Result<Self, Error> {
+        if !(0..=1).contains(&p.variant) {
+            return Err(Error::Unsupported {
+                requirements: vec![format!("falling span form F={}", p.variant)],
+            });
+        }
+        Ok(Self {
+            age: 0,
+            home_y: p.position.y,
+            respawns: i64::from(p.variant == 1),
+        })
+    }
+    pub fn bounds(&self) -> [i64; 4] {
+        [-16 * S, -16 * S, 16 * S, 16 * S]
+    }
+    pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
+        (e.status == 1).then(|| {
+            [e.body.x - 16 * S, e.body.y - 16 * S, e.body.x + 16 * S, e.body.y - 14 * S]
+        })
+    }
+    pub fn field(&self, n: &str) -> Option<i64> {
+        Some(match n {
+            "age" => self.age,
+            "home_y" => self.home_y,
+            "respawns" => self.respawns,
+            _ => return None,
+        })
+    }
+    pub fn set_field(&mut self, n: &str, value: i64) -> bool {
+        let slot = match n {
+            "age" => &mut self.age,
+            "home_y" => &mut self.home_y,
+            "respawns" => &mut self.respawns,
+            _ => return false,
+        };
+        *slot = value;
+        true
+    }
+    pub fn valid(&self, vy: i64) -> bool {
+        (0..=125).contains(&self.age) && [0, 1].contains(&self.respawns) && (0..=192 * 60).contains(&vy)
+    }
+    /// falling_span.gd view_state: animation and frame.
+    pub fn view(&self) -> (&'static str, i64) {
+        let mut frame = 0;
+        if self.age > 1 {
+            let units = (self.age - 1) * 32;
+            if units >= 66 * 60 {
+                frame = 4;
+            } else if units >= 18 * 60 {
+                frame = 1 + (units / 60 - 18) % 4;
+            }
+        }
+        (if self.age == 0 { "Idle" } else { "Falling" }, frame)
+    }
+}
+
+/// grow_block.gd (o10): a small full solid that doubles when touched, holds, then shrinks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Grow {
+    pub phase: i64,
+    pub ticks: i64,
+    pub timer: i64,
+    pub size: i64,
+    pub lift: i64,
+}
+
+const GROW_TWEEN: i64 = 12;
+const GROW_HOLD: i64 = 360;
+const GROW_SMALL: i64 = 32 * S;
+const GROW_LARGE: i64 = 64 * S;
+const GROW_RISE: i64 = -62 * S;
+const GROW_HELD: i64 = -32 * S;
+
+fn ease_in_out(from: i64, to: i64, tick: i64) -> i64 {
+    // Quadratic in-out over GROW_TWEEN ticks, in exact integer steps.
+    let span = GROW_TWEEN * GROW_TWEEN;
+    let part = if 2 * tick < GROW_TWEEN {
+        2 * tick * tick
+    } else {
+        span - 2 * (GROW_TWEEN - tick) * (GROW_TWEEN - tick)
+    };
+    from + (to - from) * part / span
+}
+
+impl Default for Grow {
+    fn default() -> Self {
+        Self {
+            phase: 0,
+            ticks: 0,
+            timer: 0,
+            size: GROW_SMALL,
+            lift: 0,
+        }
+    }
+}
+
+impl Grow {
+    pub fn bounds(&self) -> [i64; 4] {
+        // The block grows around its bottom centre; lift moves that bottom.
+        let half = self.size / 2;
+        let bottom = 16 * S + self.lift;
+        [-half, bottom - self.size, half, bottom]
+    }
+    pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
+        let b = self.bounds();
+        (e.status == 1)
+            .then(|| [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]])
+    }
+    pub fn step(&mut self) {
+        if self.phase == 0 {
+            return;
+        }
+        self.timer += 1;
+        if self.phase == 3 {
+            if self.timer >= GROW_HOLD {
+                self.phase = 4;
+                self.ticks = 0;
+            }
+            return;
+        }
+        self.ticks += 1;
+        match self.phase {
+            1 => {
+                self.lift = ease_in_out(0, GROW_RISE, self.ticks);
+                self.size = GROW_SMALL + (GROW_LARGE - GROW_SMALL) * self.ticks / GROW_TWEEN;
+            }
+            2 => self.lift = ease_in_out(GROW_RISE, GROW_HELD, self.ticks),
+            4 => {
+                self.lift = ease_in_out(GROW_HELD, 0, self.ticks);
+                self.size = GROW_LARGE + (GROW_SMALL - GROW_LARGE) * self.ticks / GROW_TWEEN;
+            }
+            _ => {}
+        }
+        if self.ticks < GROW_TWEEN {
+            return;
+        }
+        self.ticks = 0;
+        match self.phase {
+            1 => self.phase = 2,
+            2 => self.phase = if self.timer < GROW_HOLD { 3 } else { 4 },
+            4 => {
+                self.phase = 0;
+                self.timer = 0;
+            }
+            _ => {}
+        }
+    }
+    pub fn field(&self, n: &str) -> Option<i64> {
+        Some(match n {
+            "phase" => self.phase,
+            "ticks" => self.ticks,
+            "timer" => self.timer,
+            "size" => self.size,
+            "lift" => self.lift,
+            _ => return None,
+        })
+    }
+    pub fn set_field(&mut self, n: &str, value: i64) -> bool {
+        let slot = match n {
+            "phase" => &mut self.phase,
+            "ticks" => &mut self.ticks,
+            "timer" => &mut self.timer,
+            "size" => &mut self.size,
+            "lift" => &mut self.lift,
+            _ => return false,
+        };
+        *slot = value;
+        true
+    }
+    pub fn valid(&self) -> bool {
+        (0..=4).contains(&self.phase)
+            && (0..=GROW_TWEEN).contains(&self.ticks)
+            && (0..=GROW_HOLD + 2 * GROW_TWEEN).contains(&self.timer)
+            && (GROW_SMALL..=GROW_LARGE).contains(&self.size)
+            && (GROW_RISE..=0).contains(&self.lift)
+    }
+}
+
 /// The modal message state (item_block.gd LEVEL_FIELDS plus registry modal_token).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Message {
@@ -204,6 +469,87 @@ impl Run {
     /// collision.gd refresh for a block row after its step or bump.
     pub(crate) fn refresh_block_solid(&self, index: usize, map: &crate::body::Probe) {
         let e = &self.entities[index];
+        if let Kind::Walker(w) = &e.kind {
+            // flat_walker.gd: a flattened e4 is a moving top-only support.
+            if w.kind == crate::actors::ActorKind::Flat {
+                let r = w.body_bounds(e.facing);
+                map.refresh_solid(
+                    e.origin.token(),
+                    crate::Position {
+                        x: e.body.x,
+                        y: e.body.y,
+                    },
+                    w.flat_solid(e.body, e.facing).filter(|_| e.status == 1),
+                    [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+                );
+            }
+            return;
+        }
+        if let Kind::Grow(g) = &e.kind {
+            let r = g.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                g.solid(e),
+                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+            );
+            return;
+        }
+        if let Kind::Fall(f) = &e.kind {
+            let r = f.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                f.solid(e),
+                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+            );
+            return;
+        }
+        if let Kind::Ledge(l) = &e.kind {
+            let r = l.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                l.solid(e),
+                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+            );
+            return;
+        }
+        if let Kind::Gate(g) = &e.kind {
+            let r = g.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                g.solid(e),
+                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+            );
+            return;
+        }
+        if let Kind::Hard(h) = &e.kind {
+            let r = h.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                h.solid(e),
+                [e.body.x + r[0], e.body.y + r[1], e.body.x + r[2], e.body.y + r[3]],
+            );
+            return;
+        }
         let Kind::Block(b) = &e.kind else {
             return;
         };
@@ -222,6 +568,63 @@ impl Run {
                 e.body.y + r[3],
             ],
         );
+    }
+    /// falling_span.gd step.
+    pub(crate) fn fall_step(&mut self, index: usize, map: &crate::body::Probe, centre: crate::Position) {
+        let Kind::Fall(f) = &mut self.entities[index].kind else {
+            return;
+        };
+        if f.age == 0 {
+            return;
+        }
+        f.age = (f.age + 1).min(125);
+        let (age, respawns, home_y) = (f.age, f.respawns, f.home_y);
+        let e = &mut self.entities[index];
+        let b = [-16 * S, -16 * S, 16 * S, 16 * S];
+        if age >= 73 {
+            if e.body.prepare(map, b) {
+                let support = e.body.floor(map, b);
+                let vy = e.body.vy;
+                e.body.vertical_support(map, b, vy, support);
+            }
+            e.body.vy = (e.body.vy + 256).min(192 * 60);
+        }
+        if e.body.y <= centre.y + 832 * S {
+            return;
+        }
+        if respawns != 0 {
+            if let Kind::Fall(f) = &mut e.kind {
+                f.age = 0;
+            }
+            e.body.y = home_y;
+            e.body.vy = 0;
+        } else {
+            e.status = 3;
+        }
+    }
+    /// falling_span.gd contact: standing on its top arms it; stepping off disarms it.
+    pub(crate) fn fall_contact(&mut self, index: usize) {
+        let pb = self.player.bounds();
+        let p = self.player.body;
+        let on_floor = self.player.on_floor != 0;
+        let e = &mut self.entities[index];
+        let Kind::Fall(f) = &mut e.kind else {
+            return;
+        };
+        if f.age >= 73 {
+            return;
+        }
+        let top = e.body.y - 16 * S;
+        let standing = on_floor
+            && p.x + pb[2] >= e.body.x - 16 * S
+            && p.x + pb[0] <= e.body.x + 16 * S
+            && p.y + pb[3] <= top
+            && p.y + pb[3] + 2 * S >= top;
+        if standing && f.age == 0 {
+            f.age = 1;
+        } else if !standing {
+            f.age = 0;
+        }
     }
     /// item_block.gd step.
     pub(crate) fn block_step(
@@ -414,16 +817,47 @@ impl Run {
             .div_euclid(168)
             .max(1)
     }
+    /// grow_block.gd contact: the player (raised 2 px) touching an idle block grows it and
+    /// knocks whatever stands on it.
+    pub(crate) fn grow_contact(&mut self, index: usize) -> Result<(), Error> {
+        let e = &self.entities[index];
+        let Kind::Grow(g) = &e.kind else {
+            return Ok(());
+        };
+        if e.status != 1 || g.phase != 0 || self.player.captured_by != 0 {
+            return Ok(());
+        }
+        let Some(block) = g.solid(e) else {
+            return Ok(());
+        };
+        let pb = self.player.bounds();
+        let p = self.player.body;
+        if p.x + pb[2] > block[0]
+            && p.x + pb[0] < block[2]
+            && p.y + pb[3] - 2 * S > block[1]
+            && p.y + pb[1] - 2 * S < block[3]
+        {
+            if let Kind::Grow(g) = &mut self.entities[index].kind {
+                g.phase = 1;
+                g.ticks = 0;
+                g.timer = 0;
+            }
+            self.knock_above_box(index, block)?;
+        }
+        Ok(())
+    }
     /// item_block.gd bump_above: BUMP hits on whatever stands just above the block.
     fn bump_above(&mut self, index: usize) -> Result<(), Error> {
         let e = &self.entities[index];
         let b = self.block(index).bounds();
-        let probe = [
-            e.body.x + b[0],
-            e.body.y + b[1] - 8 * S,
-            e.body.x + b[2],
-            e.body.y + b[3] - 8 * S,
-        ];
+        let block = [e.body.x + b[0], e.body.y + b[1], e.body.x + b[2], e.body.y + b[3]];
+        self.knock_above_box(index, block)
+    }
+    /// BUMP hits on whatever overlaps `block` raised 8 px (item_block.gd bump_above and
+    /// grow_block.gd knock_above), in table order.
+    fn knock_above_box(&mut self, index: usize, block: [i64; 4]) -> Result<(), Error> {
+        let e = &self.entities[index];
+        let probe = [block[0], block[1] - 8 * S, block[2], block[3] - 8 * S];
         let token = e.origin.token();
         let from_x = e.body.x;
         let mut other = 0;

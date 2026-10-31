@@ -1269,7 +1269,7 @@ impl Scene {
                 } else if let (true, Some(cuts), [Some(width), Some(height)]) = (
                     matches!(
                         entity.code.as_str(),
-                        "p2" | "p4"
+                        "p2" | "p3" | "p4"
                             | "p5"
                             | "p6"
                             | "p7"

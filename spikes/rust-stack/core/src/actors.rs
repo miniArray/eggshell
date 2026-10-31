@@ -5,6 +5,13 @@ use crate::{
     player::Player,
     Error, Position, SCALE as S,
 };
+pub(crate) const FLAT_WALK: i64 = 0;
+pub(crate) const FLAT_PREPARE: i64 = 1;
+pub(crate) const FLAT_AIR: i64 = 2;
+pub(crate) const FLAT_IDLE: i64 = 3;
+pub(crate) const FLAT_FLATTEN: i64 = 4;
+pub(crate) const FLAT_FLAT: i64 = 5;
+pub(crate) const FLAT_RECOVER: i64 = 6;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ActorKind {
     Walker,
@@ -12,6 +19,8 @@ pub(crate) enum ActorKind {
     Flower,
     Plant,
     Stilt,
+    /// flat_walker.gd (e4): flattens into a moving top-only support.
+    Flat,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -51,6 +60,7 @@ pub(crate) struct Actor {
     pub pin_size: i64,
     pub height: i64,
     pub stride: i64,
+    pub flat_wait: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -98,6 +108,7 @@ impl Actor {
             pin_size: 0,
             height: 68 * S,
             stride: 0,
+            flat_wait: 360,
         }
     }
     pub fn valid(&self) -> bool {
@@ -108,6 +119,11 @@ impl Actor {
             1
         };
         (0..=last).contains(&self.variant)
+            && (self.kind != ActorKind::Flat
+                || (self.variant == 0
+                    && (0..=6).contains(&self.mode)
+                    && (0..=65).contains(&self.timer)
+                    && (0..=360).contains(&self.flat_wait)))
             && (self.kind != ActorKind::Stilt
                 || ((1..=100_018 * S).contains(&self.height)
                     && (0..72).contains(&self.stride)
@@ -174,6 +190,8 @@ impl Actor {
             }
             ActorKind::Flower => [-14 * S, -34 * S, 14 * S, 16 * S],
             ActorKind::Stilt => [-8 * S, -self.height, 8 * S, 0],
+            ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
+            ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
             ActorKind::Plant => {
                 let top = if self.mode == 0 { -14 * S } else { -10 * S };
                 if self.variant == 1 {
@@ -214,11 +232,21 @@ impl Actor {
         let actual = body.horizontal(map, b, distance, support, HorizontalMove::Actor);
         (actual, grounded)
     }
+    /// enemy_motion.gd move (horizontal) with an explicit box.
+    fn movement_box(&self, body: &mut Body, b: [i64; 4], map: &Probe, distance: i64) -> (i64, bool) {
+        if !body.prepare(map, b) {
+            return (0, false);
+        }
+        let support = body.floor(map, b);
+        let grounded = support != 0 && body.vy >= 0;
+        let actual = body.horizontal(map, b, distance, support, HorizontalMove::Actor);
+        (actual, grounded)
+    }
     fn edge(&self, body: Body, facing: i64, map: &Probe) -> bool {
         let left = if facing > 0 { body.x } else { body.x - 12 * S };
         let bottom = body.y + self.body_bounds(facing)[3];
-        !(map.terrain_overlaps([left, bottom, left + 12 * S, bottom + 28 * S])
-            || map.border_overlaps([left, bottom, left + 12 * S, bottom + 28 * S]))
+        // enemy_motion.gd edge: Collision.support_in_box (terrain, bridges, solids).
+        !map.support_in_box([left, bottom, left + 12 * S, bottom + 28 * S])
     }
     /// actor.gd / stilt_walker.gd step, from enemy_body.gd process to the behaviour.
     #[allow(clippy::too_many_arguments)]
@@ -349,8 +377,116 @@ impl Actor {
             }
             ActorKind::Plant => self.plant(body, facing, step),
             ActorKind::Stilt => self.stilt_advance(body, facing, step.map),
+            ActorKind::Flat => self.flat_step(body, facing, step),
         }
         Ok(After::Nothing)
+    }
+    /// flat_walker.gd activation_bounds: the 34 x 40 walking picture (facing left).
+    pub fn activation_bounds(&self, facing: i64) -> [i64; 4] {
+        if self.kind != ActorKind::Flat {
+            return self.body_bounds(facing);
+        }
+        let picture = [-18, -24, 16, 16];
+        let (left, right) = if facing < 0 {
+            (picture[0], picture[2])
+        } else {
+            (-picture[2], -picture[0])
+        };
+        [left * S, picture[1] * S, right * S, picture[3] * S]
+    }
+    /// flat_walker.gd solid_box: a flattened body is a top-only support.
+    pub fn flat_solid(&self, body: Body, facing: i64) -> Option<[i64; 4]> {
+        (self.kind == ActorKind::Flat
+            && self.mode >= FLAT_FLATTEN
+            && self.held == 0
+            && self.spat == 0)
+            .then(|| {
+                let b = self.body_bounds(facing);
+                [body.x + b[0], body.y + b[1], body.x + b[2], body.y + b[3]]
+            })
+    }
+    /// flat_walker.gd step, after enemy_body.gd process, spit_step and hazards.
+    fn flat_step(&mut self, body: &mut Body, facing: &mut i64, step: &mut ActorStep) {
+        let b = self.body_bounds(*facing);
+        let grounded = body.floor(step.map, b) != 0;
+        // Only a fall lands: settling onto the floor at the placement is not a landing.
+        let falling = body.vy > 0;
+        let mut leaping = false;
+        if [FLAT_PREPARE, FLAT_IDLE, FLAT_FLATTEN, FLAT_RECOVER].contains(&self.mode) {
+            body.vx = 0;
+            self.timer = (self.timer - 1).max(0);
+            if self.timer == 0 {
+                match self.mode {
+                    FLAT_PREPARE => {
+                        self.mode = FLAT_AIR;
+                        body.vy = -384 * 60;
+                        leaping = true;
+                    }
+                    FLAT_IDLE | FLAT_RECOVER => self.mode = FLAT_WALK,
+                    _ => {
+                        self.mode = FLAT_FLAT;
+                        self.flat_wait = 360;
+                    }
+                }
+            }
+        }
+        let mut started = false;
+        if [FLAT_WALK, FLAT_AIR, FLAT_FLAT].contains(&self.mode) {
+            let wet = i64::from(step.map.water_overlaps([
+                body.x + b[0],
+                body.y + b[1],
+                body.x + b[2],
+                body.y + b[3],
+            ]));
+            body.vx = *facing * 48 * 60 / (wet + 1);
+            if grounded && !leaping && self.edge(*body, *facing, step.map) {
+                if self.mode == FLAT_FLAT {
+                    *facing = -*facing;
+                    body.vx = -body.vx;
+                } else {
+                    self.mode = FLAT_PREPARE;
+                    self.timer = 45;
+                    body.vx = 0;
+                }
+            }
+            let distance = body.vx;
+            let (actual, on_floor) = self.movement_box(body, b, step.map, distance);
+            started = on_floor;
+            if actual != distance {
+                *facing = -*facing;
+            }
+        }
+        let landed = body.gravity(step.map, b, started);
+        if landed && !grounded && falling && self.mode < FLAT_FLATTEN {
+            self.mode = FLAT_IDLE;
+            self.timer = 60;
+            body.vx = 0;
+        }
+        if self.mode == FLAT_FLAT {
+            let support = [
+                body.x + b[0],
+                body.y + b[1] - 4 * S,
+                body.x + b[2],
+                body.y + b[3] - 4 * S,
+            ];
+            let pb = step.player.bounds();
+            let p = step.player.body;
+            let player = [p.x + pb[0], p.y + pb[1], p.x + pb[2], p.y + pb[3]];
+            // enemy_body.gd overlap: open edges.
+            if support[0] < player[2]
+                && support[2] > player[0]
+                && support[1] < player[3]
+                && support[3] > player[1]
+            {
+                self.flat_wait = 360;
+            } else {
+                self.flat_wait = (self.flat_wait - 1).max(0);
+            }
+            if self.flat_wait == 0 {
+                self.mode = FLAT_RECOVER;
+                self.timer = 65;
+            }
+        }
     }
     fn walker(&mut self, body: &mut Body, facing: &mut i64, step: &mut ActorStep) {
         if self.timer == 0 && self.mode == 0 {
@@ -566,5 +702,6 @@ fields!(
     rise_velocity,
     pin_size,
     height,
-    stride
+    stride,
+    flat_wait
 );

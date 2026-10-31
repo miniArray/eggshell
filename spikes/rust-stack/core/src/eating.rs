@@ -54,6 +54,12 @@ pub(crate) enum After {
     CacheStep,
     /// item_block.gd step, which moves the block and can spawn eggs.
     BlockStep,
+    /// falling_span.gd step, which drops the span.
+    FallStep,
+    /// A solid that changed shape in its step (grow_block.gd): collision.gd refresh.
+    RefreshSolid,
+    /// one_way_gate.gd step, which reads other bodies.
+    GateStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -297,6 +303,10 @@ impl Run {
                         0
                     }
                 }
+                // hard_block.gd tongue: a standing block stops the tongue.
+                Kind::Hard(h) if h.kind == crate::blocks::HardKind::Rock => 2,
+                // one_way_gate.gd tongue: the closed barrier (sensor = tongue_box here).
+                Kind::Gate(g) => g.tongue(e.status, e.body, sensor),
                 Kind::Walker(w) if w.kind == ActorKind::Stilt => {
                     w.stilt_knock(&mut e.body, &mut e.facing, self.player.body.x);
                     2
@@ -491,8 +501,11 @@ impl Run {
                 | Kind::Star(_)
                 | Kind::Egg(_)
                 | Kind::Cache(_)
-                | Kind::Redirect(_) => crate::egg::entity_bounds(o),
-                // Posts, pads, bridges, goals and checkpoints have no hit rule.
+                | Kind::Redirect(_)
+                | Kind::Hard(_)
+                | Kind::Block(_) => crate::egg::entity_bounds(o),
+                // Posts, pads, bridges, goals, checkpoints, spans and gates have no hit
+                // rule (one_way_gate.gd projectile_contact runs for ENEMY types only).
                 _ => continue,
             };
             if !strict(projectile_box, world_box(o.body, ob)) {
@@ -506,6 +519,7 @@ impl Run {
                 Actor,
                 RollingPair,
                 Pickup,
+                Inert,
                 Egg,
                 Cache,
                 Nothing,
@@ -538,6 +552,9 @@ impl Run {
                     Kind::Egg(_) => Target::Egg,
                     // release_cloud.gd hit (SPIT reveals or opens); redirect_cloud.gd has no hit.
                     Kind::Cache(_) => Target::Cache,
+                    // hard/colour/thorn/item blocks are not ENEMY: their `hit` ignores
+                    // SPIT but still counts as reaction 3, which breaks the projectile.
+                    Kind::Hard(_) | Kind::Block(_) => Target::Inert,
                     // item_star.gd has projectile_contact only and is not an ENEMY.
                     _ => Target::Nothing,
                 }
@@ -570,7 +587,7 @@ impl Run {
                     self.collect_item(current);
                     3
                 }
-                Target::Egg => 3,
+                Target::Egg | Target::Inert => 3,
                 Target::Cache => {
                     let o = &mut self.entities[current];
                     if let Kind::Cache(c) = &mut o.kind {

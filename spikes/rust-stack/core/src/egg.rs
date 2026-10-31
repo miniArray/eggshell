@@ -415,7 +415,7 @@ impl Run {
             let (vx, vy) = (self.entities[index].body.vx, self.entities[index].body.vy);
             let dx = vx * (step + 1) / steps - vx * step / steps;
             let dy = vy * (step + 1) / steps - vy * step / steps;
-            let contact = self.object_collisions(index, dx, dy)?;
+            let contact = self.object_collisions(index, dx, dy, map)?;
             if !contact.alive || contact.redirected {
                 return Ok(());
             }
@@ -458,7 +458,13 @@ impl Run {
         Ok(())
     }
     /// item_egg.gd object_collisions
-    fn object_collisions(&mut self, index: usize, dx: i64, dy: i64) -> Result<Contact, Error> {
+    fn object_collisions(
+        &mut self,
+        index: usize,
+        dx: i64,
+        dy: i64,
+        map: &Probe,
+    ) -> Result<Contact, Error> {
         let mut result = Contact {
             alive: true,
             redirected: false,
@@ -512,6 +518,10 @@ impl Run {
                     .solid(o)
                     .map(|b| vec![Shape { b, mode: 1 }])
                     .unwrap_or_default(),
+                Kind::Hard(h) => h
+                    .solid(o)
+                    .map(|b| vec![Shape { b, mode: 1 }])
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             let full = old_shapes.iter().any(|s| {
@@ -527,6 +537,12 @@ impl Run {
             // redirect_cloud.gd touches: the turned rectangle.
             if let Kind::Redirect(r) = &o.kind {
                 if !r.touches(o.body.x, o.body.y, probe) {
+                    continue;
+                }
+            }
+            // one_way_gate.gd touches: the turned area.
+            if let Kind::Gate(g) = &o.kind {
+                if !g.touches(o.body.x, o.body.y, probe) {
                     continue;
                 }
             }
@@ -547,6 +563,8 @@ impl Run {
             }
             let enemy = matches!(o.kind, Kind::Walker(_));
             let response = self.egg_contact(index, current)?;
+            // item_egg.gd object_collisions: Collision.refresh(world, other).
+            self.refresh_block_solid(current, map);
             if response == 1 {
                 self.remove_egg(index, true)?;
                 result.alive = false;
@@ -583,6 +601,8 @@ impl Run {
             Cache,
             Redirect,
             Block,
+            Hard,
+            Gate,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -613,7 +633,10 @@ impl Run {
                 Kind::Walker(w) if [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind) => {
                     Target::Roller
                 }
-                Kind::Walker(w) if w.kind == ActorKind::Flower => Target::Flower,
+                // flat_walker.gd projectile_contact: like the flower, the egg then falls.
+                Kind::Walker(w) if [ActorKind::Flower, ActorKind::Flat].contains(&w.kind) => {
+                    Target::Flower
+                }
                 Kind::Walker(_) => Target::Actor,
                 Kind::Pickup(p) => {
                     if o.collected != 0 || p.enabled == 0 || p.pickup_delay != 0 {
@@ -635,6 +658,10 @@ impl Run {
                 Kind::Redirect(_) if self.egg(egg).mode == THROWN => Target::Redirect,
                 // item_block.gd projectile_contact.
                 Kind::Block(_) => Target::Block,
+                // hard_block.gd projectile_contact.
+                Kind::Hard(_) if o.status == 1 => Target::Hard,
+                // one_way_gate.gd projectile_contact.
+                Kind::Gate(_) => Target::Gate,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -701,7 +728,7 @@ impl Run {
                 let token = self.entities[egg].origin.token();
                 let body = &mut self.entities[egg].body;
                 let speed = root(body.vx * body.vx + body.vy * body.vy);
-                let (vx, vy) = crate::clouds::vector(angle - 90_000, speed);
+                let (vx, vy) = crate::turn::vector(angle - 90_000, speed);
                 body.x = cloud.x;
                 body.y = cloud.y;
                 body.vx = vx;
@@ -720,6 +747,26 @@ impl Run {
                 2
             }
             Target::Block => self.block_projectile_contact(other)?,
+            Target::Hard => {
+                // o28/o29: the following physical bounce spends this extra charge.
+                if matches!(&self.entities[other].kind, Kind::Hard(h) if h.refunds_bounce()) {
+                    let egg = self.egg_mut(egg);
+                    egg.bounces = egg.bounces.saturating_add(1);
+                }
+                let o = &mut self.entities[other];
+                if let Kind::Hard(h) = &mut o.kind {
+                    h.egg_hit(&mut o.status);
+                }
+                3
+            }
+            Target::Gate => {
+                let thrown = self.egg(egg).mode == THROWN;
+                let o = &mut self.entities[other];
+                if let Kind::Gate(g) = &mut o.kind {
+                    g.egg_contact((o.status, o.body.x, o.body.y), crate::Position { x: projectile.x, y: projectile.y }, thrown);
+                }
+                0
+            }
             Target::PlantMiss | Target::PickupSpent | Target::Nothing => 0,
         })
     }
@@ -798,7 +845,7 @@ impl Run {
         }
         if self.egg(index).skip_ghost == 0 {
             let (vx, vy) = (self.entities[index].body.vx, self.entities[index].body.vy);
-            if !self.object_collisions(index, vx, vy)?.alive {
+            if !self.object_collisions(index, vx, vy, map)?.alive {
                 return Ok(());
             }
         }
@@ -915,6 +962,11 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Redirect(p) => p.bounds(),
         Kind::Block(p) => p.bounds(),
         Kind::Span(p) => p.bounds(),
+        Kind::Hard(p) => p.bounds(),
+        Kind::Fall(p) => p.bounds(),
+        Kind::Grow(p) => p.bounds(),
+        Kind::Gate(p) => p.bounds(),
+        Kind::Ledge(p) => p.bounds(),
         _ => [0; 4],
     }
 }

@@ -3,7 +3,8 @@
 use crate::{
     entity::Kind,
     items::{Pickup, PickupKind, Star},
-    math::{root, sine},
+    math::sine,
+    turn::TURN,
     Error, Placement, Position, PropertyValue, SCALE as S,
 };
 
@@ -17,7 +18,6 @@ const MAX_RELEASE: i64 = 1024;
 const FLAP: [usize; 6] = [0, 1, 2, 3, 2, 1];
 /// enemy_motion.gd LEVEL_INTRO_TICKS - 2
 const INTRO_PHASE: i64 = 150;
-const TURN: i64 = 360_000;
 const RECT: [i64; 4] = [-12 * S, -14 * S, 12 * S, 14 * S];
 
 fn unsupported(reason: &str) -> Error {
@@ -26,7 +26,7 @@ fn unsupported(reason: &str) -> Error {
     }
 }
 /// registry.gd numeric_option over a raw property (missing and "" read as "0").
-fn option(p: &Placement, key: &str) -> Result<f64, Error> {
+pub(crate) fn option(p: &Placement, key: &str) -> Result<f64, Error> {
     let value = match p.properties.iter().find(|(k, _)| k == key).map(|(_, v)| v) {
         None => 0.0,
         Some(PropertyValue::Number(v)) => *v,
@@ -173,33 +173,7 @@ cloud_fields!(
     colour
 );
 
-/// oriented_box.gd angle_wrap
-fn wrap(angle: i64) -> i64 {
-    (angle % TURN + TURN) % TURN
-}
-/// oriented_box.gd vector
-pub(crate) fn vector(angle: i64, length: i64) -> (i64, i64) {
-    let x = sine(wrap(angle + 90_000), TURN, 1_000_000).expect("fixed period");
-    let y = sine(wrap(angle), TURN, 1_000_000).expect("fixed period");
-    let magnitude = root(x * x + y * y);
-    (length * x / magnitude, length * y / magnitude)
-}
-/// oriented_box.gd points: the rectangle turned by `angle`.
-fn points(angle: i64) -> Vec<Position> {
-    let (bx, by) = vector(angle, S);
-    [
-        [RECT[0], RECT[1]],
-        [RECT[2], RECT[1]],
-        [RECT[2], RECT[3]],
-        [RECT[0], RECT[3]],
-    ]
-    .iter()
-    .map(|c| Position {
-        x: (c[0] * bx - c[1] * by) / S,
-        y: (c[0] * by + c[1] * bx) / S,
-    })
-    .collect()
-}
+use crate::turn::wrap;
 
 impl Redirect {
     /// redirect_cloud.gd prepare + create
@@ -221,24 +195,11 @@ impl Redirect {
         })
     }
     pub fn bounds(&self) -> [i64; 4] {
-        let pts = points(self.base_angle);
-        let mut b = [pts[0].x, pts[0].y, pts[0].x, pts[0].y];
-        for p in &pts[1..] {
-            b = [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)];
-        }
-        b
+        crate::turn::bounds(self.base_angle, RECT)
     }
     /// redirect_cloud.gd touches: the turned rectangle against the probe.
     pub fn touches(&self, body_x: i64, body_y: i64, probe: [i64; 4]) -> bool {
-        crate::polygon::overlaps_box(
-            &points(self.base_angle),
-            [
-                probe[0] - body_x,
-                probe[1] - body_y,
-                probe[2] - body_x,
-                probe[3] - body_y,
-            ],
-        )
+        crate::turn::overlaps(self.base_angle, RECT, probe, body_x, body_y)
     }
     /// redirect_cloud.gd step
     pub fn step(&mut self, rng: &mut crate::math::Rng) {

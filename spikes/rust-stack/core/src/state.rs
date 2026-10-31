@@ -119,6 +119,7 @@ impl Run {
     }
     fn spawn_rows(world: &World) -> Result<Vec<Entity>, Error> {
         let mut next_family = 0;
+        let mut next_pad = 0;
         world.maps[0]
             .placements
             .iter()
@@ -160,7 +161,12 @@ impl Run {
                     "o8" => Kind::Cache(crate::clouds::Cache::new(p)?),
                     "o19" => Kind::Redirect(crate::clouds::Redirect::new(p)?),
                     "o9" | "o15" | "o18" => Kind::Block(crate::blocks::Block::new(p)?),
-                    "p2" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13" | "p14"
+                    "o28" | "o29" | "o12" => Kind::Hard(crate::blocks::Hard::new(p)?),
+                    "o20" => Kind::Fall(crate::blocks::Fall::new(p)?),
+                    "o10" => Kind::Grow(crate::blocks::Grow::default()),
+                    "o31" => Kind::Gate(crate::gate::Gate::new(p)?),
+                    "o32" => Kind::Ledge(crate::ledge::Ledge::new(p)?),
+                    "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13" | "p14"
                     | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
                     }
@@ -170,13 +176,13 @@ impl Run {
                     "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
                         Kind::Pad(crate::pad::Pad::default())
                     }
-                    "e1" | "e2" | "e3" | "e5" | "e35"
+                    "e1" | "e2" | "e3" | "e4" | "e5" | "e35"
                         if p.variant >= 0
                             && p.variant
-                                <= if ["e1", "e2", "e35"].contains(&p.code.as_str()) {
-                                    4
-                                } else {
-                                    1
+                                <= match p.code.as_str() {
+                                    "e1" | "e2" | "e35" => 4,
+                                    "e4" => 0,
+                                    _ => 1,
                                 }
                             && (0..=2).contains(&p.mirror)
                             && p.rotation == 0 =>
@@ -186,6 +192,7 @@ impl Run {
                             "e2" => crate::actors::ActorKind::Flyer,
                             "e3" => crate::actors::ActorKind::Flower,
                             "e35" => crate::actors::ActorKind::Stilt,
+                            "e4" => crate::actors::ActorKind::Flat,
                             _ => crate::actors::ActorKind::Plant,
                         };
                         let mut actor =
@@ -197,12 +204,17 @@ impl Run {
                     }
                     _ => return Err(unsupported("fixture entity form")),
                 };
-                let family_index = if matches!(kind, Kind::Walker(_)) {
-                    let index = next_family;
-                    next_family += 1;
-                    index
-                } else {
-                    0
+                // registry.gd compile: enemies and o11 springs each count their own family.
+                let family_index = match kind {
+                    Kind::Walker(_) => {
+                        next_family += 1;
+                        next_family - 1
+                    }
+                    Kind::Pad(_) => {
+                        next_pad += 1;
+                        next_pad - 1
+                    }
+                    _ => 0,
                 };
                 Ok(Entity::placed(source, p, kind, family_index))
             })
@@ -286,6 +298,9 @@ impl Run {
                     | Kind::Cache(_)
                     | Kind::Redirect(_)
                     | Kind::Block(_)
+                    | Kind::Fall(_)
+                    | Kind::Grow(_)
+                    | Kind::Gate(_)
             ) {
                 continue;
             }
@@ -299,6 +314,12 @@ impl Run {
             let after = match &mut e.kind {
                 Kind::Post(_) => crate::eating::After::Nothing,
                 Kind::Block(_) => crate::eating::After::BlockStep,
+                Kind::Fall(_) => crate::eating::After::FallStep,
+                Kind::Gate(_) => crate::eating::After::GateStep,
+                Kind::Grow(g) => {
+                    g.step();
+                    crate::eating::After::RefreshSolid
+                }
                 Kind::Egg(_) => crate::eating::After::EggStep,
                 Kind::Cache(_) => crate::eating::After::CacheStep,
                 Kind::Redirect(r) => {
@@ -329,14 +350,18 @@ impl Run {
                     #[cfg(debug_assertions)]
                     {
                         use crate::actors::ActorKind;
+                        // The benchmark counters keep their e1,e2,e3,e5,e35 order.
                         let index = match w.kind {
-                            ActorKind::Walker => 0,
-                            ActorKind::Flyer => 1,
-                            ActorKind::Flower => 2,
-                            ActorKind::Plant => 3,
-                            ActorKind::Stilt => 4,
+                            ActorKind::Walker => Some(0),
+                            ActorKind::Flyer => Some(1),
+                            ActorKind::Flower => Some(2),
+                            ActorKind::Plant => Some(3),
+                            ActorKind::Stilt => Some(4),
+                            ActorKind::Flat => None,
                         };
-                        stats.benchmark_actor_steps[index] += 1;
+                        if let Some(index) = index {
+                            stats.benchmark_actor_steps[index] += 1;
+                        }
                     }
                     let mut context = crate::actors::ActorStep {
                         map,
@@ -365,7 +390,20 @@ impl Run {
                     self.block_step(next - 1, centre)?;
                     self.refresh_block_solid(next - 1, map);
                 }
+                crate::eating::After::RefreshSolid => self.refresh_block_solid(next - 1, map),
+                crate::eating::After::GateStep => {
+                    self.gate_step(next - 1);
+                    self.refresh_block_solid(next - 1, map);
+                }
+                crate::eating::After::FallStep => {
+                    self.fall_step(next - 1, map, centre);
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::Nothing => {}
+            }
+            if matches!(&self.entities[next - 1].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Flat)
+            {
+                self.refresh_block_solid(next - 1, map);
             }
         }
         // Captures skip phase 1 exactly as DispatchLoops.advance does.
@@ -420,12 +458,17 @@ impl Run {
             self.play_ticks = self.play_ticks.saturating_add(1);
             self.total_play_ticks = self.total_play_ticks.saturating_add(1);
             self.attempt_ticks = self.attempt_ticks.saturating_add(1);
+            // step.gd (297ada9): Life.before_step runs after the frame increment but before
+            // Collision.begin_step, so collision._context is stale and it sees no entity
+            // solids (terrain, borders and bridges only).
+            let bare = crate::body::Probe::new(&world.maps[0]);
             if self
                 .player
-                .before_play_life(&map, self.camera, &mut self.sound)
+                .before_play_life(&bare, self.camera, &mut self.sound)
             {
                 self.deaths = self.deaths.saturating_add(1);
             }
+            stats.terrain_queries += bare.terrain_queries.get();
         } else {
             let goal = self.player.life_phase == 7;
             if self.player.life_phase == 6 {
@@ -524,6 +567,40 @@ impl Run {
                         e.collected,
                         [p.x + b[0], p.y + b[1], p.x + b[2], p.y + b[3]],
                     );
+                    continue;
+                }
+                if matches!(e.kind, Kind::Fall(_)) {
+                    stats.contacts += 1;
+                    self.fall_contact(index);
+                    continue;
+                }
+                if matches!(e.kind, Kind::Grow(_)) {
+                    stats.contacts += 1;
+                    self.grow_contact(index)?;
+                    continue;
+                }
+                if matches!(e.kind, Kind::Ledge(_)) {
+                    stats.contacts += 1;
+                    self.ledge_contact(index);
+                    self.refresh_block_solid(index, &map);
+                    continue;
+                }
+                // thorn_block.gd contact: any touch (2 px above the head) is fatal.
+                if let Kind::Hard(h) = &e.kind {
+                    if h.kind == crate::blocks::HardKind::Thorn {
+                        stats.contacts += 1;
+                        let b = self.player.bounds();
+                        let p = self.player.body;
+                        if self.player.captured_by == 0
+                            && p.x + b[2] + S > e.body.x - 16 * S
+                            && p.x + b[0] - S < e.body.x + 16 * S
+                            && p.y + b[3] + S > e.body.y - 16 * S
+                            && p.y + b[1] - 2 * S < e.body.y + 16 * S
+                            && self.player.kill(3, false, &mut self.sound)
+                        {
+                            self.deaths = self.deaths.saturating_add(1);
+                        }
+                    }
                     continue;
                 }
                 if let Kind::Post(p) = &e.kind {
@@ -626,6 +703,55 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Plant {
                     w.capture(e.body, e.facing, e.family_index, &mut self.player);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Flat {
+                    use crate::actors::{FLAT_FLAT, FLAT_FLATTEN};
+                    let b = w.body_bounds(e.facing);
+                    let pb = self.player.bounds();
+                    // enemy_body.gd impact_on_top: a ground-pound landing on its top edge.
+                    let pounding = [2, 3].contains(&self.player.action);
+                    if self.player.impact != 0 && self.player.impact > w.impact_cursor {
+                        w.impact_cursor = self.player.impact;
+                        if pounding
+                            && w.held == 0
+                            && w.spat == 0
+                            && self.player.impact_x + pb[2] > e.body.x + b[0]
+                            && self.player.impact_x + pb[0] < e.body.x + b[2]
+                            && (self.player.impact_y - (e.body.y + b[1])).abs() <= 1
+                        {
+                            w.remove(&mut e.status, &mut e.can_respawn);
+                            continue;
+                        }
+                    }
+                    // enemy_body.gd player_overlap: open edges.
+                    let p = self.player.body;
+                    let touching = e.status == 1
+                        && e.body.x + b[0] < p.x + pb[2]
+                        && e.body.x + b[2] > p.x + pb[0]
+                        && e.body.y + b[1] < p.y + pb[3]
+                        && e.body.y + b[3] > p.y + pb[1];
+                    if touching {
+                        if e.body.y > p.y - 8 * S && w.contact == 0 {
+                            if pounding {
+                                w.remove(&mut e.status, &mut e.can_respawn);
+                                w.contact = 1;
+                                continue;
+                            }
+                            if w.mode < FLAT_FLATTEN {
+                                self.player.stomp(e.body.vy, action, &mut self.sound);
+                            }
+                            w.timer = if w.mode == FLAT_FLAT { 63 } else { 65 };
+                            w.mode = FLAT_FLATTEN;
+                            e.body.vx = 0;
+                        } else if w.mode < FLAT_FLATTEN
+                            && e.body.y < p.y - 8 * S
+                            && self.player.hurt(e.body.x, &mut self.sound)
+                        {
+                            stats.damage_events += 1;
+                        }
+                    }
+                    w.contact = i64::from(touching);
                     continue;
                 }
                 let touching = overlap(
@@ -871,6 +997,11 @@ impl Run {
             Kind::Post(p) => p.field(n),
             Kind::Block(p) => p.field(n),
             Kind::Span(p) => p.field(n),
+            Kind::Hard(p) => (n == "form").then_some(p.form),
+            Kind::Fall(p) => p.field(n),
+            Kind::Grow(p) => p.field(n),
+            Kind::Gate(p) => p.field(n),
+            Kind::Ledge(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1142,6 +1273,31 @@ impl Run {
             {
                 return Err(unsupported("entity lifecycle validation"));
             }
+            if let Kind::Grow(g) = &e.kind {
+                if !g.valid() {
+                    return Err(unsupported("grow block fields"));
+                }
+            }
+            if let Kind::Gate(g) = &e.kind {
+                if !g.valid() {
+                    return Err(unsupported("gate fields"));
+                }
+            }
+            if let Kind::Ledge(l) = &e.kind {
+                if !l.valid() {
+                    return Err(unsupported("countdown ledge fields"));
+                }
+            }
+            if let Kind::Fall(f) = &e.kind {
+                if !f.valid(e.body.vy) {
+                    return Err(unsupported("falling span fields"));
+                }
+            }
+            if let Kind::Hard(h) = &e.kind {
+                if !(0..=h.last_form()).contains(&h.form) {
+                    return Err(unsupported("hard block form"));
+                }
+            }
             if let Kind::Span(s) = &e.kind {
                 if !s.valid() {
                     return Err(unsupported("span fields"));
@@ -1210,7 +1366,7 @@ impl Run {
                     || !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
-                    || !(0..=5).contains(&w.mode)
+                    || !(0..=if w.kind == crate::actors::ActorKind::Flat { 6 } else { 5 }).contains(&w.mode)
                     || (w.held != 0 && w.spat != 0)
                     || w.hidden != 0
                     || w.frozen != 0

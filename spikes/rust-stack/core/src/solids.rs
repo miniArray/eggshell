@@ -28,6 +28,8 @@ struct Row {
     token: i64,
     /// item_block.gd rows: bumped from below, never pounded.
     block: bool,
+    /// pound_post.gd rows: the only rows a ground pound reaches here.
+    post: bool,
     /// collision.gd SOLID: 1 full, 2 top-only.
     mode: i64,
     spiked: i64,
@@ -37,12 +39,38 @@ struct Row {
     live_box: Option<[i64; 4]>,
     region: [i64; 4],
     handle: Option<i64>,
+    /// A type with solid_touches (one_way_gate.gd): the angle and unturned rectangle.
+    turn: Option<(i64, [i64; 4])>,
+}
+/// A turned solid's narrow phase: `rect` turned by `angle` at `at`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Turned {
+    pub angle: i64,
+    pub rect: [i64; 4],
+    pub at: Position,
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Shape {
     pub handle: i64,
     pub mode: i64,
     pub box_: [i64; 4],
+    pub turn: Option<Turned>,
+}
+impl Shape {
+    /// collision.gd _shape_overlap: the box test, then the type's solid_touches.
+    pub fn touches(&self, probe: [i64; 4]) -> bool {
+        overlap(self.box_, probe)
+            && self
+                .turn
+                .is_none_or(|t| crate::turn::overlaps(t.angle, t.rect, probe, t.at.x, t.at.y))
+    }
+}
+fn turned(row: &Row) -> Option<Turned> {
+    row.turn.map(|(angle, rect)| Turned {
+        angle,
+        rect,
+        at: row.position,
+    })
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PostUpdate {
@@ -135,6 +163,116 @@ impl SolidFrame {
         self.cells.clear();
         self.wide.clear();
         for entity in entities {
+            if let Kind::Grow(grow) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = grow.solid(entity);
+                let b = grow.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            if let Kind::Fall(fall) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = fall.solid(entity);
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 2,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x - 16 * S,
+                        entity.body.y - 16 * S,
+                        entity.body.x + 16 * S,
+                        entity.body.y + 16 * S,
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            if let Kind::Hard(hard) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = hard.solid(entity);
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + hard.bounds()[0],
+                        entity.body.y + hard.bounds()[1],
+                        entity.body.x + hard.bounds()[2],
+                        entity.body.y + hard.bounds()[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            if let Kind::Walker(w) = &entity.kind {
+                if w.kind == crate::actors::ActorKind::Flat {
+                    let position = Position {
+                        x: entity.body.x,
+                        y: entity.body.y,
+                    };
+                    let box_ = w
+                        .flat_solid(entity.body, entity.facing)
+                        .filter(|_| entity.status == 1);
+                    let b = w.body_bounds(entity.facing);
+                    self.rows.push(Row {
+                        token: entity.origin.token(),
+                        block: false,
+                        post: false,
+                        mode: 2,
+                        spiked: 0,
+                        position,
+                        old_position: position,
+                        old_box: box_,
+                        live_box: box_,
+                        region: [
+                            entity.body.x + b[0],
+                            entity.body.y + b[1],
+                            entity.body.x + b[2],
+                            entity.body.y + b[3],
+                        ],
+                        handle: None,
+                        turn: None,
+                    });
+                }
+            }
             if let Kind::Span(span) = &entity.kind {
                 let position = Position {
                     x: entity.body.x,
@@ -145,6 +283,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    post: false,
                     mode: 2,
                     spiked: 0,
                     position,
@@ -158,6 +297,7 @@ impl SolidFrame {
                         entity.body.y + b[3],
                     ]),
                     handle: None,
+                    turn: None,
                 });
             }
             if let Kind::Block(block) = &entity.kind {
@@ -170,6 +310,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: true,
+                    post: false,
                     mode: 1,
                     spiked: 0,
                     position,
@@ -183,6 +324,63 @@ impl SolidFrame {
                         entity.body.y + b[3],
                     ],
                     handle: None,
+                    turn: None,
+                });
+            }
+            // count_ledge.gd: a 2 px top-only edge.
+            if let Kind::Ledge(ledge) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = ledge.solid(entity);
+                let b = ledge.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 2,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            // one_way_gate.gd: a full barrier, gone while opened.
+            if let Kind::Gate(gate) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = gate.solid(entity);
+                let b = gate.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: Some((gate.angle, crate::gate::BARRIER)),
                 });
             }
             if let Kind::Post(post) = &entity.kind {
@@ -194,6 +392,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    post: true,
                     mode: 1,
                     spiked: post.spiked,
                     position,
@@ -207,6 +406,7 @@ impl SolidFrame {
                         entity.body.y,
                     ],
                     handle: None,
+                    turn: None,
                 });
             }
         }
@@ -254,6 +454,7 @@ impl SolidFrame {
                 handle,
                 mode: row.mode,
                 box_,
+                turn: turned(row),
             });
         }
         result
@@ -269,6 +470,7 @@ impl SolidFrame {
             handle,
             mode: row.mode,
             box_,
+            turn: turned(row),
         })
     }
     pub fn take_updates(&mut self) -> Vec<PostUpdate> {
@@ -285,7 +487,7 @@ impl SolidFrame {
         let targets: Vec<usize> = self
             .shapes(probe)
             .into_iter()
-            .filter(|s| s.mode == 1 && previous_edge >= s.box_[3] && overlap(s.box_, probe))
+            .filter(|s| s.mode == 1 && previous_edge >= s.box_[3] && s.touches(probe))
             .map(|s| self.handles[(-2 - s.handle) as usize])
             .collect();
         for index in targets {
@@ -331,13 +533,13 @@ impl SolidFrame {
         let targets: Vec<usize> = self
             .shapes(probe)
             .into_iter()
-            .filter(|s| previous_edge <= s.box_[1] && overlap(s.box_, probe))
+            .filter(|s| previous_edge <= s.box_[1] && s.touches(probe))
             .map(|s| self.handles[(-2 - s.handle) as usize])
             .collect();
         for index in targets {
             let row = &mut self.rows[index];
             let Some(box_) = row.live_box else { continue };
-            if row.block || row.mode != 1 || row.spiked != 0 || !self.bumped.insert(row.token) {
+            if !row.post || row.spiked != 0 || !self.bumped.insert(row.token) {
                 continue;
             }
             body.y = box_[1] - bounds[3] - S / 16;
@@ -379,7 +581,7 @@ impl SolidFrame {
     pub fn touches(&mut self, probe: [i64; 4]) -> bool {
         self.shapes(probe)
             .into_iter()
-            .any(|s| !(s.mode == 2 && probe[1] > s.box_[1]) && overlap(s.box_, probe))
+            .any(|s| !(s.mode == 2 && probe[1] > s.box_[1]) && s.touches(probe))
     }
     pub fn carry(&mut self, body: &mut Body, bounds: [i64; 4], on_floor: i64) {
         if self.carried {
