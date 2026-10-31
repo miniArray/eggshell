@@ -193,3 +193,175 @@ impl Run {
         }
     }
 }
+
+// drift_spore.gd (e13): a spore that sways down and grows into a sprout where it lands.
+const SPORE_BOX: [i64; 4] = [-8 * S, -12 * S, 8 * S, 34 * S];
+const SWAY_SPEED: i64 = 32 * 60;
+const SWAY_ACCEL: i64 = 128;
+const FALL_ACCEL: i64 = 128;
+const FALL_CAP: i64 = 64 * 60;
+const MAX_AGE: i64 = 1_000_000;
+
+pub(crate) fn spore_bounds() -> [i64; 4] {
+    SPORE_BOX
+}
+
+/// drift_spore.gd sway_period: 0.8 s between sway turns, 0.6 after 2.3 s, 0.4 after 3.9 s.
+fn sway_period(age: i64) -> i64 {
+    if age >= 234 {
+        24
+    } else if age >= 138 {
+        36
+    } else {
+        48
+    }
+}
+
+impl Actor {
+    /// drift_spore.gd prepare + create.
+    pub fn spore(p: &Placement) -> Result<Self, Error> {
+        if p.variant != 0 || !(0..=2).contains(&p.mirror) || p.rotation != 0 {
+            return Err(Error::Unsupported {
+                requirements: vec![format!(
+                    "e13 form F={} M={} R={}",
+                    p.variant, p.mirror, p.rotation
+                )],
+            });
+        }
+        Ok(Actor::new(ActorKind::Spore, 0, p.mirror, p.position))
+    }
+    pub fn spore_valid(&self) -> bool {
+        self.variant == 0 && (0..=MAX_AGE).contains(&self.age) && (0..=48).contains(&self.sway)
+    }
+}
+
+impl Run {
+    /// drift_spore.gd step.
+    pub(crate) fn spore_step(&mut self, index: usize, map: &Probe) -> Result<(), Error> {
+        let token = self.entities[index].origin.token();
+        let Run {
+            entities,
+            player,
+            rng,
+            frame,
+            camera,
+            ..
+        } = self;
+        let e = &mut entities[index];
+        let Kind::Walker(w) = &mut e.kind else {
+            unreachable!()
+        };
+        if w.started == 0 {
+            // enemy_body.gd process: the first step's initialisation.
+            w.started = 1;
+            w.impact_cursor = player.impact;
+            if w.mirror == 2 {
+                e.facing = if player.body.x > e.body.x { 1 } else { -1 };
+            }
+        }
+        let mut step = ActorStep {
+            map,
+            frame: *frame,
+            camera: *camera,
+            player,
+            rng,
+        };
+        let action = w.process(
+            token,
+            &mut e.body,
+            &mut e.facing,
+            &mut e.status,
+            &mut e.can_respawn,
+            &step,
+        );
+        if [Hold::Held, Hold::Gone].contains(&action) {
+            return Ok(());
+        }
+        if w.frozen != 0 {
+            return Err(Error::Unsupported {
+                requirements: vec!["frozen e13 spore (ice shots are not ported)".into()],
+            });
+        }
+        if let Some(after) = w.spit_step(
+            &mut e.body,
+            &mut e.facing,
+            &mut e.status,
+            &mut e.can_respawn,
+            &mut step,
+        ) {
+            if let After::HitOthers(b) = after {
+                self.hit_others(index, b, HitKind::Spit, true)?;
+            }
+            return Ok(());
+        }
+        // enemy_body.gd hazards
+        if map.lava_overlaps(world_box(e.body, SPORE_BOX)) {
+            w.remove(&mut e.status, &mut e.can_respawn);
+            return Ok(());
+        }
+        w.age = (w.age + 1).min(MAX_AGE);
+        w.sway -= 1;
+        if w.sway <= 0 {
+            e.facing = -e.facing;
+            w.sway = sway_period(w.age);
+        }
+        let body = &mut e.body;
+        body.vx = (body.vx + e.facing * SWAY_ACCEL).clamp(-SWAY_SPEED, SWAY_SPEED);
+        let distance = body.vx;
+        let mut started = false;
+        if distance != 0 {
+            let (actual, on_floor) = w.movement_box(body, SPORE_BOX, map, distance);
+            started = on_floor;
+            if actual != distance {
+                body.vx = 0;
+            }
+        }
+        if body.gravity_box(map, SPORE_BOX, started, FALL_ACCEL, FALL_CAP) {
+            // drift_spore.gd grow: removed, and a waking sprout appears where it landed.
+            w.remove(&mut e.status, &mut e.can_respawn);
+            let (x, y, facing) = (e.body.x, e.body.y + 14 * S, e.facing);
+            if let Ok(serial) = self.next_serial() {
+                let mut sprout = Actor::new(ActorKind::Sprout, 0, 0, crate::Position { x, y });
+                sprout.mode = WAKE;
+                sprout.timer = WAKE_TICKS;
+                let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
+                let mut row = crate::entity::Entity::dynamic(
+                    serial,
+                    Kind::Walker(sprout),
+                    Body {
+                        x,
+                        y,
+                        ..Body::default()
+                    },
+                    facing,
+                    8,
+                );
+                row.family_index = family;
+                self.dynamic_serial = serial + 1;
+                self.entities.push(row);
+            }
+        }
+        Ok(())
+    }
+    /// drift_spore.gd contact: any touch hurts.
+    pub(crate) fn spore_contact(&mut self, index: usize) {
+        let pb = self.player.bounds();
+        let p = self.player.body;
+        let captured = self.player.captured_by != 0;
+        let e = &mut self.entities[index];
+        let Kind::Walker(w) = &mut e.kind else {
+            return;
+        };
+        let touching = w.hidden == 0
+            && w.held == 0
+            && w.spat == 0
+            && e.status == 1
+            && !captured
+            && strict(world_box(e.body, SPORE_BOX), world_box(p, pb));
+        w.contact = i64::from(touching);
+        if touching {
+            let x = e.body.x;
+            self.player.hurt(x, &mut self.sound);
+        }
+    }
+}

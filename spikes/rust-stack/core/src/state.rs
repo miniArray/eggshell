@@ -244,6 +244,7 @@ impl Run {
                     "e42" => Kind::Walker(crate::actors::Actor::juggler(p)?),
                     "e17" => Kind::Walker(crate::actors::Actor::bulk(p)?),
                     "e33" => Kind::Walker(crate::actors::Actor::gust(p)?),
+                    "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -468,6 +469,9 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Gust => {
                     crate::eating::After::GustStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spore => {
+                    crate::eating::After::SporeStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -495,6 +499,7 @@ impl Run {
                             | ActorKind::Juggler
                             | ActorKind::Bulk
                             | ActorKind::Gust
+                            | ActorKind::Spore
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -549,6 +554,7 @@ impl Run {
                 crate::eating::After::JugglerStep => self.juggler_step(next - 1, map)?,
                 crate::eating::After::BulkStep => self.bulk_step(next - 1, map)?,
                 crate::eating::After::GustStep => self.gust_step(next - 1, map)?,
+                crate::eating::After::SporeStep => self.spore_step(next - 1, map)?,
                 crate::eating::After::LauncherStep => {
                     self.launcher_step(next - 1)?;
                     self.refresh_block_solid(next - 1, map);
@@ -934,6 +940,10 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Gust {
                     self.gust_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Spore {
+                    self.spore_contact(index);
                     continue;
                 }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {

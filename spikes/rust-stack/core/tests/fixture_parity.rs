@@ -49,6 +49,7 @@ fn run(restores: bool) {
         "jugglers_target",
         "bulks_target",
         "gusts_target",
+        "spores_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -145,6 +146,12 @@ fn run(restores: bool) {
     let mut shot_held = 0;
     let mut launcher_charges = 0;
     let mut bounce_fires = 0;
+    let mut spore_turns = 0;
+    let mut spore_facings: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut spore_removals = 0;
+    let mut spore_status: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut grown_sprouts = BTreeSet::new();
+    let mut waking_ticks = 0;
     let mut gust_full_speed = 0;
     let mut gust_headings = BTreeSet::new();
     let mut gust_held = 0;
@@ -712,6 +719,26 @@ fn run(restores: bool) {
             launcher_charges += usize::from(f("charge") > 0);
             bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
         }
+        // drift_spore.gd: sway turns, removals (grown or swallowed), grown sprouts and
+        // their waking ticks.
+        for e in wire.entities.iter().filter(|e| e.code == "e13") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e13"), n).unwrap();
+            if f("status") == 1 && spore_facings.get(&e.id).is_some_and(|v| *v != f("facing")) {
+                spore_turns += 1;
+            }
+            spore_facings.insert(e.id.clone(), f("facing"));
+            if f("status") == 3 && spore_status.get(&e.id) == Some(&1) {
+                spore_removals += 1;
+            }
+            spore_status.insert(e.id.clone(), f("status"));
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "e12") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e12"), n).unwrap();
+            if f("source_index") == -1 {
+                grown_sprouts.insert(e.id.clone());
+                waking_ticks += usize::from(f("mode") == 1);
+            }
+        }
         // gust_flyer.gd: full-speed ticks, headings flown, held ticks, removals.
         for e in wire.entities.iter().filter(|e| e.code == "e33") {
             let f = |n: &str| required(&e.values, schema.entity_fields("e33"), n).unwrap();
@@ -976,6 +1003,15 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "spores_target" {
+        println!("SPORE_COVERAGE turns={spore_turns} removals={spore_removals} grown={} waking_ticks={waking_ticks}", grown_sprouts.len());
+        // At least one spore is swallowed rather than grown.
+        assert!(
+            spore_turns > 0
+                && !grown_sprouts.is_empty()
+                && waking_ticks > 0
+                && spore_removals > grown_sprouts.len()
+        );
     } else if name == "gusts_target" {
         println!("GUST_COVERAGE full_speed_ticks={gust_full_speed} headings={gust_headings:?} held_ticks={gust_held} removals={gust_removals}");
         assert!(

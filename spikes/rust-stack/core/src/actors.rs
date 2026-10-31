@@ -55,6 +55,8 @@ pub(crate) enum ActorKind {
     Bulk,
     /// gust_flyer.gd e33, outside the enemy family.
     Gust,
+    /// drift_spore.gd e13: grows into an e12 where it lands.
+    Spore,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -187,6 +189,9 @@ pub(crate) struct Actor {
     // gust_flyer.gd FIELDS (heading and contact are shared).
     pub toward: i64,
     pub ramp: i64,
+    // drift_spore.gd FIELDS (contact is shared).
+    pub age: i64,
+    pub sway: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -314,6 +319,8 @@ impl Actor {
             squashed: 0,
             toward: 0,
             ramp: 0,
+            age: 0,
+            sway: 48,
         }
     }
     pub fn valid(&self) -> bool {
@@ -350,6 +357,7 @@ impl Actor {
             && (self.kind != ActorKind::Juggler || self.juggler_valid())
             && (self.kind != ActorKind::Bulk || self.bulk_valid())
             && (self.kind != ActorKind::Gust || self.gust_valid())
+            && (self.kind != ActorKind::Spore || self.spore_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
@@ -437,6 +445,7 @@ impl Actor {
             ActorKind::Juggler => crate::juggler::JUGGLER_BOX,
             ActorKind::Bulk => crate::bulk::BOX,
             ActorKind::Gust => crate::gust::bounds(self.heading),
+            ActorKind::Spore => crate::sprout::spore_bounds(),
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
@@ -572,7 +581,8 @@ impl Actor {
             | ActorKind::Hopper
             | ActorKind::Juggler
             | ActorKind::Bulk
-            | ActorKind::Gust => {
+            | ActorKind::Gust
+            | ActorKind::Spore => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -1066,5 +1076,7 @@ fields!(
     thrown_now,
     squashed,
     toward,
-    ramp
+    ramp,
+    age,
+    sway
 );

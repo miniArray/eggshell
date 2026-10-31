@@ -146,6 +146,13 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
             ..VisualState::default()
         };
     }
+    if w.kind == ActorKind::Spore {
+        // drift_spore.gd view_state
+        return VisualState {
+            animation: Some(if facing < 0 { "Left" } else { "Right" }.into()),
+            ..VisualState::default()
+        };
+    }
     if w.kind == ActorKind::Gust {
         // gust_flyer.gd view_state
         let (rotation, flip) = w.gust_view();
@@ -231,7 +238,8 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         | ActorKind::Hopper
         | ActorKind::Juggler
         | ActorKind::Bulk
-        | ActorKind::Gust => {
+        | ActorKind::Gust
+        | ActorKind::Spore => {
             unreachable!("returns its own view above")
         }
         // actor.gd view_state

@@ -66,6 +66,8 @@ pub(crate) fn restore_head(
         "enemy_pellet" => Kind::Walker(Actor::new(ActorKind::Pellet, 0, 0, position)),
         // launcher_shot.gd: saved fields are restored after the head.
         "enemy_shot" => Kind::Walker(Actor::new(ActorKind::Shot, 0, 0, position)),
+        // hop_sprout.gd grown from a drift_spore.gd: saved fields follow the head.
+        "e12" => Kind::Walker(Actor::new(ActorKind::Sprout, 0, 0, position)),
         // spike_hopper.gd (a needle_juggler.gd hopper): saved fields follow the head.
         "e40" => Kind::Walker(Actor::new(
             ActorKind::Hopper,

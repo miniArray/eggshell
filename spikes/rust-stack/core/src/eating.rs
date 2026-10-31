@@ -104,6 +104,8 @@ pub(crate) enum After {
     BulkStep,
     /// gust_flyer.gd step.
     GustStep,
+    /// drift_spore.gd step, which grows a sprout into the table.
+    SporeStep,
     /// shot_launcher.gd step, which fires shots into the table.
     LauncherStep,
     /// timed_switch.gd step, which runs the shared interval.
@@ -527,8 +529,12 @@ impl Run {
                         1,
                         0,
                         0,
-                        // actor.gd tongue: fish are swallowed at once.
-                        i64::from([ActorKind::Fish, ActorKind::LandFish].contains(&w.kind)),
+                        // actor.gd tongue: fish are swallowed at once; so are
+                        // drift_spore.gd spores.
+                        i64::from(
+                            [ActorKind::Fish, ActorKind::LandFish, ActorKind::Spore]
+                                .contains(&w.kind),
+                        ),
                         256 * 60,
                     ) {
                         w.held = 1;
