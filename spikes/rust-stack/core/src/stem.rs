@@ -12,7 +12,7 @@ const BOUNDS: [i64; 4] = [-10 * S, -24 * S, 10 * S, 16 * S];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Stem {
-    /// item_stem.gd PAYLOADS index: 0 o7, 1 o4, 2 e40 (refused), 3 nothing.
+    /// item_stem.gd PAYLOADS index: 0 o7, 1 o4, 2 e40, 3 nothing.
     pub payload: i64,
     pub phase: i64,
     pub fast: i64,
@@ -29,11 +29,7 @@ impl Stem {
             Some(PropertyValue::String(s)) => match s.as_str() {
                 "" | "o7" => 0,
                 "o4" => 1,
-                "e40" => {
-                    return Err(Error::Unsupported {
-                        requirements: vec!["o17 producer payload e40".into()],
-                    })
-                }
+                "e40" => 2,
                 _ => 3,
             },
             Some(_) => {
@@ -110,7 +106,7 @@ impl Stem {
         true
     }
     pub fn valid(&self, body: Body) -> bool {
-        [0, 1, 3].contains(&self.payload)
+        (0..=3).contains(&self.payload)
             && (0..self.period()).contains(&self.phase)
             && [0, 1].contains(&self.fast)
             && [0, 1].contains(&self.fast_loop)
@@ -161,7 +157,8 @@ impl Run {
         }
         let payload = s.payload;
         let available = match payload {
-            0 => (6 - self.active_eggs(centre)).max(0),
+            // item_stem.gd amount: egg and hopper producers both count active eggs.
+            0 | 2 => (6 - self.active_eggs(centre)).max(0),
             1 => (30 - self.player.life.health).max(0),
             _ => 0,
         };
@@ -205,6 +202,25 @@ impl Run {
             vx,
             vy,
         };
+        // spike_hopper.gd create through registry.gd spawn_dynamic: a runtime enemy with
+        // the next family index; spiked bodies collide (no pickup delay or ghosting).
+        if payload == 2 {
+            let hopper = crate::actors::Actor::new(
+                crate::actors::ActorKind::Hopper,
+                0,
+                0,
+                crate::Position {
+                    x: body.x,
+                    y: body.y,
+                },
+            );
+            let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
+            let mut row = Entity::dynamic(serial, Kind::Walker(hopper), body, -1, 8);
+            row.family_index = family;
+            self.dynamic_serial = serial + 1;
+            self.entities.push(row);
+            return Ok(());
+        }
         let kind = if payload == 0 {
             let mut egg = Egg::new(0);
             egg.pickup_delay = 6;

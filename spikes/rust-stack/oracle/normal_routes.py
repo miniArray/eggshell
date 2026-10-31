@@ -178,6 +178,9 @@ def main() -> None:
         inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs += cycle * 20 + [2] * 300
+    elif name == "hopstems_target":
+        # Stand back while the producer releases hoppers (they fall, hop and sink).
+        inputs = [0] * 982
     elif name == "rejoin_target":
         # Walk into the walker (the companion separates into a bubble that drifts right
         # and bobs), hop over the walker, walk ahead of the bubble's low point and lick

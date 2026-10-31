@@ -58,6 +58,7 @@ fn run(restores: bool) {
         "dice_target",
         "decor_target",
         "rejoin_target",
+        "hopstems_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -194,6 +195,7 @@ fn run(restores: bool) {
     let mut dice_states = BTreeSet::new();
     let mut ledge_heights = BTreeSet::new();
     let mut rejoin_ticks = 0;
+    let mut stem_hoppers = 0;
     let mut lamp_views = BTreeSet::new();
     let mut dice_lifted = 0;
     let mut dice_tints = BTreeSet::new();
@@ -725,6 +727,13 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // item_stem.gd e40 payload: runtime hoppers in the table.
+        stem_hoppers = stem_hoppers.max(
+            wire.entities
+                .iter()
+                .filter(|e| e.code == "e40" && e.id.starts_with('+'))
+                .count(),
+        );
         // life.gd REJOIN: the world frozen while a caught companion returns.
         rejoin_ticks += usize::from(packet.player.life_phase == 1);
         // decor_platform.gd / lamp.gd: heights stood on above the floor, lamp views.
@@ -1182,6 +1191,9 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "hopstems_target" {
+        println!("HOPPER_STEM_COVERAGE most_hoppers={stem_hoppers} serial={last_serial}");
+        assert!(stem_hoppers > 1 && last_serial > 3);
     } else if name == "rejoin_target" {
         println!("REJOIN_COVERAGE rejoin_ticks={rejoin_ticks}");
         assert!(rejoin_ticks >= 51);

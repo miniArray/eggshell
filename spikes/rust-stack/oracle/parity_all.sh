@@ -19,7 +19,7 @@ check() {
   fi
 }
 check stride nix-shell spikes/rust-stack/oracle/milestone.sh
-for fixture in bounce bounce.pad bounce.moves stride.eat lagoon collections actors_target stilts_target stilts_target.knock checkpoint_target posts_target posts_target.pound posts_target.duck blocks_target spans_target flats_target hards_target falls_target grows_target gates_target ledges_target stems_target flowers_target switches_target shells_target armored_target spears_target lifts_target snowflow_target fish_target melons_target thieves_target rollers_target thieves_target rollers_target shooters_target wings_target launchers_target sprouts_target jugglers_target bulks_target gusts_target hounds_target spores_target hangs_target eggblocks_target pillars_target balloons_target clears_target dice_target decor_target rejoin_target; do
+for fixture in bounce bounce.pad bounce.moves stride.eat lagoon collections actors_target stilts_target stilts_target.knock checkpoint_target posts_target posts_target.pound posts_target.duck blocks_target spans_target flats_target hards_target falls_target grows_target gates_target ledges_target stems_target flowers_target switches_target shells_target armored_target spears_target lifts_target snowflow_target fish_target melons_target thieves_target rollers_target thieves_target rollers_target shooters_target wings_target launchers_target sprouts_target jugglers_target bulks_target gusts_target hounds_target spores_target hangs_target eggblocks_target pillars_target balloons_target clears_target dice_target decor_target rejoin_target hopstems_target; do
   check "$fixture" nix-shell spikes/rust-stack/oracle/fixture.sh "$fixture"
 done
 printf 'PARITY_ALL_DONE failed=%s source=%s\n' "$failed" "$(git rev-parse HEAD)"
