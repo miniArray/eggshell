@@ -178,6 +178,10 @@ def main() -> None:
         inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs += cycle * 20 + [2] * 300
+    elif name == "clears_target":
+        # Stop under the clear block and jump straight up into it three times.
+        jump = [4] * 14 + [0] * 50
+        inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump * 3 + [0] * 100 + [2] * 400
     elif name == "balloons_target":
         # Hop onto the slow riser and ride it, jump across to the drifting bobbing one and
         # ride it, then drop off and walk on under the sinking one.

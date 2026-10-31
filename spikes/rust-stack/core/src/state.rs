@@ -174,7 +174,7 @@ impl Run {
                     }
                     "o8" => Kind::Cache(crate::clouds::Cache::new(p)?),
                     "o19" => Kind::Redirect(crate::clouds::Redirect::new(p)?),
-                    "o9" | "o15" | "o18" => Kind::Block(crate::blocks::Block::new(p)?),
+                    "o9" | "o15" | "o18" | "o24" => Kind::Block(crate::blocks::Block::new(p)?),
                     "o28" | "o29" | "o12" => Kind::Hard(crate::blocks::Hard::new(p)?),
                     "o20" => Kind::Fall(crate::blocks::Fall::new(p)?),
                     "o10" => Kind::Grow(crate::blocks::Grow::default()),
@@ -263,7 +263,12 @@ impl Run {
                     }
                     _ => 0,
                 };
-                Ok(Entity::placed(source, p, kind, family_index))
+                let mut row = Entity::placed(source, p, kind, family_index);
+                // item_block.gd prepare: an o24 sits 32 px above its placement.
+                if let Kind::Block(b) = &row.kind {
+                    row.body.y = b.home_y;
+                }
+                Ok(row)
             })
             .collect()
     }
@@ -734,7 +739,12 @@ impl Run {
                     if matches!(self.entities[i].kind, Kind::EggBlock(_)) {
                         self.egg_block_bump(i)?;
                     } else {
-                        self.block_bump(i)?;
+                        let centre = screen_centre(
+                            self.camera,
+                            map.width_pixels * S,
+                            map.height_pixels * S,
+                        );
+                        self.block_bump(i, centre)?;
                     }
                     self.refresh_block_solid(i, &map);
                 }

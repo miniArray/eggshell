@@ -54,6 +54,7 @@ fn run(restores: bool) {
         "eggblocks_target",
         "pillars_target",
         "balloons_target",
+        "clears_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -186,6 +187,8 @@ fn run(restores: bool) {
     let mut egg_block_bumped = BTreeSet::new();
     let mut pillar_side_ticks = 0;
     let mut balloon_ride_ticks = 0;
+    let mut clear_charges = BTreeSet::new();
+    let mut cleared = BTreeSet::new();
     let mut balloon_landings = 0;
     let mut balloon_bob_ticks = 0;
     let mut swimming_ticks = 0;
@@ -713,6 +716,20 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // item_block.gd o24: charges used, and enemies removed while the player stands
+        // far away (only a clear reaches them).
+        for e in &wire.entities {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if e.code == "o24" {
+                clear_charges.insert((f("charges"), f("status")));
+            }
+            if e.code.starts_with('e')
+                && f("status") == 3
+                && (f("x") - packet.player.motion.current.x).abs() > 160 * 3600
+            {
+                cleared.insert(e.id.clone());
+            }
+        }
         // rise_balloon.gd: rides (stepped), landing pauses and bobbing balloons.
         for e in wire.entities.iter().filter(|e| e.code == "o26") {
             let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
@@ -1138,6 +1155,12 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "clears_target" {
+        println!("CLEAR_COVERAGE charges={clear_charges:?} cleared={cleared:?} serial={last_serial} max_runtime={max_runtime}");
+        assert!(clear_charges.contains(&(0, 3)) && cleared.len() >= 4);
+        // The unseated rider is created during the clear and cleared in the same step, so
+        // the serial moved but no runtime row ever reaches a snapshot.
+        assert!(last_serial >= 2 && max_runtime == 0, "the unseated rider is cleared too");
     } else if name == "balloons_target" {
         println!("BALLOON_COVERAGE ride_ticks={balloon_ride_ticks} landings={balloon_landings} bob_ticks={balloon_bob_ticks}");
         assert!(balloon_ride_ticks > 0 && balloon_landings >= 2 && balloon_bob_ticks > 0);

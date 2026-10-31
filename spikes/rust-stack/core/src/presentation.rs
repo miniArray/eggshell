@@ -738,6 +738,10 @@ pub(crate) fn sample_rows(
                 Kind::Block(b) => (
                     b.bounds(),
                     match b.kind {
+                        crate::blocks::BlockKind::Clear => VisualState {
+                            size_pixels: [Some(64.0), Some(b.height as f64 / SCALE as f64)],
+                            ..VisualState::default()
+                        },
                         crate::blocks::BlockKind::Linked => VisualState {
                             animation: Some(if b.enabled != 0 { "On" } else { "Off" }.into()),
                             ..VisualState::default()

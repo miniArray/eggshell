@@ -1,5 +1,5 @@
-//! item_block.gd for o9 (egg block), o15 (linked on/off block) and o18 (message block).
-//! o24 (the shrinking clear block) is refused until ported.
+//! item_block.gd for o9 (egg block), o15 (linked on/off block), o18 (message block) and
+//! o24 (the shrinking clear block).
 use crate::{
     entity::{Entity, Kind},
     state::Run,
@@ -16,6 +16,9 @@ pub(crate) enum BlockKind {
     Egg,
     Linked,
     Message,
+    /// o24: each bump from below clears the screen of enemies and shrinks it; the third
+    /// bump uses it up.
+    Clear,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -367,12 +370,16 @@ impl Block {
             "o9" => BlockKind::Egg,
             "o15" => BlockKind::Linked,
             "o18" => BlockKind::Message,
+            "o24" => BlockKind::Clear,
             _ => {
                 return Err(Error::Unsupported {
                     requirements: vec![format!("item block {}", p.code)],
                 })
             }
         };
+        // item_block.gd prepare: a clear block hangs from 32 px above its placement.
+        let y = p.position.y - if kind == BlockKind::Clear { 32 * S } else { 0 };
+        let height = if kind == BlockKind::Clear { 56 } else { 32 } * S;
         if kind == BlockKind::Message {
             let text = p.properties.iter().find(|(k, _)| k == "E1").map(|(_, v)| v);
             if !matches!(text, None | Some(PropertyValue::String(_))) {
@@ -385,18 +392,22 @@ impl Block {
         Ok(Self {
             kind,
             home_x: p.position.x,
-            home_y: p.position.y,
+            home_y: y,
             busy: 0,
             bump_direction: 1,
             enabled,
             solid_ready: enabled,
             charges: 3,
-            height: 32 * S,
-            height_from: 32 * S,
+            height,
+            height_from: height,
         })
     }
     pub fn bounds(&self) -> [i64; 4] {
-        [-16 * S, -16 * S, 16 * S, 16 * S]
+        if self.kind == BlockKind::Clear {
+            [-28 * S, 0, 28 * S, self.height]
+        } else {
+            [-16 * S, -16 * S, 16 * S, 16 * S]
+        }
     }
     pub fn solid(&self, e: &Entity) -> Option<[i64; 4]> {
         (e.status == 1 && e.collected == 0 && self.enabled != 0 && self.solid_ready != 0).then(
@@ -804,11 +815,22 @@ impl Run {
                 let vx = block.bump_direction * self.rng.ticks(128 * 60, 192 * 60);
                 self.spawn_block_egg(x, y, vx, -256 * 60)?;
             }
+        } else if block.kind == BlockKind::Clear {
+            let target = [0, 22, 34, 56][block.charges as usize] * S;
+            let b = self.block_mut(index);
+            b.height = b.height_from + (target - b.height_from) * (6 - busy) / 6;
+            if busy == 0 && block.charges == 0 {
+                self.entities[index].status = 3;
+            }
         }
         Ok(())
     }
     /// item_block.gd bump, side 0 (from below) only.
-    pub(crate) fn block_bump(&mut self, index: usize) -> Result<(), Error> {
+    pub(crate) fn block_bump(
+        &mut self,
+        index: usize,
+        centre: crate::Position,
+    ) -> Result<(), Error> {
         let e = &self.entities[index];
         let block = self.block(index).clone();
         if e.status != 1
@@ -832,9 +854,80 @@ impl Run {
                 b.bump_direction = direction;
             }
             BlockKind::Message => self.open_message(index)?,
+            BlockKind::Clear => {
+                if block.charges != 0 {
+                    self.bump_above(index)?;
+                    self.clear_area(centre)?;
+                    let b = self.block_mut(index);
+                    b.charges -= 1;
+                    b.height_from = b.height;
+                    b.busy = 6;
+                }
+            }
             BlockKind::Linked => {}
         }
         Ok(())
+    }
+    /// item_block.gd clear_area: Hits.CLEAR on every active, visible entity with a hit
+    /// rule on the reference screen, in table order (entities it spawns included).
+    fn clear_area(&mut self, centre: crate::Position) -> Result<(), Error> {
+        let probe = [
+            centre.x - 416 * S,
+            centre.y - 224 * S,
+            centre.x + 416 * S,
+            centre.y + 224 * S,
+        ];
+        let mut other = 0;
+        while other < self.entities.len() {
+            let current = other;
+            other += 1;
+            let o = &self.entities[current];
+            // Of the hit rules, only enemies react to CLEAR: pickups, clouds, eggs,
+            // producers and blocks ignore it.
+            let Kind::Walker(w) = &o.kind else {
+                continue;
+            };
+            if o.status != 1 || w.held == 1 || w.hidden == 1 {
+                continue;
+            }
+            let b = crate::egg::entity_bounds(o);
+            if !(o.body.x + b[2] > probe[0]
+                && o.body.x + b[0] < probe[2]
+                && o.body.y + b[3] > probe[1]
+                && o.body.y + b[1] < probe[3])
+            {
+                continue;
+            }
+            self.clear_hit(current)?;
+        }
+        Ok(())
+    }
+    /// Each enemy's `hit` with Hits.CLEAR.
+    fn clear_hit(&mut self, index: usize) -> Result<(), Error> {
+        use crate::actors::ActorKind;
+        let Kind::Walker(w) = &self.entities[index].kind else {
+            return Ok(());
+        };
+        match w.kind {
+            // stilt_walker.gd hit: POUND and CLEAR unseat the rider.
+            ActorKind::Stilt => self.unseat_stilt(index),
+            // shell_walker.gd hit: removed (with on_remove).
+            ActorKind::Shell | ActorKind::Runner => {
+                self.shell_remove(index);
+                Ok(())
+            }
+            // spear_guard.gd hit: the spear drops and it is removed.
+            ActorKind::Spear => {
+                let e = &mut self.entities[index];
+                if let Kind::Walker(w) = &mut e.kind {
+                    w.has_spear = 0;
+                    w.remove(&mut e.status, &mut e.can_respawn);
+                }
+                Ok(())
+            }
+            // armored_walker.gd and flat_walker.gd remove it; actor.gd removes any other.
+            _ => self.hit_actor(index),
+        }
     }
     /// item_block.gd projectile_contact: 1 consumed (message opened), 3 solid, 0 pass.
     /// (item_block.gd hit with Hits.EGG opens the message too; its callers, shells and
