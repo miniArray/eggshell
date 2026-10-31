@@ -35,6 +35,7 @@ pub mod math;
 mod melon;
 mod pad;
 mod pillar;
+mod platform;
 mod player;
 pub mod polygon;
 mod post;

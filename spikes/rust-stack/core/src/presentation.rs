@@ -690,6 +690,7 @@ pub(crate) fn sample_rows(
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) | Kind::Overlap(_) => {
+                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) | Kind::Platform(_) => {
                     ([0; 4], VisualState::default())
                 }
                 // grow_block.gd view_state
@@ -932,6 +933,14 @@ pub(crate) fn sample_rows(
                         animation: Some(format!("Color{}", r.colour.max(0))),
                         frame: Some(r.age / 10 % 3),
                         rotation_degrees: Some(r.angle as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
+                // lamp.gd view_state
+                Kind::Lamp(l) => (
+                    l.bounds(),
+                    VisualState {
+                        animation: Some(l.animation()),
                         ..VisualState::default()
                     },
                 ),

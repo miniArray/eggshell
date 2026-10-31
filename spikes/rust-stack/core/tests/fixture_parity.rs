@@ -56,6 +56,7 @@ fn run(restores: bool) {
         "balloons_target",
         "clears_target",
         "dice_target",
+        "decor_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -190,6 +191,8 @@ fn run(restores: bool) {
     let mut balloon_ride_ticks = 0;
     let mut clear_charges = BTreeSet::new();
     let mut dice_states = BTreeSet::new();
+    let mut ledge_heights = BTreeSet::new();
+    let mut lamp_views = BTreeSet::new();
     let mut dice_lifted = 0;
     let mut dice_tints = BTreeSet::new();
     let mut cleared = BTreeSet::new();
@@ -720,6 +723,13 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // decor_platform.gd / lamp.gd: heights stood on above the floor, lamp views.
+        if packet.player.on_floor && packet.player.motion.current.y < 380 * 3600 {
+            ledge_heights.insert(packet.player.motion.current.y / 3600);
+        }
+        for e in packet.entities.iter().filter(|e| e.code == "d25") {
+            lamp_views.insert(e.visual.animation.clone());
+        }
         // dice_block.gd: each block's on/solid_ready states, lifted switches and tints.
         for e in wire.entities.iter().filter(|e| e.code == "o33" || e.code == "o34") {
             let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
@@ -1168,6 +1178,11 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "decor_target" {
+        println!("DECOR_COVERAGE ledge_heights={ledge_heights:?} lamp_views={lamp_views:?}");
+        // Feet just above the strips' tops (y 322 and 282 px).
+        assert!(ledge_heights.contains(&321) && ledge_heights.contains(&281));
+        assert!(lamp_views.len() == 2);
     } else if name == "dice_target" {
         println!("DICE_COVERAGE states={dice_states:?} lifted_ticks={dice_lifted} tints={dice_tints:?}");
         for id in ["blockA", "blockB", "blockC", "switch1", "switch2"] {

@@ -131,6 +131,30 @@ fn art_can_intersect(
     ];
     hi[0] >= 0.0 && hi[1] >= 0.0 && lo[0] <= container[0] && lo[1] <= container[1]
 }
+/// pack_dressing.gd decor_entry for d25/d26: lamp.gd view states "lit|dim:colour:style"
+/// name the candle animations "<colour><base><style>" (styles 2 and 3 are the dim ones).
+fn lamp_aliases(visual: &mut Visual) {
+    let base = visual.animations[visual.default].0.clone();
+    let chars: Vec<char> = base.chars().collect();
+    if chars.len() < 3 {
+        return;
+    }
+    let middle: String = chars[1..chars.len() - 1].iter().collect();
+    for colour in 0..2 {
+        for style in 0..4 {
+            let name = format!("{colour}{middle}{style}");
+            let key = format!(
+                "{}:{colour}:{}",
+                if style < 2 { "lit" } else { "dim" },
+                style % 2
+            );
+            if !visual.states.contains_key(&key) && visual.animations.iter().any(|(n, _)| *n == name)
+            {
+                visual.states.insert(key, name);
+            }
+        }
+    }
+}
 fn pixel(p: eggshell_spike_core::Position) -> [f64; 2] {
     [p.x as f64 / SCALE as f64, p.y as f64 / SCALE as f64]
 }
@@ -470,10 +494,11 @@ impl Scene {
             variants.dedup();
             let mut bound = HashMap::new();
             for variant in variants {
-                bound.insert(
-                    variant,
-                    catalog.visual(entry, variant, density, code.starts_with('d'))?,
-                );
+                let mut visual = catalog.visual(entry, variant, density, code.starts_with('d'))?;
+                if ["d25", "d26"].contains(&code) {
+                    lamp_aliases(&mut visual);
+                }
+                bound.insert(variant, visual);
             }
             objects.insert(code.to_owned(), bound);
         }

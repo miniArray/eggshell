@@ -1187,6 +1187,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Pillar(p) => p.bounds(),
         Kind::Balloon(p) => p.bounds(),
         Kind::Dice(p) => p.bounds(),
+        Kind::Lamp(p) => p.bounds(),
         _ => [0; 4],
     }
 }

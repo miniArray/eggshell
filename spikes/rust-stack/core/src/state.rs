@@ -197,6 +197,8 @@ impl Run {
                     "o13" => Kind::Pillar(crate::pillar::Pillar::new(p)?),
                     "o26" => Kind::Balloon(crate::balloon::Balloon::new(p)?),
                     "o33" | "o34" => Kind::Dice(crate::dice::Dice::new(p)?),
+                    "d6" => Kind::Platform(crate::platform::Platform::new(p)?),
+                    "d25" => Kind::Lamp(crate::platform::Lamp::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -1364,6 +1366,8 @@ impl Run {
             Kind::Pillar(p) => p.field(n),
             Kind::Balloon(p) => p.field(n),
             Kind::Dice(p) => p.field(n),
+            Kind::Platform(p) => p.field(n),
+            Kind::Lamp(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1654,6 +1658,12 @@ impl Run {
                 if !m.valid(serial) {
                     return Err(unsupported("melon fields"));
                 }
+            }
+            if matches!(&e.kind, Kind::Lamp(l) if !l.valid()) {
+                return Err(unsupported("lamp fields"));
+            }
+            if matches!(&e.kind, Kind::Platform(p) if !p.valid()) {
+                return Err(unsupported("scenery ledge fields"));
             }
             if matches!(&e.kind, Kind::Dice(d) if !d.valid(e.body.y)) {
                 return Err(unsupported("dice block fields"));

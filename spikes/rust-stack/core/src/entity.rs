@@ -69,6 +69,8 @@ pub(crate) enum Kind {
     Pillar(crate::pillar::Pillar),
     Balloon(crate::balloon::Balloon),
     Dice(crate::dice::Dice),
+    Platform(crate::platform::Platform),
+    Lamp(crate::platform::Lamp),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -112,7 +114,7 @@ impl Entity {
             9
         } else if matches!(kind, Kind::Walker(_)) {
             8
-        } else if matches!(kind, Kind::Decor) {
+        } else if matches!(kind, Kind::Decor | Kind::Lamp(_)) {
             // decor.gd prepare: source.layer = layer_for(code).
             p.layer
         } else if matches!(kind, Kind::Redirect(_) | Kind::Gate(_)) {

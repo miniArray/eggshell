@@ -178,6 +178,10 @@ def main() -> None:
         inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs += cycle * 20 + [2] * 300
+    elif name == "decor_target":
+        # Hop onto the plain ledge, then across onto the higher mirrored one, then walk on.
+        inputs = [2] * 20 + [6] * 14 + [0] * 100 + [6] * 14 + [2] * 8 + [0] * 100
+        inputs += [2] * 300
     elif name == "dice_target":
         # Jump into the first switch from below (group 1 flips: A opens, B closes), walk
         # through A, hop B, bump the egg block for an egg, then throw it at switch 2.
