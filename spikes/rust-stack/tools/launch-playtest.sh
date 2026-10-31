@@ -1,7 +1,7 @@
 #!/run/current-system/sw/bin/bash
 # Playtest entry: plays one unchanged level in real time with the device controls.
-# Controls: D-pad move, A/B jump, X/Y tongue, L throw/aim, R aim lock, Down pound/lay,
-# Select+L/R zoom, Select+Start quits. Ends after the given seconds of steps (wall limit 15 s more).
+# Controls: D-pad move, A/B jump, X/Y tongue, L1 throw/aim, R1 aim lock, Down pound/lay,
+# R2 zoom in, L2 zoom out (also right stick), R3 zoom reset, Start pause, Select+L1/R1 save/load, Select+Start quits. Ends after the given seconds of steps (wall limit 15 s more).
 # Continue: the autosave of the last session is restored. A save the build refuses
 # is kept as autosave.v10.refused and the level starts fresh.
 set -euo pipefail

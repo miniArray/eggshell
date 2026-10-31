@@ -173,14 +173,16 @@ impl Controls {
         if back {
             result &= !(THROW | LOCK);
         }
+        // Right stick up or R2 zooms in; right stick down or L2 zooms out. The H700
+        // pad reports L2/R2 as digital keys that SDL maps to full trigger axes.
         let zoom_up = self
             .controllers
             .iter()
-            .any(|c| c.axis(Axis::RightY) < -19660);
+            .any(|c| c.axis(Axis::RightY) < -19660 || c.axis(Axis::TriggerRight) > 16384);
         let zoom_down = self
             .controllers
             .iter()
-            .any(|c| c.axis(Axis::RightY) > 19660);
+            .any(|c| c.axis(Axis::RightY) > 19660 || c.axis(Axis::TriggerLeft) > 16384);
         let states = [
             start,
             back && pressed(Button::LeftShoulder),
