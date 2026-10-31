@@ -91,6 +91,7 @@ impl Run {
                     Kind::Stem(p) => p.set_field(name, *value),
                     Kind::StarFlower(p) => p.set_field(name, *value),
                     Kind::Switch(p) => p.set_field(name, *value),
+                    Kind::Lift(p) => p.set_field(name, *value),
                     Kind::Hard(p) => {
                         name == "form" && {
                             p.form = *value;

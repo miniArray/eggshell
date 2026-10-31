@@ -60,6 +60,8 @@ pub(crate) fn restore_head(
                 position,
             ))
         }
+        // shell_walker.gd enemy_runner: saved fields are restored after the head.
+        "enemy_runner" => Kind::Walker(Actor::new(ActorKind::Runner, 0, 0, position)),
         "o1" | "o2" | "o3" => Kind::Pickup(Pickup::new(
             match row.code.as_str() {
                 "o1" => PickupKind::Coin,
@@ -70,6 +72,7 @@ pub(crate) fn restore_head(
             position.y,
         )),
         "o4" => Kind::Star(Star::default()),
+        "o14" => Kind::Switch(crate::switch::Switch::released()),
         "o7" => Kind::Egg(crate::egg::Egg::new(0)),
         _ => return Err(refuse("dynamic code outside implemented runtime closure")),
     };

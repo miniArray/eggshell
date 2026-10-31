@@ -1,11 +1,17 @@
 //! Polygon-body terrain contact for the companion bubble, with closed edges.
 use crate::{math::floor_div, polygon, Map, Position, SCALE};
 impl Map {
-    pub(crate) fn terrain_polygon_overlaps(&self,points:&[Position],bounds:[i64;4])->bool{
-        if bounds[0]>bounds[2]||bounds[1]>bounds[3]{return self.legacy_terrain_polygon_overlaps(points,bounds);}
-        self.collision_grid.polygon(self,points,bounds)
+    pub(crate) fn terrain_polygon_overlaps(&self, points: &[Position], bounds: [i64; 4]) -> bool {
+        if bounds[0] > bounds[2] || bounds[1] > bounds[3] {
+            return self.legacy_terrain_polygon_overlaps(points, bounds);
+        }
+        self.collision_grid.polygon(self, points, bounds)
     }
-    pub(crate) fn legacy_terrain_polygon_overlaps(&self, points: &[Position], bounds: [i64; 4]) -> bool {
+    pub(crate) fn legacy_terrain_polygon_overlaps(
+        &self,
+        points: &[Position],
+        bounds: [i64; 4],
+    ) -> bool {
         for layer in &self.layers {
             if !layer.solid {
                 continue;

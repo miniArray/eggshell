@@ -39,7 +39,9 @@ fn pack_sweep_admission_and_idle() {
                     .map_err(|e| format!("STEP {tick} {e:?}"))?;
             }
             let saved = session.snapshot().map_err(|e| format!("SNAPSHOT {e:?}"))?;
-            session.restore(&saved).map_err(|e| format!("RESTORE {e:?}"))?;
+            session
+                .restore(&saved)
+                .map_err(|e| format!("RESTORE {e:?}"))?;
             Ok(())
         });
         let (status, reason) = match result {

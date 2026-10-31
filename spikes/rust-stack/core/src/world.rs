@@ -31,7 +31,7 @@ impl World {
     fn compile_configured(
         level_json: &str,
         collision_json: &str,
-        omit_dice_colours: bool,
+        _benchmark_real_screen: bool,
     ) -> Result<Self, Error> {
         if level_json.len() > 16_777_216 || collision_json.len() > 16_777_216 {
             return Err(invalid("level/collision exceeds 16 MiB"));
@@ -50,6 +50,7 @@ impl World {
         for field in ["version", "name", "desc"] {
             text(level.get(field), field)?;
         }
+        let legacy_writer = text(level.get("version"), "version")? < "s3.8";
         if !level
             .get("author")
             .is_some_and(|v| v.is_string() || v.is_number())
@@ -137,7 +138,15 @@ impl World {
             for (id, raw) in objects {
                 let raw = object(raw, "placement")?;
                 let code = text(raw.get("A"), "placement.A")?.to_string();
-                let variant = optional_number(raw, "F", 0.0)? as i64;
+                // level_code.gd _normalize_objects: before writer s3.8 (a string compare),
+                // a repeating switch was o14 with E1 "1"; it becomes F 1 without E1.
+                let legacy_switch = legacy_writer
+                    && code == "o14"
+                    && raw.get("E1").and_then(Value::as_str) == Some("1");
+                let mut variant = optional_number(raw, "F", 0.0)? as i64;
+                if legacy_switch {
+                    variant = 1;
+                }
                 let mirror = optional_number(raw, "M", 0.0)? as i64;
                 let rotation = optional_number(raw, "R", 0.0)? as i64;
                 let mut position = Position {
@@ -208,7 +217,13 @@ impl World {
                     mirror,
                     rotation,
                     layer,
-                    properties: properties(raw),
+                    properties: {
+                        let mut list = properties(raw);
+                        if legacy_switch {
+                            list.retain(|(k, _)| k != "E1");
+                        }
+                        list
+                    },
                     prepared,
                 });
             }
@@ -338,17 +353,6 @@ impl World {
             // diceBlockColours only tints o33/o34 (map_effects.gd dice_colour). Those codes are
             // refused until ported, so the table is not compiled yet; compile it with them.
             let dice_colours = Vec::new();
-            // Snow braking (moves.gd _snow) and flowing water (water_flow.gd) change player
-            // motion; refuse until ported instead of moving the player wrongly.
-            if !omit_dice_colours
-                && layers
-                    .iter()
-                    .any(|l| ["snow64", "flowWater"].contains(&l.tilemap.as_str()))
-            {
-                return Err(Error::Unsupported {
-                    requirements: vec!["snow64/flowWater player motion".into()],
-                });
-            }
             maps.push(Map {
                 name: name.clone(),
                 width_pixels: width as i64,

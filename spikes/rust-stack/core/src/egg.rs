@@ -594,6 +594,10 @@ impl Run {
             PlantHead,
             PlantMiss,
             Roller,
+            ShellBare,
+            ShellCovered,
+            Armored,
+            Spear,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -629,6 +633,18 @@ impl Run {
                         Target::PlantHead
                     } else {
                         Target::PlantMiss
+                    }
+                }
+                // spear_guard.gd projectile_contact for an egg.
+                Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
+                // armored_walker.gd projectile_contact for an egg: it rolls away.
+                Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
+                // shell_walker.gd projectile_contact for an egg.
+                Kind::Walker(w) if [ActorKind::Shell, ActorKind::Runner].contains(&w.kind) => {
+                    if crate::shell::bare(w.mode) {
+                        Target::ShellBare
+                    } else {
+                        Target::ShellCovered
                     }
                 }
                 Kind::Walker(w) if [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind) => {
@@ -683,6 +699,56 @@ impl Run {
             }
             Target::PlantHead => {
                 self.remove_struck_actor(other)?;
+                1
+            }
+            Target::Spear => {
+                let e = &self.entities[egg];
+                let o = &self.entities[other];
+                let heading = if e.body.vx != 0 {
+                    e.body.vx.signum()
+                } else if e.body.x < o.body.x {
+                    1
+                } else {
+                    -1
+                };
+                let o = &mut self.entities[other];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.spear_egg(o.facing, &mut o.status, &mut o.can_respawn, heading);
+                }
+                1
+            }
+            Target::Armored => {
+                let direction = if self.entities[egg].body.vx > 0 {
+                    1
+                } else {
+                    -1
+                };
+                let o = &mut self.entities[other];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.armored_roll(&mut o.body, direction);
+                }
+                1
+            }
+            Target::ShellBare => {
+                // The egg then falls; the runner is removed.
+                self.egg_mut(egg).fall_on_terrain = 1;
+                if self.entities[other].status == 1 {
+                    self.shell_remove(other);
+                }
+                3
+            }
+            Target::ShellCovered => {
+                let o = &mut self.entities[other];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.shell_hit(
+                        &mut o.body,
+                        &mut o.facing,
+                        &mut o.status,
+                        &mut o.can_respawn,
+                        crate::eating::HitKind::Egg,
+                        projectile.x,
+                    );
+                }
                 1
             }
             Target::Roller => {
@@ -999,6 +1065,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Stem(p) => p.bounds(),
         Kind::StarFlower(p) => p.bounds(),
         Kind::Switch(p) => p.bounds(),
+        Kind::Lift(p) => p.bounds(),
         _ => [0; 4],
     }
 }

@@ -296,7 +296,17 @@ impl crate::state::Run {
                 pickup.origin_token = token;
                 self.push_dynamic(Kind::Pickup(pickup), x, y, 0, 0, -1, layer, 0)?;
             } else {
-                return Err(unsupported("o8 content 4 releases o14, not ported yet"));
+                // timed_switch.gd create via spawn_dynamic: a one-shot switch, standing.
+                self.push_dynamic(
+                    Kind::Switch(crate::switch::Switch::released()),
+                    x,
+                    y,
+                    0,
+                    0,
+                    -1,
+                    layer,
+                    1,
+                )?;
             }
         }
         let e = &mut self.entities[index];

@@ -59,6 +59,8 @@ pub(crate) struct Player {
     pub gravity_tick: i64,
     pub bounce: i64,
     pub brake_vx: i64,
+    /// moves.gd move_snow: standing on snow64 terrain.
+    pub snow: i64,
     pub jump_carry: i64,
     pub life_phase: i64,
     pub life_ticks: i64,
@@ -105,6 +107,7 @@ impl Player {
             gravity_tick: 0,
             bounce: 0,
             brake_vx: 0,
+            snow: 0,
             jump_carry: 0,
             life_phase: 0,
             life_ticks: 0,
@@ -333,6 +336,28 @@ impl Player {
         let was_grounded = self.on_floor != 0;
         let carried = self.jump_carry != 0;
         self.jump_carry = 0;
+        // moves.gd _snow, then water_flow.gd apply (before the player's own move).
+        let snow_box = [
+            self.body.x + bounds[0],
+            self.body.y + bounds[1],
+            self.body.x + bounds[2],
+            self.body.y + bounds[3],
+        ];
+        self.snow = i64::from(
+            crate::flow::on_snow(map, snow_box, self.snow != 0) && self.water.swimming == 0,
+        );
+        let flow_x = self.body.x;
+        let pounding = [1, 2].contains(&self.action);
+        let flow = self.flow(map, bounds, pressed, pounding);
+        if self.body.x != flow_x {
+            // The move starts from where the flow pushed the body.
+            support = self.body.floor(map, bounds);
+            self.on_floor = i64::from(support != 0 && self.body.vy == 0);
+        }
+        if flow != 0 {
+            self.jump(sound);
+            self.body.vx = flow * 400 * 60;
+        }
         self.jump_buffer = if pressed & 4 != 0 {
             6
         } else {
@@ -367,10 +392,11 @@ impl Player {
                 self.set_action(0, sound);
             }
         }
-        // move_facing.gd update (move_snow is refused at admission, so "free" is air only).
+        // move_facing.gd update: holding one direction faces it at once in the air or on
+        // snow.
         let right = input & 2 != 0;
         let left = input & 1 != 0;
-        let free = self.on_floor == 0;
+        let free = self.on_floor == 0 || self.snow != 0;
         let face_locked = [1, 2, 3, 4, 5, 6, 7].contains(&self.action)
             || self.food.aim != 0
             || self.water.swimming != 0
@@ -431,7 +457,13 @@ impl Player {
             self.body.vy = 0;
         }
         let liquid = self.water.swimming != 0 || self.liquid_body(map, bounds);
-        let speed = if liquid { 200 * 60 } else { 400 * 60 };
+        let speed = if liquid {
+            200 * 60
+        } else if self.snow != 0 {
+            336 * 60
+        } else {
+            400 * 60
+        };
         let deceleration = if self.life.hurt != 0 || self.water.swimming != 0 {
             self.life.hurt_deceleration
         } else if liquid {
@@ -442,6 +474,10 @@ impl Player {
             } else {
                 0
             }
+        } else if self.snow != 0 && self.facing * self.brake_vx < 0 {
+            // Snow brakes lightly while the body slides against its facing; the brake is
+            // chosen from the speed before the last object contact.
+            256
         } else {
             1296
         };
@@ -449,7 +485,13 @@ impl Player {
             self.body.vx = self.body.vx.clamp(-200 * 60, 200 * 60);
         }
         let acceleration = if direction != 0 {
-            (if liquid { 256 } else { 512 }) * direction
+            (if liquid {
+                256
+            } else if self.snow != 0 {
+                192
+            } else {
+                512
+            }) * direction
                 + if self.body.vx * direction < 0 {
                     direction * deceleration
                 } else {
@@ -459,6 +501,7 @@ impl Player {
             0
         };
         if was_grounded
+            && self.snow == 0
             && self.food.aim == 0
             && self.action == 0
             && direction * self.body.vx < -320 * 60

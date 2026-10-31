@@ -31,6 +31,9 @@ impl Origin {
         }
     }
 }
+// Actor carries every enemy family's saved fields; rows stay inline in one table so
+// stepping walks contiguous memory (boxing would add a pointer chase per enemy).
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
@@ -55,6 +58,7 @@ pub(crate) enum Kind {
     Stem(crate::stem::Stem),
     StarFlower(crate::flower::Flower),
     Switch(crate::switch::Switch),
+    Lift(crate::lift::Lift),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -86,6 +90,7 @@ impl Entity {
                 | Kind::Stem(_)
                 | Kind::StarFlower(_)
                 | Kind::Switch(_)
+                | Kind::Lift(_)
         ));
         // star_flower.gd create: a flower that left the screen never respawns.
         let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
@@ -163,6 +168,13 @@ impl Entity {
                     ActorKind::Plant => "e5",
                     ActorKind::Stilt => "e35",
                     ActorKind::Flat => "e4",
+                    ActorKind::Shell if a.colour != 0 => "e8",
+                    ActorKind::Shell => "e6",
+                    ActorKind::Runner => "enemy_runner",
+                    ActorKind::Armored => "e11",
+                    ActorKind::Spear => "e22",
+                    ActorKind::Fish => "e20",
+                    ActorKind::LandFish => "e21",
                 },
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
@@ -170,6 +182,7 @@ impl Entity {
                     PickupKind::Flower => "o3",
                 },
                 Kind::Star(_) => "o4",
+                Kind::Switch(_) => "o14",
                 Kind::Egg(_) => "o7",
                 _ => unreachable!("runtime constructors admit only dynamic types"),
             }
@@ -238,6 +251,15 @@ impl Entity {
                 && (source.position.y - centre.y).abs() < self.respawn_radius
             {
                 let kind = match &self.kind {
+                    Kind::Walker(a) if a.kind == ActorKind::Shell => {
+                        Kind::Walker(Actor::shell(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Armored => {
+                        Kind::Walker(Actor::armored(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Spear => {
+                        Kind::Walker(Actor::spear_guard(source)?)
+                    }
                     Kind::Walker(a) => {
                         let mut a =
                             Actor::new(a.kind, source.variant, source.mirror, source.position);
@@ -255,6 +277,7 @@ impl Entity {
                     Kind::Stem(_) => Kind::Stem(crate::stem::Stem::new(source)?),
                     Kind::StarFlower(_) => Kind::StarFlower(crate::flower::Flower::new(source)?),
                     Kind::Switch(_) => Kind::Switch(crate::switch::Switch::new(source)?),
+                    Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -273,6 +296,7 @@ impl Entity {
                 Kind::Stem(p) => p.bounds(),
                 Kind::StarFlower(p) => p.bounds(),
                 Kind::Switch(p) => p.bounds(),
+                Kind::Lift(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")

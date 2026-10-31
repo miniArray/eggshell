@@ -31,6 +31,16 @@ impl Run {
     }
 }
 
+/// hits.gd kinds that reach enemy hit rules here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HitKind {
+    Egg,
+    /// A spinning shell (shell_walker.gd HIT_KIND).
+    Shell,
+    /// A spat or rolling body.
+    Spit,
+}
+
 /// Body.process outcome (enemy_body.gd FREE/HELD/RELEASED/GONE).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Hold {
@@ -64,8 +74,16 @@ pub(crate) enum After {
     StemStep,
     /// star_flower.gd step, which swallows spat bodies and releases items.
     FlowerStep,
+    /// shell_walker.gd step, which reads and spawns other bodies.
+    ShellStep,
+    /// armored_walker.gd step, which hits other bodies while rolling.
+    ArmoredStep,
+    /// spear_guard.gd step, which hits other bodies while spat.
+    SpearStep,
     /// timed_switch.gd step, which runs the shared interval.
     SwitchStep,
+    /// arrow_lift.gd step, which moves a top-only deck.
+    LiftStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -248,7 +266,12 @@ impl Actor {
             self.spit_age = 0;
         }
         let b = self.bounds(*body, *facing);
-        let landed = body.gravity(step.map, b, grounded);
+        // enemy_motion.gd gravity_box: e20/e21 skip the water quartering.
+        let landed = if [ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) {
+            body.gravity_box_dry(step.map, b, grounded)
+        } else {
+            body.gravity(step.map, b, grounded)
+        };
         let duration = if self.spit_wall != 0 { 42 } else { 60 };
         if landed {
             if self.spit_age < duration {
@@ -300,6 +323,21 @@ impl Run {
                 }
                 continue;
             }
+            // registry.gd tongue_contact: a SOLID 1 type with no tongue rule (item, colour,
+            // thorn and grow blocks) stops the tongue where the sensor overlaps its solid.
+            let plain_solid = match &e.kind {
+                Kind::Block(bl) => Some(bl.solid(e)),
+                Kind::Hard(h) if h.kind != crate::blocks::HardKind::Rock => Some(h.solid(e)),
+                Kind::Grow(g) => Some(g.solid(e)),
+                _ => None,
+            };
+            if let Some(solid) = plain_solid {
+                if solid.is_some_and(|s| strict(sensor, s)) {
+                    self.player.block_tongue();
+                    return;
+                }
+                continue;
+            }
             let e = &mut self.entities[index];
             let result = match &mut e.kind {
                 Kind::Post(p) => {
@@ -324,11 +362,78 @@ impl Run {
                         0
                     }
                 }
+                // spear_guard.gd tongue: the spear side knocks it back and blocks the
+                // tongue; otherwise the spear drops and it is caught as food.
+                Kind::Walker(w)
+                    if w.kind == ActorKind::Spear
+                        && w.held == 0
+                        && e.status == 1
+                        && w.has_spear != 0
+                        && self.player.facing == -e.facing =>
+                {
+                    w.spear_knock(self.player.facing);
+                    2
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Spear && (w.held != 0 || e.status != 1) => {
+                    0
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Spear => {
+                    w.has_spear = 0;
+                    if w.hidden != 0 {
+                        0
+                    } else if self.player.catch_item(token, 1, 0, 0, 0, 256 * 60) {
+                        w.held = 1;
+                        w.spat = 0;
+                        e.body.vx = 0;
+                        e.body.vy = 0;
+                        w.request_cursor = self.player.food.requests.serial();
+                        1
+                    } else {
+                        0
+                    }
+                }
+                // armored_walker.gd tongue: pushed back; the tongue is blocked.
+                Kind::Walker(w) if w.kind == ActorKind::Armored => {
+                    w.armored_tongue(&mut e.body, &mut e.facing, self.player.facing);
+                    2
+                }
+                // shell_walker.gd tongue: a shell stops and is caught whole (not
+                // digestible); a bare runner is food.
+                Kind::Walker(w) if [ActorKind::Shell, ActorKind::Runner].contains(&w.kind) => {
+                    let bare = crate::shell::bare(w.mode);
+                    if !bare {
+                        w.mode = crate::shell::IDLE;
+                        e.body.vx = 0;
+                    }
+                    if w.hidden != 0 || w.held != 0 || e.status != 1 {
+                        0
+                    } else if self
+                        .player
+                        .catch_item(token, i64::from(bare), 0, 0, 0, 256 * 60)
+                    {
+                        w.held = 1;
+                        w.spat = 0;
+                        e.body.vx = 0;
+                        e.body.vy = 0;
+                        w.request_cursor = self.player.food.requests.serial();
+                        1
+                    } else {
+                        0
+                    }
+                }
                 Kind::Walker(w) => {
                     // enemy_body.gd tongue (digestible, not instant for this family).
                     if w.hidden != 0 || w.held != 0 || e.status != 1 {
                         0
-                    } else if self.player.catch_item(token, 1, 0, 0, 0, 256 * 60) {
+                    } else if self.player.catch_item(
+                        token,
+                        1,
+                        0,
+                        0,
+                        // actor.gd tongue: fish are swallowed at once.
+                        i64::from([ActorKind::Fish, ActorKind::LandFish].contains(&w.kind)),
+                        256 * 60,
+                    ) {
                         w.held = 1;
                         w.spat = 0;
                         e.body.vx = 0;
@@ -482,9 +587,24 @@ impl Run {
             self.entities[i].collected = 1;
         }
     }
-    /// enemy_body.gd hit_others with Hits.SPIT, self_breaks = true, for the spat or
-    /// rolling body at `index` with contact box offset `b`.
-    pub(crate) fn hit_others(&mut self, index: usize, b: [i64; 4]) -> Result<(), Error> {
+    /// enemy_body.gd hit_others for the body at `index` with contact box offset `b`:
+    /// Hits.SPIT with self_breaks (spat and rolling bodies), or Hits.SHELL without it
+    /// (a spinning shell).
+    pub(crate) fn hit_others(
+        &mut self,
+        index: usize,
+        b: [i64; 4],
+        kind: HitKind,
+        self_breaks: bool,
+    ) -> Result<(), Error> {
+        let projectile_armored = matches!(
+            &self.entities[index].kind,
+            Kind::Walker(w) if w.kind == ActorKind::Armored
+        );
+        let projectile_spins = matches!(
+            &self.entities[index].kind,
+            Kind::Walker(w) if w.kind == ActorKind::Shell && w.mode == crate::shell::SPIN
+        );
         let projectile = self.entities[index].body;
         let projectile_box = world_box(projectile, b);
         let projectile_rolls = matches!(
@@ -530,6 +650,9 @@ impl Run {
                 PlantMiss,
                 Actor,
                 RollingPair,
+                Shell,
+                Armored,
+                Spear,
                 Pickup,
                 Inert,
                 Egg,
@@ -547,16 +670,30 @@ impl Run {
                             Target::StiltBody
                         }
                     }
-                    // actor.gd projectile_contact for e5 with a spit hit: only the head.
+                    // actor.gd projectile_contact for e5: a spit hits only the head; a
+                    // shell hits it anywhere.
                     Kind::Walker(w) if w.kind == ActorKind::Plant => {
                         if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box)
                         {
                             Target::PlantHead
+                        } else if kind == HitKind::Shell {
+                            Target::Actor
                         } else {
                             Target::PlantMiss
                         }
                     }
-                    Kind::Walker(w) if w.roll != 0 && projectile_rolls => Target::RollingPair,
+                    Kind::Walker(w) if kind == HitKind::Spit && w.roll != 0 && projectile_rolls => {
+                        Target::RollingPair
+                    }
+                    // shell_walker.gd projectile_contact.
+                    Kind::Walker(w) if [ActorKind::Shell, ActorKind::Runner].contains(&w.kind) => {
+                        Target::Shell
+                    }
+                    // armored_walker.gd projectile_contact.
+                    Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
+                    // spear_guard.gd projectile_contact: any non-egg hit drops the spear
+                    // and defeats it.
+                    Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
                     Kind::Walker(_) => Target::Actor,
                     // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                     Kind::Pickup(_) => Target::Pickup,
@@ -586,10 +723,58 @@ impl Run {
                 }
                 Target::PlantHead => {
                     self.hit_actor(current)?;
-                    if projectile_breaks {
+                    if projectile_breaks || kind == HitKind::Shell {
                         1
                     } else {
                         3
+                    }
+                }
+                Target::Spear => {
+                    let o = &mut self.entities[current];
+                    if let Kind::Walker(w) = &mut o.kind {
+                        w.has_spear = 0;
+                        w.remove(&mut o.status, &mut o.can_respawn);
+                    }
+                    3
+                }
+                Target::Armored => {
+                    // A spit from another e11 removes it; a shell removes it; any other
+                    // spit rolls it away from the projectile.
+                    if kind == HitKind::Shell || projectile_armored {
+                        self.shell_remove(current);
+                    } else {
+                        let o = &mut self.entities[current];
+                        if let Kind::Walker(w) = &mut o.kind {
+                            w.armored_hit(
+                                &mut o.body,
+                                &mut o.status,
+                                &mut o.can_respawn,
+                                kind,
+                                projectile.x,
+                            );
+                        }
+                    }
+                    3
+                }
+                Target::Shell => {
+                    let o = &self.entities[current];
+                    let Kind::Walker(w) = &o.kind else {
+                        unreachable!()
+                    };
+                    if kind == HitKind::Spit && w.mode == crate::shell::SPIN {
+                        0
+                    } else {
+                        let both_spin = kind == HitKind::Shell
+                            && w.mode == crate::shell::SPIN
+                            && w.kind == ActorKind::Shell
+                            && projectile_spins;
+                        // hit with SPIT or SHELL removes it.
+                        self.shell_remove(current);
+                        if both_spin {
+                            1
+                        } else {
+                            3
+                        }
                     }
                 }
                 Target::Actor => {
@@ -613,11 +798,8 @@ impl Run {
             if self.entities[index].status != 1 {
                 return Ok(());
             }
-            if reaction == 1 || reaction == 3 {
-                let e = &mut self.entities[index];
-                if let Kind::Walker(w) = &mut e.kind {
-                    w.remove(&mut e.status, &mut e.can_respawn);
-                }
+            if reaction == 1 || (self_breaks && reaction == 3) {
+                self.shell_remove(index);
                 return Ok(());
             }
         }

@@ -545,6 +545,24 @@ impl Run {
             );
             return;
         }
+        if let Kind::Lift(l) = &e.kind {
+            let r = l.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                l.solid(e),
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
+            );
+            return;
+        }
         if let Kind::Ledge(l) = &e.kind {
             let r = l.bounds();
             map.refresh_solid(

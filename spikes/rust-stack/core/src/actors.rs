@@ -21,6 +21,18 @@ pub(crate) enum ActorKind {
     Stilt,
     /// flat_walker.gd (e4): flattens into a moving top-only support.
     Flat,
+    /// shell_walker.gd e6/e8: walkers, winged forms and empty shells.
+    Shell,
+    /// shell_walker.gd enemy_runner: the bare runner ejected from a shell.
+    Runner,
+    /// armored_walker.gd e11.
+    Armored,
+    /// spear_guard.gd e22.
+    Spear,
+    /// actor.gd e20: a fish that passes through terrain.
+    Fish,
+    /// actor.gd e21: a fish that collides and flops on dry ground.
+    LandFish,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -61,6 +73,40 @@ pub(crate) struct Actor {
     pub height: i64,
     pub stride: i64,
     pub flat_wait: i64,
+    // shell_walker.gd FIELDS (e6, e8, enemy_runner).
+    pub colour: i64,
+    pub inside: i64,
+    pub grace: i64,
+    pub flight_phase: i64,
+    pub flight_direction: i64,
+    pub runner_token: i64,
+    pub origin_shell: i64,
+    pub target_shell: i64,
+    pub enter_x: i64,
+    pub enter_y: i64,
+    pub target_x: i64,
+    pub target_y: i64,
+    pub slide_direction: i64,
+    // armored_walker.gd FIELDS.
+    pub roll_direction: i64,
+    // spear_guard.gd FIELDS.
+    pub spear: i64,
+    pub has_spear: i64,
+    pub block: i64,
+    pub knock_vx: i64,
+    pub knock_ticks: i64,
+    pub grounded: i64,
+    // actor.gd fish FIELDS (home_x/home_y are the spawn for every other actor code).
+    pub home_x: i64,
+    pub home_y: i64,
+    pub fish_finish: i64,
+    pub fish_dry: i64,
+    pub rise_duration: i64,
+    pub fish_jumps: i64,
+    pub fish_ready: i64,
+    pub fish_exhausted: i64,
+    pub fish_left: i64,
+    pub fish_right: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -109,16 +155,61 @@ impl Actor {
             height: 68 * S,
             stride: 0,
             flat_wait: 360,
+            colour: 0,
+            inside: 1,
+            grace: 0,
+            flight_phase: 0,
+            flight_direction: -1,
+            runner_token: 0,
+            origin_shell: 0,
+            target_shell: 0,
+            enter_x: 0,
+            enter_y: 0,
+            target_x: 0,
+            target_y: 0,
+            slide_direction: 1,
+            roll_direction: -1,
+            spear: 64 * S,
+            has_spear: 1,
+            block: 0,
+            knock_vx: 0,
+            knock_ticks: 0,
+            grounded: 1,
+            home_x: spawn.x,
+            home_y: spawn.y,
+            fish_finish: 0,
+            fish_dry: 0,
+            rise_duration: 60,
+            fish_jumps: 3,
+            fish_ready: 1,
+            fish_exhausted: 0,
+            fish_left: 48 * S,
+            fish_right: 48 * S,
         }
     }
     pub fn valid(&self) -> bool {
         let limit = i64::MAX / 16384;
-        let last = if [ActorKind::Walker, ActorKind::Flyer, ActorKind::Stilt].contains(&self.kind) {
+        let last = if [
+            ActorKind::Walker,
+            ActorKind::Flyer,
+            ActorKind::Stilt,
+            ActorKind::Shell,
+            ActorKind::Armored,
+            ActorKind::Spear,
+            ActorKind::Fish,
+            ActorKind::LandFish,
+        ]
+        .contains(&self.kind)
+        {
             4
         } else {
             1
         };
         (0..=last).contains(&self.variant)
+            && (![ActorKind::Shell, ActorKind::Runner].contains(&self.kind) || self.shell_valid())
+            && (self.kind != ActorKind::Armored || self.armored_valid())
+            && (self.kind != ActorKind::Spear || self.spear_valid())
+            && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
                     && (0..=6).contains(&self.mode)
@@ -171,6 +262,7 @@ impl Actor {
                 self.cycles = rng.cycles();
             }
             ActorKind::Flyer => self.cycles = if facing < 0 { 1 } else { -1 },
+            ActorKind::Fish | ActorKind::LandFish => self.fish_activate(facing),
             _ => {}
         }
     }
@@ -190,6 +282,10 @@ impl Actor {
             }
             ActorKind::Flower => [-14 * S, -34 * S, 14 * S, 16 * S],
             ActorKind::Stilt => [-8 * S, -self.height, 8 * S, 0],
+            ActorKind::Shell | ActorKind::Runner => crate::shell::bounds(self.mode),
+            ActorKind::Armored => crate::armored::BOX,
+            ActorKind::Spear => crate::spear::BOX,
+            ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
             ActorKind::Plant => {
@@ -275,6 +371,10 @@ impl Actor {
             }
         }
         let action = self.process(token, body, facing, status, can_respawn, step);
+        if fresh && [ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) {
+            // actor.gd step: a fresh form-2 fish sets its patrol reach.
+            self.fish_activate(*facing);
+        }
         if fresh
             && self.kind == ActorKind::Plant
             && self.variant == 1
@@ -306,6 +406,9 @@ impl Actor {
             return Ok(After::Nothing);
         }
         match self.kind {
+            ActorKind::Shell | ActorKind::Runner | ActorKind::Armored | ActorKind::Spear => {
+                unreachable!("Run::shell_step and Run::armored_step step these")
+            }
             ActorKind::Walker => self.walker(body, facing, step),
             ActorKind::Flyer if self.ground_form != 0 => {
                 if self.timer == 0 && self.mode == 0 {
@@ -382,6 +485,9 @@ impl Actor {
                 }
             }
             ActorKind::Plant => self.plant(body, facing, step),
+            ActorKind::Fish | ActorKind::LandFish => {
+                self.fish_advance(body, facing, step.map, step.rng)?
+            }
             ActorKind::Stilt => self.stilt_advance(body, facing, step.map),
             ActorKind::Flat => self.flat_step(body, facing, step),
         }
@@ -389,10 +495,13 @@ impl Actor {
     }
     /// flat_walker.gd activation_bounds: the 34 x 40 walking picture (facing left).
     pub fn activation_bounds(&self, facing: i64) -> [i64; 4] {
-        if self.kind != ActorKind::Flat {
-            return self.body_bounds(facing);
-        }
-        let picture = [-18, -24, 16, 16];
+        let picture = match self.kind {
+            ActorKind::Flat => [-18, -24, 16, 16],
+            // shell_walker.gd: the 44 x 64 walking picture.
+            ActorKind::Shell | ActorKind::Runner => [-28, -48, 16, 16],
+            ActorKind::Spear => return self.spear_activation(),
+            _ => return self.body_bounds(facing),
+        };
         let (left, right) = if facing < 0 {
             (picture[0], picture[2])
         } else {
@@ -709,5 +818,35 @@ fields!(
     pin_size,
     height,
     stride,
-    flat_wait
+    flat_wait,
+    colour,
+    inside,
+    grace,
+    flight_phase,
+    flight_direction,
+    runner_token,
+    origin_shell,
+    target_shell,
+    enter_x,
+    enter_y,
+    target_x,
+    target_y,
+    slide_direction,
+    roll_direction,
+    spear,
+    has_spear,
+    block,
+    knock_vx,
+    knock_ticks,
+    grounded,
+    home_x,
+    home_y,
+    fish_finish,
+    fish_dry,
+    rise_duration,
+    fish_jumps,
+    fish_ready,
+    fish_exhausted,
+    fish_left,
+    fish_right
 );

@@ -92,6 +92,15 @@ impl Switch {
             press_y: 0,
         })
     }
+    /// A dynamic o14 (release_cloud.gd content 4): form 0, no repeat.
+    pub fn released() -> Self {
+        Self {
+            repeat: 0,
+            phase: READY,
+            ticks: 0,
+            press_y: 0,
+        }
+    }
     pub fn bounds(&self) -> [i64; 4] {
         if self.phase == HIDDEN {
             [0; 4]

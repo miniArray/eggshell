@@ -172,6 +172,7 @@ impl Run {
                     "o17" => Kind::Stem(crate::stem::Stem::new(p)?),
                     "o22" => Kind::StarFlower(crate::flower::Flower::new(p)?),
                     "o14" => Kind::Switch(crate::switch::Switch::new(p)?),
+                    "o21" => Kind::Lift(crate::lift::Lift::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -182,11 +183,12 @@ impl Run {
                     "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
                         Kind::Pad(crate::pad::Pad::default())
                     }
-                    "e1" | "e2" | "e3" | "e4" | "e5" | "e35"
+                    "e1" | "e2" | "e3" | "e4" | "e5" | "e35" | "e20" | "e21"
                         if p.variant >= 0
                             && p.variant
                                 <= match p.code.as_str() {
                                     "e1" | "e2" | "e35" => 4,
+                                    "e20" | "e21" => 3,
                                     "e4" => 0,
                                     _ => 1,
                                 }
@@ -195,6 +197,8 @@ impl Run {
                     {
                         let kind = match p.code.as_str() {
                             "e1" => crate::actors::ActorKind::Walker,
+                            "e20" => crate::actors::ActorKind::Fish,
+                            "e21" => crate::actors::ActorKind::LandFish,
                             "e2" => crate::actors::ActorKind::Flyer,
                             "e3" => crate::actors::ActorKind::Flower,
                             "e35" => crate::actors::ActorKind::Stilt,
@@ -208,6 +212,9 @@ impl Run {
                         }
                         Kind::Walker(actor)
                     }
+                    "e6" | "e8" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::shell(p)?),
+                    "e11" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::armored(p)?),
+                    "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -312,6 +319,7 @@ impl Run {
                     | Kind::Stem(_)
                     | Kind::StarFlower(_)
                     | Kind::Switch(_)
+                    | Kind::Lift(_)
             ) {
                 continue;
             }
@@ -336,6 +344,7 @@ impl Run {
                 Kind::Stem(_) => crate::eating::After::StemStep,
                 Kind::StarFlower(_) => crate::eating::After::FlowerStep,
                 Kind::Switch(_) => crate::eating::After::SwitchStep,
+                Kind::Lift(_) => crate::eating::After::LiftStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -366,6 +375,21 @@ impl Run {
                     );
                     crate::eating::After::Nothing
                 }
+                Kind::Walker(w)
+                    if [
+                        crate::actors::ActorKind::Shell,
+                        crate::actors::ActorKind::Runner,
+                    ]
+                    .contains(&w.kind) =>
+                {
+                    crate::eating::After::ShellStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Armored => {
+                    crate::eating::After::ArmoredStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spear => {
+                    crate::eating::After::SpearStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -377,7 +401,13 @@ impl Run {
                             ActorKind::Flower => Some(2),
                             ActorKind::Plant => Some(3),
                             ActorKind::Stilt => Some(4),
-                            ActorKind::Flat => None,
+                            ActorKind::Flat
+                            | ActorKind::Shell
+                            | ActorKind::Runner
+                            | ActorKind::Armored
+                            | ActorKind::Spear
+                            | ActorKind::Fish
+                            | ActorKind::LandFish => None,
                         };
                         if let Some(index) = index {
                             stats.benchmark_actor_steps[index] += 1;
@@ -402,7 +432,9 @@ impl Run {
                 _ => unreachable!("phase 0 members"),
             };
             match after {
-                crate::eating::After::HitOthers(b) => self.hit_others(next - 1, b)?,
+                crate::eating::After::HitOthers(b) => {
+                    self.hit_others(next - 1, b, crate::eating::HitKind::Spit, true)?
+                }
                 crate::eating::After::ConsumeItem => self.consume_item(next - 1),
                 crate::eating::After::EggStep => self.egg_step(next - 1, map)?,
                 crate::eating::After::CacheStep => self.cache_step(next - 1, centre)?,
@@ -413,7 +445,14 @@ impl Run {
                 crate::eating::After::RefreshSolid => self.refresh_block_solid(next - 1, map),
                 crate::eating::After::StemStep => self.stem_step(next - 1, map, centre)?,
                 crate::eating::After::FlowerStep => self.flower_step(next - 1)?,
+                crate::eating::After::ShellStep => self.shell_step(next - 1, map)?,
+                crate::eating::After::ArmoredStep => self.armored_step(next - 1, map)?,
+                crate::eating::After::SpearStep => self.spear_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
+                crate::eating::After::LiftStep => {
+                    self.lift_step(next - 1, map);
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::GateStep => {
                     self.gate_step(next - 1);
                     self.refresh_block_solid(next - 1, map);
@@ -608,6 +647,11 @@ impl Run {
                     self.grow_contact(index)?;
                     continue;
                 }
+                if matches!(e.kind, Kind::Lift(_)) {
+                    stats.contacts += 1;
+                    self.lift_contact(index);
+                    continue;
+                }
                 if matches!(e.kind, Kind::Switch(_)) {
                     stats.contacts += 1;
                     self.switch_contact(index);
@@ -717,6 +761,23 @@ impl Run {
                     continue;
                 }
                 stats.contacts += 1;
+                if [
+                    crate::actors::ActorKind::Shell,
+                    crate::actors::ActorKind::Runner,
+                ]
+                .contains(&w.kind)
+                {
+                    self.shell_contact(index, action)?;
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Armored {
+                    self.armored_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Spear {
+                    self.spear_contact(index, action);
+                    continue;
+                }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
                     continue;
                 }
@@ -1042,6 +1103,7 @@ impl Run {
             Kind::Stem(p) => p.field(n),
             Kind::StarFlower(p) => p.field(n),
             Kind::Switch(p) => p.field(n),
+            Kind::Lift(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1326,6 +1388,11 @@ impl Run {
                     return Err(unsupported("gate fields"));
                 }
             }
+            if let Kind::Lift(l) = &e.kind {
+                if !l.valid() {
+                    return Err(unsupported("wheel fields"));
+                }
+            }
             if let Kind::Switch(s) = &e.kind {
                 if !s.valid() {
                     return Err(unsupported("switch fields"));
@@ -1424,14 +1491,18 @@ impl Run {
                     || !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
-                    || !(0..=if w.kind == crate::actors::ActorKind::Flat {
-                        6
-                    } else {
-                        5
+                    || !(0..=match w.kind {
+                        crate::actors::ActorKind::Flat => 6,
+                        crate::actors::ActorKind::Shell | crate::actors::ActorKind::Runner => {
+                            crate::shell::UP_SPIT
+                        }
+                        crate::actors::ActorKind::Armored => crate::armored::RECOVER,
+                        _ => 5,
                     })
                         .contains(&w.mode)
                     || (w.held != 0 && w.spat != 0)
-                    || w.hidden != 0
+                    // An exhausted fish (enemy_fish.gd fish_finish) is hidden for good.
+                    || (w.hidden != 0 && w.fish_exhausted == 0)
                     || w.frozen != 0
                     || !(0..=serial).contains(&w.request_cursor)
                     || w.impact_cursor > p.impact
@@ -1466,6 +1537,6 @@ fields! {
 "move_tongue_axis"=>tongue.axis,"move_tongue_length"=>tongue.length,"move_tongue_phase"=>tongue.phase,"move_tongue_block_tick"=>tongue.block_tick,"move_tongue_hold"=>tongue.hold,
 "swimming"=>water.swimming,"water_wait"=>water.wait,"water_phase"=>water.phase,"water_deep"=>water.deep,"move_dive"=>water.dive,"move_water_jump"=>water.jump,"move_water_transition"=>water.transition,"move_action_wet"=>action_wet,
 "move_duck"=>duck,"move_look"=>look,"move_posture_tick"=>posture_tick,"move_impact"=>impact,"move_impact_x"=>impact_x,"move_impact_y"=>impact_y,
-"move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_jump_carry"=>jump_carry,
+"move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_snow"=>snow,"move_jump_carry"=>jump_carry,
 "life_phase"=>life_phase,"life_ticks"=>life_ticks,"recovery_x"=>recovery_x,"recovery_y"=>recovery_y,"goal_from_x"=>goal_from_x,"goal_from_y"=>goal_from_y,"goal_x"=>goal_x,"goal_y"=>goal_y
 }

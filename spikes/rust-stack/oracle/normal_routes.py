@@ -93,6 +93,53 @@ def main() -> None:
         inputs = [6] * 45 + [0] * 35 + ([4] * 12 + [32] * 50 + [0] * 10) * 3 + [2] * 504
     elif name == "posts_target":
         inputs = [6] * 45 + [0] * 135 + [2] * 620
+    elif name == "fish_target":
+        # Stand back while the fish patrol, leap and arc; then hop past the flopper and
+        # wade into the pool, swimming (jump presses) and licking.
+        swim = [6] * 8 + [2] * 20 + [8] + [0] * 20
+        # The three-jump fish needs about 2300 ticks to use its jumps and finish.
+        inputs = [0] * 600 + [2] * 60 + swim * 20 + [2] * 300 + [0] * 700
+    elif name == "snowflow_target":
+        # Walk into the right-pushing flow and stand in it, jump into the waterfall,
+        # cross both slopes (jumping on one), run onto the snow, reverse on it (the
+        # light brake), slide to a stop, and hop along the snow.
+        inputs = [2] * 40 + [0] * 60 + [2] * 30 + [6] * 14 + [2] * 10 + [0] * 40
+        inputs += [2] * 40 + [0] * 30 + [4] * 10 + [0] * 30 + [2] * 80 + [1] * 40
+        inputs += [2] * 40 + [0] * 60 + [6] * 14 + [0] * 40 + [1] * 30 + [5] * 14
+        inputs += [0] * 60 + [2] * 300
+    elif name == "lifts_target":
+        # Hop onto the first wheel and ride it into the rock (it reflects), jump off,
+        # hop onto the timed wheel and ride until it shrinks away, then hop on through.
+        # The decks are top-only: stand under a wheel and jump straight up onto it.
+        up = [4] * 14 + [0] * 40
+        inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
+        inputs += [2] * 120 + [0] * 20 + up + [0] * 260
+        inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "spears_target":
+        # Lick the right-facing guard from behind (the spear drops; it is caught) and
+        # spit it; walk to the egg producer and wait for eggs; throw them and lick at
+        # the approaching guard's front (knocks); then hop on through.
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        lick = [8] + [0] * 40
+        inputs = [0] * 10 + lick * 2 + [2] * 70 + [0] * 300 + throw * 3 + lick * 3
+        cycle = [6] * 14 + [2] * 20 + [0] * 10 + lick + [2] * 10
+        inputs += cycle * 14 + [2] * 300
+    elif name == "armored_target":
+        # Wait by the egg producer for eggs, lick the first armored walker (push), throw
+        # eggs right (rolls that strike the walkers behind), then walk on hopping and
+        # licking through the rest.
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        lick = [8] + [0] * 40
+        inputs = [0] * 300 + lick * 2 + throw * 4 + [2] * 40 + lick + throw * 2
+        cycle = [6] * 14 + [2] * 20 + [0] * 10 + lick + [2] * 10
+        inputs += cycle * 16 + [2] * 300
+    elif name == "shells_target":
+        # Hop right through the shell walkers, landing on them (stomps eject runners and
+        # spin empty shells), with a tongue lick and a later spit each cycle.
+        cycle = (
+            [6] * 14 + [2] * 20 + [0] * 10 + [10] + [0] * 30 + [2] * 10 + [8] + [0] * 20
+        )
+        inputs = [0] * 30 + cycle * 22 + [2] * 300
     elif name == "switches_target":
         # Hop right onto the one-shot switch (holding JUMP for the high bounce), walk
         # through the toggled block and coin, then hop to the repeating switch and jump
@@ -116,7 +163,9 @@ def main() -> None:
         # impact starts a burst), collect what lands, walk to the health producer after
         # the walker bumps into Yoshi, and pound there too.
         pound = [4] * 12 + [32] * 30 + [0] * 40
-        inputs = [2] * 30 + [0] * 200 + pound + [0] * 120 + [1] * 10 + [2] * 20 + [0] * 60
+        inputs = (
+            [2] * 30 + [0] * 200 + pound + [0] * 120 + [1] * 10 + [2] * 20 + [0] * 60
+        )
         inputs += [2] * 120 + [0] * 200 + pound + [0] * 150 + [2] * 400
     elif name == "ledges_target":
         # Hop right onto each ledge, hop in place on it (each landing after leaving it

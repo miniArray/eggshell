@@ -31,7 +31,15 @@ fn run(restores: bool) {
         "ledges_target",
         "stems_target",
         "flowers_target",
-        "switches_target"
+        "switches_target",
+        "shells_target",
+        "armored_target",
+        "spears_target",
+        "lifts_target",
+        "snowflow_target",
+        "fish_target",
+        // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
+        "corpus"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -80,6 +88,21 @@ fn run(restores: bool) {
     let mut switch_ticks = 0;
     let mut switch_restarts = 0;
     let mut switch_clock = 0;
+    let mut shell_spin_ticks = 0;
+    let mut shell_runner_ticks = 0;
+    let mut shell_hop_lands = 0;
+    let mut armored_modes = [0usize; 6];
+    let mut spear_knocks = 0;
+    let mut spear_dropped = 0;
+    let mut spear_held = 0;
+    let mut lift_riding = 0;
+    let mut lift_shrinks = 0;
+    let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut lift_turns = 0;
+    let mut snow_ticks = 0;
+    let mut fish_modes = [0usize; 5];
+    let mut fish_exhausted = 0;
+    let mut fish_dry = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -472,6 +495,59 @@ fn run(restores: bool) {
         switch_ticks += usize::from(clock > 0);
         switch_restarts += usize::from(clock == 630 && switch_clock != 630);
         switch_clock = clock;
+        // shell_walker.gd: spinning shells (mode 6), live runners, hop landings (mode 3).
+        let shell_mode = |mode: i64| {
+            wire.entities.iter().any(|e| {
+                matches!(e.code.as_str(), "e6" | "e8")
+                    && required(&e.values, schema.entity_fields(&e.code), "status").unwrap() == 1
+                    && required(&e.values, schema.entity_fields(&e.code), "mode").unwrap() == mode
+            })
+        };
+        shell_spin_ticks += usize::from(shell_mode(6));
+        shell_hop_lands += usize::from(shell_mode(3));
+        // armored_walker.gd: ticks per mode (walk, prepare, air, push, roll, recover).
+        for e in wire.entities.iter().filter(|e| e.code == "e11") {
+            let mode = required(&e.values, schema.entity_fields("e11"), "mode").unwrap();
+            if required(&e.values, schema.entity_fields("e11"), "status").unwrap() == 1
+                && (0..6).contains(&mode)
+            {
+                armored_modes[mode as usize] += 1;
+            }
+        }
+        // spear_guard.gd: knocked (block), spear dropped, held by the tongue.
+        for e in wire.entities.iter().filter(|e| e.code == "e22") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e22"), n).unwrap();
+            spear_knocks += usize::from(f("block") > 0);
+            spear_dropped += usize::from(f("has_spear") == 0);
+            spear_held += usize::from(f("held") == 1);
+        }
+        // arrow_lift.gd: riding ticks, shrink ticks, and arrow changes while riding.
+        for e in wire.entities.iter().filter(|e| e.code == "o21") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("o21"), n).unwrap();
+            lift_riding += usize::from(f("riding") == 1);
+            lift_shrinks += usize::from(f("shrink") > 0);
+            let angle = f("angle");
+            if f("riding") == 1 && lift_angles.get(&e.id).is_some_and(|a| *a != angle) {
+                lift_turns += 1;
+            }
+            lift_angles.insert(e.id.clone(), angle);
+        }
+        snow_ticks +=
+            usize::from(required(&wire.player, schema.player(), "move_snow").unwrap() != 0);
+        // enemy_fish.gd: ticks per mode, exhausted and dry fish.
+        for e in wire
+            .entities
+            .iter()
+            .filter(|e| matches!(e.code.as_str(), "e20" | "e21"))
+        {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if f("status") == 1 && (0..5).contains(&f("mode")) {
+                fish_modes[f("mode") as usize] += 1;
+            }
+            fish_exhausted += usize::from(f("fish_exhausted") == 1);
+            fish_dry += usize::from(f("fish_dry") == 1);
+        }
+        shell_runner_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_runner"));
         stem_frames += usize::from(packet.entities.iter().any(|e| {
             e.visual.animation.as_deref() == Some("Loop") && e.visual.frame.unwrap_or(0) >= 10
         }));
@@ -649,6 +725,24 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "fish_target" {
+        println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
+        assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);
+    } else if name == "snowflow_target" {
+        println!("SNOW_COVERAGE snow_ticks={snow_ticks}");
+        assert!(snow_ticks > 0);
+    } else if name == "lifts_target" {
+        println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
+        assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "spears_target" {
+        println!("SPEAR_COVERAGE knock_ticks={spear_knocks} dropped_ticks={spear_dropped} held_ticks={spear_held}");
+        assert!(spear_knocks > 0 && spear_dropped > 0 && spear_held > 0);
+    } else if name == "armored_target" {
+        println!("ARMORED_COVERAGE mode_ticks={armored_modes:?}");
+        assert!(armored_modes.iter().all(|n| *n > 0));
+    } else if name == "shells_target" {
+        println!("SHELL_COVERAGE spin_ticks={shell_spin_ticks} runner_ticks={shell_runner_ticks} hop_land_ticks={shell_hop_lands}");
+        assert!(shell_spin_ticks > 0 && shell_runner_ticks > 0 && shell_hop_lands > 0);
     } else if name == "switches_target" {
         println!("SWITCH_COVERAGE clock_ticks={switch_ticks} starts={switch_restarts}");
         assert!(switch_ticks > 630 && switch_restarts > 1);
@@ -687,6 +781,8 @@ fn run(restores: bool) {
         // The block route must open the message, page it and get eggs from a block.
         println!("BLOCK_COVERAGE message_ticks={message_ticks} sections_read={message_sections} first_spawn={first_spawn:?} max_runtime={max_runtime} most_eggs={most_eggs}");
         assert!(message_ticks > 0 && message_sections > 1 && first_spawn.is_some());
+    } else if name == "corpus" {
+        println!("CORPUS_PARITY ticks={}", inputs.len());
     } else {
         assert!(tongue_ticks > 0);
         if name == "lagoon" {

@@ -639,10 +639,27 @@ impl Body {
         grounded || landed
     }
     pub fn gravity(&mut self, map: &Probe, b: [i64; 4], started_on_floor: bool) -> bool {
+        self.gravity_box(map, b, started_on_floor, 2048, 704 * 60)
+    }
+    /// enemy_motion.gd gravity_box: water quarters the acceleration and the cap.
+    pub fn gravity_box(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        started_on_floor: bool,
+        acceleration: i64,
+        cap: i64,
+    ) -> bool {
         if !self.prepare(map, b) {
             self.vy = 0;
             return false;
         }
+        let (acceleration, cap) =
+            if map.water_overlaps([self.x + b[0], self.y + b[1], self.x + b[2], self.y + b[3]]) {
+                (acceleration / 4, cap / 4)
+            } else {
+                (acceleration, cap)
+            };
         let support = self.track(map, b, true);
         if support != 0 && self.vy >= 0 {
             self.vy = 0;
@@ -652,7 +669,7 @@ impl Body {
             return false;
         }
         let distance = if self.vy != 0 {
-            (self.vy + 1024).min(704 * 60)
+            (self.vy + acceleration / 2).min(cap)
         } else {
             0
         };
@@ -662,7 +679,7 @@ impl Body {
             self.vy = 0;
         }
         if !landed && support == 0 {
-            self.vy = (self.vy + 2048).min(704 * 60);
+            self.vy = (self.vy + acceleration).min(cap);
         }
         landed
     }

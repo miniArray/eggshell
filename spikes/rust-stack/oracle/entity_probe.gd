@@ -9,7 +9,11 @@ const Step = preload("res://src/sim/step.gd")
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
-	var built := World.build(FileAccess.get_file_as_string(args[0]), Table.read())
+	var code := FileAccess.get_file_as_string(args[0])
+	var decoded: Variant = JSON.parse_string(code)
+	if decoded is String:
+		code = decoded
+	var built := World.build(code, Table.read())
 	if not built.ok:
 		quit(1)
 		return
@@ -27,7 +31,9 @@ func _initialize() -> void:
 		for entity: Dictionary in state.entities:
 			if entity.code in ["o5"]:
 				continue
-			var parts := ["%s:%s@%d,%d" % [entity.id, entity.code, entity.x / 3600, entity.y / 3600]]
+			var parts := [
+				"%s:%s@%d,%d" % [entity.id, entity.code, entity.x / 3600, entity.y / 3600]
+			]
 			for field in fields:
 				if entity.has(field):
 					parts.append("%s=%s" % [field, entity[field]])

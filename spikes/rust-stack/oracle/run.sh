@@ -25,7 +25,7 @@ if [[ "$fixture" == target ]]; then
   python3 spikes/rust-stack/oracle/target_route.py "$out/target.input.json"
   level="$HOME/.local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"
   input="$out/target.input.json"
-elif [[ "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "${fixture%%.*}" == posts_target || "$fixture" == blocks_target || "$fixture" == spans_target || "$fixture" == flats_target || "$fixture" == hards_target || "$fixture" == falls_target || "$fixture" == grows_target || "$fixture" == gates_target || "$fixture" == ledges_target || "$fixture" == stems_target || "$fixture" == flowers_target || "$fixture" == switches_target ]]; then
+elif [[ "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "${fixture%%.*}" == posts_target || "$fixture" == blocks_target || "$fixture" == spans_target || "$fixture" == flats_target || "$fixture" == hards_target || "$fixture" == falls_target || "$fixture" == grows_target || "$fixture" == gates_target || "$fixture" == ledges_target || "$fixture" == stems_target || "$fixture" == flowers_target || "$fixture" == switches_target || "$fixture" == shells_target || "$fixture" == armored_target || "$fixture" == spears_target || "$fixture" == lifts_target || "$fixture" == snowflow_target || "$fixture" == fish_target ]]; then
   python3 spikes/rust-stack/oracle/normal_routes.py "$fixture" "$out/$fixture.input.json"
   level="$PWD/spikes/rust-stack/core/tests/fixtures/${fixture%%.*}.level.json"
   input="$out/$fixture.input.json"

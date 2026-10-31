@@ -160,6 +160,14 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
                     .into()
             }
         }
+        // shell_walker.gd view_state
+        ActorKind::Shell | ActorKind::Runner => w.shell_animation(),
+        // armored_walker.gd view_state
+        ActorKind::Armored => w.armored_animation(),
+        // spear_guard.gd view_state
+        ActorKind::Spear => w.spear_animation(),
+        // actor.gd view_state
+        ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {
             if w.mode != 0 {
                 "turn".into()
@@ -750,6 +758,16 @@ pub(crate) fn sample_rows(
                         }
                     },
                 ),
+                // arrow_lift.gd view_state
+                Kind::Lift(l) => (
+                    l.bounds(),
+                    VisualState {
+                        frame: Some(l.form),
+                        rotation_degrees: Some(l.view().0),
+                        size_pixels: [Some(l.view().1), Some(l.view().1)],
+                        ..VisualState::default()
+                    },
+                ),
                 // timed_switch.gd view_state
                 Kind::Switch(s) => {
                     let (_, frame, size) = s.view().unwrap_or((false, 0, [40.0, 42.0]));
@@ -876,6 +894,7 @@ pub(crate) fn sample_rows(
                                 e.status == 1
                             }
                             Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
+                            Kind::Lift(_) => e.status == 1,
                             Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {

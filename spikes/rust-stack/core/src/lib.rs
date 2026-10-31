@@ -2,6 +2,7 @@
 use std::fmt;
 
 mod actors;
+mod armored;
 mod blocks;
 mod body;
 mod checkpoint;
@@ -12,12 +13,15 @@ mod decor;
 mod eating;
 mod egg;
 mod entity;
+mod fish;
+mod flow;
 mod flower;
 mod food;
 mod gate;
 mod items;
 mod ledge;
 mod life;
+mod lift;
 pub mod math;
 mod pad;
 mod player;
@@ -28,10 +32,12 @@ mod presentation;
 mod render_index;
 mod runtime;
 pub mod schema;
+mod shell;
 mod solids;
 #[cfg(test)]
 mod solids_trace_tests;
 mod spans;
+mod spear;
 mod state;
 mod state_restore;
 mod stem;
