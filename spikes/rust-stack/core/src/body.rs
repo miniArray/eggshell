@@ -28,7 +28,7 @@ impl<'a> Probe<'a> {
             frame.borrow_mut().bump_below(body, bounds, previous_edge);
         }
     }
-    pub fn head_bumps(&self) -> Vec<i64> {
+    pub fn head_bumps(&self) -> Vec<(i64, [i64; 4])> {
         self.solids
             .map(|f| f.borrow_mut().take_head_bumps())
             .unwrap_or_default()

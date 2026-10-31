@@ -1223,7 +1223,9 @@ impl Scene {
                 let color = if inactive {
                     [0.6, 0.6, 0.6, 0.55]
                 } else {
-                    [1.0, 1.0, 1.0, state.alpha.clamp(0.0, 1.0) as f32]
+                    // Godot self_modulate multiplies the art (map_effects.gd dice colours).
+                    let [r, g, b] = state.tint.unwrap_or([255; 3]).map(|c| c as f32 / 255.0);
+                    [r, g, b, state.alpha.clamp(0.0, 1.0) as f32]
                 };
                 let mut quads = Vec::new();
                 if entity.code == "p1" {

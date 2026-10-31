@@ -196,6 +196,7 @@ impl Run {
                     "o27" => Kind::EggBlock(crate::egg_block::EggBlock::new(p)?),
                     "o13" => Kind::Pillar(crate::pillar::Pillar::new(p)?),
                     "o26" => Kind::Balloon(crate::balloon::Balloon::new(p)?),
+                    "o33" | "o34" => Kind::Dice(crate::dice::Dice::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -366,6 +367,7 @@ impl Run {
                     | Kind::Launcher(_)
                     | Kind::EggBlock(_)
                     | Kind::Balloon(_)
+                    | Kind::Dice(_)
             ) {
                 continue;
             }
@@ -403,6 +405,7 @@ impl Run {
                 Kind::Launcher(_) => crate::eating::After::LauncherStep,
                 Kind::EggBlock(_) => crate::eating::After::EggBlockStep,
                 Kind::Balloon(_) => crate::eating::After::BalloonStep,
+                Kind::Dice(_) => crate::eating::After::DiceStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -596,6 +599,10 @@ impl Run {
                 }
                 crate::eating::After::MelonStep => self.melon_step(next - 1, map),
                 crate::eating::After::SeedStep => self.seed_step(next - 1, map)?,
+                crate::eating::After::DiceStep => {
+                    self.dice_step(next - 1);
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::BalloonStep => {
                     self.balloon_step(next - 1, map);
                     self.refresh_block_solid(next - 1, map);
@@ -734,10 +741,12 @@ impl Run {
             self.apply_post_updates(map.post_updates())?;
             // collision.gd _bump side 0, deferred to the end of the player's move: the
             // head bumps reach item_block.gd bump in contact order.
-            for token in map.head_bumps() {
+            for (token, player) in map.head_bumps() {
                 if let Some(i) = self.find_token(token) {
                     if matches!(self.entities[i].kind, Kind::EggBlock(_)) {
                         self.egg_block_bump(i)?;
+                    } else if matches!(self.entities[i].kind, Kind::Dice(_)) {
+                        self.dice_bump(i, player, &map)?;
                     } else {
                         let centre = screen_centre(
                             self.camera,
@@ -1354,6 +1363,7 @@ impl Run {
             Kind::EggBlock(p) => p.field(n),
             Kind::Pillar(p) => p.field(n),
             Kind::Balloon(p) => p.field(n),
+            Kind::Dice(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1644,6 +1654,9 @@ impl Run {
                 if !m.valid(serial) {
                     return Err(unsupported("melon fields"));
                 }
+            }
+            if matches!(&e.kind, Kind::Dice(d) if !d.valid(e.body.y)) {
+                return Err(unsupported("dice block fields"));
             }
             if matches!(&e.kind, Kind::Balloon(b) if !b.valid()) {
                 return Err(unsupported("balloon fields"));

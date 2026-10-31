@@ -935,6 +935,16 @@ pub(crate) fn sample_rows(
                         ..VisualState::default()
                     },
                 ),
+                // dice_block.gd view_state, tinted by map_effects.gd dice_colour.
+                Kind::Dice(d) => (
+                    d.bounds(),
+                    VisualState {
+                        frame: d.switch.then_some(d.on),
+                        animation: (!d.switch).then(|| (1 - d.on).to_string()),
+                        tint: source.map(|p| dice_colour(&world.maps[0].dice_colours, p)),
+                        ..VisualState::default()
+                    },
+                ),
                 // rise_balloon.gd view_state
                 Kind::Balloon(b) => (
                     b.bounds(),
@@ -1042,7 +1052,8 @@ pub(crate) fn sample_rows(
                             | Kind::Seed(_)
                             | Kind::EggBlock(_)
                             | Kind::Pillar(_)
-                            | Kind::Balloon(_) => {
+                            | Kind::Balloon(_)
+                            | Kind::Dice(_) => {
                                 e.status == 1
                             }
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
@@ -1103,9 +1114,67 @@ pub(crate) fn sample_rows(
         },
     }
 }
+/// map_effects.gd dice_colour: the map's group colour, else the placement's E1..E3.
+fn dice_colour(table: &[[u8; 3]], p: &crate::Placement) -> [u8; 3] {
+    let value = |key: &str| p.properties.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+    let group = match value("E4") {
+        None => 0,
+        Some(crate::PropertyValue::Number(n)) if n.is_finite() => *n as i64,
+        Some(crate::PropertyValue::String(s)) => godot_to_int(s),
+        Some(_) => 0,
+    };
+    if let Some(colour) = usize::try_from(group).ok().and_then(|g| table.get(g)) {
+        return *colour;
+    }
+    let channel = |key: &str| -> u8 {
+        let n = match value(key) {
+            None => 255.0,
+            Some(crate::PropertyValue::Number(n)) => *n,
+            Some(crate::PropertyValue::String(s)) => s.trim().parse::<f64>().unwrap_or(0.0),
+            Some(_) => 0.0,
+        };
+        if n.is_finite() {
+            n.clamp(0.0, 255.0) as u8
+        } else {
+            0
+        }
+    };
+    [channel("E1"), channel("E2"), channel("E3")]
+}
+/// Godot String.to_int: the digits before the first decimal point, other characters
+/// skipped, a leading minus kept.
+fn godot_to_int(s: &str) -> i64 {
+    let mut negative = false;
+    let mut value: i64 = 0;
+    let mut digits = false;
+    for c in s.chars() {
+        if c == '.' {
+            break;
+        }
+        if c == '-' && !digits {
+            negative = true;
+        } else if let Some(d) = c.to_digit(10) {
+            digits = true;
+            value = value.saturating_mul(10).saturating_add(i64::from(d));
+        }
+    }
+    if negative {
+        -value
+    } else {
+        value
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dice_group_reads_godot_integer_prefix() {
+        assert_eq!(godot_to_int("2"), 2);
+        assert_eq!(godot_to_int(" 12 "), 12);
+        assert_eq!(godot_to_int("3.9"), 3);
+        assert_eq!(godot_to_int("-1"), -1);
+        assert_eq!(godot_to_int(""), 0);
+    }
     #[test]
     fn pad_squash_matches_original_ratios_and_reversal() {
         for large in [false, true] {

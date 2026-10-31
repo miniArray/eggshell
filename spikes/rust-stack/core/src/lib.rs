@@ -12,6 +12,7 @@ mod clouds;
 mod collision_grid;
 mod consumers;
 mod decor;
+mod dice;
 mod eating;
 mod egg;
 mod egg_block;
@@ -183,6 +184,8 @@ pub struct VisualState {
     pub origin_pixels: Option<[f64; 2]>,
     pub slice: Option<PictureSlice>,
     pub palette: Vec<PaletteSwap>,
+    /// Multiplicative colour (Godot self_modulate), e.g. map_effects.gd dice colours.
+    pub tint: Option<[u8; 3]>,
 }
 impl Default for VisualState {
     fn default() -> Self {
@@ -201,6 +204,7 @@ impl Default for VisualState {
             origin_pixels: None,
             slice: None,
             palette: Vec::new(),
+            tint: None,
         }
     }
 }

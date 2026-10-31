@@ -55,6 +55,7 @@ fn run(restores: bool) {
         "pillars_target",
         "balloons_target",
         "clears_target",
+        "dice_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -188,6 +189,9 @@ fn run(restores: bool) {
     let mut pillar_side_ticks = 0;
     let mut balloon_ride_ticks = 0;
     let mut clear_charges = BTreeSet::new();
+    let mut dice_states = BTreeSet::new();
+    let mut dice_lifted = 0;
+    let mut dice_tints = BTreeSet::new();
     let mut cleared = BTreeSet::new();
     let mut balloon_landings = 0;
     let mut balloon_bob_ticks = 0;
@@ -716,6 +720,15 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // dice_block.gd: each block's on/solid_ready states, lifted switches and tints.
+        for e in wire.entities.iter().filter(|e| e.code == "o33" || e.code == "o34") {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            dice_states.insert((e.id.clone(), f("on"), f("solid_ready")));
+            dice_lifted += usize::from(f("busy") > 0);
+        }
+        for e in packet.entities.iter().filter(|e| e.code == "o33" || e.code == "o34") {
+            dice_tints.insert(e.visual.tint);
+        }
         // item_block.gd o24: charges used, and enemies removed while the player stands
         // far away (only a clear reaches them).
         for e in &wire.entities {
@@ -1155,6 +1168,16 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "dice_target" {
+        println!("DICE_COVERAGE states={dice_states:?} lifted_ticks={dice_lifted} tints={dice_tints:?}");
+        for id in ["blockA", "blockB", "blockC", "switch1", "switch2"] {
+            assert!(
+                dice_states.iter().any(|s| s.0 == id && s.1 == 0)
+                    && dice_states.iter().any(|s| s.0 == id && s.1 == 1),
+                "{id} must flip"
+            );
+        }
+        assert!(dice_lifted > 0 && dice_tints.contains(&Some([0, 128, 255])));
     } else if name == "clears_target" {
         println!("CLEAR_COVERAGE charges={clear_charges:?} cleared={cleared:?} serial={last_serial} max_runtime={max_runtime}");
         assert!(clear_charges.contains(&(0, 3)) && cleared.len() >= 4);

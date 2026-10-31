@@ -91,7 +91,8 @@ pub(crate) struct SolidFrame {
     updates: Vec<PostUpdate>,
     /// collision.gd context.bumps for side 0 (head bumps), in contact order.
     head_bumped: std::collections::BTreeSet<i64>,
-    head_bumps: Vec<i64>,
+    /// Bumped tokens with the bumping body's world box at the bump.
+    head_bumps: Vec<(i64, [i64; 4])>,
     /// Broad phase for `shapes`: rows listed under every CELL their region has
     /// ever covered this step (a superset). `shapes` still applies the exact
     /// region test in row order, so results and handle order are unchanged.
@@ -320,6 +321,35 @@ impl SolidFrame {
                         entity.body.x + b[2],
                         entity.body.y + b[3],
                     ]),
+                    handle: None,
+                    turn: None,
+                });
+            }
+            // dice_block.gd: full solids; switches are bumped from below.
+            if let Kind::Dice(dice) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = dice.solid(entity.status, entity.body);
+                let b = dice.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: dice.switch,
+                    vanish: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
                     handle: None,
                     turn: None,
                 });
@@ -696,14 +726,14 @@ impl SolidFrame {
         for index in targets {
             let row = &mut self.rows[index];
             if row.block && self.head_bumped.insert(row.token) {
-                self.head_bumps.push(row.token);
+                self.head_bumps.push((row.token, probe));
                 if row.vanish {
                     row.live_box = None;
                 }
             }
         }
     }
-    pub fn take_head_bumps(&mut self) -> Vec<i64> {
+    pub fn take_head_bumps(&mut self) -> Vec<(i64, [i64; 4])> {
         std::mem::take(&mut self.head_bumps)
     }
     /// collision.gd refresh: a solid moved or changed during its step.

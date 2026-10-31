@@ -535,6 +535,10 @@ impl Run {
                     .solid(o)
                     .map(|b| vec![Shape { b, mode: 1 }])
                     .unwrap_or_default(),
+                Kind::Dice(d) => d
+                    .solid(o.status, o.body)
+                    .map(|b| vec![Shape { b, mode: 1 }])
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             let full = old_shapes.iter().any(|s| {
@@ -575,7 +579,7 @@ impl Run {
                 }
             }
             let enemy = matches!(o.kind, Kind::Walker(_));
-            let response = self.egg_contact(index, current)?;
+            let response = self.egg_contact(index, current, map)?;
             // item_egg.gd object_collisions: Collision.refresh(world, other).
             self.refresh_block_solid(current, map);
             if response == 1 {
@@ -600,7 +604,12 @@ impl Run {
         Ok(result)
     }
     /// The struck entity's projectile_contact for an egg (Hits.EGG), or its hit.
-    fn egg_contact(&mut self, egg: usize, other: usize) -> Result<i64, Error> {
+    fn egg_contact(
+        &mut self,
+        egg: usize,
+        other: usize,
+        map: &crate::body::Probe,
+    ) -> Result<i64, Error> {
         enum Target {
             StiltRider,
             StiltBody,
@@ -626,6 +635,7 @@ impl Run {
             Gate,
             StarFlower,
             Hound,
+            Dice,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -731,6 +741,8 @@ impl Run {
                 Kind::Hound(_) => Target::Hound,
                 // star_flower.gd projectile_contact.
                 Kind::StarFlower(_) => Target::StarFlower,
+                // dice_block.gd projectile_contact.
+                Kind::Dice(_) => Target::Dice,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -891,6 +903,7 @@ impl Run {
                 2
             }
             Target::Block => self.block_projectile_contact(other)?,
+            Target::Dice => self.dice_projectile_contact(other, map)?,
             Target::Hard => {
                 // o28/o29: the following physical bounce spends this extra charge.
                 if matches!(&self.entities[other].kind, Kind::Hard(h) if h.refunds_bounce()) {
@@ -1173,6 +1186,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::EggBlock(p) => p.bounds(),
         Kind::Pillar(p) => p.bounds(),
         Kind::Balloon(p) => p.bounds(),
+        Kind::Dice(p) => p.bounds(),
         _ => [0; 4],
     }
 }

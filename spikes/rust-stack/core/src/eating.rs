@@ -124,6 +124,8 @@ pub(crate) enum After {
     EggBlockStep,
     /// rise_balloon.gd step, which moves a top-only deck.
     BalloonStep,
+    /// dice_block.gd step, which lifts a switch or readies a block.
+    DiceStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.
@@ -409,6 +411,7 @@ impl Run {
                 Kind::Launcher(l) => Some(l.solid(e)),
                 Kind::EggBlock(b) => Some(b.solid(e.status, e.body)),
                 Kind::Pillar(p) => Some(p.solid(e.status, e.body)),
+                Kind::Dice(d) => Some(d.solid(e.status, e.body)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {

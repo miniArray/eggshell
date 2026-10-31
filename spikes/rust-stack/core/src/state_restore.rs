@@ -98,6 +98,7 @@ impl Run {
                     Kind::EggBlock(p) => p.set_field(name, *value),
                     Kind::Pillar(p) => p.set_field(name, *value),
                     Kind::Balloon(p) => p.set_field(name, *value),
+                    Kind::Dice(p) => p.set_field(name, *value),
                     Kind::Hard(p) => {
                         name == "form" && {
                             p.form = *value;

@@ -68,6 +68,7 @@ pub(crate) enum Kind {
     EggBlock(crate::egg_block::EggBlock),
     Pillar(crate::pillar::Pillar),
     Balloon(crate::balloon::Balloon),
+    Dice(crate::dice::Dice),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {

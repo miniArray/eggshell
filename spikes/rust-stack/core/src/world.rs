@@ -350,9 +350,8 @@ impl World {
                 .map(stringify_scalar)
                 .unwrap_or_else(|| "0_255,255,255".into());
             let cave_shimmer = source.get("caveShimmer").map(loose_number).unwrap_or(0.0) == 1.0;
-            // diceBlockColours only tints o33/o34 (map_effects.gd dice_colour). Those codes are
-            // refused until ported, so the table is not compiled yet; compile it with them.
-            let dice_colours = Vec::new();
+            // world.gd dice_colours: the per-group tint of o33/o34 (map_effects.gd).
+            let dice_colours = dice_colours(source.get("diceBlockColours"));
             maps.push(Map {
                 name: name.clone(),
                 width_pixels: width as i64,
@@ -630,6 +629,30 @@ fn rgb(s: &str) -> [u8; 3] {
     }
     result
 }
+/// world.gd dice_colours: a c2array JSON string whose rows each start with "r,g,b".
+fn dice_colours(value: Option<&Value>) -> Vec<[u8; 3]> {
+    let Some(Value::String(text)) = value else {
+        return Vec::new();
+    };
+    let Ok(decoded) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    if decoded.get("c2array") != Some(&Value::Bool(true)) {
+        return Vec::new();
+    }
+    let Some(Value::Array(rows)) = decoded.get("data") else {
+        return Vec::new();
+    };
+    rows.iter()
+        .map(|item| match item.get(0).and_then(|first| first.get(0)) {
+            Some(Value::String(s)) => rgb(s),
+            // str() of a number is a single channel; any other value reads as 0.
+            Some(Value::Number(n)) => [n.as_f64().unwrap_or(0.0).clamp(0.0, 255.0) as u8, 0, 0],
+            Some(_) => [0, 0, 0],
+            None => [0, 0, 0],
+        })
+        .collect()
+}
 fn stringify_scalar(v: &Value) -> String {
     v.as_str()
         .map(str::to_string)
@@ -796,10 +819,19 @@ mod tests {
         }
     }
     #[test]
+    fn dice_colours_read_the_first_cell_of_each_row() {
+        let table = r#"{"c2array":true,"size":[3,1,1],"data":[[["10,20,30"]],[[]],[[7]]]}"#;
+        assert_eq!(
+            dice_colours(Some(&Value::String(table.into()))),
+            vec![[10, 20, 30], [0, 0, 0], [7, 0, 0]]
+        );
+        assert!(dice_colours(Some(&Value::String("retained-source".into()))).is_empty());
+        assert!(dice_colours(None).is_empty());
+    }
+    #[test]
     fn dice_colours_keep_source_and_do_not_block_levels_without_dice() {
         let level = r#"{"version":"1","name":"test","desc":"","author":"test","startpoint":{"map":1,"X":32,"Y":32},"maps":{"map1":{"width":640,"height":480,"objects":{},"diceBlockColours":"retained-source"}}}"#;
         let collision = r#"{"version":2,"tilemaps":{}}"#;
-        // The table tints only o33/o34, which stay refused until ported.
         assert!(World::compile(level, collision).is_ok());
         let world = World::compile_benchmark_real_screen(level, collision).unwrap();
         assert!(world.maps[0]
