@@ -108,7 +108,9 @@ def main() -> None:
         # on past the diagonal, turning and rising flyers.
         lick = [8] + [0] * 20
         cycle = [6] * 14 + [2] * 20 + [0] * 10
-        inputs = [0] * 10 + lick * 3 + [0] * 20 + [8] + [0] * 200 + cycle * 30 + [2] * 300
+        inputs = (
+            [0] * 10 + lick * 3 + [0] * 20 + [8] + [0] * 200 + cycle * 30 + [2] * 300
+        )
     elif name == "bulks_target":
         # Hop onto the first bulk's deck before it leaps (standing squashes it and
         # holds it), ground-pound it, then hop right onto the other decks and pound

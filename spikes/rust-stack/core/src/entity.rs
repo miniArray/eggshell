@@ -123,7 +123,8 @@ impl Entity {
                 ..Body::default()
             },
             // gust_flyer.gd prepare clears the mirror (M only turns it toward the player).
-            facing: if p.mirror == 1 && !matches!(&kind, Kind::Walker(a) if a.kind == ActorKind::Gust)
+            facing: if p.mirror == 1
+                && !matches!(&kind, Kind::Walker(a) if a.kind == ActorKind::Gust)
             {
                 1
             } else {

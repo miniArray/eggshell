@@ -214,8 +214,7 @@ impl Run {
             if actual != distance {
                 e.body.vx = 0;
             }
-            if e
-                .body
+            if e.body
                 .gravity_box(map, HOPPER_BOX, started, GRAVITY, MAX_FALL)
             {
                 // spike_hopper.gd land
@@ -283,11 +282,7 @@ impl Run {
     fn juggler_make_needle(&mut self, x: i64, y: i64) -> Option<usize> {
         let serial = self.next_serial().ok()?;
         let hopper = Actor::new(ActorKind::Hopper, 0, 0, crate::Position { x, y });
-        let family = self
-            .entities
-            .iter()
-            .filter(|e| e.is_enemy())
-            .count() as i64;
+        let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
         let mut row = Entity::dynamic(
             serial,
             Kind::Walker(hopper),

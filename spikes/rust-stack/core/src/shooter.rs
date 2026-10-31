@@ -214,11 +214,7 @@ impl Run {
     /// index; enemy_pellet.gd create sets its speed.
     fn spawn_pellet(&mut self, at: Position, facing: i64) -> Result<(), Error> {
         let serial = self.next_serial()?;
-        let family = self
-            .entities
-            .iter()
-            .filter(|e| e.is_enemy())
-            .count() as i64;
+        let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
         let pellet = Actor::new(ActorKind::Pellet, 0, 0, at);
         let mut row = Entity::dynamic(
             serial,

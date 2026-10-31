@@ -15,11 +15,7 @@ impl Run {
             return Err(refuse("placed prefix count"));
         }
         let prefix = run.entities.len();
-        let mut family = run
-            .entities
-            .iter()
-            .filter(|e| e.is_enemy())
-            .count() as i64;
+        let mut family = run.entities.iter().filter(|e| e.is_enemy()).count() as i64;
         for row in &wire.entities[prefix..] {
             let entity = crate::runtime::restore_head(row, schema, family)?;
             if entity.is_enemy() {

@@ -246,11 +246,7 @@ impl Run {
                 let mut shot = Actor::new(ActorKind::Shot, 0, 0, position);
                 shot.form = form;
                 shot.heading = heading;
-                let family = self
-                    .entities
-                    .iter()
-                    .filter(|e| e.is_enemy())
-                    .count() as i64;
+                let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
                 let mut row = Entity::dynamic(
                     serial,
                     Kind::Walker(shot),

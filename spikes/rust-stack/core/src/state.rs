@@ -1367,12 +1367,7 @@ impl Run {
             || ![-1, 1].contains(&p.facing)
             || !(0..=1).contains(&p.on_floor)
             || p.captured_by < 0
-            || p.captured_by
-                > self
-                    .entities
-                    .iter()
-                    .filter(|e| e.is_enemy())
-                    .count() as i64
+            || p.captured_by > self.entities.iter().filter(|e| e.is_enemy()).count() as i64
             || p.support_bridge < 0
             || p.support_bridge > world.maps[0].bridges.len() as i64
             || !(0..=6).contains(&p.movement)
