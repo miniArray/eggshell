@@ -37,6 +37,9 @@ pub mod world;
 mod world_polygon;
 
 pub const SCALE: i64 = 3600;
+/// Codes the core can create during play in any level (stilt riders, thrown eggs,
+/// loot and cache releases). Drawing binds their art even when no placement uses them.
+pub const RUNTIME_CODES: [&str; 6] = ["e1", "o1", "o2", "o3", "o4", "o7"];
 pub const TICKS_PER_SECOND: u32 = 60;
 pub const SNAPSHOT_VERSION: u32 = 10;
 
@@ -437,6 +440,7 @@ impl Session {
                 .placements
                 .iter()
                 .map(|p| p.code.clone())
+                .chain(RUNTIME_CODES.iter().map(|c| c.to_string()))
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect(),
@@ -503,6 +507,7 @@ impl Session {
                 .placements
                 .iter()
                 .map(|p| p.code.clone())
+                .chain(RUNTIME_CODES.iter().map(|c| c.to_string()))
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect(),

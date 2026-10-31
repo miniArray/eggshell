@@ -65,15 +65,19 @@ fn run() -> Result<(), String> {
         } else {
             eggshell_spike_player::scene::Scene::prepare
         };
-        let codes: Vec<String> = if real_assets {
-            world
-                .maps
-                .iter()
-                .flat_map(|m| m.placements.iter().map(|p| p.code.clone()))
-                .collect()
-        } else {
-            vec!["e1".into(), "o1".into(), "o4".into()]
-        };
+        // Placed codes plus everything the core can create during play.
+        let codes: Vec<String> = world
+            .maps
+            .iter()
+            .flat_map(|m| m.placements.iter().map(|p| p.code.clone()))
+            .chain(
+                eggshell_spike_core::RUNTIME_CODES
+                    .iter()
+                    .map(|c| c.to_string()),
+            )
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let scene = prepare(&world, &codes, &pack, std::path::Path::new(&args[4]))?;
         let report = scene.validate_assets(&pack)?;
         std::fs::write(

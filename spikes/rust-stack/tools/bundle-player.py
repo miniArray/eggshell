@@ -190,6 +190,16 @@ if presentation_bundle:
         real_report = json.loads((real / "real-assets.json").read_text())
         assert real_report["mode"] == "asset-binding-only-no-gameplay-no-GPU"
         files.extend(row["file"] for row in real_report["files"])
+    if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1":
+        # Placed and runtime-created codes of the playtest levels (--validate-assets).
+        playtest_report = json.loads(
+            (
+                Path.home()
+                / "eggshell-remote/artifacts/full-rust-ab/player/playtest-assets.json"
+            ).read_text()
+        )
+        assert playtest_report["mode"] == "asset-binding-only-no-gameplay-no-GPU"
+        files.extend(row["file"] for row in playtest_report["files"])
     if os.environ.get("PLAYER_MIXED_BUNDLE") == "1":
         mixed_report = json.loads(
             (
@@ -293,6 +303,11 @@ if presentation_bundle:
             sources[path.name] = path
         provenance["faithful_real_level"] = False
         provenance["real_screen_reconstruction_benchmark_only"] = True
+    if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1":
+        launcher = bundle / "launch-playtest"
+        shutil.copyfile("spikes/rust-stack/tools/launch-playtest.sh", launcher)
+        launcher.chmod(0o755)
+        subprocess.run(["shellcheck", "--shell=bash", str(launcher)], check=True)
     provenance["private_inputs"] = {}
     for name, source_path in sources.items():
         target = inputs / name

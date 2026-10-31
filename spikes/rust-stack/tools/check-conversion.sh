@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-names-2333d44}  # same states as baseline-d34a350; image names instead of bind indices
+BASE=${2:-names-runtime-codes}  # names-2333d44 (= baseline-d34a350 states) plus a wider cull query from runtime-code art; quads equal 600 ticks x 3 zooms
 failed=0
 step() {
   local name=$1
