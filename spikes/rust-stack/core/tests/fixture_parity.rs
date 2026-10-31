@@ -274,6 +274,14 @@ fn run(restores: bool) {
                     );
                 }
             }
+            // Every differing entity field, for diagnosis.
+            for (x, y) in a.entities.iter().zip(&wire.entities) {
+                for ((f, ev), av) in schema.entity_fields(&x.code).iter().zip(&x.values).zip(&y.values) {
+                    if ev != av {
+                        println!("MISMATCH_ENTITY id={} code={} field={} expected={ev} actual={av}", x.id, x.code, f.0);
+                    }
+                }
+            }
             panic!(
                 "{name} mismatch tick={tick}: {:?}",
                 a.first_difference(&wire, &schema)
@@ -813,6 +821,18 @@ fn run(restores: bool) {
                 .collect();
             if !loose.is_empty() {
                 println!("DUMP_EGGS tick={tick} at={}", loose.join(" "));
+            }
+            // FIXTURE_DUMP_IDS=77,78: every Rust field of those wire entities.
+            if let Ok(ids) = std::env::var("FIXTURE_DUMP_IDS") {
+                for e in wire.entities.iter().filter(|e| ids.split(',').any(|id| id == e.id)) {
+                    let fields = schema.entity_fields(&e.code);
+                    let row: Vec<String> = fields
+                        .iter()
+                        .zip(&e.values)
+                        .map(|(f, v)| format!("{}={v}", f.0))
+                        .collect();
+                    println!("DUMP_ENTITY tick={tick} id={} code={} {}", e.id, e.code, row.join(" "));
+                }
             }
         }
         requests =

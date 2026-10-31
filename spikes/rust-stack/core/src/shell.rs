@@ -489,6 +489,9 @@ impl Run {
     /// enemy_body.gd remove for a shell-family body, with shell_walker.gd on_remove: a
     /// runner's origin shell may despawn and never respawns.
     pub(crate) fn shell_remove(&mut self, index: usize) {
+        if self.entities[index].status != 3 {
+            self.plant_on_remove(index);
+        }
         let e = &mut self.entities[index];
         let first = e.status != 3;
         let Kind::Walker(w) = &mut e.kind else {
@@ -498,6 +501,34 @@ impl Run {
         if first {
             self.shell_on_remove(index);
         }
+    }
+    /// actor.gd on_remove: removing the e5 that holds the player separates the
+    /// companion (Damage.separate without the world) and releases the player
+    /// (enemy_plant.gd release).
+    pub(crate) fn plant_on_remove(&mut self, index: usize) {
+        let e = &mut self.entities[index];
+        let Kind::Walker(w) = &mut e.kind else {
+            return;
+        };
+        if w.kind != crate::actors::ActorKind::Plant
+            || self.player.captured_by != e.family_index + 1
+        {
+            return;
+        }
+        if self.player.life.separated == 0 {
+            self.player.separate(-e.facing * 400 * 60, true);
+        }
+        w.mode = 5;
+        w.timer = 30;
+        let p = &mut self.player;
+        p.captured_by = 0;
+        p.life.invulnerable = 121;
+        p.life.hurt = 38;
+        p.life.hurt_phase = 1;
+        p.life.hurt_deceleration = 648;
+        p.body.vx = e.facing * 400 * 60;
+        p.body.vy = -384 * 60;
+        p.on_floor = 0;
     }
     /// shell_walker.gd on_remove: a runner's origin shell may despawn and never
     /// respawns.

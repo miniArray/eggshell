@@ -966,18 +966,17 @@ impl Run {
         })
     }
     fn remove_struck_actor(&mut self, index: usize) -> Result<(), Error> {
-        let captured_by = self.player.captured_by;
-        let e = &mut self.entities[index];
-        if let Kind::Walker(w) = &mut e.kind {
+        let e = &self.entities[index];
+        if let Kind::Walker(w) = &e.kind {
             if w.held != 0 || e.status != 1 {
                 return Ok(());
             }
-            if w.kind == ActorKind::Plant && captured_by == e.family_index + 1 {
-                return Err(Error::Unsupported {
-                    requirements: vec!["egg hit on the capturing plant (on_remove release)".into()],
-                });
+            // Body.remove runs actor.gd on_remove first (the capturing e5 lets go).
+            self.plant_on_remove(index);
+            let e = &mut self.entities[index];
+            if let Kind::Walker(w) = &mut e.kind {
+                w.remove(&mut e.status, &mut e.can_respawn);
             }
-            w.remove(&mut e.status, &mut e.can_respawn);
         }
         Ok(())
     }

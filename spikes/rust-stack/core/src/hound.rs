@@ -2,7 +2,6 @@
 //! runs where its rider faces, jumps at walls, plays with resting eggs and destroys
 //! enemies in its path.
 use crate::{
-    actors::ActorKind,
     body::{Body, HorizontalMove, Probe},
     egg::STATIONARY,
     entity::Kind,
@@ -322,6 +321,9 @@ impl Run {
         if status == 3 {
             return Ok(());
         }
+        // ride_hound.gd step: the move uses the box of the facing before _decide (a TURN
+        // that ends this step flips facing but still moves with the old box).
+        let box_facing = self.entities[index].facing;
         let riding = self.hound_rider_on(index);
         let h = self.hound(index);
         if riding {
@@ -350,7 +352,7 @@ impl Run {
         }
         let riders = self.hound_riders(index);
         let start = self.entities[index].body;
-        self.hound_move(index, map, control);
+        self.hound_move(index, map, control, box_facing);
         let moved = self.entities[index].body;
         if !riders.is_empty() && (moved.x != start.x || moved.y != start.y) {
             self.refresh_block_solid(index, map);
@@ -543,12 +545,12 @@ impl Run {
         control
     }
     /// ride_hound.gd _move (_run or _swim, then the liquid transition).
-    fn hound_move(&mut self, index: usize, map: &Probe, control: i64) {
+    fn hound_move(&mut self, index: usize, map: &Probe, control: i64, box_facing: i64) {
         let e = &mut self.entities[index];
         let Kind::Hound(h) = &mut e.kind else {
             unreachable!()
         };
-        let b = h.bounds(e.facing);
+        let b = h.bounds(box_facing);
         let body = &mut e.body;
         if h.swimming != 0 {
             // In liquid a pressed direction becomes a 0.4 s paddle stroke.
@@ -660,7 +662,6 @@ impl Run {
             return Ok(());
         };
         let body = world_box(e.body, h.bounds(e.facing));
-        let captured_by = self.player.captured_by;
         let targets: Vec<usize> = self
             .entities
             .iter()
@@ -677,16 +678,7 @@ impl Run {
             .map(|(i, _)| i)
             .collect();
         for target in targets {
-            let o = &self.entities[target];
-            if let Kind::Walker(w) = &o.kind {
-                if w.kind == ActorKind::Plant && captured_by == o.family_index + 1 {
-                    return Err(Error::Unsupported {
-                        requirements: vec![
-                            "runner destroying the capturing plant (on_remove)".into()
-                        ],
-                    });
-                }
-            }
+            // Body.remove runs actor.gd on_remove (the capturing e5 lets go).
             self.shell_remove(target);
         }
         Ok(())
