@@ -70,6 +70,14 @@ impl Pack {
             file_hashes,
         })
     }
+    /// The bytes of a pack file whose digest matches the pinned file inventory.
+    pub fn verified_bytes(&self, file: &str) -> Result<Vec<u8>, String> {
+        let bytes = fs::read(safe_file(&self.root, file)?).map_err(|e| e.to_string())?;
+        if self.file_hashes.get(file).map(String::as_str) != Some(hash(&bytes).as_str()) {
+            return Err(format!("private asset hash mismatch: {file}"));
+        }
+        Ok(bytes)
+    }
     pub fn png(&self, file: &str) -> Result<Image, String> {
         let image = Image::load(&safe_file(&self.root, file)?)?;
         if self.file_hashes.get(file).map(String::as_str) != Some(image.sha256.as_str()) {

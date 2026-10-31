@@ -12,6 +12,8 @@
   libxkbcommon,
   libglvnd,
   libudev-zero,
+  libpulseaudio,
+  alsa-lib,
 }:
 stdenv.mkDerivation {
   pname = "eggshell-spike-genuine-sdl2";
@@ -33,6 +35,8 @@ stdenv.mkDerivation {
     libxkbcommon
     libglvnd
     libudev-zero
+    libpulseaudio
+    alsa-lib
   ];
   cmakeFlags = [
     "-DCMAKE_INSTALL_LIBDIR=lib"
@@ -51,9 +55,15 @@ stdenv.mkDerivation {
     "-DSDL_KMSDRM=OFF"
     "-DSDL_RPI=OFF"
     "-DSDL_DIRECTFB=OFF"
-    "-DSDL_AUDIO=OFF"
-    "-DSDL_ALSA=OFF"
-    "-DSDL_PULSEAUDIO=OFF"
+    # Playback through the Pro's sound server (PulseAudio protocol), else ALSA.
+    # Both are dlopened; the bundle carries the libraries.
+    "-DSDL_AUDIO=ON"
+    "-DSDL_PULSEAUDIO=ON"
+    "-DSDL_PULSEAUDIO_SHARED=ON"
+    "-DSDL_ALSA=ON"
+    "-DSDL_ALSA_SHARED=ON"
+    "-DSDL_SNDIO=OFF"
+    "-DSDL_OSS=OFF"
     "-DSDL_JACK=OFF"
     "-DSDL_PIPEWIRE=OFF"
     "-DSDL_IBUS=OFF"
@@ -61,12 +71,14 @@ stdenv.mkDerivation {
     "-DSDL_HIDAPI=ON"
     "-DSDL_HIDAPI_LIBUSB=OFF"
   ];
-  # EGL/GLES and udev are dlopened. Retain them in the Nix runtime closure.
+  # EGL/GLES, udev and the audio libraries are dlopened. Retain them in the Nix runtime closure.
   postFixup = ''
     patchelf --add-rpath ${
       lib.makeLibraryPath [
         libglvnd
         libudev-zero
+        libpulseaudio
+        alsa-lib
       ]
     } "$out/lib/libSDL2-2.0.so.0.3200.10"
   '';

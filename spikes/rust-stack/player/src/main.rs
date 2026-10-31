@@ -31,6 +31,17 @@ fn run() -> Result<(), String> {
     if std::env::args().nth(1).as_deref() == Some("--benchmark-host-check") {
         return eggshell_spike_player::benchmark::host_check(std::env::args().skip(2));
     }
+    if std::env::args().nth(1).as_deref() == Some("--audio-decode-check") {
+        let args: Vec<_> = std::env::args().skip(2).collect();
+        if args.len() != 2 {
+            return Err("--audio-decode-check PACK INVENTORY".into());
+        }
+        let pack = Pack::open(
+            std::path::Path::new(&args[0]),
+            std::path::Path::new(&args[1]),
+        )?;
+        return eggshell_spike_player::audio::decode_check(&pack);
+    }
     if std::env::args().nth(1).as_deref() == Some("--blend-probe") {
         return eggshell_spike_player::blend_probe::run(std::env::args().skip(2));
     }

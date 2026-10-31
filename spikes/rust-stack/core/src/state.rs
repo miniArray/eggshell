@@ -1164,6 +1164,15 @@ impl Run {
         }
         self.player.life.health + self.redcoins + 10 * self.flowers
     }
+    /// A level or player field of the saved state by its saved name, as play_state.gd
+    /// keeps them in one flat dictionary. None when the state has no such field.
+    pub fn saved_field(&self, n: &str, world: &World) -> Option<i64> {
+        self.player_value(n).or_else(|| self.level_value(n, world))
+    }
+    /// A saved field of one entity row by its saved name.
+    pub fn saved_entity_field(&self, e: &Entity, n: &str, world: &World) -> Option<i64> {
+        self.entity_value(e, n, world)
+    }
     pub fn wire(&self, world: &World, schema: &Schema) -> WireSnapshot {
         let level = schema
             .level()

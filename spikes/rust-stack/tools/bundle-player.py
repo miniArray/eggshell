@@ -54,7 +54,13 @@ loader = Path(call("patchelf", "--print-interpreter", str(original_exe)))
 selected = {}
 queue = [("eggshell-spike-player", original_exe, "bin"), (loader.name, loader, "lib")]
 provenance["dependency_edges"] = []
-provenance["dlopen_inputs"] = ["libEGL.so.1", "libGLESv2.so.2", "libudev.so.1"]
+provenance["dlopen_inputs"] = [
+    "libEGL.so.1",
+    "libGLESv2.so.2",
+    "libudev.so.1",
+    "libpulse.so.0",
+    "libasound.so.2",
+]
 
 
 def require_arm64(path):
@@ -191,6 +197,10 @@ if presentation_bundle:
         assert real_report["mode"] == "asset-binding-only-no-gameplay-no-GPU"
         files.extend(row["file"] for row in real_report["files"])
     if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1":
+        # Every pack music track and effect (audio_player.gd plays them).
+        audio = manifest["audio"]
+        for entry in [*audio["music"].values(), *audio["effects"].values()]:
+            files.append(entry["file"] if isinstance(entry, dict) else entry)
         # Placed and runtime-created codes of the playtest levels (--validate-assets).
         playtest_report = json.loads(
             (

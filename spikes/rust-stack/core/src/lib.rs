@@ -655,6 +655,20 @@ impl Session {
     pub fn world(&self) -> &World {
         &self.world
     }
+    /// Read-only saved fields for views that derive cues from saved state, such as
+    /// audio_player.gd `summarize`. A level or player field by its saved name.
+    pub fn saved_field(&self, name: &str) -> Option<i64> {
+        self.state.saved_field(name, &self.world)
+    }
+    /// Visits every saved entity row in table order with its code and a reader of its
+    /// saved fields by name. Read-only; never used by simulation.
+    pub fn visit_saved_rows(&self, mut visit: impl FnMut(&str, &dyn Fn(&str) -> Option<i64>)) {
+        for e in &self.state.entities {
+            visit(e.code(&self.world), &|name| {
+                self.state.saved_entity_field(e, name, &self.world)
+            });
+        }
+    }
     pub fn admission_report(&self) -> &AdmissionReport {
         &self.admission
     }

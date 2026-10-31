@@ -200,6 +200,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut input_offset = None;
     let mut require_active_window = false;
     let mut initial_zoom = 0_i32;
+    let mut mute = false;
     while let Some(key) = args.next() {
         match key.as_str() {
             "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
@@ -270,6 +271,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             "--uncapped" => uncapped = true,
             "--presentation-feedback" => want_feedback = true,
             "--windowed" => fullscreen = false,
+            "--mute" => mute = true,
             _ => return Err(format!("unrecognized game argument: {key}")),
         }
     }
@@ -413,6 +415,32 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         }
     }
     let mut controls = Controls::open(&gpu.sdl)?;
+    // Sound derives cues from each saved step and never writes state (audio_player.gd).
+    let audio_map = crate::audio::AudioMap::parse(&pack.manifest);
+    let (mut audio_device, audio_out) = if mute || audio_map.is_empty() {
+        (None, None)
+    } else {
+        match crate::audio::Device::open(&gpu.sdl) {
+            Ok((device, out)) => (Some(device), Some(out)),
+            Err(reason) => {
+                println!("RUST_AUDIO_UNAVAILABLE reason={reason:?}");
+                (None, None)
+            }
+        }
+    };
+    let mut sound =
+        crate::audio::Observer::new(audio_map, session.world(), Some(&pack), audio_out)?;
+    let audio_label = match &audio_device {
+        Some(device) => format!("sdl-{}", device.driver),
+        None => "muted".to_owned(),
+    };
+    println!(
+        "RUST_AUDIO playback={audio_label} device={}",
+        audio_device
+            .as_ref()
+            .map_or(serde_json::Value::Null, |d| d.summary())
+    );
+    let mut audio_observe = Samples::default();
     let mut events = gpu.sdl.event_pump()?;
     // Declared after gpu: protocol callbacks/proxies drop before SDL_Window.
     // Optional for the first picture gate; mandatory before delivered-frame claims.
@@ -474,7 +502,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut missed = 0u64;
     let mut last_report = Instant::now();
     println!(
-        "RUST_GAME_READY startup_ms={:.3} audio=disabled-no-mixing save_cadence=60-successful-input-calls save_phase_offset={cursor_start} save_sync=false frame_mode={} interpolation=off capture={} benchmark_eligible=false benchmark_unverified_level={benchmark_unverified_level} picture_invalid={benchmark_single_texture} faithful_real_level={fidelity} stand_in={stand_in} visual_omissions={omission_label} saves_disabled={benchmark_unverified_level} zoom={zoom} zoom_min={zoom_min} zoom_max={zoom_max} scale={resolved_scale}",
+        "RUST_GAME_READY startup_ms={:.3} audio={audio_label} save_cadence=60-successful-input-calls save_phase_offset={cursor_start} save_sync=false frame_mode={} interpolation=off capture={} benchmark_eligible=false benchmark_unverified_level={benchmark_unverified_level} picture_invalid={benchmark_single_texture} faithful_real_level={fidelity} stand_in={stand_in} visual_omissions={omission_label} saves_disabled={benchmark_unverified_level} zoom={zoom} zoom_min={zoom_min} zoom_max={zoom_max} scale={resolved_scale}",
         startup.elapsed().as_secs_f64() * 1000.0,
         if uncapped {
             "uncapped-fixed-work"
@@ -511,6 +539,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         if controls.pause_toggle {
             paused = !paused;
             println!("RUST_GAME_PAUSE paused={paused} completed={completed}");
+            // Sounds wait with the simulation. After a goal the completion music keeps playing.
+            if let Some(device) = &mut audio_device {
+                device.set_paused(paused && !sound.goal_reached());
+            }
         }
         if controls.exit {
             break;
@@ -525,6 +557,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
             let data = std::fs::read(save_dir.join("manual.v10")).map_err(|e| e.to_string())?;
             session.restore(&data).map_err(|e| e.to_string())?;
+            sound.replaced();
         }
         if controls.save {
             saves.manual(&session, &mut save)?;
@@ -551,6 +584,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 let saves = &saves;
                 let save = &mut save;
                 let masks = &masks;
+                let sound = &mut sound;
+                let audio_observe = &mut audio_observe;
                 let worker = s.spawn(move || -> Result<(Prepared, Vec<crate::timing::Sample>, u64), String> {
                     let mut samples = Vec::with_capacity(masks.len());
                     let mut held = 0u64;
@@ -561,6 +596,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                             format!("tick={} mask={mask} refused without completion: {e}", base + i as u64 + 1)
                         })?;
                         samples.push(timer.finish());
+                        let timer = Timer::new();
+                        sound.observe(&*session);
+                        audio_observe.add(timer.finish());
                         if session.stats().tick == saved_tick {
                             held += 1;
                             if require_active_window {
@@ -661,6 +699,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         )
                     })?;
                     sim.add(timer.finish());
+                    let timer = Timer::new();
+                    sound.observe(&session);
+                    audio_observe.add(timer.finish());
                     if session.stats().tick == saved_tick {
                         held_saved_frame_calls += 1;
                         if require_active_window {
@@ -730,7 +771,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 gpu.capture(path)?;
                 let snapshot_path = path.with_extension("v10");
                 std::fs::write(&snapshot_path, &snapshot).map_err(|e| e.to_string())?;
-                let metadata = serde_json::json!({"mode":"correctness-GPU-capture-not-clean-timing","input_offset":cursor_start,"successful_input_calls":completed,"input_call_cursor":cursor_start+completed,"saved_frame":p.tick,"level_raw_sha256":raw_hash,"snapshot_path":snapshot_path,"snapshot_sha256":hash(&snapshot),"startup_maps_path":startup_maps_path,"selected_player_pose":{"name":p.player.selected_pose.name,"tick":p.player.selected_pose.tick,"frame":p.player.selected_pose.frame},"swimming":p.player.swimming,"companion_mode":p.companions.mode,"semantic_entity_scales":p.entities.iter().filter_map(|e|e.visual.scale.map(|ratio|serde_json::json!({"token":e.token,"code":e.code,"ratio":ratio}))).collect::<Vec<_>>(),"pack_manifest_sha256":crate::pack::MANIFEST_SHA,"pack_file_inventory_sha256":crate::pack::INVENTORY_SHA,"framebuffer":container,"camera":{"scale":picture.plan.scale,"center":picture.plan.center,"visible":picture.plan.visible,"offset":picture.plan.offset,"rounded_root_offset":picture.plan.offset.map(crate::screen::godot_round)},"interpolation":"off","backend":"owned-GLES","gles_pipeline":gpu.pipeline_info(),"capture_pipeline":gpu.last_capture_pipeline(),"audio":"disabled-no-mixing"});
+                let metadata = serde_json::json!({"mode":"correctness-GPU-capture-not-clean-timing","input_offset":cursor_start,"successful_input_calls":completed,"input_call_cursor":cursor_start+completed,"saved_frame":p.tick,"level_raw_sha256":raw_hash,"snapshot_path":snapshot_path,"snapshot_sha256":hash(&snapshot),"startup_maps_path":startup_maps_path,"selected_player_pose":{"name":p.player.selected_pose.name,"tick":p.player.selected_pose.tick,"frame":p.player.selected_pose.frame},"swimming":p.player.swimming,"companion_mode":p.companions.mode,"semantic_entity_scales":p.entities.iter().filter_map(|e|e.visual.scale.map(|ratio|serde_json::json!({"token":e.token,"code":e.code,"ratio":ratio}))).collect::<Vec<_>>(),"pack_manifest_sha256":crate::pack::MANIFEST_SHA,"pack_file_inventory_sha256":crate::pack::INVENTORY_SHA,"framebuffer":container,"camera":{"scale":picture.plan.scale,"center":picture.plan.center,"visible":picture.plan.visible,"offset":picture.plan.offset,"rounded_root_offset":picture.plan.offset.map(crate::screen::godot_round)},"interpolation":"off","backend":"owned-GLES","gles_pipeline":gpu.pipeline_info(),"capture_pipeline":gpu.last_capture_pipeline(),"audio":audio_label});
                 std::fs::write(
                     path.with_extension("json"),
                     serde_json::to_vec_pretty(&metadata).map_err(|e| e.to_string())?,
@@ -789,7 +830,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         }
     }
     let writes = saves.finish(&session, &mut save)?;
-    let mut summary = serde_json::json!({"purpose":if benchmark_unverified_level{"throwaway-scaling-speed-hint-not-correctness-not-target-A/B"}else{"correctness-verification-only-not-target-A/B"},"level_sha256":raw_hash,"mode":if uncapped{"uncapped-fixed-work"}else{"real-time"},"capture_tainted":capture_tick.is_some(),"audio":"disabled-no-mixing","wall_ms":active_wall.as_millis(),"expected_ticks":stop,"completed_ticks":completed,"input_offset":cursor_start,"input_call_cursor":cursor_start+completed,"held_saved_frame_calls":held_saved_frame_calls,"require_active_window":require_active_window,"save_call_cadence":60,"saved_tick":session.stats().tick,"swap_calls":swap_calls,"actual_compositor_delivered_frames":feedback.as_ref().map(|f|f.delivered_unique),"wayland_presentation":feedback.as_ref().map(|f|f.summary()),"maximum_debt":clock.max_debt,"ending_debt":clock.owed(),"swap_intervals_over_16_667ms":missed,"swap_return_interval_ns":intervals.summary(),"presentation_feedback":if want_feedback{"wp_presentation requested; inspect actual callback/flags evidence"}else{"not instrumented; swap calls are not compositor-delivered-frame proof"},"quantile_method":"fixed-memory log histogram upper bounds, relative bucket width <=1/512 above512ns; exact maxima","sim":sim.summary(),"draw_submit":draw.summary(),"presentation_copy_and_swap":present.summary(),"gles_pipeline":gpu.pipeline_info(),"snapshot_enqueue":save.summary(),"save_writes":writes,"input_events":controls.events,"ignored_key_repeats":controls.repeat_events,"input_delivery":"one literal mask per successful advance call; explicit restore offset; live state sampled per event batch","memory":memory_kib(),"stats":{"entity_steps":session.stats().entity_steps,"terrain_queries":session.stats().terrain_queries,"nearby_queries":session.stats().nearby_queries,"runtime_spawns":session.stats().runtime_spawns,"collections":session.stats().collections,"damage_events":session.stats().damage_events},"cpu_phases":"nonoverlapping main-thread samples; presentation_copy_and_swap includes fullscreen copy submission and SDL swap; capture-only allocation/copy/readback is outside these timers; asynchronous GPU and save-worker times not attributed to these CPU samples"});
+    let mut summary = serde_json::json!({"purpose":if benchmark_unverified_level{"throwaway-scaling-speed-hint-not-correctness-not-target-A/B"}else{"correctness-verification-only-not-target-A/B"},"level_sha256":raw_hash,"mode":if uncapped{"uncapped-fixed-work"}else{"real-time"},"capture_tainted":capture_tick.is_some(),"audio":audio_label,"wall_ms":active_wall.as_millis(),"expected_ticks":stop,"completed_ticks":completed,"input_offset":cursor_start,"input_call_cursor":cursor_start+completed,"held_saved_frame_calls":held_saved_frame_calls,"require_active_window":require_active_window,"save_call_cadence":60,"saved_tick":session.stats().tick,"swap_calls":swap_calls,"actual_compositor_delivered_frames":feedback.as_ref().map(|f|f.delivered_unique),"wayland_presentation":feedback.as_ref().map(|f|f.summary()),"maximum_debt":clock.max_debt,"ending_debt":clock.owed(),"swap_intervals_over_16_667ms":missed,"swap_return_interval_ns":intervals.summary(),"presentation_feedback":if want_feedback{"wp_presentation requested; inspect actual callback/flags evidence"}else{"not instrumented; swap calls are not compositor-delivered-frame proof"},"quantile_method":"fixed-memory log histogram upper bounds, relative bucket width <=1/512 above512ns; exact maxima","sim":sim.summary(),"draw_submit":draw.summary(),"presentation_copy_and_swap":present.summary(),"gles_pipeline":gpu.pipeline_info(),"snapshot_enqueue":save.summary(),"save_writes":writes,"input_events":controls.events,"ignored_key_repeats":controls.repeat_events,"input_delivery":"one literal mask per successful advance call; explicit restore offset; live state sampled per event batch","memory":memory_kib(),"stats":{"entity_steps":session.stats().entity_steps,"terrain_queries":session.stats().terrain_queries,"nearby_queries":session.stats().nearby_queries,"runtime_spawns":session.stats().runtime_spawns,"collections":session.stats().collections,"damage_events":session.stats().damage_events},"cpu_phases":"nonoverlapping main-thread samples; presentation_copy_and_swap includes fullscreen copy submission and SDL swap; capture-only allocation/copy/readback is outside these timers; asynchronous GPU and save-worker times not attributed to these CPU samples"});
     summary["benchmark_unverified_level"] = benchmark_unverified_level.into();
     summary["picture_invalid"] = benchmark_single_texture.into();
     summary["benchmark_single_texture"] = benchmark_single_texture.into();
@@ -800,6 +841,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         summary["tint_overlay"] = "source-map_effects.gd-plan-real-alpha-overlay".into();
     }
     summary["atlas"] = gpu.atlas_info();
+    summary["audio_observe"] = audio_observe.summary();
+    summary["audio_derivation"] = serde_json::json!({"observations":sound.observations,"effect_cues":sound.heard,"effects_not_yet_decoded":sound.missing_clips,"scope":"audio_player.gd derive after each successful step on the simulation thread; outside the sim timer"});
+    summary["audio_playback"] = audio_device
+        .as_ref()
+        .map_or(serde_json::Value::Null, |d| d.summary());
     summary["pipeline"] = serde_json::json!({"enabled":pipeline,"region_container_mismatch":region_container_mismatch,"drawn_frame":"state after the previous frame's steps; simulation runs on a second thread during drawing"});
     summary["saves_disabled"] = benchmark_unverified_level.into();
     summary["scale"] = serde_json::json!(resolved_scale);

@@ -1,4 +1,5 @@
 pub mod atlas;
+pub mod audio;
 pub mod background;
 pub mod benchmark;
 pub mod binding;
