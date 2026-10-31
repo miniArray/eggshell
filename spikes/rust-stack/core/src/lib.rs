@@ -44,6 +44,7 @@ mod state_restore;
 mod stem;
 mod stilt;
 mod switch;
+mod thief;
 mod tongue;
 mod turn;
 mod water;

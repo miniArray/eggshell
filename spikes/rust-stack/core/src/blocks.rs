@@ -983,6 +983,11 @@ impl Run {
     }
     /// Each type's `hit` with Hits.BUMP.
     fn bump_hit(&mut self, index: usize, from_x: i64) -> Result<(), Error> {
+        // sneak_thief.gd hit with Hits.BUMP: struck.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Thief)
+        {
+            return self.thief_struck(index, from_x);
+        }
         let e = &mut self.entities[index];
         match &mut e.kind {
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Stilt => {

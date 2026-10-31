@@ -1,6 +1,7 @@
 extends SceneTree
 ## Diagnosis only: replay a fixture route in Godot and print chosen entity fields every
 ## STRIDE ticks in a window. Usage: -- LEVEL INPUT FIRST LAST STRIDE FIELD,FIELD...
+## A field written @name is read from the player state instead.
 const World = preload("res://src/sim/world.gd")
 const Table = preload("res://src/level/collision_table.gd")
 const State = preload("res://src/sim/play_state.gd")
@@ -28,6 +29,12 @@ func _initialize() -> void:
 		if tick + 1 < first or (tick + 1 - first) % stride:
 			continue
 		var rows := []
+		var own := []
+		for field in fields:
+			if field.begins_with("@") and state.has(field.substr(1)):
+				own.append("%s=%s" % [field.substr(1), state[field.substr(1)]])
+		if not own.is_empty():
+			rows.append("player " + " ".join(own))
 		for entity: Dictionary in state.entities:
 			if entity.code in ["o5"]:
 				continue

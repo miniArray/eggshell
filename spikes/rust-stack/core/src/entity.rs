@@ -176,6 +176,7 @@ impl Entity {
                     ActorKind::Runner => "enemy_runner",
                     ActorKind::Armored => "e11",
                     ActorKind::Spear => "e22",
+                    ActorKind::Thief => "e10",
                     ActorKind::Fish => "e20",
                     ActorKind::LandFish => "e21",
                 },
@@ -264,6 +265,9 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spear => {
                         Kind::Walker(Actor::spear_guard(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Thief => {
+                        Kind::Walker(Actor::thief(source)?)
                     }
                     Kind::Walker(a) => {
                         let mut a =

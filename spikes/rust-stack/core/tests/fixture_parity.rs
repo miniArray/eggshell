@@ -39,6 +39,7 @@ fn run(restores: bool) {
         "snowflow_target",
         "fish_target",
         "melons_target",
+        "thieves_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -96,6 +97,12 @@ fn run(restores: bool) {
     let mut spear_knocks = 0;
     let mut spear_dropped = 0;
     let mut spear_held = 0;
+    let mut thief_plans = [0usize; 5];
+    let mut thief_carry = 0;
+    let mut thief_stomped = 0;
+    let mut thief_struck = 0;
+    let mut thief_shoved = 0;
+    let mut thief_defeated = 0;
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -526,6 +533,21 @@ fn run(restores: bool) {
             spear_dropped += usize::from(f("has_spear") == 0);
             spear_held += usize::from(f("held") == 1);
         }
+        // sneak_thief.gd: ticks per plan, carrying the bubble, worn down by stomps and
+        // strikes, shoved by the tongue (sitting at the shove speed or less), defeated.
+        for e in wire.entities.iter().filter(|e| e.code == "e10") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e10"), n).unwrap();
+            if f("status") == 1 && (0..5).contains(&f("plan")) {
+                thief_plans[f("plan") as usize] += 1;
+            }
+            thief_carry += usize::from(f("status") == 1 && f("carrying") == 1);
+            thief_stomped += usize::from(f("jump_health") < 3);
+            thief_struck += usize::from(f("hit_health") < 6);
+            thief_shoved += usize::from(
+                f("status") == 1 && f("pose") == 8 && (1..=128 * 60).contains(&f("vx").abs()),
+            );
+            thief_defeated += usize::from(f("status") == 3);
+        }
         // arrow_lift.gd: riding ticks, shrink ticks, and arrow changes while riding.
         for e in wire.entities.iter().filter(|e| e.code == "o21") {
             let f = |n: &str| required(&e.values, schema.entity_fields("o21"), n).unwrap();
@@ -762,6 +784,16 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "thieves_target" {
+        println!("THIEF_COVERAGE plan_ticks={thief_plans:?} carry_ticks={thief_carry} stomped_ticks={thief_stomped} struck_ticks={thief_struck} shoved_ticks={thief_shoved} defeated_ticks={thief_defeated}");
+        assert!(
+            thief_plans.iter().all(|n| *n > 0)
+                && thief_carry > 0
+                && thief_stomped > 0
+                && thief_struck > 0
+                && thief_shoved > 0
+                && thief_defeated > 0
+        );
     } else if name == "spears_target" {
         println!("SPEAR_COVERAGE knock_ticks={spear_knocks} dropped_ticks={spear_dropped} held_ticks={spear_held}");
         assert!(spear_knocks > 0 && spear_dropped > 0 && spear_held > 0);

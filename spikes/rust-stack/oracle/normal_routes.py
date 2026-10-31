@@ -124,6 +124,17 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "thieves_target":
+        # Walk into the walker (the companion launches and floats as a bubble); wait while
+        # both thieves race for it, one grabs it and runs to the wall with it and the
+        # other gives up; walk on (a stomp defeats the idle one) until the rescue fails.
+        # After the respawn, eat the walker and lay an egg, throw it at a thief (struck,
+        # a coin), jump in place, then walk up to a thief and lick it (shoved).
+        inputs = [0] * 30 + [2] * 60 + [0] * 300 + [2] * 300 + [0] * 400
+        inputs += [2] * 25 + [8] + [0] * 30 + [32] + [0] * 40
+        inputs += [2] * 36 + [0] * 4 + [64] + [0] * 14 + [64] + [0] * 30
+        inputs += [8] + [0] * 30 + [8] + [0] * 30 + ([4] * 14 + [0] * 30) * 4
+        inputs += [2] * 58 + ([8] + [0] * 9) * 8 + [0] * 60
     elif name == "spears_target":
         # Lick the right-facing guard from behind (the spear drops; it is caught) and
         # spit it; walk to the egg producer and wait for eggs; throw them and lick at

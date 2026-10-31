@@ -306,11 +306,23 @@ impl Run {
         vx: i64,
         vy: i64,
     ) -> Result<(), Error> {
+        self.spawn_loot_coin(kind, x, y, vx, vy, 30)
+    }
+    /// registry.gd spawn_dynamic for a moving loot pickup with a 480-tick life.
+    pub(crate) fn spawn_loot_coin(
+        &mut self,
+        kind: PickupKind,
+        x: i64,
+        y: i64,
+        vx: i64,
+        vy: i64,
+        pickup_delay: i64,
+    ) -> Result<(), Error> {
         let serial = self.next_serial()?;
         let mut pickup = Pickup::new(kind, 0, y);
         pickup.moving = 1;
         pickup.despawn_ticks = 480;
-        pickup.pickup_delay = 30;
+        pickup.pickup_delay = pickup_delay;
         let mut row = Entity::dynamic(serial, Kind::Pickup(pickup), Body { x, y, vx, vy }, -1, 7);
         row.can_despawn = 0;
         self.dynamic_serial = serial + 1;
@@ -599,6 +611,7 @@ impl Run {
             ShellCovered,
             Armored,
             Spear,
+            Thief,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -638,6 +651,8 @@ impl Run {
                 }
                 // spear_guard.gd projectile_contact for an egg.
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
+                // sneak_thief.gd projectile_contact: struck; the egg is used up.
+                Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // armored_walker.gd projectile_contact for an egg: it rolls away.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
                 // shell_walker.gd projectile_contact for an egg.
@@ -716,6 +731,10 @@ impl Run {
                 if let Kind::Walker(w) = &mut o.kind {
                     w.spear_egg(o.facing, &mut o.status, &mut o.can_respawn, heading);
                 }
+                1
+            }
+            Target::Thief => {
+                self.thief_struck(other, projectile.x)?;
                 1
             }
             Target::Armored => {

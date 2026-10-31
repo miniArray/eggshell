@@ -216,6 +216,7 @@ impl Run {
                     "e6" | "e8" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::shell(p)?),
                     "e11" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::armored(p)?),
                     "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
+                    "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -395,6 +396,9 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spear => {
                     crate::eating::After::SpearStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Thief => {
+                    crate::eating::After::ThiefStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -411,6 +415,7 @@ impl Run {
                             | ActorKind::Runner
                             | ActorKind::Armored
                             | ActorKind::Spear
+                            | ActorKind::Thief
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -453,6 +458,7 @@ impl Run {
                 crate::eating::After::ShellStep => self.shell_step(next - 1, map)?,
                 crate::eating::After::ArmoredStep => self.armored_step(next - 1, map)?,
                 crate::eating::After::SpearStep => self.spear_step(next - 1, map)?,
+                crate::eating::After::ThiefStep => self.thief_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::LiftStep => {
                     self.lift_step(next - 1, map);
@@ -783,6 +789,10 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Spear {
                     self.spear_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Thief {
+                    self.thief_contact(index, action, &map)?;
                     continue;
                 }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {

@@ -80,6 +80,8 @@ pub(crate) enum After {
     ArmoredStep,
     /// spear_guard.gd step, which hits other bodies while spat.
     SpearStep,
+    /// sneak_thief.gd step, which reads the companion and other thieves.
+    ThiefStep,
     /// timed_switch.gd step, which runs the shared interval.
     SwitchStep,
     /// arrow_lift.gd step, which moves a top-only deck.
@@ -119,8 +121,12 @@ fn strict(a: [i64; 4], b: [i64; 4]) -> bool {
 
 impl Actor {
     /// enemy_body.gd remove (no actor in the admitted set has on_remove side effects
-    /// that can run here: a plant can never be held, spat or rolled).
+    /// that can run here: a plant can never be held, spat or rolled), with
+    /// sneak_thief.gd on_remove: a removed thief drops the bubble.
     pub(crate) fn remove(&mut self, status: &mut i64, can_respawn: &mut i64) {
+        if self.kind == ActorKind::Thief && *status != 3 {
+            self.carrying = 0;
+        }
         *status = 3;
         self.held = 0;
         self.spat = 0;
@@ -421,6 +427,16 @@ impl Run {
                         0
                     }
                 }
+                // sneak_thief.gd tongue: the tongue bounces off and shoves the thief away.
+                Kind::Walker(w) if w.kind == ActorKind::Thief => {
+                    if w.held != 0 || e.status != 1 {
+                        0
+                    } else {
+                        e.body.vx = if e.body.x > self.player.body.x { 128 } else { -128 } * 60;
+                        w.thief_pose(crate::thief::SIT);
+                        2
+                    }
+                }
                 // armored_walker.gd tongue: pushed back; the tongue is blocked.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => {
                     w.armored_tongue(&mut e.body, &mut e.facing, self.player.facing);
@@ -716,6 +732,7 @@ impl Run {
             Shell,
             Armored,
             Spear,
+            Thief,
             Pickup,
             Inert,
             Egg,
@@ -756,6 +773,8 @@ impl Run {
                 // spear_guard.gd projectile_contact: any non-egg hit drops the spear
                 // and defeats it.
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
+                // sneak_thief.gd projectile_contact: struck; the projectile is used up.
+                Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,
@@ -798,6 +817,10 @@ impl Run {
                     w.remove(&mut o.status, &mut o.can_respawn);
                 }
                 3
+            }
+            Target::Thief => {
+                self.thief_struck(current, projectile.x)?;
+                1
             }
             Target::Armored => {
                 // A spit from another e11 removes it; a shell removes it; any other

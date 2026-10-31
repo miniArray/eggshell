@@ -33,6 +33,8 @@ pub(crate) enum ActorKind {
     Fish,
     /// actor.gd e21: a fish that collides and flops on dry ground.
     LandFish,
+    /// sneak_thief.gd e10.
+    Thief,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -107,6 +109,17 @@ pub(crate) struct Actor {
     pub fish_exhausted: i64,
     pub fish_left: i64,
     pub fish_right: i64,
+    // sneak_thief.gd FIELDS (timer, grounded, home_x and contact are shared above).
+    pub pose: i64,
+    pub plan: i64,
+    pub max_speed: i64,
+    pub idle_frames: i64,
+    pub idle_tick: i64,
+    pub jump_health: i64,
+    pub hit_health: i64,
+    pub carrying: i64,
+    pub get_up: i64,
+    pub saw_bubble: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -185,6 +198,16 @@ impl Actor {
             fish_exhausted: 0,
             fish_left: 48 * S,
             fish_right: 48 * S,
+            pose: 0,
+            plan: 0,
+            max_speed: crate::thief::SLOW,
+            idle_frames: 0,
+            idle_tick: 0,
+            jump_health: 3,
+            hit_health: 6,
+            carrying: 0,
+            get_up: 0,
+            saw_bubble: 0,
         }
     }
     pub fn valid(&self) -> bool {
@@ -209,6 +232,7 @@ impl Actor {
             && (![ActorKind::Shell, ActorKind::Runner].contains(&self.kind) || self.shell_valid())
             && (self.kind != ActorKind::Armored || self.armored_valid())
             && (self.kind != ActorKind::Spear || self.spear_valid())
+            && (self.kind != ActorKind::Thief || self.thief_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
@@ -285,6 +309,7 @@ impl Actor {
             ActorKind::Shell | ActorKind::Runner => crate::shell::bounds(self.mode),
             ActorKind::Armored => crate::armored::BOX,
             ActorKind::Spear => crate::spear::BOX,
+            ActorKind::Thief => crate::thief::BOX,
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
@@ -406,8 +431,12 @@ impl Actor {
             return Ok(After::Nothing);
         }
         match self.kind {
-            ActorKind::Shell | ActorKind::Runner | ActorKind::Armored | ActorKind::Spear => {
-                unreachable!("Run::shell_step and Run::armored_step step these")
+            ActorKind::Shell
+            | ActorKind::Runner
+            | ActorKind::Armored
+            | ActorKind::Spear
+            | ActorKind::Thief => {
+                unreachable!("Run::shell_step, armored_step, spear_step and thief_step step these")
             }
             ActorKind::Walker => self.walker(body, facing, step),
             ActorKind::Flyer if self.ground_form != 0 => {
@@ -848,5 +877,15 @@ fields!(
     fish_ready,
     fish_exhausted,
     fish_left,
-    fish_right
+    fish_right,
+    pose,
+    plan,
+    max_speed,
+    idle_frames,
+    idle_tick,
+    jump_health,
+    hit_health,
+    carrying,
+    get_up,
+    saw_bubble
 );

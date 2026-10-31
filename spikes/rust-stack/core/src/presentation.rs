@@ -166,6 +166,8 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Armored => w.armored_animation(),
         // spear_guard.gd view_state
         ActorKind::Spear => w.spear_animation(),
+        // sneak_thief.gd view_state
+        ActorKind::Thief => w.thief_animation().into(),
         // actor.gd view_state
         ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {
