@@ -419,7 +419,7 @@ impl Actor {
         let py = self.pivot(body);
         [px + left, py + top, px + right, py + bottom]
     }
-    fn pivot(&self, body: Body) -> i64 {
+    pub(crate) fn pivot(&self, body: Body) -> i64 {
         body.y + if self.variant == 1 { 10 * S } else { -10 * S }
     }
     fn pin(&self, body: Body, facing: i64, player: &mut Player) {

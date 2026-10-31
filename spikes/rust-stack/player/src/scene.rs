@@ -36,6 +36,13 @@ pub struct Scene {
     companions: [Option<Visual>; 3],
     /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
     tongue: Option<[Visual; 3]>,
+    /// Stilt walker recolour per variant. The original recolours the parts at run time
+    /// (ShyGuy_Colors); the pack's pre-coloured e1 frames give the same colour pairs.
+    stilt_palettes: HashMap<i64, Vec<PaletteSwap>>,
+    /// The original's aim cursor (hud EggTarget), when the pack has it.
+    egg_target: Option<Visual>,
+    /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
+    trail: std::sync::Mutex<Trail>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -151,6 +158,111 @@ fn auxiliary_transform(
         }
     }
     t.ratio(aux.visual.scale)
+}
+/// Colour pairs that turn shy-guy variant 0 art into variant `variant`, read from the pack's
+/// pre-coloured e1 Walk and Idle frames, most-used first, at most eight.
+fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String> {
+    let animations = pack
+        .manifest
+        .get("objects")
+        .and_then(|o| o.get("e1"))
+        .and_then(|e| e.get("animations"))
+        .ok_or("pack has no e1 animations for stilt colours")?;
+    let files = |name: &str| -> Vec<String> {
+        animations
+            .get(name)
+            .and_then(|a| a.get("frames"))
+            .and_then(Value::as_array)
+            .map(|f| {
+                f.iter()
+                    .filter_map(|f| f.get("file").and_then(Value::as_str).map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut pairs: HashMap<([u8; 3], [u8; 3]), u64> = HashMap::new();
+    for pose in ["Walk", "Idle"] {
+        for (a, b) in files(&format!("0{pose}"))
+            .iter()
+            .zip(files(&format!("{variant}{pose}")).iter())
+        {
+            let (a, b) = (pack.png(a)?, pack.png(b)?);
+            if (a.width, a.height) != (b.width, b.height) {
+                continue;
+            }
+            for (pa, pb) in a.rgba.chunks_exact(4).zip(b.rgba.chunks_exact(4)) {
+                if pa[3] == 255 && pb[3] == 255 && pa[..3] != pb[..3] {
+                    *pairs
+                        .entry(([pa[0], pa[1], pa[2]], [pb[0], pb[1], pb[2]]))
+                        .or_default() += 1;
+                }
+            }
+        }
+    }
+    if pairs.is_empty() {
+        return Err(format!(
+            "pack has no e1 colour frames for stilt variant {variant}"
+        ));
+    }
+    // One target per source colour (the most used), then the most used sources first.
+    let mut best: HashMap<[u8; 3], ([u8; 3], u64, u64)> = HashMap::new();
+    for ((from, to), n) in pairs {
+        let e = best.entry(from).or_insert((to, 0, 0));
+        e.2 += n;
+        if n > e.1 || (n == e.1 && to < e.0) {
+            e.0 = to;
+            e.1 = n;
+        }
+    }
+    let mut swaps: Vec<_> = best.into_iter().collect();
+    swaps.sort_by(|a, b| b.1.2.cmp(&a.1.2).then(a.0.cmp(&b.0)));
+    Ok(swaps
+        .into_iter()
+        .take(8)
+        .map(|(from, (to, _, _))| PaletteSwap { from, to })
+        .collect())
+}
+/// Yoshi's recent positions (one per step that moved him) and the drawn carried eggs.
+/// YFS Yoshi sheet: egg slot k tweens (0.1 s) to YoshiPos[latest - 10k] - 16 px.
+#[derive(Default)]
+struct Trail {
+    last_tick: i64,
+    path: std::collections::VecDeque<[f64; 2]>,
+    eggs: Vec<[f64; 2]>,
+}
+impl Trail {
+    const KEEP: usize = 64;
+    fn update(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
+        if tick != self.last_tick {
+            self.last_tick = tick;
+            if self.path.back() != Some(&at) {
+                self.path.push_back(at);
+                if self.path.len() > Self::KEEP {
+                    self.path.pop_front();
+                }
+            }
+            self.eggs.truncate(count);
+            while self.eggs.len() < count {
+                self.eggs.push([at[0], at[1] - 16.0]);
+            }
+            for (k, egg) in self.eggs.iter_mut().enumerate() {
+                let back = 10 * (k + 1);
+                let target = self
+                    .path
+                    .len()
+                    .checked_sub(1 + back)
+                    .and_then(|i| self.path.get(i))
+                    .or(self.path.front())
+                    .copied()
+                    .unwrap_or(at);
+                for i in 0..2 {
+                    let goal = target[i] - if i == 1 { 16.0 } else { 0.0 };
+                    egg[i] += (goal - egg[i]) / 6.0;
+                }
+            }
+        }
+        self.eggs.clone()
+    }
 }
 fn fallback_head_box(
     hint: Option<[i64; 4]>,
@@ -365,6 +477,25 @@ impl Scene {
             }
             objects.insert(code.to_owned(), bound);
         }
+        let egg_target = match pack.manifest.get("hud").and_then(|h| h.get("EggTarget")) {
+            Some(entry) => Some(catalog.visual(entry, 0, density, false)?),
+            None => {
+                visual_omissions.push("aim cursor: pack has no hud EggTarget".into());
+                None
+            }
+        };
+        let mut stilt_palettes = HashMap::new();
+        for variant in world
+            .maps
+            .iter()
+            .flat_map(|m| m.placements.iter())
+            .filter(|p| p.code == "e35" && p.variant != 0)
+            .map(|p| p.variant)
+        {
+            if let std::collections::hash_map::Entry::Vacant(slot) = stilt_palettes.entry(variant) {
+                slot.insert(variant_palette(pack, variant)?);
+            }
+        }
         // The original stilt walker's animated parts, by pack source type.
         if world
             .maps
@@ -501,6 +632,9 @@ impl Scene {
             player,
             companions,
             tongue,
+            stilt_palettes,
+            egg_target,
+            trail: std::sync::Mutex::new(Trail::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1239,13 +1373,26 @@ impl Scene {
                     if self.density > 1 {
                         t = t.snap_dense(plan.scale);
                     }
+                    let stilt = matches!(
+                        auxiliary.kind,
+                        EntityAuxiliaryKind::StiltFeet
+                            | EntityAuxiliaryKind::StiltPoles
+                            | EntityAuxiliaryKind::StiltTop
+                    );
+                    let palette = if stilt {
+                        self.stilt_palettes
+                            .get(&entity.variant)
+                            .map_or(&aux.visual.palette, |p| p)
+                    } else {
+                        &aux.visual.palette
+                    };
                     let q = sprite_quad(
                         frame.image,
                         self.sizes[frame.image],
                         t,
                         &plan,
                         [1.0, 1.0, 1.0, aux.visual.alpha as f32],
-                        &aux.visual.palette,
+                        palette,
                     );
                     if visible(&q, container) {
                         commands.push((aux.layer, order, q));
@@ -1364,6 +1511,37 @@ impl Scene {
             } else {
                 &p.player.visual.palette
             };
+            // Carried eggs trail behind Yoshi (drawn first, so Yoshi covers them).
+            let body = pixel(p.player.motion.current);
+            let trail = self
+                .trail
+                .lock()
+                .map_err(|_| "egg trail lock poisoned")?
+                .update(p.tick, body, p.player.eggs.len());
+            if let Ok(egg_art) = self.object("o7", 0) {
+                for (colour, at) in p.player.eggs.iter().zip(&trail) {
+                    let name = ["Green", "Yellow", "Red", "Purple"][(*colour).clamp(0, 3) as usize];
+                    let ef = egg_art.sample(p.tick, name, 0, None);
+                    commands.push((
+                        11,
+                        order,
+                        sprite_quad(
+                            ef.image,
+                            self.sizes[ef.image],
+                            Transform {
+                                position: *at,
+                                scale: [1.0 / self.density as f64; 2],
+                                origin: ef.origin,
+                                ..Transform::default()
+                            },
+                            &plan,
+                            [1.0, 1.0, 1.0, 1.0],
+                            &[],
+                        ),
+                    ));
+                    order += 1;
+                }
+            }
             commands.push((
                 11,
                 order,
@@ -1377,6 +1555,30 @@ impl Scene {
                 ),
             ));
             order += 1;
+            // The aim cursor: 144 px from the egg's start point (x, y-32) along the throw
+            // direction (YFS EggTargetObj: origin 160 px below its 32 px target).
+            if let (Some(angle), Some(target)) = (p.player.aim_degrees, &self.egg_target) {
+                let tf = target.sample(p.tick, "", 0, None);
+                let (s, c) = angle.to_radians().sin_cos();
+                commands.push((
+                    11,
+                    order,
+                    sprite_quad(
+                        tf.image,
+                        self.sizes[tf.image],
+                        Transform {
+                            position: [body[0] + 144.0 * c, body[1] - 32.0 + 144.0 * s],
+                            scale: [1.0 / self.density as f64; 2],
+                            origin: tf.origin,
+                            ..Transform::default()
+                        },
+                        &plan,
+                        [1.0; 4],
+                        &[],
+                    ),
+                ));
+                order += 1;
+            }
         }
         for (index, aux) in std::iter::once((0, &p.companions.companion))
             .chain(std::iter::once((1, &p.companions.bubble)))

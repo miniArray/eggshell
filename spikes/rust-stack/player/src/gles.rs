@@ -22,8 +22,8 @@ precision highp float;
 // Godot4.7.2 ShaderGLES3 prefixes highp sampler2D. ESSL's default
 // lowp sampler can quantize texels before translucent blending.
 uniform highp sampler2D u_texture;
-uniform vec3 u_keys[3];
-uniform vec3 u_values[3];
+uniform vec3 u_keys[8];
+uniform vec3 u_values[8];
 uniform int u_count;
 uniform int u_darkness;
 uniform vec2 u_viewport;
@@ -40,7 +40,7 @@ void main() {
     gl_FragColor=vec4(0.0,0.0,0.0,u_strength*shade);
   } else {
     vec4 pixel=texture2D(u_texture,v_uv);
-    for(int i=0;i<3;i++) {
+    for(int i=0;i<8;i++) {
       if(i<u_count && all(lessThan(abs(pixel.rgb-u_keys[i]),vec3(0.5/255.0)))) pixel.rgb=u_values[i];
     }
     gl_FragColor=pixel*v_color;
@@ -1066,8 +1066,8 @@ impl Gles {
                 }
             }
             let q = &quads[first];
-            if q.palette.len() > 3 {
-                return Err("more than three palette swaps not admitted".into());
+            if q.palette.len() > 8 {
+                return Err("more than eight palette swaps not admitted".into());
             }
             let image = match self.benchmark_single_texture {
                 Some(texture) => texture,
@@ -1096,8 +1096,8 @@ impl Gles {
                 if self.batch_palette.as_deref() != Some(palette) {
                     self.gl
                         .uniform_1_i32(self.uniforms.count.as_ref(), palette.len() as i32);
-                    let mut keys = [0.0; 9];
-                    let mut values = [0.0; 9];
+                    let mut keys = [0.0; 24];
+                    let mut values = [0.0; 24];
                     for (i, swap) in palette.iter().enumerate() {
                         for j in 0..3 {
                             keys[i * 3 + j] = swap.from[j] as f32 / 255.0;

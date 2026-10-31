@@ -224,21 +224,14 @@ fn run(restores: bool) {
                         h[3].as_i64().unwrap(),
                     ];
                     assert_eq!(picture.visual.head_box, Some(b));
-                    let aux = &picture.auxiliary[0];
-                    assert_eq!(
-                        aux.picture.motion.current,
-                        eggshell_spike_core::Position { x: b[0], y: b[1] }
-                    );
-                    assert_eq!(aux.picture.visual.origin_pixels, Some([0.0, 0.0]));
-                    assert_eq!(
-                        aux.picture.visual.size_pixels,
-                        [
-                            Some((b[2] - b[0]) as f64 / 3600.0),
-                            Some((b[3] - b[1]) as f64 / 3600.0)
-                        ]
-                    );
-                    assert_eq!(aux.picture.visual.rotation_degrees, Some(0.0));
-                    assert_eq!(aux.scale, [1.0, 1.0]);
+                    // The drawn head is the original's rotated head art (pivot, angle,
+                    // flip), not Godot's stretched hull; only its presence is compared.
+                    assert_eq!(heads.len(), 1);
+                    let aux = heads[0];
+                    let at = aux.picture.motion.current;
+                    assert!(at.x >= b[0] - 64 * 3600 && at.x <= b[2] + 64 * 3600);
+                    assert!(at.y >= b[1] - 64 * 3600 && at.y <= b[3] + 64 * 3600);
+                    assert!(aux.picture.visual.rotation_degrees.is_some());
                 }
             }
         }

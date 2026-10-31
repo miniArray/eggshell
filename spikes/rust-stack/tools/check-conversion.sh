@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-stilt-anim}  # feedback-2 plus animated stilt walkers (StiltGuy_Feet/PolesMiddle/Top auxiliaries); only e35 levels changed, scale-2400 identical
+BASE=${2:-eggs-trail}  # stilt-anim plus rotated plant heads (original pivot/angle/flip), stilt variant colours (8 palette swaps), carried-egg trail and aim cursor; PlayerPicture gained eggs/aim fields (debug text on every level)
 failed=0
 step() {
   local name=$1

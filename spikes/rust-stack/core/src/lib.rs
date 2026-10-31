@@ -119,6 +119,11 @@ pub struct PlayerPicture {
     pub flowers: i64,
     /// The extended tongue while it is out or blocked (moves.gd TONGUE_OUT/BLOCKED).
     pub tongue: Option<TonguePicture>,
+    /// Carried egg colours, first slot first (0 green, 1 yellow, 2 red, 3 purple). The
+    /// original draws them trailing Yoshi; the Godot port drew none.
+    pub eggs: Vec<i64>,
+    /// Throw direction in degrees (0 right, -90 up) while aiming (moves.gd _emit angle).
+    pub aim_degrees: Option<f64>,
 }
 /// Where the tongue leaves the mouth, relative to the player body position, and how far
 /// it reaches. The Godot port never drew it; the pack has YoshiTongueL/R/U nine-patches.

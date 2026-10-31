@@ -187,7 +187,7 @@ fn actor_visible(e: &crate::entity::Entity) -> bool {
 /// StiltGuy_Top on the poles. Feet play "Walk" (12 frames, 20 fps) once per stride and the
 /// poles copy the feet frame; the top advances one of its 24 frames per feet frame. Knocked:
 /// feet and poles frame 9, top frame 21. The Godot port drew the still editor image instead.
-/// Stand-in: the parts keep their pack colours (the original recolours them per variant).
+/// Colours: the player recolours the parts per variant from the pack's e1 colour frames.
 fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryPicture> {
     let Kind::Walker(w) = &e.kind else {
         return Vec::new();
@@ -255,9 +255,14 @@ fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryP
         ),
     ]
 }
+/// The plant head as the original draws it (Enemies sheet, PiranhaPlantHead): the 64x54 head
+/// art pivots at its origin (2,20) on the stem top, turned toward its aim (head_dx/dy), scaled
+/// by head_size, and flipped vertically when facing right so it never turns upside down.
+/// The saved head_box hull (Godot's view, used by the oracle) stays in visual.head_box.
+/// The Godot port stretched the unrotated art over that hull instead.
 fn plant_head(
     e: &crate::entity::Entity,
-    previous: Option<[i64; 4]>,
+    _previous: Option<[i64; 4]>,
     frame: i64,
 ) -> Vec<EntityAuxiliaryPicture> {
     let Kind::Walker(w) = &e.kind else {
@@ -266,19 +271,29 @@ fn plant_head(
     if w.kind != crate::actors::ActorKind::Plant || w.head_size == 0 {
         return Vec::new();
     }
-    let b = w.head_box(e.body, e.facing);
-    let old = previous.unwrap_or(b);
+    let at = Position {
+        x: e.body.x + e.facing * 2 * SCALE,
+        y: w.pivot(e.body),
+    };
+    let width = (16 * SCALE + 48 * SCALE * w.head_size / 15) as f64 / SCALE as f64;
+    let height = (16 * SCALE + 38 * SCALE * w.head_size / 15) as f64 / SCALE as f64;
+    let angle = if w.head_dx == 0 && w.head_dy == 0 {
+        if e.facing > 0 {
+            0.0
+        } else {
+            180.0
+        }
+    } else {
+        (w.head_dy as f64).atan2(w.head_dx as f64).to_degrees()
+    };
     vec![EntityAuxiliaryPicture {
         kind: EntityAuxiliaryKind::PlantHead,
-        scale: [1.0, 1.0],
+        scale: [
+            width / 64.0,
+            height / 54.0 * if e.facing > 0 { -1.0 } else { 1.0 },
+        ],
         picture: AuxiliaryPicture {
-            motion: motion(
-                Position {
-                    x: old[0],
-                    y: old[1],
-                },
-                Position { x: b[0], y: b[1] },
-            ),
+            motion: motion(at, at),
             visible: e.status == 1 && e.collected == 0 && w.held == 0 && w.hidden == 0,
             layer: 10,
             facing: e.facing,
@@ -286,12 +301,7 @@ fn plant_head(
             tick: frame,
             visual: VisualState {
                 asset_key: Some("e5_head".into()),
-                origin_pixels: Some([0.0, 0.0]),
-                size_pixels: [
-                    Some((b[2] - b[0]) as f64 / SCALE as f64),
-                    Some((b[3] - b[1]) as f64 / SCALE as f64),
-                ],
-                rotation_degrees: Some(0.0),
+                rotation_degrees: Some(angle),
                 ..VisualState::default()
             },
         },
@@ -481,6 +491,20 @@ pub(crate) fn sample_rows(
         companion,
         companion_phase: p.life.companion_mode,
         tongue: p.tongue_picture(),
+        eggs: (0..p.food.eggs.clamp(0, 6) as usize)
+            .map(|slot| run.consumers.colour[slot])
+            .collect(),
+        aim_degrees: (p.food.aim != 0).then(|| {
+            let mut angle = if p.facing > 0 {
+                p.food.aim_angle
+            } else {
+                180_000 - p.food.aim_angle
+            };
+            if angle > 180_000 {
+                angle -= 360_000;
+            }
+            angle as f64 / 1000.0
+        }),
         health: p.life.health,
         coins: run.coins,
         red_coins: run.redcoins,

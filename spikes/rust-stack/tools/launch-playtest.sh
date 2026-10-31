@@ -27,7 +27,24 @@ play() {
     --pack-inventory "$ROOT/private-pack/pack-files.sha256.json" --view-metrics "$ROOT/private-input/view-metrics.json" \
     --ticks $((seconds * 60)) --seconds $((seconds + 15)) --save-dir "$save" --presentation-feedback "$@"
 }
-if [[ "${3:-}" == replay ]]; then
+if [[ "${3:-}" == shots ]]; then
+  # Unattended pictures: frame PNGs every 150 steps from the start of the recorded route,
+  # then every 100 idle steps from the newest hands-on autosave (if any). Saves aside.
+  shots="$ROOT/data/shots-$level"
+  mkdir -p "$shots/route" "$shots/save"
+  save=$(mktemp -d "$ROOT/data/shots-run-$level-XXXXXX")
+  printf 'PLAYTEST_BEGIN level=%s shots=true\n' "$level"
+  play --replay "$ROOT/private-input/$level.input.json" --ticks 3000 --seconds 80 \
+    --frame-digest-every 150 --frame-dump-dir "$shots/route" --no-pipeline
+  latest=$(ls -t /tmp/eggshell-full-rust-owned-*-p*/data/playtest-target/autosave.v10 2>/dev/null | head -1 || true)
+  if [[ -n "$latest" ]]; then
+    cp "$latest" "$save/from-autosave.v10"
+    printf 'PLAYTEST_SHOTS_FROM_SAVE %s\n' "$latest"
+    play --restore "$save/from-autosave.v10" --replay "$ROOT/private-input/idle-600.input.json" \
+      --input-offset 0 --ticks 600 --seconds 30 --frame-digest-every 100 --frame-dump-dir "$shots/save" --no-pipeline
+  fi
+  printf 'PLAYTEST_SHOTS_DONE dir=%s\n' "$shots"
+elif [[ "${3:-}" == replay ]]; then
   # Unattended check: plays the recorded route inputs, from a fresh start, saves aside.
   save=$(mktemp -d "$ROOT/data/replay-$level-XXXXXX")
   printf 'PLAYTEST_BEGIN level=%s replay=true seconds=%s\n' "$level" "$seconds"
