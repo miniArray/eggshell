@@ -217,7 +217,7 @@ impl Run {
         let family = self
             .entities
             .iter()
-            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .filter(|e| e.is_enemy())
             .count() as i64;
         let pellet = Actor::new(ActorKind::Pellet, 0, 0, at);
         let mut row = Entity::dynamic(

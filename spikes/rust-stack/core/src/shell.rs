@@ -544,7 +544,7 @@ impl Run {
         let family = self
             .entities
             .iter()
-            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .filter(|e| e.is_enemy())
             .count() as i64;
         let mut row = Entity::dynamic(
             serial,

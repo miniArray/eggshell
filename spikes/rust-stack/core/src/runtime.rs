@@ -66,6 +66,8 @@ pub(crate) fn restore_head(
         "enemy_pellet" => Kind::Walker(Actor::new(ActorKind::Pellet, 0, 0, position)),
         // launcher_shot.gd: saved fields are restored after the head.
         "enemy_shot" => Kind::Walker(Actor::new(ActorKind::Shot, 0, 0, position)),
+        // spike_hopper.gd (a needle_juggler.gd hopper): saved fields follow the head.
+        "e40" => Kind::Walker(Actor::new(ActorKind::Hopper, value("variant")?, 0, position)),
         "o1" | "o2" | "o3" => Kind::Pickup(Pickup::new(
             match row.code.as_str() {
                 "o1" => PickupKind::Coin,
@@ -94,7 +96,7 @@ pub(crate) fn restore_head(
         facing,
         value("layer")?,
     );
-    entity.family_index = if matches!(entity.kind, Kind::Walker(_)) {
+    entity.family_index = if entity.is_enemy() {
         family_index
     } else {
         0
@@ -121,7 +123,7 @@ impl Run {
         let family = self
             .entities
             .iter()
-            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .filter(|e| e.is_enemy())
             .count() as i64;
         let mut row = Entity::dynamic(
             serial,
@@ -161,7 +163,7 @@ impl Run {
         let mut family = 0;
         self.player.captured_by = 0;
         for e in &mut self.entities {
-            if matches!(e.kind, Kind::Walker(_)) {
+            if e.is_enemy() {
                 e.family_index = family;
                 family += 1;
                 if Some(e.origin.token()) == captor {

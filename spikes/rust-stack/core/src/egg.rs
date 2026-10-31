@@ -298,7 +298,7 @@ impl Run {
         Ok(serial)
     }
     /// registry.gd spawn_dynamic for a loot coin: moving, 480-tick life, 30-tick delay.
-    fn spawn_pickup(
+    pub(crate) fn spawn_pickup(
         &mut self,
         kind: PickupKind,
         x: i64,
@@ -614,6 +614,7 @@ impl Run {
             Thief,
             Hanging,
             Wing,
+            Bulk,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -664,6 +665,15 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Shooter => Target::Flower,
                 // wing_drifter.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
+                // leap_bulk.gd projectile_contact: an egg breaks on it (1).
+                Kind::Walker(w) if w.kind == ActorKind::Bulk => Target::Bulk,
+                // needle_juggler.gd and an intangible spike_hopper.gd return 0.
+                Kind::Walker(w)
+                    if w.kind == ActorKind::Juggler
+                        || (w.kind == ActorKind::Hopper && w.intangible != 0) =>
+                {
+                    Target::Nothing
+                }
                 // armored_walker.gd projectile_contact for an egg: it rolls away.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
                 // shell_walker.gd projectile_contact for an egg.
@@ -680,8 +690,14 @@ impl Run {
                 // flat_walker.gd and hop_sprout.gd projectile_contact: like the flower,
                 // the egg then falls.
                 Kind::Walker(w)
-                    if [ActorKind::Flower, ActorKind::Flat, ActorKind::Sprout]
-                        .contains(&w.kind) =>
+                    if [
+                        ActorKind::Flower,
+                        ActorKind::Flat,
+                        ActorKind::Sprout,
+                        ActorKind::Hopper,
+                        ActorKind::Gust,
+                    ]
+                    .contains(&w.kind) =>
                 {
                     Target::Flower
                 }
@@ -761,6 +777,10 @@ impl Run {
                     }
                     _ => 0,
                 }
+            }
+            Target::Bulk => {
+                self.bulk_defeat(other)?;
+                1
             }
             Target::Wing => {
                 let o = &mut self.entities[other];

@@ -222,11 +222,15 @@ impl Run {
                     "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
                     "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
                     "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
+                    "e40" => Kind::Walker(crate::actors::Actor::hopper(p)?),
+                    "e42" => Kind::Walker(crate::actors::Actor::juggler(p)?),
+                    "e17" => Kind::Walker(crate::actors::Actor::bulk(p)?),
+                    "e33" => Kind::Walker(crate::actors::Actor::gust(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
                 let family_index = match kind {
-                    Kind::Walker(_) => {
+                    Kind::Walker(ref a) if a.kind != crate::actors::ActorKind::Gust => {
                         next_family += 1;
                         next_family - 1
                     }
@@ -337,7 +341,10 @@ impl Run {
             if !e.lifecycle(
                 map,
                 centre,
-                self.player.body.x,
+                crate::Position {
+                    x: self.player.body.x,
+                    y: self.player.body.y,
+                },
                 self.player.impact,
                 &mut self.rng,
             )? {
@@ -426,6 +433,18 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Sprout => {
                     crate::eating::After::SproutStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Hopper => {
+                    crate::eating::After::HopperStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Juggler => {
+                    crate::eating::After::JugglerStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bulk => {
+                    crate::eating::After::BulkStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Gust => {
+                    crate::eating::After::GustStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -449,6 +468,10 @@ impl Run {
                             | ActorKind::Wing
                             | ActorKind::Shot
                             | ActorKind::Sprout
+                            | ActorKind::Hopper
+                            | ActorKind::Juggler
+                            | ActorKind::Bulk
+                            | ActorKind::Gust
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -499,6 +522,10 @@ impl Run {
                 crate::eating::After::WingStep => self.wing_step(next - 1, map)?,
                 crate::eating::After::ShotStep => self.shot_step(next - 1, map)?,
                 crate::eating::After::SproutStep => self.sprout_step(next - 1, map)?,
+                crate::eating::After::HopperStep => self.hopper_step(next - 1, map)?,
+                crate::eating::After::JugglerStep => self.juggler_step(next - 1, map)?,
+                crate::eating::After::BulkStep => self.bulk_step(next - 1, map)?,
+                crate::eating::After::GustStep => self.gust_step(next - 1, map)?,
                 crate::eating::After::LauncherStep => {
                     self.launcher_step(next - 1)?;
                     self.refresh_block_solid(next - 1, map);
@@ -520,7 +547,7 @@ impl Run {
                 crate::eating::After::SeedStep => self.seed_step(next - 1, map)?,
                 crate::eating::After::Nothing => {}
             }
-            if matches!(&self.entities[next - 1].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Flat)
+            if matches!(&self.entities[next - 1].kind, Kind::Walker(w) if [crate::actors::ActorKind::Flat, crate::actors::ActorKind::Bulk].contains(&w.kind))
             {
                 self.refresh_block_solid(next - 1, map);
             }
@@ -537,7 +564,10 @@ impl Run {
             let awake = e.lifecycle(
                 map,
                 centre,
-                self.player.body.x,
+                crate::Position {
+                    x: self.player.body.x,
+                    y: self.player.body.y,
+                },
                 self.player.impact,
                 &mut self.rng,
             )?;
@@ -861,6 +891,22 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Sprout {
                     self.sprout_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Hopper {
+                    self.hopper_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Juggler {
+                    self.juggler_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Bulk {
+                    self.bulk_contact(index)?;
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Gust {
+                    self.gust_contact(index, action);
                     continue;
                 }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
@@ -1325,7 +1371,7 @@ impl Run {
                 > self
                     .entities
                     .iter()
-                    .filter(|e| matches!(e.kind, Kind::Walker(_)))
+                    .filter(|e| e.is_enemy())
                     .count() as i64
             || p.support_bridge < 0
             || p.support_bridge > world.maps[0].bridges.len() as i64
@@ -1438,7 +1484,7 @@ impl Run {
                 }
                 runtime_serials.push(serial);
             }
-            if matches!(e.kind, Kind::Walker(_)) {
+            if e.is_enemy() {
                 if e.family_index != family {
                     return Err(unsupported("enemy family order"));
                 }
@@ -1593,6 +1639,7 @@ impl Run {
             }
             if let Kind::Walker(w) = &e.kind {
                 if !w.valid()
+                    || (w.kind == crate::actors::ActorKind::Hopper && !w.hopper_valid(e.body.vx))
                     || !(0..=360).contains(&w.phase)
                     || !(0..=210).contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)

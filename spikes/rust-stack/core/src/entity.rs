@@ -122,7 +122,13 @@ impl Entity {
                 y: p.position.y,
                 ..Body::default()
             },
-            facing: if p.mirror == 1 { 1 } else { -1 },
+            // gust_flyer.gd prepare clears the mirror (M only turns it toward the player).
+            facing: if p.mirror == 1 && !matches!(&kind, Kind::Walker(a) if a.kind == ActorKind::Gust)
+            {
+                1
+            } else {
+                -1
+            },
             status: if lifecycle != 0 { 0 } else { 1 },
             offscreen: 0,
             collected: 0,
@@ -160,6 +166,11 @@ impl Entity {
             kind,
         }
     }
+    /// registry.gd is_enemy: actor rows count in the enemy family (index, capture);
+    /// gust_flyer.gd (e33) is an actor body outside the family.
+    pub fn is_enemy(&self) -> bool {
+        matches!(&self.kind, Kind::Walker(a) if a.kind != ActorKind::Gust)
+    }
     pub fn source<'a>(&self, world: &'a World) -> Option<&'a Placement> {
         self.origin.placed().map(|i| &world.maps[0].placements[i])
     }
@@ -189,6 +200,10 @@ impl Entity {
                     ActorKind::Wing => "e30",
                     ActorKind::Shot => "enemy_shot",
                     ActorKind::Sprout => "e12",
+                    ActorKind::Hopper => "e40",
+                    ActorKind::Juggler => "e42",
+                    ActorKind::Bulk => "e17",
+                    ActorKind::Gust => "e33",
                 },
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
@@ -229,7 +244,7 @@ impl Entity {
         &mut self,
         map: &crate::body::Probe,
         centre: crate::Position,
-        player_x: i64,
+        player: crate::Position,
         impact: i64,
         rng: &mut crate::math::Rng,
     ) -> Result<bool, crate::Error> {
@@ -292,6 +307,18 @@ impl Entity {
                     Kind::Walker(a) if a.kind == ActorKind::Sprout => {
                         Kind::Walker(Actor::sprout(source)?)
                     }
+                    Kind::Walker(a) if a.kind == ActorKind::Hopper => {
+                        Kind::Walker(Actor::hopper(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Juggler => {
+                        Kind::Walker(Actor::juggler(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Bulk => {
+                        Kind::Walker(Actor::bulk(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Gust => {
+                        Kind::Walker(Actor::gust(source)?)
+                    }
                     Kind::Walker(a) => {
                         let mut a =
                             Actor::new(a.kind, source.variant, source.mirror, source.position);
@@ -347,11 +374,15 @@ impl Entity {
                 && self.body.y + b[1] < centre.y + self.activation_y
             {
                 self.status = 1;
-                if source.mirror == 2 {
-                    self.facing = if player_x < self.body.x { -1 } else { 1 };
+                let gust = matches!(&self.kind, Kind::Walker(a) if a.kind == ActorKind::Gust);
+                if source.mirror == 2 && !gust {
+                    self.facing = if player.x < self.body.x { -1 } else { 1 };
                 }
                 if let Kind::Walker(a) = &mut self.kind {
                     a.activate(self.facing, rng);
+                    if gust {
+                        a.gust_activate(self.body, player);
+                    }
                 }
                 if let Kind::Stem(s) = &mut self.kind {
                     s.activate(impact);

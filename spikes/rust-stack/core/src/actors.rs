@@ -47,6 +47,14 @@ pub(crate) enum ActorKind {
     Shot,
     /// hop_sprout.gd e12.
     Sprout,
+    /// spike_hopper.gd e40.
+    Hopper,
+    /// needle_juggler.gd e42.
+    Juggler,
+    /// leap_bulk.gd e17: a top-only deck.
+    Bulk,
+    /// gust_flyer.gd e33, outside the enemy family.
+    Gust,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -151,6 +159,34 @@ pub(crate) struct Actor {
     pub pause: i64,
     pub fresh: i64,
     pub falling: i64,
+    // spike_hopper.gd FIELDS (colour is shared with shell_walker.gd).
+    pub sink_window: i64,
+    pub hop_pending: i64,
+    pub sinking: i64,
+    pub thrown: i64,
+    pub carrier: i64,
+    pub intangible: i64,
+    // needle_juggler.gd FIELDS (cycles and rise_ticks are shared).
+    pub frame: i64,
+    pub forward: i64,
+    pub playing: i64,
+    pub speed: i64,
+    pub clock: i64,
+    pub accepting: i64,
+    pub frowning: i64,
+    pub offset: i64,
+    pub needle_token: i64,
+    pub hold_ticks: i64,
+    pub pause_ticks: i64,
+    pub frown_ticks: i64,
+    pub grow_ticks: i64,
+    pub rise: i64,
+    pub thrown_now: i64,
+    // leap_bulk.gd FIELDS (phase, timer and contact are shared).
+    pub squashed: i64,
+    // gust_flyer.gd FIELDS (heading and contact are shared).
+    pub toward: i64,
+    pub ramp: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -254,6 +290,30 @@ impl Actor {
             pause: 0,
             fresh: 1,
             falling: 0,
+            sink_window: 0,
+            hop_pending: 0,
+            sinking: 0,
+            thrown: 0,
+            carrier: 0,
+            intangible: 0,
+            frame: 0,
+            forward: 1,
+            playing: 0,
+            speed: 0,
+            clock: 0,
+            accepting: 0,
+            frowning: 0,
+            offset: 0,
+            needle_token: 0,
+            hold_ticks: 0,
+            pause_ticks: 0,
+            frown_ticks: 0,
+            grow_ticks: 0,
+            rise: 0,
+            thrown_now: 0,
+            squashed: 0,
+            toward: 0,
+            ramp: 0,
         }
     }
     pub fn valid(&self) -> bool {
@@ -267,6 +327,8 @@ impl Actor {
             ActorKind::Spear,
             ActorKind::Fish,
             ActorKind::LandFish,
+            ActorKind::Bulk,
+            ActorKind::Gust,
         ]
         .contains(&self.kind)
         {
@@ -285,6 +347,9 @@ impl Actor {
             && (self.kind != ActorKind::Wing || self.wing_valid())
             && (self.kind != ActorKind::Shot || self.shot_valid())
             && (self.kind != ActorKind::Sprout || self.sprout_valid())
+            && (self.kind != ActorKind::Juggler || self.juggler_valid())
+            && (self.kind != ActorKind::Bulk || self.bulk_valid())
+            && (self.kind != ActorKind::Gust || self.gust_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
@@ -368,6 +433,10 @@ impl Actor {
             ActorKind::Wing => crate::wing::bounds(self.mode, facing),
             ActorKind::Shot => crate::launcher::SHOT_BOX,
             ActorKind::Sprout => crate::sprout::BOX,
+            ActorKind::Hopper => crate::juggler::HOPPER_BOX,
+            ActorKind::Juggler => crate::juggler::JUGGLER_BOX,
+            ActorKind::Bulk => crate::bulk::BOX,
+            ActorKind::Gust => crate::gust::bounds(self.heading),
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
@@ -499,7 +568,11 @@ impl Actor {
             | ActorKind::Pellet
             | ActorKind::Wing
             | ActorKind::Shot
-            | ActorKind::Sprout => {
+            | ActorKind::Sprout
+            | ActorKind::Hopper
+            | ActorKind::Juggler
+            | ActorKind::Bulk
+            | ActorKind::Gust => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -604,6 +677,9 @@ impl Actor {
     }
     /// flat_walker.gd solid_box: a flattened body is a top-only support.
     pub fn flat_solid(&self, body: Body, facing: i64) -> Option<[i64; 4]> {
+        if self.kind == ActorKind::Bulk {
+            return self.bulk_deck(body);
+        }
         (self.kind == ActorKind::Flat
             && self.mode >= FLAT_FLATTEN
             && self.held == 0
@@ -966,5 +1042,29 @@ fields!(
     heading,
     pause,
     fresh,
-    falling
+    falling,
+    sink_window,
+    hop_pending,
+    sinking,
+    thrown,
+    carrier,
+    intangible,
+    frame,
+    forward,
+    playing,
+    speed,
+    clock,
+    accepting,
+    frowning,
+    offset,
+    needle_token,
+    hold_ticks,
+    pause_ticks,
+    frown_ticks,
+    grow_ticks,
+    rise,
+    thrown_now,
+    squashed,
+    toward,
+    ramp
 );

@@ -131,6 +131,37 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
             ..VisualState::default()
         };
     }
+    if [ActorKind::Hopper, ActorKind::Juggler].contains(&w.kind) {
+        // spike_hopper.gd / needle_juggler.gd view_state
+        return VisualState {
+            animation: Some(
+                match (w.kind, w.colour) {
+                    (ActorKind::Juggler, _) => "Default",
+                    (_, 0) => "Green",
+                    _ => "Yellow",
+                }
+                .into(),
+            ),
+            frame: (w.kind == ActorKind::Juggler).then_some(w.frame),
+            ..VisualState::default()
+        };
+    }
+    if w.kind == ActorKind::Gust {
+        // gust_flyer.gd view_state
+        let (rotation, flip) = w.gust_view();
+        return VisualState {
+            rotation_degrees: Some(rotation),
+            flip_h: Some(flip),
+            ..VisualState::default()
+        };
+    }
+    if w.kind == ActorKind::Bulk {
+        // leap_bulk.gd view_state
+        return VisualState {
+            size_pixels: [None, w.bulk_height()],
+            ..VisualState::default()
+        };
+    }
     if w.kind == ActorKind::Sprout {
         // hop_sprout.gd view_state
         let (animation, frame) = w.sprout_view(body);
@@ -195,7 +226,14 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Shooter => w.shooter_animation().into(),
         // wing_drifter.gd view_state
         ActorKind::Wing => w.wing_animation().into(),
-        ActorKind::Shot | ActorKind::Sprout => unreachable!("returns its own view above"),
+        ActorKind::Shot
+        | ActorKind::Sprout
+        | ActorKind::Hopper
+        | ActorKind::Juggler
+        | ActorKind::Bulk
+        | ActorKind::Gust => {
+            unreachable!("returns its own view above")
+        }
         // actor.gd view_state
         ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {

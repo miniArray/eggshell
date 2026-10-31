@@ -8,6 +8,9 @@ use crate::{
 impl Run {
     pub fn restored(wire: &WireSnapshot, world: &World, schema: &Schema) -> Result<Self, Error> {
         let mut run = Self::create(world, &mut crate::Stats::default())?;
+        // The two load steps can already spawn runtime rows (needle_juggler.gd grows its
+        // hopper on its first step); the snapshot's own suffix replaces them.
+        run.entities.truncate(world.maps[0].placements.len());
         if wire.entities.len() < run.entities.len() {
             return Err(refuse("placed prefix count"));
         }
@@ -15,11 +18,11 @@ impl Run {
         let mut family = run
             .entities
             .iter()
-            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .filter(|e| e.is_enemy())
             .count() as i64;
         for row in &wire.entities[prefix..] {
             let entity = crate::runtime::restore_head(row, schema, family)?;
-            if matches!(entity.kind, Kind::Walker(_)) {
+            if entity.is_enemy() {
                 family += 1;
             }
             run.entities.push(entity);

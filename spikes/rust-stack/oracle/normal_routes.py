@@ -102,6 +102,28 @@ def main() -> None:
         inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
         inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
         inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
+    elif name == "gusts_target":
+        # Lick at the first flyer as it arrives (caught) and spit it right (it flies on
+        # level); wait for the low flyer to run under Yoshi's feet (a stomp); then hop
+        # on past the diagonal, turning and rising flyers.
+        lick = [8] + [0] * 20
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = [0] * 10 + lick * 3 + [0] * 20 + [8] + [0] * 200 + cycle * 30 + [2] * 300
+    elif name == "bulks_target":
+        # Hop onto the first bulk's deck before it leaps (standing squashes it and
+        # holds it), ground-pound it, then hop right onto the other decks and pound
+        # every other cycle (defeats drop coins and health).
+        onto = [6] * 12 + [2] * 6 + [0] * 20
+        pound = [4] * 12 + [32] * 30 + [0] * 20
+        stomp = [6] * 12 + [2] * 18 + [0] * 40 + [2] * 20
+        inputs = onto + [0] * 40 + pound * 2 + (stomp + pound) * 12 + [2] * 300
+    elif name == "jugglers_target":
+        # Lick the placed hopper before it sinks and spit it at the juggler (thrown: it
+        # strikes the tossed hopper); wait while the juggler frowns and grows a new one;
+        # then hop on past the placed hoppers and the second juggler.
+        lick = [8] + [0] * 30
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = lick * 2 + [0] * 900 + cycle * 30 + [2] * 300
     elif name == "sprouts_target":
         # Lick the first sprout and spit it right; walk on into the next one; wait by
         # the egg producer and throw eggs right at the approaching one; then hop on

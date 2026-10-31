@@ -490,7 +490,7 @@ impl Run {
         let e = &self.entities[index];
         if let Kind::Walker(w) = &e.kind {
             // flat_walker.gd: a flattened e4 is a moving top-only support.
-            if w.kind == crate::actors::ActorKind::Flat {
+            if [crate::actors::ActorKind::Flat, crate::actors::ActorKind::Bulk].contains(&w.kind) {
                 let r = w.body_bounds(e.facing);
                 map.refresh_solid(
                     e.origin.token(),
@@ -1016,6 +1016,10 @@ impl Run {
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Stilt => {
                 w.stilt_knock(&mut e.body, &mut e.facing, from_x);
             }
+            // needle_juggler.gd has no `hit`.
+            Kind::Walker(w) if w.kind == crate::actors::ActorKind::Juggler => {}
+            // leap_bulk.gd hit: defeat (with its loot).
+            Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bulk => self.bulk_defeat(index)?,
             Kind::Walker(w) => {
                 if w.held == 0 && e.status == 1 {
                     if w.kind == crate::actors::ActorKind::Plant {

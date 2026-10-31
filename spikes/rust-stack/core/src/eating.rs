@@ -96,6 +96,14 @@ pub(crate) enum After {
     ShotStep,
     /// hop_sprout.gd step, which hits other bodies while spat.
     SproutStep,
+    /// spike_hopper.gd step, which hits other bodies once thrown.
+    HopperStep,
+    /// needle_juggler.gd step, which spawns and moves its hopper.
+    JugglerStep,
+    /// leap_bulk.gd step, which moves a top-only deck.
+    BulkStep,
+    /// gust_flyer.gd step.
+    GustStep,
     /// shot_launcher.gd step, which fires shots into the table.
     LauncherStep,
     /// timed_switch.gd step, which runs the shared interval.
@@ -470,6 +478,15 @@ impl Run {
                         2
                     }
                 }
+                // needle_juggler.gd tongue and an intangible spike_hopper.gd: nothing.
+                Kind::Walker(w)
+                    if w.kind == ActorKind::Juggler
+                        || (w.kind == ActorKind::Hopper && w.intangible != 0) =>
+                {
+                    0
+                }
+                // leap_bulk.gd has no tongue rule and is not SOLID 1.
+                Kind::Walker(w) if w.kind == ActorKind::Bulk => 0,
                 // armored_walker.gd tongue: pushed back; the tongue is blocked.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => {
                     w.armored_tongue(&mut e.body, &mut e.facing, self.player.facing);
@@ -784,6 +801,8 @@ impl Run {
             Thief,
             Roller,
             Wing,
+            Hopper,
+            Bulk,
             Pickup,
             Inert,
             Egg,
@@ -826,6 +845,16 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
                 // wing_drifter.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
+                // needle_juggler.gd and an intangible spike_hopper.gd absorb nothing (0).
+                Kind::Walker(w)
+                    if w.kind == ActorKind::Juggler
+                        || (w.kind == ActorKind::Hopper && w.intangible != 0) =>
+                {
+                    Target::Nothing
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Hopper => Target::Hopper,
+                // leap_bulk.gd projectile_contact: defeat; a non-egg strike counts (3).
+                Kind::Walker(w) if w.kind == ActorKind::Bulk => Target::Bulk,
                 // sneak_thief.gd projectile_contact: struck; the projectile is used up.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact.
@@ -886,6 +915,18 @@ impl Run {
                 projectile_weapon,
                 projectile_consumed,
             )?,
+            Target::Bulk => {
+                self.bulk_defeat(current)?;
+                3
+            }
+            // spike_hopper.gd hit: removed; the strike counts (3).
+            Target::Hopper => {
+                let o = &mut self.entities[current];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.remove(&mut o.status, &mut o.can_respawn);
+                }
+                3
+            }
             Target::Wing => {
                 let o = &mut self.entities[current];
                 let Kind::Walker(w) = &mut o.kind else {

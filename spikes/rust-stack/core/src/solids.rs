@@ -243,7 +243,7 @@ impl SolidFrame {
                 });
             }
             if let Kind::Walker(w) = &entity.kind {
-                if w.kind == crate::actors::ActorKind::Flat {
+                if [crate::actors::ActorKind::Flat, crate::actors::ActorKind::Bulk].contains(&w.kind) {
                     let position = Position {
                         x: entity.body.x,
                         y: entity.body.y,

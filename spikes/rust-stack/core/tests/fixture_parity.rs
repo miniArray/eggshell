@@ -45,6 +45,9 @@ fn run(restores: bool) {
         "wings_target",
         "launchers_target",
         "sprouts_target",
+        "jugglers_target",
+        "bulks_target",
+        "gusts_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -137,6 +140,21 @@ fn run(restores: bool) {
     let mut shot_held = 0;
     let mut launcher_charges = 0;
     let mut bounce_fires = 0;
+    let mut gust_full_speed = 0;
+    let mut gust_headings = BTreeSet::new();
+    let mut gust_held = 0;
+    let mut gust_removals = 0;
+    let mut gust_status: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut bulk_phases = [0usize; 4];
+    let mut bulk_squashed = 0;
+    let mut bulk_defeats = 0;
+    let mut bulk_status: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut juggler_tosses = 0;
+    let mut juggler_frowns = 0;
+    let mut juggler_rises = 0;
+    let mut hopper_thrown = 0;
+    let mut hopper_sinking = 0;
+    let mut hopper_held = 0;
     let mut sprout_hops = 0;
     let mut sprout_held = 0;
     let mut sprout_removals = 0;
@@ -662,6 +680,46 @@ fn run(restores: bool) {
             launcher_charges += usize::from(f("charge") > 0);
             bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
         }
+        // gust_flyer.gd: full-speed ticks, headings flown, held ticks, removals.
+        for e in wire.entities.iter().filter(|e| e.code == "e33") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e33"), n).unwrap();
+            if f("status") == 1 {
+                gust_full_speed += usize::from(f("ramp") == 60);
+                gust_headings.insert(f("heading"));
+            }
+            gust_held += usize::from(f("held") == 1);
+            if f("status") == 3 && gust_status.get(&e.id) == Some(&1) {
+                gust_removals += 1;
+            }
+            gust_status.insert(e.id.clone(), f("status"));
+        }
+        // leap_bulk.gd: ticks per phase (wait, flatten, rise, air), squashed ticks under
+        // a standing player, and defeats.
+        for e in wire.entities.iter().filter(|e| e.code == "e17") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e17"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("phase")) {
+                bulk_phases[f("phase") as usize] += 1;
+            }
+            bulk_squashed += usize::from(f("squashed") == 1);
+            if f("status") == 3 && bulk_status.get(&e.id) == Some(&1) {
+                bulk_defeats += 1;
+            }
+            bulk_status.insert(e.id.clone(), f("status"));
+        }
+        // needle_juggler.gd / spike_hopper.gd: tosses, frowns, regrowth; thrown, sinking
+        // and held hoppers.
+        for e in wire.entities.iter().filter(|e| e.code == "e42") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e42"), n).unwrap();
+            juggler_tosses += usize::from(f("thrown_now") == 1);
+            juggler_frowns += usize::from(f("frowning") == 1);
+            juggler_rises += usize::from(f("rise") > 0);
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "e40") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e40"), n).unwrap();
+            hopper_thrown += usize::from(f("thrown") == 1 && f("status") == 1);
+            hopper_sinking += usize::from(f("sinking") == 1 && f("status") == 1);
+            hopper_held += usize::from(f("held") == 1);
+        }
         // hop_sprout.gd: rising hops, held ticks, removed sprouts and turns while free.
         for e in wire.entities.iter().filter(|e| e.code == "e12") {
             let f = |n: &str| required(&e.values, schema.entity_fields("e12"), n).unwrap();
@@ -871,6 +929,29 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "gusts_target" {
+        println!("GUST_COVERAGE full_speed_ticks={gust_full_speed} headings={gust_headings:?} held_ticks={gust_held} removals={gust_removals}");
+        assert!(
+            gust_full_speed > 0 && gust_headings.len() >= 4 && gust_held > 0 && gust_removals > 0
+        );
+    } else if name == "bulks_target" {
+        println!("BULK_COVERAGE phase_ticks={bulk_phases:?} squashed_ticks={bulk_squashed} defeats={bulk_defeats} max_runtime={max_runtime}");
+        assert!(
+            bulk_phases.iter().all(|n| *n > 0)
+                && bulk_squashed > 0
+                && bulk_defeats > 0
+                && max_runtime > 0
+        );
+    } else if name == "jugglers_target" {
+        println!("JUGGLER_COVERAGE toss_ticks={juggler_tosses} frown_ticks={juggler_frowns} rise_ticks={juggler_rises} thrown_ticks={hopper_thrown} sinking_ticks={hopper_sinking} held_ticks={hopper_held}");
+        assert!(
+            juggler_tosses > 0
+                && juggler_frowns > 0
+                && juggler_rises > 0
+                && hopper_thrown > 0
+                && hopper_sinking > 0
+                && hopper_held > 0
+        );
     } else if name == "sprouts_target" {
         println!("SPROUT_COVERAGE hop_ticks={sprout_hops} held_ticks={sprout_held} removals={sprout_removals} turns={sprout_turns}");
         assert!(sprout_hops > 0 && sprout_held > 0 && sprout_removals >= 2 && sprout_turns > 0);
