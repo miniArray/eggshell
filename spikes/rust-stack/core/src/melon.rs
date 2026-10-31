@@ -41,7 +41,9 @@ impl Melon {
             Some(_) => return Err(refuse("invalid melon form".into())),
         };
         if form > LAST_MELON {
-            return Err(refuse(format!("melon form F={form} (degrades to a placeholder)")));
+            return Err(refuse(format!(
+                "melon form F={form} (degrades to a placeholder)"
+            )));
         }
         if form >= SEEDS.len() as i64 {
             return Err(refuse(format!(

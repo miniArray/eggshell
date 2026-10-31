@@ -736,8 +736,7 @@ impl Run {
                 // actor.gd projectile_contact for e5: a spit hits only the head; a
                 // shell hits it anywhere.
                 Kind::Walker(w) if w.kind == ActorKind::Plant => {
-                    if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box)
-                    {
+                    if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box) {
                         Target::PlantHead
                     } else if kind == HitKind::Shell {
                         Target::Actor
