@@ -451,7 +451,11 @@ impl Run {
                     if w.held != 0 || e.status != 1 {
                         0
                     } else {
-                        e.body.vx = if e.body.x > self.player.body.x { 128 } else { -128 } * 60;
+                        e.body.vx = if e.body.x > self.player.body.x {
+                            128
+                        } else {
+                            -128
+                        } * 60;
                         w.thief_pose(crate::thief::SIT);
                         2
                     }

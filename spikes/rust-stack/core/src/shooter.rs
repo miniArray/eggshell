@@ -312,7 +312,12 @@ impl Run {
         let Kind::Walker(w) = &e.kind else {
             return;
         };
-        if w.hidden != 0 || w.held != 0 || w.spat != 0 || e.status != 1 || self.player.captured_by != 0 {
+        if w.hidden != 0
+            || w.held != 0
+            || w.spat != 0
+            || e.status != 1
+            || self.player.captured_by != 0
+        {
             return;
         }
         if strict(world_box(e.body, PELLET_BOX), world_box(p, pb)) {

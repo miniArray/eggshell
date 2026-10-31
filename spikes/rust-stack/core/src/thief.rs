@@ -487,8 +487,7 @@ impl Run {
         {
             // A touch from the side takes the companion straight into a bubble the thief
             // carries (damage.gd separate: an instant bubble).
-            self.player
-                .separate_in_world(0, true, map, self.camera);
+            self.player.separate_in_world(0, true, map, self.camera);
             if self.player.life.companion_mode == BUBBLE {
                 let e = &mut self.entities[index];
                 if let Kind::Walker(w) = &mut e.kind {
