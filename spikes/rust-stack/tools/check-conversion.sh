@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-tongue-stilt}  # names-runtime-codes plus PlayerPicture.tongue (debug text) and e35 nine-patch quads; scale-2400 quads and all snapshots unchanged (part digests, 600 ticks)
+BASE=${2:-feedback-2}  # tongue-stilt plus o23 posts drawn (Post/SpikedPost nine-patch) and closest zoom 2x on 640x480 (zoom 1,2 clamp to 0); scale-2400 zoom-0 quads, presentation and snapshots unchanged
 failed=0
 step() {
   local name=$1

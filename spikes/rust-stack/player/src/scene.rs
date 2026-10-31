@@ -365,6 +365,46 @@ impl Scene {
             }
             objects.insert(code.to_owned(), bound);
         }
+        // Visible pound-post art (o23): bind the colours and forms the level places,
+        // keyed by pack source type, which the core names in the post's asset_key.
+        let visuals = pack.manifest.get("visuals").and_then(Value::as_object);
+        for p in world.maps.iter().flat_map(|m| m.placements.iter()) {
+            if p.code != "o23" {
+                continue;
+            }
+            let option = |key: &str| {
+                p.properties
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| match v {
+                        eggshell_spike_core::PropertyValue::String(s) => {
+                            s.trim().parse().unwrap_or(0)
+                        }
+                        eggshell_spike_core::PropertyValue::Number(n) => *n as i64,
+                        _ => 0,
+                    })
+                    .unwrap_or(0)
+            };
+            let name = format!(
+                "{}Post{}",
+                if option("E3") != 0 { "Spiked" } else { "" },
+                option("E2")
+            );
+            if objects.contains_key(&name) {
+                continue;
+            }
+            let entry = visuals
+                .and_then(|v| {
+                    v.values().find(|e| {
+                        e.get("source_type").and_then(Value::as_str) == Some(name.as_str())
+                            && e.get("slices").is_some()
+                    })
+                })
+                .ok_or_else(|| format!("pack has no {name} nine-patch for o23"))?;
+            let mut bound = HashMap::new();
+            bound.insert(0, catalog.visual(entry, 0, density, false)?);
+            objects.insert(name, bound);
+        }
         let player=catalog.visual(&serde_json::json!({"animations":pack.manifest.get("player").ok_or("player animations missing")?,"default_animation":"Idle0"}),0,density,false)?;
         let hud_entries = pack.manifest.get("hud").ok_or("hud metadata missing")?;
         let companion = hud_entries
@@ -971,7 +1011,13 @@ impl Scene {
                     if inactive { 0 } else { p.tick },
                     state.animation.as_deref().unwrap_or(""),
                     binding_variant,
-                    state.frame,
+                    // A post's frame is its colour (Godot view_state); the colour already
+                    // chose the one-frame Post<colour> art.
+                    if entity.code == "o23" {
+                        None
+                    } else {
+                        state.frame
+                    },
                 );
                 let size = self.sizes[frame.image];
                 let mut transform = self.entity_transform(
@@ -1067,15 +1113,22 @@ impl Scene {
                             &state.palette,
                         ));
                     }
-                } else if let ("e35", Some(cuts), Some(height)) =
+                } else if let ("e35" | "o23", Some(cuts), Some(height)) =
                     (entity.code.as_str(), visual.slices, state.size_pixels[1])
                 {
-                    // The pack's StiltGuyTop is a nine-patch: a fixed 48-pixel head and a
-                    // tiled pole strip down to the walker's height. Stretching the whole
-                    // image (the Godot port's runtime_objects.gd size_y) is not the original.
+                    // Nine-patches grown to the entity's height from its bottom centre.
+                    // e35: StiltGuyTop, a fixed 48-pixel head over a tiled pole strip.
+                    // o23: Post<colour> / SpikedPost<colour>, a cap over a tiled shaft.
+                    // The Godot port stretched e35 and drew o23 with the pack's fully
+                    // transparent PostCollision box, so its posts were invisible walls.
                     let unit = transform.scale[0].abs();
-                    if unit <= 0.0 || !height.is_finite() || height <= 0.0 {
-                        return Err("stilt nine-patch needs a positive height and scale".into());
+                    if unit <= 0.0 || !height.is_finite() || height < 0.0 {
+                        return Err("nine-patch needs a non-negative height and a scale".into());
+                    }
+                    if entity.code == "o23" {
+                        transform.position = pixel(entity.motion.current);
+                        transform.rotation = 0.0;
+                        transform.scale[0] = unit;
                     }
                     let target = [size[0], height / unit];
                     let top = -(target[1] - (size[1] - frame.origin[1]));
@@ -1086,8 +1139,13 @@ impl Scene {
                         origin: [0.0; 2],
                         flip: [false; 2],
                     };
-                    for patch in slices_uniform(size, target, cuts, self.uniform_for(frame.image))?
-                    {
+                    // A post pounded flat (height 0) draws nothing.
+                    let patches = if height > 0.0 {
+                        slices_uniform(size, target, cuts, self.uniform_for(frame.image))?
+                    } else {
+                        Vec::new()
+                    };
+                    for patch in patches {
                         let d = patch.destination;
                         quads.push(rect_quad(
                             frame.image,

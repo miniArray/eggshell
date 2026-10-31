@@ -37,8 +37,10 @@ pub fn plan(
         .ceil() as i32)
         .max(1);
     k = k.max(fit);
-    let closest = (container[0] / (208.0 * d))
-        .min(container[1] / (112.0 * d))
+    // Deviation from the Godot camera (user request on the Pro): the closest zoom still
+    // shows at least 320x224 level pixels (Godot allowed 208x112, 3x on the Pro).
+    let closest = (container[0] / (320.0 * d))
+        .min(container[1] / (224.0 * d))
         .floor() as i32;
     let largest = k.max(closest);
     // Deviation from the Godot camera (user request on the Pro): zooming out may go below
@@ -106,8 +108,8 @@ mod tests {
     fn stress_zoom_clamps_extreme_initial_values() {
         let low = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MIN).unwrap();
         let high = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MAX).unwrap();
-        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (-1, -1, 1));
-        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1, -1, 1));
+        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (-1, -1, 0));
+        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (0, -1, 0));
     }
     #[test]
     fn zoom_out_reaches_one_to_one_and_centres_a_short_level() {

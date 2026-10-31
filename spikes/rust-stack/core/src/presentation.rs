@@ -257,73 +257,112 @@ pub(crate) fn sample_rows(
     let frame = run.frame;
     let mut tick = p.action_tick;
     let mut literal_frame = 0;
-    let name = if p.life.hurt != 0 {
-        "Hurt0"
+    // player_pose.gd select: the trailing digit is 1 while the mouth is full.
+    let full = i64::from(p.food.full());
+    let wet = p.action_wet;
+    let name: String = if p.life.hurt != 0 {
+        format!("Hurt{full}")
     } else if [1, 2].contains(&p.action) {
         if p.action == 2 {
             tick += 24;
         }
-        "GroundPound0"
+        format!("GroundPound{full}")
     } else if p.action == 3 {
-        "GPLand0"
+        format!("GPLand{full}")
     } else if p.action == 4 {
         if p.tongue.phase == 3 {
             literal_frame = 1 + (tick * 24 / 60).min(1);
         }
-        match (p.tongue.axis != 0, p.action_wet != 0) {
-            (true, true) => "TongueUp1",
-            (true, false) => "TongueUp0",
-            (false, true) => "Tongue1",
-            (false, false) => "Tongue0",
+        format!(
+            "{}{wet}",
+            if p.tongue.axis != 0 {
+                "TongueUp"
+            } else {
+                "Tongue"
+            }
+        )
+    } else if p.action == 5 {
+        format!(
+            "{}{wet}",
+            if p.tongue.axis != 0 { "SpitUp" } else { "Spit" }
+        )
+    } else if p.action == 6 {
+        "LayEgg".into()
+    } else if p.action == 7 {
+        let seed = p.food.ammo == 1;
+        let mut name = String::from(if seed { "SpewSeed" } else { "Spew" });
+        if p.tongue.axis != 0 {
+            name.push_str("Up");
         }
+        if seed && p.on_floor == 0 && p.water.swimming == 0 {
+            name.push_str("Jump");
+        } else {
+            name.push_str(&p.water.swimming.to_string());
+        }
+        name
+    } else if p.action == 8 {
+        format!("EggToss{full}")
+    } else if p.action == 11 {
+        "InstantSwallow".into()
     } else if p.action == 9 {
-        "HeadBump0"
+        format!("HeadBump{full}")
+    } else if p.food.aim != 0 {
+        if p.flutter_remaining != 0 {
+            format!("FlutterAim{full}")
+        } else if p.on_floor != 0 && p.body.vx != 0 {
+            format!("WalkAim{}{full}", if p.body.vx > 0 { "R" } else { "L" })
+        } else {
+            format!("GrabEgg{full}")
+        }
     } else if p.duck != 0 {
         tick = p.posture_tick;
-        "Duck0"
+        format!("Duck{full}")
+    } else if p.look != 0 {
+        literal_frame = i64::from(p.posture_tick != 0);
+        format!("LookUp{full}")
     } else if p.water.swimming != 0 {
         if p.water.jump != 0 {
-            "Jump0"
+            format!("Jump{full}")
         } else if p.water.transition != 0 {
             tick = 9 - p.water.transition;
-            if p.water.dive != 0 {
-                "Submerge0"
-            } else {
-                "Unsubmerge0"
-            }
+            format!(
+                "{}{full}",
+                if p.water.dive != 0 {
+                    "Submerge"
+                } else {
+                    "Unsubmerge"
+                }
+            )
         } else if p.water.dive != 0 {
             tick = if p.body.vx != 0 { frame } else { 9 };
             if p.body.vx != 0 {
-                "SwimSubmerged"
+                "SwimSubmerged".into()
             } else {
-                "Submerge0"
+                format!("Submerge{full}")
             }
         } else {
             tick = frame;
-            if p.body.vx != 0 {
-                "Swim0"
-            } else {
-                "Float0"
-            }
+            format!("{}{full}", if p.body.vx != 0 { "Swim" } else { "Float" })
         }
     } else if p.push != 0 {
         tick = frame;
-        "Push0"
+        format!("Push{full}")
     } else if p.turn != 0 {
         tick = 30 - p.turn_ticks;
-        "Turn0"
+        format!("Turn{full}")
     } else if p.action == 10 {
-        "Land0"
+        format!("Land{full}")
     } else if p.gravity_tick != 0 {
-        "Fall0"
+        format!("Fall{full}")
     } else {
         tick = frame;
-        [
-            "Idle0", "Walk0", "Sprint0", "Jump0", "Fall0", "Idle0", "Flutter0",
-        ][p.movement as usize]
+        format!(
+            "{}{full}",
+            ["Idle", "Walk", "Sprint", "Jump", "Fall", "Idle", "Flutter"][p.movement as usize]
+        )
     };
     let selected_pose = PoseSelection {
-        name: name.into(),
+        name,
         tick,
         frame: literal_frame,
     };
@@ -453,9 +492,16 @@ pub(crate) fn sample_rows(
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
                 Kind::Post(post) => (
                     post.bounds(),
+                    // The pack's visible post is the Post<colour> / SpikedPost<colour>
+                    // nine-patch; the o23 object art is a transparent collision box.
                     VisualState {
                         size_pixels: [Some(32.0), Some((post.height / SCALE) as f64)],
                         frame: Some(post.colour),
+                        asset_key: Some(format!(
+                            "{}Post{}",
+                            if post.spiked != 0 { "Spiked" } else { "" },
+                            post.colour
+                        )),
                         ..VisualState::default()
                     },
                 ),
