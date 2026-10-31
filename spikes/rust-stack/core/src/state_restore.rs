@@ -94,6 +94,7 @@ impl Run {
                     Kind::Lift(p) => p.set_field(name, *value),
                     Kind::Melon(p) => p.set_field(name, *value),
                     Kind::Seed(p) => p.set_field(name, *value),
+                    Kind::Launcher(p) => p.set_field(name, *value),
                     Kind::Hard(p) => {
                         name == "form" && {
                             p.form = *value;

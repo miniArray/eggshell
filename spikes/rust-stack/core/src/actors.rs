@@ -41,6 +41,12 @@ pub(crate) enum ActorKind {
     Shooter,
     /// enemy_pellet.gd: the e31 shot.
     Pellet,
+    /// wing_drifter.gd e30.
+    Wing,
+    /// launcher_shot.gd enemy_shot, fired by an e37 launcher.
+    Shot,
+    /// hop_sprout.gd e12.
+    Sprout,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -131,6 +137,20 @@ pub(crate) struct Actor {
     // masked_shooter.gd FIELDS (mode, timer and contact are shared above).
     pub cooldown: i64,
     pub queued: i64,
+    // wing_drifter.gd FIELDS.
+    pub bob: i64,
+    pub bob_sign: i64,
+    pub drifts: i64,
+    pub knock_x: i64,
+    pub knock_y: i64,
+    pub knock_dx: i64,
+    pub knock_dy: i64,
+    // launcher_shot.gd FIELDS.
+    pub form: i64,
+    pub heading: i64,
+    pub pause: i64,
+    pub fresh: i64,
+    pub falling: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -222,6 +242,18 @@ impl Actor {
             landed: 0,
             cooldown: 0,
             queued: 1,
+            bob: 0,
+            bob_sign: -1,
+            drifts: 1,
+            knock_x: 0,
+            knock_y: 0,
+            knock_dx: 0,
+            knock_dy: 0,
+            form: 0,
+            heading: 0,
+            pause: 0,
+            fresh: 1,
+            falling: 0,
         }
     }
     pub fn valid(&self) -> bool {
@@ -250,6 +282,9 @@ impl Actor {
             && (self.kind != ActorKind::Roller || self.roller_valid())
             && (self.kind != ActorKind::Shooter || self.shooter_valid())
             && (self.kind != ActorKind::Pellet || self.pellet_valid())
+            && (self.kind != ActorKind::Wing || self.wing_valid())
+            && (self.kind != ActorKind::Shot || self.shot_valid())
+            && (self.kind != ActorKind::Sprout || self.sprout_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
@@ -330,6 +365,9 @@ impl Actor {
             ActorKind::Roller => crate::roller::BOX,
             ActorKind::Shooter => crate::shooter::BOX,
             ActorKind::Pellet => crate::shooter::PELLET_BOX,
+            ActorKind::Wing => crate::wing::bounds(self.mode, facing),
+            ActorKind::Shot => crate::launcher::SHOT_BOX,
+            ActorKind::Sprout => crate::sprout::BOX,
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
@@ -374,7 +412,7 @@ impl Actor {
         (actual, grounded)
     }
     /// enemy_motion.gd move (horizontal) with an explicit box.
-    fn movement_box(
+    pub(crate) fn movement_box(
         &self,
         body: &mut Body,
         b: [i64; 4],
@@ -458,7 +496,10 @@ impl Actor {
             | ActorKind::Thief
             | ActorKind::Roller
             | ActorKind::Shooter
-            | ActorKind::Pellet => {
+            | ActorKind::Pellet
+            | ActorKind::Wing
+            | ActorKind::Shot
+            | ActorKind::Sprout => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -913,5 +954,17 @@ fields!(
     saw_bubble,
     landed,
     cooldown,
-    queued
+    queued,
+    bob,
+    bob_sign,
+    drifts,
+    knock_x,
+    knock_y,
+    knock_dx,
+    knock_dy,
+    form,
+    heading,
+    pause,
+    fresh,
+    falling
 );

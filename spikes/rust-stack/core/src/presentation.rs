@@ -122,6 +122,24 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
     if [ActorKind::Roller, ActorKind::Pellet].contains(&w.kind) {
         return VisualState::default();
     }
+    if w.kind == ActorKind::Shot {
+        // launcher_shot.gd view_state
+        let (animation, rotation) = w.shot_view();
+        return VisualState {
+            animation: Some(animation),
+            rotation_degrees: Some(rotation),
+            ..VisualState::default()
+        };
+    }
+    if w.kind == ActorKind::Sprout {
+        // hop_sprout.gd view_state
+        let (animation, frame) = w.sprout_view(body);
+        return VisualState {
+            animation: Some(animation.into()),
+            frame,
+            ..VisualState::default()
+        };
+    }
     if w.kind == ActorKind::Stilt {
         return VisualState {
             size_pixels: [None, Some(w.height as f64 / SCALE as f64)],
@@ -175,6 +193,9 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Roller | ActorKind::Pellet => unreachable!("no view_state"),
         // masked_shooter.gd view_state
         ActorKind::Shooter => w.shooter_animation().into(),
+        // wing_drifter.gd view_state
+        ActorKind::Wing => w.wing_animation().into(),
+        ActorKind::Shot | ActorKind::Sprout => unreachable!("returns its own view above"),
         // actor.gd view_state
         ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {
@@ -769,6 +790,16 @@ pub(crate) fn sample_rows(
                         }
                     },
                 ),
+                // shot_launcher.gd view_state
+                Kind::Launcher(l) => (
+                    l.bounds(),
+                    VisualState {
+                        animation: Some(l.form.to_string()),
+                        alpha: if l.frozen != 0 { 0.6 } else { 1.0 },
+                        rotation_degrees: (l.aim != 0).then(|| l.heading as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
                 // arrow_lift.gd view_state
                 Kind::Lift(l) => (
                     l.bounds(),
@@ -923,6 +954,7 @@ pub(crate) fn sample_rows(
                             Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
                             Kind::Lift(_) | Kind::Seed(_) => e.status == 1,
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
+                            Kind::Launcher(_) => e.status == 1,
                             Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {

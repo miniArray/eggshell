@@ -63,6 +63,7 @@ pub(crate) enum Kind {
     Seed(crate::melon::Seed),
     /// enemy_overlap.gd: runtime only, never drawn.
     Overlap(crate::roller::Overlap),
+    Launcher(crate::launcher::Launcher),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -96,6 +97,7 @@ impl Entity {
                 | Kind::Switch(_)
                 | Kind::Lift(_)
                 | Kind::Melon(_)
+                | Kind::Launcher(_)
         ));
         // star_flower.gd create: a flower that left the screen never respawns.
         let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
@@ -184,6 +186,9 @@ impl Entity {
                     ActorKind::Pellet => "enemy_pellet",
                     ActorKind::Fish => "e20",
                     ActorKind::LandFish => "e21",
+                    ActorKind::Wing => "e30",
+                    ActorKind::Shot => "enemy_shot",
+                    ActorKind::Sprout => "e12",
                 },
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
@@ -281,6 +286,12 @@ impl Entity {
                     Kind::Walker(a) if a.kind == ActorKind::Shooter => {
                         Kind::Walker(Actor::shooter(source)?)
                     }
+                    Kind::Walker(a) if a.kind == ActorKind::Wing => {
+                        Kind::Walker(Actor::wing(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Sprout => {
+                        Kind::Walker(Actor::sprout(source)?)
+                    }
                     Kind::Walker(a) => {
                         let mut a =
                             Actor::new(a.kind, source.variant, source.mirror, source.position);
@@ -300,6 +311,9 @@ impl Entity {
                     Kind::Switch(_) => Kind::Switch(crate::switch::Switch::new(source)?),
                     Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
                     Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
+                    Kind::Launcher(_) => {
+                        Kind::Launcher(crate::launcher::Launcher::new(source)?)
+                    }
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -320,6 +334,7 @@ impl Entity {
                 Kind::Switch(p) => p.bounds(),
                 Kind::Lift(p) => p.bounds(),
                 Kind::Melon(p) => p.bounds(),
+                Kind::Launcher(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")

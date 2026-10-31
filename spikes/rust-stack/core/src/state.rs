@@ -174,6 +174,7 @@ impl Run {
                     "o14" => Kind::Switch(crate::switch::Switch::new(p)?),
                     "o21" => Kind::Lift(crate::lift::Lift::new(p)?),
                     "o25" => Kind::Melon(crate::melon::Melon::new(p)?),
+                    "e37" => Kind::Launcher(crate::launcher::Launcher::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -219,6 +220,8 @@ impl Run {
                     "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
                     "e28" => Kind::Walker(crate::actors::Actor::roller(p)?),
                     "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
+                    "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
+                    "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -327,6 +330,7 @@ impl Run {
                     | Kind::Melon(_)
                     | Kind::Seed(_)
                     | Kind::Overlap(_)
+                    | Kind::Launcher(_)
             ) {
                 continue;
             }
@@ -354,6 +358,7 @@ impl Run {
                 Kind::Lift(_) => crate::eating::After::LiftStep,
                 Kind::Melon(_) => crate::eating::After::MelonStep,
                 Kind::Seed(_) => crate::eating::After::SeedStep,
+                Kind::Launcher(_) => crate::eating::After::LauncherStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -412,6 +417,15 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Pellet => {
                     crate::eating::After::PelletStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Wing => {
+                    crate::eating::After::WingStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Shot => {
+                    crate::eating::After::ShotStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Sprout => {
+                    crate::eating::After::SproutStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -432,6 +446,9 @@ impl Run {
                             | ActorKind::Roller
                             | ActorKind::Shooter
                             | ActorKind::Pellet
+                            | ActorKind::Wing
+                            | ActorKind::Shot
+                            | ActorKind::Sprout
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -479,6 +496,13 @@ impl Run {
                 crate::eating::After::ShooterStep => self.shooter_step(next - 1, map)?,
                 crate::eating::After::PelletStep => self.pellet_step(next - 1, map),
                 crate::eating::After::OverlapStep => self.overlap_step(next - 1),
+                crate::eating::After::WingStep => self.wing_step(next - 1, map)?,
+                crate::eating::After::ShotStep => self.shot_step(next - 1, map)?,
+                crate::eating::After::SproutStep => self.sprout_step(next - 1, map)?,
+                crate::eating::After::LauncherStep => {
+                    self.launcher_step(next - 1)?;
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::LiftStep => {
                     self.lift_step(next - 1, map);
@@ -827,6 +851,18 @@ impl Run {
                     self.pellet_contact(index);
                     continue;
                 }
+                if w.kind == crate::actors::ActorKind::Wing {
+                    self.wing_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Shot {
+                    self.shot_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Sprout {
+                    self.sprout_contact(index, action);
+                    continue;
+                }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
                     continue;
                 }
@@ -1154,6 +1190,7 @@ impl Run {
             Kind::StarFlower(p) => p.field(n),
             Kind::Switch(p) => p.field(n),
             Kind::Lift(p) => p.field(n),
+            Kind::Launcher(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1454,6 +1491,11 @@ impl Run {
             if let Kind::Seed(s) = &e.kind {
                 if !s.valid() || e.origin.placed().is_some() {
                     return Err(unsupported("seed fields"));
+                }
+            }
+            if let Kind::Launcher(l) = &e.kind {
+                if !l.valid() {
+                    return Err(unsupported("launcher fields"));
                 }
             }
             if let Kind::Switch(s) = &e.kind {

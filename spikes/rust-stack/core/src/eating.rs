@@ -90,6 +90,14 @@ pub(crate) enum After {
     ShooterStep,
     /// enemy_pellet.gd step.
     PelletStep,
+    /// wing_drifter.gd step, which hits other bodies while spat.
+    WingStep,
+    /// launcher_shot.gd step.
+    ShotStep,
+    /// hop_sprout.gd step, which hits other bodies while spat.
+    SproutStep,
+    /// shot_launcher.gd step, which fires shots into the table.
+    LauncherStep,
     /// timed_switch.gd step, which runs the shared interval.
     SwitchStep,
     /// arrow_lift.gd step, which moves a top-only deck.
@@ -299,17 +307,18 @@ impl Actor {
         if self.spat == 0 {
             return None;
         }
+        // The caller passes bounds(entity) once, before the step can turn the body.
+        let b = self.bounds(*body, *facing);
         self.spit_age += 1;
         body.vx = *facing * self.spit_speed;
         let distance = body.vx;
-        let (actual, grounded) = self.movement(body, *facing, step.map, distance);
+        let (actual, grounded) = self.movement_box(body, b, step.map, distance);
         if actual != distance {
             *facing = -*facing;
             self.spit_speed = 48 * 60;
             self.spit_wall = 1;
             self.spit_age = 0;
         }
-        let b = self.bounds(*body, *facing);
         // enemy_motion.gd gravity_box: e20/e21 skip the water quartering.
         let landed = if [ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) {
             body.gravity_box_dry(step.map, b, grounded)
@@ -379,6 +388,7 @@ impl Run {
                 Kind::Block(bl) => Some(bl.solid(e)),
                 Kind::Hard(h) if h.kind != crate::blocks::HardKind::Rock => Some(h.solid(e)),
                 Kind::Grow(g) => Some(g.solid(e)),
+                Kind::Launcher(l) => Some(l.solid(e)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {
@@ -773,6 +783,7 @@ impl Run {
             Spear,
             Thief,
             Roller,
+            Wing,
             Pickup,
             Inert,
             Egg,
@@ -813,6 +824,8 @@ impl Run {
                 // spear_guard.gd projectile_contact: any non-egg hit drops the spear
                 // and defeats it.
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
+                // wing_drifter.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
                 // sneak_thief.gd projectile_contact: struck; the projectile is used up.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact.
@@ -873,6 +886,13 @@ impl Run {
                 projectile_weapon,
                 projectile_consumed,
             )?,
+            Target::Wing => {
+                let o = &mut self.entities[current];
+                let Kind::Walker(w) = &mut o.kind else {
+                    unreachable!()
+                };
+                w.wing_struck(o.body, projectile)
+            }
             Target::Armored => {
                 // A spit from another e11 removes it; a shell removes it; any other
                 // spit rolls it away from the projectile.

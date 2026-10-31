@@ -327,6 +327,34 @@ impl SolidFrame {
                     turn: None,
                 });
             }
+            // shot_launcher.gd: a solid block while active and not frozen.
+            if let Kind::Launcher(launcher) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = launcher.solid(entity);
+                let b = launcher.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
             // arrow_lift.gd: a moving top-only deck.
             if let Kind::Lift(lift) = &entity.kind {
                 let position = Position {

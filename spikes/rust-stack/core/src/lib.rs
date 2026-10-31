@@ -40,7 +40,10 @@ mod solids;
 #[cfg(test)]
 mod solids_trace_tests;
 mod spans;
+mod launcher;
 mod spear;
+mod sprout;
+mod wing;
 mod state;
 mod state_restore;
 mod stem;

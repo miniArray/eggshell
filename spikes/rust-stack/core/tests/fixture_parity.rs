@@ -42,6 +42,9 @@ fn run(restores: bool) {
         "thieves_target",
         "rollers_target",
         "shooters_target",
+        "wings_target",
+        "launchers_target",
+        "sprouts_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -124,6 +127,22 @@ fn run(restores: bool) {
     let mut melons_eaten = 0;
     let mut seed_ticks = 0;
     let mut seed_struck = BTreeSet::new();
+    let mut wing_modes = [0usize; 4];
+    let mut wing_stomps = 0;
+    let mut wing_strikes = 0;
+    let mut wing_held = 0;
+    let mut shot_forms = [0usize; 3];
+    let mut shot_pauses = 0;
+    let mut shot_falling = 0;
+    let mut shot_held = 0;
+    let mut launcher_charges = 0;
+    let mut bounce_fires = 0;
+    let mut sprout_hops = 0;
+    let mut sprout_held = 0;
+    let mut sprout_removals = 0;
+    let mut sprout_status: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut sprout_facings: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut sprout_turns = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -623,6 +642,53 @@ fn run(restores: bool) {
         }
         melons_eaten = melons_eaten.max(eaten);
         seed_ticks += usize::from(wire.entities.iter().any(|e| e.code == "seed_shot"));
+        // wing_drifter.gd: ticks per mode (fly, stomped, angry, charge), stomp knocks
+        // (straight down) and strike knocks (along an egg or spat body), held ticks.
+        for e in wire.entities.iter().filter(|e| e.code == "e30") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e30"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("mode")) {
+                wing_modes[f("mode") as usize] += 1;
+            }
+            if f("mode") == 1 {
+                wing_stomps += usize::from(f("knock_dx") == 0 && f("knock_dy") > 0);
+                wing_strikes += usize::from(f("knock_dx") != 0);
+            }
+            wing_held += usize::from(f("held") == 1);
+        }
+        // shot_launcher.gd / launcher_shot.gd: charging launchers, live shots per form,
+        // bounce pauses, stomped (falling) and held shots.
+        for e in wire.entities.iter().filter(|e| e.code == "e37") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e37"), n).unwrap();
+            launcher_charges += usize::from(f("charge") > 0);
+            bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
+        }
+        // hop_sprout.gd: rising hops, held ticks, removed sprouts and turns while free.
+        for e in wire.entities.iter().filter(|e| e.code == "e12") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e12"), n).unwrap();
+            sprout_hops += usize::from(f("status") == 1 && f("vy") < 0 && f("spat") == 0);
+            sprout_held += usize::from(f("held") == 1);
+            if f("status") == 3 && sprout_status.get(&e.id) == Some(&1) {
+                sprout_removals += 1;
+            }
+            sprout_status.insert(e.id.clone(), f("status"));
+            if f("status") == 1
+                && f("spat") == 0
+                && f("held") == 0
+                && sprout_facings.get(&e.id).is_some_and(|v| *v != f("facing"))
+            {
+                sprout_turns += 1;
+            }
+            sprout_facings.insert(e.id.clone(), f("facing"));
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "enemy_shot") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("enemy_shot"), n).unwrap();
+            if f("status") == 1 && (0..3).contains(&f("form")) {
+                shot_forms[f("form") as usize] += 1;
+            }
+            shot_pauses += usize::from(f("pause") > 0);
+            shot_falling += usize::from(f("falling") == 1);
+            shot_held += usize::from(f("held") == 1);
+        }
         shell_runner_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_runner"));
         stem_frames += usize::from(packet.entities.iter().any(|e| {
             e.visual.animation.as_deref() == Some("Loop") && e.visual.frame.unwrap_or(0) >= 10
@@ -805,6 +871,28 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "sprouts_target" {
+        println!("SPROUT_COVERAGE hop_ticks={sprout_hops} held_ticks={sprout_held} removals={sprout_removals} turns={sprout_turns}");
+        assert!(sprout_hops > 0 && sprout_held > 0 && sprout_removals >= 2 && sprout_turns > 0);
+    } else if name == "launchers_target" {
+        println!("LAUNCHER_COVERAGE charge_ticks={launcher_charges} shot_form_ticks={shot_forms:?} bounce_fires={bounce_fires} pause_ticks={shot_pauses} falling_ticks={shot_falling} held_ticks={shot_held}");
+        // A bouncing shot overlaps its launcher's solid when fresh and is removed at once.
+        assert!(
+            launcher_charges > 0
+                && shot_forms[0] > 0
+                && shot_forms[2] > 0
+                && bounce_fires > 0
+                && shot_falling > 0
+                && shot_held > 0
+        );
+    } else if name == "wings_target" {
+        println!("WING_COVERAGE mode_ticks={wing_modes:?} stomp_ticks={wing_stomps} strike_ticks={wing_strikes} held_ticks={wing_held}");
+        assert!(
+            wing_modes.iter().all(|n| *n > 0)
+                && wing_stomps > 0
+                && wing_strikes > 0
+                && wing_held > 0
+        );
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
         assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);

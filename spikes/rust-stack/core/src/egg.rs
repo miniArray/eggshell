@@ -613,6 +613,7 @@ impl Run {
             Spear,
             Thief,
             Hanging,
+            Wing,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -661,6 +662,8 @@ impl Run {
                 // masked_shooter.gd projectile_contact for an egg: like the flower, the egg
                 // then falls.
                 Kind::Walker(w) if w.kind == ActorKind::Shooter => Target::Flower,
+                // wing_drifter.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
                 // armored_walker.gd projectile_contact for an egg: it rolls away.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
                 // shell_walker.gd projectile_contact for an egg.
@@ -674,8 +677,11 @@ impl Run {
                 Kind::Walker(w) if [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind) => {
                     Target::Roller
                 }
-                // flat_walker.gd projectile_contact: like the flower, the egg then falls.
-                Kind::Walker(w) if [ActorKind::Flower, ActorKind::Flat].contains(&w.kind) => {
+                // flat_walker.gd and hop_sprout.gd projectile_contact: like the flower,
+                // the egg then falls.
+                Kind::Walker(w)
+                    if [ActorKind::Flower, ActorKind::Flat, ActorKind::Sprout].contains(&w.kind) =>
+                {
                     Target::Flower
                 }
                 Kind::Walker(_) => Target::Actor,
@@ -754,6 +760,13 @@ impl Run {
                     }
                     _ => 0,
                 }
+            }
+            Target::Wing => {
+                let o = &mut self.entities[other];
+                let Kind::Walker(w) = &mut o.kind else {
+                    unreachable!()
+                };
+                w.wing_struck(o.body, projectile)
             }
             Target::Armored => {
                 let direction = if self.entities[egg].body.vx > 0 {
@@ -1107,6 +1120,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Lift(p) => p.bounds(),
         Kind::Melon(p) => p.bounds(),
         Kind::Seed(p) => p.bounds(),
+        Kind::Launcher(p) => p.bounds(),
         _ => [0; 4],
     }
 }

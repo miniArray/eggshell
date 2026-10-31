@@ -102,6 +102,34 @@ def main() -> None:
         inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
         inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
         inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
+    elif name == "sprouts_target":
+        # Lick the first sprout and spit it right; walk on into the next one; wait by
+        # the egg producer and throw eggs right at the approaching one; then hop on
+        # through, over the step the last sprout turns at.
+        lick = [8] + [0] * 40
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = [0] * 30 + lick * 2 + [2] * 150 + [0] * 600 + throw * 4
+        inputs += cycle * 30 + [2] * 300
+    elif name == "launchers_target":
+        # Wait for the first straight shot and lick it, spit it back; hop in place until
+        # the next shot passes under and is landed on; hop right past the aiming
+        # bouncer (its shot overlaps the launcher's own solid and is removed at birth,
+        # as in the original) and under the homing launcher.
+        lick = [8] + [0] * 40
+        inputs = [0] * 90 + lick * 2 + ([4] * 14 + [0] * 30) * 12
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs += cycle * 30 + [2] * 300
+    elif name == "wings_target":
+        # Lick the bobbing flyer and spit it right into the next one (a strike knock;
+        # both turn angry and charge); walk on into the low flyer (from above: a stomp);
+        # wait by the egg producer and throw eggs at the calm flyer; then hop on
+        # through under the drifting flyer.
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        lick = [8] + [0] * 40
+        inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs += cycle * 20 + [2] * 300
     elif name == "fish_target":
         # Stand back while the fish patrol, leap and arc; then hop past the flopper and
         # wade into the pool, swimming (jump presses) and licking.
