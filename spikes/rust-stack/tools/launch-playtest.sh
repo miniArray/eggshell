@@ -36,7 +36,7 @@ if [[ "${3:-}" == shots ]]; then
   printf 'PLAYTEST_BEGIN level=%s shots=true\n' "$level"
   play --replay "$ROOT/private-input/$level.input.json" --ticks 3000 --seconds 80 \
     --frame-digest-every 150 --frame-dump-dir "$shots/route" --no-pipeline
-  latest=$(ls -t /tmp/eggshell-full-rust-owned-*-p*/data/playtest-target/autosave.v10 2>/dev/null | head -1 || true)
+  latest=$(find /tmp -maxdepth 4 -path "/tmp/eggshell-full-rust-owned-*/data/playtest-target/autosave.v10" -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | cut -d" " -f2- || true)
   if [[ -n "$latest" ]]; then
     cp "$latest" "$save/from-autosave.v10"
     printf 'PLAYTEST_SHOTS_FROM_SAVE %s\n' "$latest"
