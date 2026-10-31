@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-baseline-d34a350}
+BASE=${2:-names-2333d44}  # same states as baseline-d34a350; image names instead of bind indices
 failed=0
 step() {
   local name=$1
