@@ -148,7 +148,8 @@ fn lamp_aliases(visual: &mut Visual) {
                 if style < 2 { "lit" } else { "dim" },
                 style % 2
             );
-            if !visual.states.contains_key(&key) && visual.animations.iter().any(|(n, _)| *n == name)
+            if !visual.states.contains_key(&key)
+                && visual.animations.iter().any(|(n, _)| *n == name)
             {
                 visual.states.insert(key, name);
             }

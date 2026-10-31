@@ -46,12 +46,7 @@ impl Pillar {
     }
     /// spike_pillar.gd solid_box.
     pub fn solid(&self, status: i64, body: Body) -> Option<[i64; 4]> {
-        (status == 1).then_some([
-            body.x - HALF,
-            body.y - HALF,
-            body.x + HALF,
-            body.y + HALF,
-        ])
+        (status == 1).then_some([body.x - HALF, body.y - HALF, body.x + HALF, body.y + HALF])
     }
     /// spike_pillar.gd spike_box: the 32 x 2 edge centred on the face the spike points
     /// out of.

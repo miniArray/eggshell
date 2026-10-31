@@ -693,9 +693,7 @@ pub(crate) fn sample_rows(
                 | Kind::Decor
                 | Kind::Checkpoint(_)
                 | Kind::Overlap(_)
-                | Kind::Platform(_) => {
-                    ([0; 4], VisualState::default())
-                }
+                | Kind::Platform(_) => ([0; 4], VisualState::default()),
                 // grow_block.gd view_state
                 Kind::Grow(g) => (
                     g.bounds(),
@@ -1065,9 +1063,7 @@ pub(crate) fn sample_rows(
                             | Kind::EggBlock(_)
                             | Kind::Pillar(_)
                             | Kind::Balloon(_)
-                            | Kind::Dice(_) => {
-                                e.status == 1
-                            }
+                            | Kind::Dice(_) => e.status == 1,
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
                             // ride_hound.gd view_state: always visible, like an actor
                             // waiting at its placement.

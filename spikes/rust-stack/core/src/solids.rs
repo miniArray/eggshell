@@ -343,7 +343,12 @@ impl SolidFrame {
                     old_position: position,
                     old_box: box_,
                     live_box: box_,
-                    region: box_.unwrap_or([entity.body.x, entity.body.y, entity.body.x, entity.body.y]),
+                    region: box_.unwrap_or([
+                        entity.body.x,
+                        entity.body.y,
+                        entity.body.x,
+                        entity.body.y,
+                    ]),
                     handle: None,
                     turn: None,
                 });

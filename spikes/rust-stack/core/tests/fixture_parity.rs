@@ -744,12 +744,20 @@ fn run(restores: bool) {
             lamp_views.insert(e.visual.animation.clone());
         }
         // dice_block.gd: each block's on/solid_ready states, lifted switches and tints.
-        for e in wire.entities.iter().filter(|e| e.code == "o33" || e.code == "o34") {
+        for e in wire
+            .entities
+            .iter()
+            .filter(|e| e.code == "o33" || e.code == "o34")
+        {
             let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
             dice_states.insert((e.id.clone(), f("on"), f("solid_ready")));
             dice_lifted += usize::from(f("busy") > 0);
         }
-        for e in packet.entities.iter().filter(|e| e.code == "o33" || e.code == "o34") {
+        for e in packet
+            .entities
+            .iter()
+            .filter(|e| e.code == "o33" || e.code == "o34")
+        {
             dice_tints.insert(e.visual.tint);
         }
         // item_block.gd o24: charges used, and enemies removed while the player stands
@@ -1203,7 +1211,9 @@ fn run(restores: bool) {
         assert!(ledge_heights.contains(&321) && ledge_heights.contains(&281));
         assert!(lamp_views.len() == 2);
     } else if name == "dice_target" {
-        println!("DICE_COVERAGE states={dice_states:?} lifted_ticks={dice_lifted} tints={dice_tints:?}");
+        println!(
+            "DICE_COVERAGE states={dice_states:?} lifted_ticks={dice_lifted} tints={dice_tints:?}"
+        );
         for id in ["blockA", "blockB", "blockC", "switch1", "switch2"] {
             assert!(
                 dice_states.iter().any(|s| s.0 == id && s.1 == 0)
@@ -1217,7 +1227,10 @@ fn run(restores: bool) {
         assert!(clear_charges.contains(&(0, 3)) && cleared.len() >= 4);
         // The unseated rider is created during the clear and cleared in the same step, so
         // the serial moved but no runtime row ever reaches a snapshot.
-        assert!(last_serial >= 2 && max_runtime == 0, "the unseated rider is cleared too");
+        assert!(
+            last_serial >= 2 && max_runtime == 0,
+            "the unseated rider is cleared too"
+        );
     } else if name == "balloons_target" {
         println!("BALLOON_COVERAGE ride_ticks={balloon_ride_ticks} landings={balloon_landings} bob_ticks={balloon_bob_ticks}");
         assert!(balloon_ride_ticks > 0 && balloon_landings >= 2 && balloon_bob_ticks > 0);
@@ -1229,8 +1242,13 @@ fn run(restores: bool) {
         // Each spent block spawned its egg (the serial counts them; the player takes each
         // egg in the tick it appears, so none is left in a snapshot).
         println!("EGG_BLOCK_COVERAGE rising_ticks={egg_block_rising} spent={egg_blocks_spent} bumped={egg_block_bumped:?} most_eggs={most_eggs} serial={last_serial}");
-        assert!(egg_block_rising > 0 && egg_blocks_spent >= 4 && most_eggs >= 4 && last_serial >= 5);
-        assert!(!egg_block_bumped.is_empty(), "a bump must strike what stands on a block");
+        assert!(
+            egg_block_rising > 0 && egg_blocks_spent >= 4 && most_eggs >= 4 && last_serial >= 5
+        );
+        assert!(
+            !egg_block_bumped.is_empty(),
+            "a bump must strike what stands on a block"
+        );
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
         assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);

@@ -750,11 +750,8 @@ impl Run {
                     } else if matches!(self.entities[i].kind, Kind::Dice(_)) {
                         self.dice_bump(i, player, &map)?;
                     } else {
-                        let centre = screen_centre(
-                            self.camera,
-                            map.width_pixels * S,
-                            map.height_pixels * S,
-                        );
+                        let centre =
+                            screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
                         self.block_bump(i, centre)?;
                     }
                     self.refresh_block_solid(i, &map);

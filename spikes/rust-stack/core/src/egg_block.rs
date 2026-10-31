@@ -1,11 +1,7 @@
 //! egg_block.gd (o27): a full-solid block that, struck from below, stops being solid,
 //! rises 64 px and drops back, then turns into a floating coloured egg (o7).
 use crate::{
-    body::Body,
-    egg::Egg,
-    entity::Kind,
-    state::Run,
-    Error, Placement, PropertyValue, SCALE as S,
+    body::Body, egg::Egg, entity::Kind, state::Run, Error, Placement, PropertyValue, SCALE as S,
 };
 
 const HALF_TICKS: i64 = 15;

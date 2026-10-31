@@ -83,7 +83,8 @@ impl Platform {
         true
     }
     pub fn valid(&self) -> bool {
-        (0..crate::decor::frame_count("d6")).contains(&self.variant) && [0, 1].contains(&self.mirror)
+        (0..crate::decor::frame_count("d6")).contains(&self.variant)
+            && [0, 1].contains(&self.mirror)
     }
 }
 
@@ -101,8 +102,14 @@ mod tests {
             variant: 0,
             mirror: 1,
         };
-        assert_eq!(plain.solid(1, at), Some([-27 * S, -18 * S, 23 * S, -16 * S]));
-        assert_eq!(mirrored.solid(1, at), Some([-23 * S, -18 * S, 27 * S, -16 * S]));
+        assert_eq!(
+            plain.solid(1, at),
+            Some([-27 * S, -18 * S, 23 * S, -16 * S])
+        );
+        assert_eq!(
+            mirrored.solid(1, at),
+            Some([-23 * S, -18 * S, 27 * S, -16 * S])
+        );
         assert_eq!(plain.solid(3, at), None);
     }
 }
