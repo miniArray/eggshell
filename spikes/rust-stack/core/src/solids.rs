@@ -532,6 +532,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 2,
                     spiked: 0,
