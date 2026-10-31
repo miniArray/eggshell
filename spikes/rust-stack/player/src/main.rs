@@ -45,6 +45,12 @@ fn run() -> Result<(), String> {
     if std::env::args().nth(1).as_deref() == Some("--blend-probe") {
         return eggshell_spike_player::blend_probe::run(std::env::args().skip(2));
     }
+    if std::env::args().nth(1).as_deref() == Some("--levels") {
+        return eggshell_spike_player::picker::run(std::env::args().skip(2));
+    }
+    if std::env::args().nth(1).as_deref() == Some("--level-index") {
+        return eggshell_spike_player::level_index::run(std::env::args().skip(2));
+    }
     if std::env::args().nth(1).as_deref() == Some("--play") {
         return eggshell_spike_player::game::run(std::env::args().skip(2));
     }

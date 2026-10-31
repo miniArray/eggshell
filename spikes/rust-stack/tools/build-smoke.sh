@@ -21,6 +21,12 @@ cd spikes/rust-stack/player
 nix build --no-link --print-out-paths -L .#arm64 > "$HOME/eggshell-remote/player-built-path"
 PACKAGE=$(cat "$HOME/eggshell-remote/player-built-path")
 cd "$ROOT"
+if [[ "${PLAYER_PLAYTEST_BUNDLE:-}" == 1 ]]; then
+  # Level list index of this source (host build of the same tree): which corpus levels play.
+  LEVEL_INDEX="$HOME/eggshell-remote/level-index-$EXPECTED_SOURCE_SHA.json"
+  bash spikes/rust-stack/tools/level-index.sh "$LEVEL_INDEX"
+  export LEVEL_INDEX
+fi
 # Assets enter only this private post-build bundle, never a Nix source or derivation.
 python3 spikes/rust-stack/tools/bundle-player.py "$PACKAGE" "$OUT"
 nix --version > "$OUT/nix-version.txt"

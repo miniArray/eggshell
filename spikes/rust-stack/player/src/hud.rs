@@ -121,10 +121,48 @@ impl Font {
     fn emit(
         &self,
         text: &str,
+        at: [f64; 2],
+        scale: f64,
+        size: [f64; 2],
+        dense: bool,
+        out: &mut Vec<Quad>,
+    ) -> Result<(), String> {
+        self.emit_colored(text, at, scale, size, dense, [1.0; 4], out)
+    }
+    /// The font image, for uploading it on its own (level list).
+    pub(crate) fn image(&self) -> usize {
+        self.image
+    }
+    /// Cell size in pixels.
+    pub(crate) fn cell(&self) -> [f64; 2] {
+        self.cell
+    }
+    /// Text with every character the bitmap font lacks (other than space) shown as '?'.
+    pub(crate) fn displayable(&self, text: &str) -> String {
+        text.chars()
+            .map(|c| {
+                if c == ' ' || self.characters.contains(&c) {
+                    c
+                } else {
+                    '?'
+                }
+            })
+            .collect()
+    }
+    /// Width of displayable text.
+    pub(crate) fn width(&self, text: &str, dense: bool) -> Result<f64, String> {
+        self.measure(text, dense)
+    }
+    /// Glyph quads multiplied by `color` (the bitmap glyphs are white).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn emit_colored(
+        &self,
+        text: &str,
         mut at: [f64; 2],
         scale: f64,
         size: [f64; 2],
         dense: bool,
+        color: [f32; 4],
         out: &mut Vec<Quad>,
     ) -> Result<(), String> {
         let plan = overlay_plan(scale);
@@ -143,7 +181,7 @@ impl Font {
                     [at[0], at[1], self.cell[0], self.cell[1]],
                     Transform::default(),
                     &plan,
-                    [1.0; 4],
+                    color,
                     &[],
                 ));
             }

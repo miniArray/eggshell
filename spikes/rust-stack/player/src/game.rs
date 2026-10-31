@@ -163,15 +163,10 @@ fn prepare_frame(
     completed: u64,
 ) -> Result<Prepared, String> {
     let (map_index, focus) = session.presentation_view();
-    let map = session
-        .world()
-        .maps
-        .get(map_index.checked_sub(1).ok_or("zero saved map index")?)
-        .ok_or("saved map absent")?;
     let region = scene.presentation_region(map_index, focus, container, zoom)?;
     Ok(Prepared {
         p: session.presentation_region(region),
-        background: map.background_color,
+        background: scene.clear_color(map_index)?,
         container,
         zoom,
         completed,
@@ -717,12 +712,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
             let timer = Timer::new();
             let (map_index, focus) = session.presentation_view();
-            let map = session
-                .world()
-                .maps
-                .get(map_index.checked_sub(1).ok_or("zero saved map index")?)
-                .ok_or("saved map absent")?;
-            let container = gpu.begin(map.background_color)?;
+            let container = gpu.begin(scene.clear_color(map_index)?)?;
             let region = scene.presentation_region(
                 map_index,
                 focus,

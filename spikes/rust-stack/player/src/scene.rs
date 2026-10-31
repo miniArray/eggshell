@@ -4,6 +4,7 @@ use crate::{
     binding::{Anchor, Catalog, Visual},
     geometry::{Transform, rect_quad, slices, slices_uniform, sprite_quad, tile_uv, visible},
     gles::{Gles, Quad},
+    gradient::{CustomGradient, StripGradient},
     hud::{Hud, Layout},
     pack::{Image, Pack},
     screen::{self, Plan},
@@ -24,7 +25,10 @@ struct PreparedMap {
     map: Map,
     background: Background,
     terrain: Vec<Terrain>,
-    gradient_stand_ins: Vec<i64>,
+    /// pack_background.gd strips of the map `gradient` field (level space, layer -30).
+    strip_gradient: StripGradient,
+    /// map_effects.gd bands of `customGradientGenerator` (screen space, layer -39).
+    custom_gradient: Option<CustomGradient>,
     terrain_chunks: HashMap<(i64, i64), Vec<usize>>,
     max_tile_size: f64,
 }
@@ -84,6 +88,30 @@ fn fullscreen_quad(image: usize, container: [f64; 2], color: [f32; 4]) -> Quad {
         color,
         palette: Vec::new(),
     }
+}
+/// map_effects.gd plan tint: `STRENGTH_r,g,b`, strength clamped to 0..50 percent and
+/// ignored below 1; channels like World.rgb (leading number, clamped, truncated).
+fn map_tint(tint: &str) -> Option<[f32; 4]> {
+    let parts: Vec<&str> = tint.split('_').collect();
+    let strength = crate::gradient::leading_float(parts[0]).clamp(0.0, 50.0);
+    if !strength.is_finite() || strength < 1.0 {
+        return None;
+    }
+    let channels: Vec<&str> = parts
+        .get(1)
+        .copied()
+        .unwrap_or("0,0,0")
+        .split(',')
+        .collect();
+    let mut rgba = [0.0, 0.0, 0.0, (strength / 100.0) as f32];
+    for (i, value) in rgba.iter_mut().take(3).enumerate() {
+        let v = channels
+            .get(i)
+            .map_or(0.0, |c| crate::gradient::leading_float(c));
+        let v = if v.is_finite() { v } else { 0.0 };
+        *value = (v.clamp(0.0, 255.0).trunc() / 255.0) as f32;
+    }
+    Some(rgba)
 }
 /// Conservative envelope only: special geometry stays on the exact existing path.
 fn art_can_intersect(
@@ -333,24 +361,15 @@ impl Scene {
         let density = pack.density;
         let mut maps = Vec::new();
         for map in &world.maps {
-            let mut gradient_stand_ins = Vec::new();
-            // The selected target has no generated gradient or terrain strip entries.
-            // Do not silently discard required visual work if input scope changes.
-            for (key, value) in &map.source_properties {
-                if ["gradient", "customGradientGenerator"].contains(&key.as_str())
-                    && matches!(value,PropertyValue::String(v) if !v.is_empty())
-                {
-                    if !benchmark_real_screen {
-                        return Err(format!("required {key} renderer not admitted"));
-                    }
-                    let layer = if key == "gradient" { -30 } else { -39 };
-                    gradient_stand_ins.push(layer);
-                    visual_omissions.push(format!(
-                        "map={} field={key} stand_in=gradient layer={layer} opaque_fullscreen=true",
-                        map.name
-                    ));
-                }
-            }
+            let text = |key: &str| {
+                map.source_properties.iter().find_map(|(k, v)| match v {
+                    PropertyValue::String(s) if k == key => Some(s.as_str()),
+                    _ => None,
+                })
+            };
+            let strip_gradient =
+                StripGradient::prepare(&pack.manifest, text("gradient").unwrap_or(""), density);
+            let custom_gradient = text("customGradientGenerator").and_then(CustomGradient::prepare);
             if benchmark_real_screen
                 && map.source_properties.iter().any(|(k, v)| {
                     k == "diceBlockColours" && matches!(v,PropertyValue::String(s) if !s.is_empty())
@@ -450,7 +469,8 @@ impl Scene {
                 map: map.clone(),
                 background,
                 terrain,
-                gradient_stand_ins,
+                strip_gradient,
+                custom_gradient,
                 terrain_chunks,
                 max_tile_size,
             });
@@ -758,7 +778,7 @@ impl Scene {
                 })
                 .fold(0.0_f64, f64::max);
     }
-    #[cfg(feature = "benchmark-work-counters")]
+    /// Image sizes without a GPU, for host checks (level index, diagnosis).
     pub fn prepare_headless_assets(&mut self, pack: &Pack) -> Result<(), String> {
         if !self.sizes.is_empty() {
             return Err("headless assets already prepared".into());
@@ -862,6 +882,18 @@ impl Scene {
             ((plan.center[1] + plan.visible[1] / 2.0 + pad) * SCALE as f64).ceil() as i64,
         ])
     }
+    /// The clear colour of a one-based map index: map_effects.gd _base, which takes the
+    /// last custom gradient colour when the map has one, else the map `bgcolor`.
+    pub fn clear_color(&self, map_index: usize) -> Result<[u8; 3], String> {
+        let prepared = self
+            .maps
+            .get(map_index.checked_sub(1).ok_or("zero saved map index")?)
+            .ok_or("picture map absent")?;
+        Ok(prepared
+            .custom_gradient
+            .as_ref()
+            .map_or(prepared.map.background_color, |g| g.fill))
+    }
     pub fn picture(
         &self,
         p: &Presentation,
@@ -923,21 +955,20 @@ impl Scene {
         let mut entity_bounds_in_view = 0_u64; // measurement only, inside existing entity traversal
         let mut commands: Vec<(i64, u64, Quad)> = Vec::new();
         let mut order = 0u64;
-        for layer in &prepared.gradient_stand_ins {
-            commands.push((
-                *layer,
-                order,
-                fullscreen_quad(
-                    self.solid,
-                    container,
-                    [
-                        map.background_color[0] as f32 / 255.0,
-                        map.background_color[1] as f32 / 255.0,
-                        map.background_color[2] as f32 / 255.0,
-                        1.0,
-                    ],
-                ),
-            ));
+        let mut gradients = Vec::new();
+        if let Some(custom) = &prepared.custom_gradient {
+            custom.emit(&plan, container, self.solid, &mut gradients);
+        }
+        for q in gradients.drain(..) {
+            commands.push((-39, order, q));
+            order += 1;
+        }
+        // pack_background.gd draws its strips before its image layers, on one z.
+        prepared
+            .strip_gradient
+            .emit(&plan, container, self.solid, &mut gradients);
+        for q in gradients {
+            commands.push((-30, order, q));
             order += 1;
         }
         let mut backgrounds = Vec::new();
@@ -1762,19 +1793,8 @@ impl Scene {
             plan.offset[1] + (player[1] - 28.0) * plan.scale,
         ];
         let mut tint = Vec::new();
-        if map.tint != "0_255,255,255" && !map.tint.starts_with("0_") {
-            if !self.benchmark_real_screen {
-                return Err("nonzero tint overlay not admitted".into());
-            }
-            let (strength, colour) = map.tint.split_once('_').unwrap_or((&map.tint, "0,0,0"));
-            let alpha = strength.parse::<f32>().unwrap_or(0.0).clamp(0.0, 50.0) / 100.0;
-            let mut rgba = [0.0, 0.0, 0.0, alpha];
-            for (i, c) in colour.split(',').take(3).enumerate() {
-                rgba[i] = c.parse::<f32>().unwrap_or(0.0).clamp(0.0, 255.0) / 255.0;
-            }
-            if alpha >= 0.01 {
-                tint.push(fullscreen_quad(self.solid, container, rgba));
-            }
+        if let Some(rgba) = map_tint(&map.tint) {
+            tint.push(fullscreen_quad(self.solid, container, rgba));
         }
         Ok(Picture {
             #[cfg(feature = "benchmark-work-counters")]
@@ -1926,6 +1946,15 @@ mod tests {
             assert_eq!(t.point([0.0, 0.0]), [100.0, 50.0]);
             assert_eq!(t.point([64.0, 54.0]), [148.0, 74.0]);
         }
+    }
+    #[test]
+    fn map_tint_follows_map_effects_plan() {
+        assert_eq!(map_tint("0_255,255,255"), None);
+        assert_eq!(map_tint("0.5_255,0,0"), None);
+        assert_eq!(map_tint("junk"), None);
+        assert_eq!(map_tint("30_255,0,0"), Some([1.0, 0.0, 0.0, 0.3]));
+        assert_eq!(map_tint("80_510,-4,51.9"), Some([1.0, 0.0, 0.2, 0.5]));
+        assert_eq!(map_tint("10"), Some([0.0, 0.0, 0.0, 0.1]));
     }
     #[test]
     fn fullscreen_stand_in_covers_actual_container_and_keeps_opaque_alpha() {

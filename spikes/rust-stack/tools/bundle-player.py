@@ -219,6 +219,10 @@ if presentation_bundle:
         )
         assert mixed_report["mode"] == "asset-binding-only-no-gameplay-no-GPU"
         files.extend(row["file"] for row in mixed_report["files"])
+    level_index_path = os.environ.get("LEVEL_INDEX")
+    if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1" and level_index_path:
+        # The level list plays any admitted level, so the whole verified pack ships.
+        files.extend(inventory)
     files = sorted(set(files))
 for name in files:
     assert not Path(name).is_absolute() and ".." not in Path(name).parts
@@ -322,6 +326,48 @@ if presentation_bundle:
         shutil.copyfile("spikes/rust-stack/tools/launch-playtest.sh", launcher)
         launcher.chmod(0o755)
         subprocess.run(["shellcheck", "--shell=bash", str(launcher)], check=True)
+        if level_index_path:
+            # Level list (launch-levels): the index of this build and its playable levels.
+            corpus = Path.home() / ".local/share/eggshell-run/corpus/levels"
+            index = json.loads(Path(level_index_path).read_text())
+            assert index["levels"], "empty level index"
+            levels_dir = inputs / "levels"
+            levels_dir.mkdir(mode=0o700, parents=True)
+            shots = {"gradient": [], "customGradientGenerator": [], "tint": []}
+            level_digests = {}
+            for entry in index["levels"]:
+                if not entry["ok"]:
+                    continue
+                name = entry["file"]
+                assert "/" not in name and not name.startswith(".")
+                target = levels_dir / name
+                shutil.copyfile(corpus / name, target)
+                target.chmod(0o600)
+                level_digests[name] = digest(target)
+                level = json.loads(target.read_text())
+                for field, picked in shots.items():
+                    if len(picked) < 2 and any(
+                        str(m.get(field, "")) not in ("", "0_255,255,255")
+                        for m in level.get("maps", {}).values()
+                    ):
+                        picked.append(name)
+            sources["level-index.json"] = Path(level_index_path)
+            (inputs / "level-shots.txt").write_text(
+                "".join(f"{n}\n" for n in sorted({n for v in shots.values() for n in v}))
+            )
+            provenance["level_list"] = {
+                "levels": len(index["levels"]),
+                "playable": sum(e["ok"] for e in index["levels"]),
+                "shots": shots,
+                "files": level_digests,
+            }
+            sources["idle-600.input.json"] = (
+                Path.home() / "eggshell-remote/artifacts/full-rust-ab/scaling/idle-600.input.json"
+            )
+            launcher = bundle / "launch-levels"
+            shutil.copyfile("spikes/rust-stack/tools/launch-levels.sh", launcher)
+            launcher.chmod(0o755)
+            subprocess.run(["shellcheck", "--shell=bash", str(launcher)], check=True)
     provenance["private_inputs"] = {}
     for name, source_path in sources.items():
         target = inputs / name
