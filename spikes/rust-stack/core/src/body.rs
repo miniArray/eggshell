@@ -629,7 +629,9 @@ impl Body {
         } else {
             bridge
         };
-        let obstacle = if pounding && distance > 0 {
+        // collision.gd vertical: overlaps again after the bump callbacks (a bumped egg
+        // block or pounded post may have changed its solid).
+        let obstacle = if (pounding && distance > 0) || (player && distance < 0) {
             self.overlaps(map, b, 0, 0)
         } else {
             obstacle

@@ -640,6 +640,42 @@ impl Run {
             );
             return;
         }
+        if let Kind::Balloon(b) = &e.kind {
+            let r = b.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                b.solid(e),
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
+            );
+            return;
+        }
+        if let Kind::EggBlock(b) = &e.kind {
+            let r = b.bounds();
+            map.refresh_solid(
+                e.origin.token(),
+                crate::Position {
+                    x: e.body.x,
+                    y: e.body.y,
+                },
+                b.solid(e.status, e.body),
+                [
+                    e.body.x + r[0],
+                    e.body.y + r[1],
+                    e.body.x + r[2],
+                    e.body.y + r[3],
+                ],
+            );
+            return;
+        }
         if let Kind::Hard(h) = &e.kind {
             let r = h.bounds();
             map.refresh_solid(
@@ -981,8 +1017,13 @@ impl Run {
     /// BUMP hits on whatever overlaps `block` raised 8 px (item_block.gd bump_above and
     /// grow_block.gd knock_above), in table order.
     fn knock_above_box(&mut self, index: usize, block: [i64; 4]) -> Result<(), Error> {
-        let e = &self.entities[index];
         let probe = [block[0], block[1] - 8 * S, block[2], block[3] - 8 * S];
+        self.bump_box(index, probe)
+    }
+    /// BUMP hits on whatever overlaps `probe` (near_query.gd strike with Hits.BUMP), in
+    /// table order, skipping the striking entity at `index`.
+    pub(crate) fn bump_box(&mut self, index: usize, probe: [i64; 4]) -> Result<(), Error> {
+        let e = &self.entities[index];
         let token = e.origin.token();
         let from_x = e.body.x;
         let mut other = 0;
@@ -994,6 +1035,7 @@ impl Run {
                 Kind::Walker(w) => w.held == 1,
                 Kind::Pickup(p) => p.held == 1,
                 Kind::Star(p) => p.held == 1,
+                Kind::Melon(m) => m.held == 1,
                 _ => false,
             };
             let hidden = matches!(&o.kind, Kind::Walker(w) if w.hidden == 1);
@@ -1015,7 +1057,8 @@ impl Run {
                 o.body.x + ob[2],
                 o.body.y + ob[3],
             ];
-            if !overlap(ob, probe) {
+            // registry.gd overlaps_box: open edges.
+            if !(ob[2] > probe[0] && ob[0] < probe[2] && ob[3] > probe[1] && ob[1] < probe[3]) {
                 continue;
             }
             self.bump_hit(current, from_x)?;
@@ -1044,6 +1087,23 @@ impl Run {
             // leap_bulk.gd hit: defeat (with its loot).
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bulk => {
                 self.bulk_defeat(index)?
+            }
+            // armored_walker.gd hit: BUMP is not one of its kinds.
+            Kind::Walker(w) if w.kind == crate::actors::ActorKind::Armored => {}
+            // shell_walker.gd hit: any other kind removes it (with on_remove).
+            Kind::Walker(w)
+                if [
+                    crate::actors::ActorKind::Shell,
+                    crate::actors::ActorKind::Runner,
+                ]
+                .contains(&w.kind) =>
+            {
+                self.shell_remove(index);
+            }
+            // spear_guard.gd hit: the spear drops and it is removed.
+            Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spear => {
+                w.has_spear = 0;
+                w.remove(&mut e.status, &mut e.can_respawn);
             }
             Kind::Walker(w) => {
                 if w.held == 0 && e.status == 1 {

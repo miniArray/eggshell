@@ -120,6 +120,10 @@ pub(crate) enum After {
     SeedStep,
     /// ride_hound.gd step, which carries riders, destroys enemies and kicks eggs.
     HoundStep,
+    /// egg_block.gd step, which moves the block and can spawn an egg.
+    EggBlockStep,
+    /// rise_balloon.gd step, which moves a top-only deck.
+    BalloonStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.
@@ -403,6 +407,8 @@ impl Run {
                 Kind::Hard(h) if h.kind != crate::blocks::HardKind::Rock => Some(h.solid(e)),
                 Kind::Grow(g) => Some(g.solid(e)),
                 Kind::Launcher(l) => Some(l.solid(e)),
+                Kind::EggBlock(b) => Some(b.solid(e.status, e.body)),
+                Kind::Pillar(p) => Some(p.solid(e.status, e.body)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {

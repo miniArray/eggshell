@@ -931,6 +931,31 @@ pub(crate) fn sample_rows(
                         ..VisualState::default()
                     },
                 ),
+                // rise_balloon.gd view_state
+                Kind::Balloon(b) => (
+                    b.bounds(),
+                    VisualState {
+                        frame: Some(b.form),
+                        ..VisualState::default()
+                    },
+                ),
+                // spike_pillar.gd view_state
+                Kind::Pillar(p) => (
+                    p.bounds(),
+                    VisualState {
+                        rotation_degrees: Some((p.turn * 90) as f64),
+                        ..VisualState::default()
+                    },
+                ),
+                // egg_block.gd view_state
+                Kind::EggBlock(b) => (
+                    b.bounds(),
+                    VisualState {
+                        animation: Some(b.animation().into()),
+                        frame: Some(i64::from(b.busy > 0)),
+                        ..VisualState::default()
+                    },
+                ),
                 // seed_melon.gd view_state
                 Kind::Melon(m) => (
                     m.bounds(),
@@ -1009,7 +1034,13 @@ pub(crate) fn sample_rows(
                                 e.status == 1
                             }
                             Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
-                            Kind::Lift(_) | Kind::Seed(_) => e.status == 1,
+                            Kind::Lift(_)
+                            | Kind::Seed(_)
+                            | Kind::EggBlock(_)
+                            | Kind::Pillar(_)
+                            | Kind::Balloon(_) => {
+                                e.status == 1
+                            }
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
                             // ride_hound.gd view_state: always visible, like an actor
                             // waiting at its placement.

@@ -51,6 +51,9 @@ fn run(restores: bool) {
         "gusts_target",
         "spores_target",
         "hangs_target",
+        "eggblocks_target",
+        "pillars_target",
+        "balloons_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -178,6 +181,13 @@ fn run(restores: bool) {
     let mut sprout_status: std::collections::BTreeMap<String, i64> = Default::default();
     let mut sprout_facings: std::collections::BTreeMap<String, i64> = Default::default();
     let mut sprout_turns = 0;
+    let mut egg_block_rising = 0;
+    let mut egg_blocks_spent = 0;
+    let mut egg_block_bumped = BTreeSet::new();
+    let mut pillar_side_ticks = 0;
+    let mut balloon_ride_ticks = 0;
+    let mut balloon_landings = 0;
+    let mut balloon_bob_ticks = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -703,6 +713,39 @@ fn run(restores: bool) {
             }
         }
         melons_eaten = melons_eaten.max(eaten);
+        // rise_balloon.gd: rides (stepped), landing pauses and bobbing balloons.
+        for e in wire.entities.iter().filter(|e| e.code == "o26") {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            balloon_ride_ticks += usize::from(f("stepped") == 1);
+            balloon_landings += usize::from(f("land_delay") == 6);
+            balloon_bob_ticks += usize::from(f("status") == 1 && f("age") > 0);
+        }
+        // spike_pillar.gd: alive on the floor against a pillar's safe left face.
+        for e in packet.entities.iter().filter(|e| e.code == "o13") {
+            let right = packet.player.motion.current.x + 12 * 3600;
+            pillar_side_ticks += usize::from(
+                packet.player.life_phase == 0
+                    && packet.player.on_floor
+                    && (right - (e.motion.current.x - 16 * 3600)).abs() <= 3600
+                    && (packet.player.motion.current.y - e.motion.current.y).abs() <= 32 * 3600,
+            );
+        }
+        // egg_block.gd: rising blocks, spent blocks and what their bumps struck.
+        let mut spent = 0;
+        for e in wire.entities.iter().filter(|e| e.code == "o27") {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            egg_block_rising += usize::from(f("busy") > 0);
+            spent += usize::from(f("status") == 3);
+        }
+        egg_blocks_spent = egg_blocks_spent.max(spent);
+        for id in ["rider", "coin"] {
+            if let Some(e) = wire.entities.iter().find(|e| e.id == id) {
+                let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+                if f("status") == 3 || f("vy") != 0 {
+                    egg_block_bumped.insert(id);
+                }
+            }
+        }
         seed_ticks += usize::from(wire.entities.iter().any(|e| e.code == "seed_shot"));
         // ride_hound.gd: ridden, playing, swimming and jumping ticks.
         for e in wire.entities.iter().filter(|e| e.code == "o16") {
@@ -1095,6 +1138,19 @@ fn run(restores: bool) {
                 && wing_strikes > 0
                 && wing_held > 0
         );
+    } else if name == "balloons_target" {
+        println!("BALLOON_COVERAGE ride_ticks={balloon_ride_ticks} landings={balloon_landings} bob_ticks={balloon_bob_ticks}");
+        assert!(balloon_ride_ticks > 0 && balloon_landings >= 2 && balloon_bob_ticks > 0);
+    } else if name == "pillars_target" {
+        let deaths = session.presentation().hud.deaths;
+        println!("PILLAR_COVERAGE side_ticks={pillar_side_ticks} deaths={deaths}");
+        assert!(pillar_side_ticks > 0 && deaths >= 2);
+    } else if name == "eggblocks_target" {
+        // Each spent block spawned its egg (the serial counts them; the player takes each
+        // egg in the tick it appears, so none is left in a snapshot).
+        println!("EGG_BLOCK_COVERAGE rising_ticks={egg_block_rising} spent={egg_blocks_spent} bumped={egg_block_bumped:?} most_eggs={most_eggs} serial={last_serial}");
+        assert!(egg_block_rising > 0 && egg_blocks_spent >= 4 && most_eggs >= 4 && last_serial >= 5);
+        assert!(!egg_block_bumped.is_empty(), "a bump must strike what stands on a block");
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
         assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);

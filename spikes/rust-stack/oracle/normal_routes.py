@@ -178,6 +178,23 @@ def main() -> None:
         inputs = lick * 2 + [2] * 200 + [0] * 600 + throw * 4
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs += cycle * 20 + [2] * 300
+    elif name == "balloons_target":
+        # Hop onto the slow riser and ride it, jump across to the drifting bobbing one and
+        # ride it, then drop off and walk on under the sinking one.
+        inputs = [2] * 20 + [6] * 14 + [0] * 200
+        inputs += [6] * 14 + [2] * 8 + [0] * 300 + [2] * 400
+    elif name == "pillars_target":
+        # Walk into the up-pointing pillar's safe side, then hop onto its spike; after
+        # the respawn stop under the hanging down-pointing pillar and jump into it.
+        inputs = [2] * 60 + [0] * 10 + [4] * 12 + [2] * 14 + [0] * 400
+        inputs += [2] * 30 + [0] * 30 + [4] * 14 + [0] * 400
+    elif name == "eggblocks_target":
+        # Under each egg block jump straight up into it (the bump), wait while it rises,
+        # falls and becomes a floating egg, jump again to take the egg, then walk on.
+        # Each walk ends at rest, so every jump goes straight up.
+        jump = [4] * 14 + [0] * 50
+        inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
+        inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
     elif name == "fish_target":
         # Stand back while the fish patrol, leap and arc; then hop past the flopper and
         # wade into the pool, swimming (jump presses) and licking.

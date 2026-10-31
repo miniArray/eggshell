@@ -26,8 +26,11 @@ const CELL: i64 = 128 * S;
 #[derive(Clone, Debug)]
 struct Row {
     token: i64,
-    /// item_block.gd rows: bumped from below, never pounded.
+    /// item_block.gd and egg_block.gd rows: bumped from below, never pounded.
     block: bool,
+    /// egg_block.gd rows: the bump clears the solid at once (busy), so the rest of the
+    /// head's move no longer meets it.
+    vanish: bool,
     /// pound_post.gd rows: the only rows a ground pound reaches here.
     post: bool,
     /// collision.gd SOLID: 1 full, 2 top-only.
@@ -184,6 +187,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 1,
                     spiked: 0,
@@ -210,6 +214,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 2,
                     spiked: 0,
@@ -236,6 +241,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 1,
                     spiked: 0,
@@ -271,6 +277,7 @@ impl SolidFrame {
                     self.rows.push(Row {
                         token: entity.origin.token(),
                         block: false,
+                        vanish: false,
                         post: false,
                         mode: 2,
                         spiked: 0,
@@ -299,6 +306,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 2,
                     spiked: 0,
@@ -316,6 +324,93 @@ impl SolidFrame {
                     turn: None,
                 });
             }
+            // rise_balloon.gd: a moving top-only deck.
+            if let Kind::Balloon(balloon) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = balloon.solid(entity);
+                let b = balloon.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    vanish: false,
+                    post: false,
+                    mode: 2,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            // spike_pillar.gd: a static full solid.
+            if let Kind::Pillar(pillar) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = pillar.solid(entity.status, entity.body);
+                let b = pillar.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    vanish: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            // egg_block.gd: a full solid, bumped from below like an item block.
+            if let Kind::EggBlock(block) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = block.solid(entity.status, entity.body);
+                let b = block.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: true,
+                    vanish: true,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
             if let Kind::Block(block) = &entity.kind {
                 let position = Position {
                     x: entity.body.x,
@@ -326,6 +421,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: true,
+                    vanish: false,
                     post: false,
                     mode: 1,
                     spiked: 0,
@@ -410,6 +506,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 2,
                     spiked: 0,
@@ -438,6 +535,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 2,
                     spiked: 0,
@@ -466,6 +564,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: false,
                     mode: 1,
                     spiked: 0,
@@ -492,6 +591,7 @@ impl SolidFrame {
                 self.rows.push(Row {
                     token: entity.origin.token(),
                     block: false,
+                    vanish: false,
                     post: true,
                     mode: 1,
                     spiked: post.spiked,
@@ -594,9 +694,12 @@ impl SolidFrame {
             .map(|s| self.handles[(-2 - s.handle) as usize])
             .collect();
         for index in targets {
-            let row = &self.rows[index];
+            let row = &mut self.rows[index];
             if row.block && self.head_bumped.insert(row.token) {
                 self.head_bumps.push(row.token);
+                if row.vanish {
+                    row.live_box = None;
+                }
             }
         }
     }

@@ -65,6 +65,9 @@ pub(crate) enum Kind {
     Overlap(crate::roller::Overlap),
     Hound(crate::hound::Hound),
     Launcher(crate::launcher::Launcher),
+    EggBlock(crate::egg_block::EggBlock),
+    Pillar(crate::pillar::Pillar),
+    Balloon(crate::balloon::Balloon),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -100,6 +103,7 @@ impl Entity {
                 | Kind::Hound(_)
                 | Kind::Melon(_)
                 | Kind::Launcher(_)
+                | Kind::Balloon(_)
         ));
         // star_flower.gd create: a flower that left the screen never respawns.
         let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
@@ -362,6 +366,7 @@ impl Entity {
                     Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
                     Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
                     Kind::Launcher(_) => Kind::Launcher(crate::launcher::Launcher::new(source)?),
+                    Kind::Balloon(_) => Kind::Balloon(crate::balloon::Balloon::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -384,6 +389,7 @@ impl Entity {
                 Kind::Lift(p) => p.bounds(),
                 Kind::Melon(p) => p.bounds(),
                 Kind::Launcher(p) => p.bounds(),
+                Kind::Balloon(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")
