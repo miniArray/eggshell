@@ -116,9 +116,49 @@ impl<'a> Probe<'a> {
             .unwrap_or_default()
     }
     pub fn carry_player(&self, body: &mut Body, bounds: [i64; 4], on_floor: i64) {
-        if let Some(frame) = self.solids {
-            frame.borrow_mut().carry(body, bounds, on_floor);
+        let Some(frame) = self.solids else {
+            return;
+        };
+        let carried = frame.borrow_mut().carry(body, bounds, on_floor);
+        if let Some((dx, dy)) = carried {
+            if (dx != 0 || dy != 0) && body.overlaps(self, bounds, 0, 0) {
+                self.carry_retreat(body, bounds, dx, dy);
+            }
         }
+    }
+    /// collision.gd _carry_retreat: back along the carry until the body is free, then
+    /// refine to a sixteenth of a pixel; a body never freed returns to where it was.
+    fn carry_retreat(&self, body: &mut Body, bounds: [i64; 4], dx: i64, dy: i64) {
+        let length = crate::math::root(dx * dx + dy * dy);
+        let (start_x, start_y) = (body.x, body.y);
+        let mut last_blocked = 0;
+        let mut distance = 0;
+        while distance < length * 5 / 2 {
+            body.x = start_x - dx * distance / length;
+            body.y = start_y - dy * distance / length;
+            if !body.overlaps(self, bounds, 0, 0) {
+                let mut safe = distance;
+                let mut blocked = false;
+                let mut position = distance;
+                for divisor in [2, 4, 8, 16] {
+                    position += S / divisor * if blocked { 1 } else { -1 };
+                    position = position.max(last_blocked);
+                    body.x = start_x - dx * position / length;
+                    body.y = start_y - dy * position / length;
+                    blocked = body.overlaps(self, bounds, 0, 0);
+                    if !blocked {
+                        safe = position;
+                    }
+                }
+                body.x = start_x - dx * safe / length;
+                body.y = start_y - dy * safe / length;
+                return;
+            }
+            last_blocked = distance;
+            distance += S;
+        }
+        body.x = start_x;
+        body.y = start_y;
     }
     pub fn with_polygon<'b>(&'b self, points: &'b [crate::Position]) -> Probe<'b> {
         Probe {

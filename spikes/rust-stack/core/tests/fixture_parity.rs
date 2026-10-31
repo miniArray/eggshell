@@ -42,6 +42,7 @@ fn run(restores: bool) {
         "thieves_target",
         "rollers_target",
         "shooters_target",
+        "hounds_target",
         "wings_target",
         "launchers_target",
         "sprouts_target",
@@ -127,6 +128,10 @@ fn run(restores: bool) {
     let mut fish_exhausted = 0;
     let mut fish_dry = 0;
     let mut melon_held_ticks = 0;
+    let mut hound_ridden = 0;
+    let mut hound_playing = 0;
+    let mut hound_swimming = 0;
+    let mut hound_jumps = 0;
     let mut melons_eaten = 0;
     let mut seed_ticks = 0;
     let mut seed_struck = BTreeSet::new();
@@ -258,6 +263,17 @@ fn run(restores: bool) {
         let wire = WireSnapshot::decode(&actual, session.world().identity, &schema).unwrap();
         if actual != expected {
             let a = WireSnapshot::decode(expected, session.world().identity, &schema).unwrap();
+            // Every differing player field, for diagnosis (the panic names the first).
+            for (index, field) in schema.player().iter().enumerate() {
+                if a.player.get(index) != wire.player.get(index) {
+                    println!(
+                        "MISMATCH_PLAYER field={} expected={:?} actual={:?}",
+                        field.0,
+                        a.player.get(index),
+                        wire.player.get(index)
+                    );
+                }
+            }
             panic!(
                 "{name} mismatch tick={tick}: {:?}",
                 a.first_difference(&wire, &schema)
@@ -660,6 +676,14 @@ fn run(restores: bool) {
         }
         melons_eaten = melons_eaten.max(eaten);
         seed_ticks += usize::from(wire.entities.iter().any(|e| e.code == "seed_shot"));
+        // ride_hound.gd: ridden, playing, swimming and jumping ticks.
+        for e in wire.entities.iter().filter(|e| e.code == "o16") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("o16"), n).unwrap();
+            hound_ridden += usize::from(f("ridden") == 1);
+            hound_playing += usize::from(f("playing") == 1);
+            hound_swimming += usize::from(f("swimming") == 1);
+            hound_jumps += usize::from(f("mode") == 5);
+        }
         // wing_drifter.gd: ticks per mode (fly, stomped, angry, charge), stomp knocks
         // (straight down) and strike knocks (along an egg or spat body), held ticks.
         for e in wire.entities.iter().filter(|e| e.code == "e30") {
@@ -925,6 +949,9 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "hounds_target" {
+        println!("HOUND_COVERAGE ridden={hound_ridden} playing={hound_playing} swimming={hound_swimming} jumping={hound_jumps}");
+        assert!(hound_ridden > 0 && hound_playing > 0 && hound_swimming > 0 && hound_jumps > 0);
     } else if name == "melons_target" {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);

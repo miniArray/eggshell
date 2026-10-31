@@ -126,6 +126,15 @@ def main() -> None:
         lick = [8] + [0] * 30
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs = lick * 2 + [0] * 900 + cycle * 30 + [2] * 300
+    elif name == "hounds_target":
+        # The runner kicks the resting egg (playing) and follows; hop back onto its back,
+        # face right and ride it through the pool (swimming), up the terrain step
+        # (jumping) and on to the far wall; then hop off, throw eggs and walk back.
+        inputs = (
+            [2] * 60 + [0] * 60 + [1] * 10 + [5] * 10 + [0] * 40 + [2] * 6 + [0] * 600
+        )
+        inputs += [6] * 14 + [0] * 300 + ([64] + [0] * 14 + [64] + [0] * 60) * 3
+        inputs += [1] * 100 + [0] * 300
     elif name == "sprouts_target":
         # Lick the first sprout and spit it right; walk on into the next one; wait by
         # the egg producer and throw eggs right at the approaching one; then hop on

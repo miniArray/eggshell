@@ -104,9 +104,20 @@ impl Run {
             run.player
                 .advance(&map, 0, 0, 0, 0, &mut run.rng, &mut run.sound);
             run.apply_post_updates(map.post_updates())?;
+            // step.gd begin_level: the registry's request consumers, Life.after_step and
+            // the compaction run in both level-start steps too.
+            run.block_level_requests();
+            for action in run
+                .consumers
+                .run(&run.player.food.requests, run.player.food.eggs)?
+            {
+                run.apply_consumer(action)?;
+            }
+            run.consume_item_requests();
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
             }
+            run.compact();
             run.player.finish(&map, 0);
             #[cfg(test)]
             {
@@ -174,6 +185,13 @@ impl Run {
                     "o14" => Kind::Switch(crate::switch::Switch::new(p)?),
                     "o21" => Kind::Lift(crate::lift::Lift::new(p)?),
                     "o25" => Kind::Melon(crate::melon::Melon::new(p)?),
+                    "o16" => {
+                        let ordinal = world.maps[0].placements[..=source]
+                            .iter()
+                            .filter(|p| p.code == "o16")
+                            .count() as i64;
+                        Kind::Hound(crate::hound::Hound::new(p, ordinal)?)
+                    }
                     "e37" => Kind::Launcher(crate::launcher::Launcher::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
@@ -331,6 +349,7 @@ impl Run {
                     | Kind::StarFlower(_)
                     | Kind::Switch(_)
                     | Kind::Lift(_)
+                    | Kind::Hound(_)
                     | Kind::Melon(_)
                     | Kind::Seed(_)
                     | Kind::Overlap(_)
@@ -348,6 +367,9 @@ impl Run {
                 self.player.impact,
                 &mut self.rng,
             )? {
+                // dispatch_loops.gd: every member with a solid row refiles it after its
+                // dispatch, so a solid that just woke (or left) changes the rows now.
+                self.refresh_block_solid(next - 1, map);
                 continue;
             }
             stats.entity_steps += 1;
@@ -365,6 +387,7 @@ impl Run {
                 Kind::Lift(_) => crate::eating::After::LiftStep,
                 Kind::Melon(_) => crate::eating::After::MelonStep,
                 Kind::Seed(_) => crate::eating::After::SeedStep,
+                Kind::Hound(_) => crate::eating::After::HoundStep,
                 Kind::Launcher(_) => crate::eating::After::LauncherStep,
                 Kind::Grow(g) => {
                     g.step();
@@ -531,6 +554,10 @@ impl Run {
                     self.refresh_block_solid(next - 1, map);
                 }
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
+                crate::eating::After::HoundStep => {
+                    self.hound_step(next - 1, map)?;
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::LiftStep => {
                     self.lift_step(next - 1, map);
                     self.refresh_block_solid(next - 1, map);
@@ -1224,6 +1251,7 @@ impl Run {
             Kind::Star(p) => p.field(n),
             Kind::Walker(p) => p.field(n),
             Kind::Checkpoint(p) => p.field(n),
+            Kind::Hound(p) => p.field(n),
             Kind::Post(p) => p.field(n),
             Kind::Block(p) => p.field(n),
             Kind::Span(p) => p.field(n),
@@ -1517,6 +1545,11 @@ impl Run {
             if let Kind::Gate(g) = &e.kind {
                 if !g.valid() {
                     return Err(unsupported("gate fields"));
+                }
+            }
+            if let Kind::Hound(h) = &e.kind {
+                if !h.valid(e.body) {
+                    return Err(unsupported("runner fields"));
                 }
             }
             if let Kind::Lift(l) = &e.kind {

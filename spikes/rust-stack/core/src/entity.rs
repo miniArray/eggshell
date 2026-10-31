@@ -63,6 +63,7 @@ pub(crate) enum Kind {
     Seed(crate::melon::Seed),
     /// enemy_overlap.gd: runtime only, never drawn.
     Overlap(crate::roller::Overlap),
+    Hound(crate::hound::Hound),
     Launcher(crate::launcher::Launcher),
 }
 #[derive(Clone, Debug)]
@@ -96,6 +97,7 @@ impl Entity {
                 | Kind::StarFlower(_)
                 | Kind::Switch(_)
                 | Kind::Lift(_)
+                | Kind::Hound(_)
                 | Kind::Melon(_)
                 | Kind::Launcher(_)
         ));
@@ -135,7 +137,12 @@ impl Entity {
             collected: 0,
             checkpoint_collected: 0,
             spawn_mode: lifecycle,
-            can_despawn: lifecycle,
+            // ride_hound.gd create: E1 "1" keeps a runner from despawning.
+            can_despawn: if matches!(&kind, Kind::Hound(h) if h.stays) {
+                0
+            } else {
+                lifecycle
+            },
             can_respawn: i64::from(respawns),
             layer,
             activation_x: 416 * S,
@@ -330,6 +337,13 @@ impl Entity {
                     }
                     Kind::Star(_) => Kind::Star(Star::default()),
                     Kind::Egg(_) => Kind::Egg(crate::egg::Egg::new(source.variant)),
+                    Kind::Hound(_) => {
+                        let ordinal = map.placements[..=index]
+                            .iter()
+                            .filter(|p| p.code == "o16")
+                            .count() as i64;
+                        Kind::Hound(crate::hound::Hound::new(source, ordinal)?)
+                    }
                     Kind::Pickup(p) => {
                         Kind::Pickup(Pickup::new(p.kind, source.variant, source.position.y))
                     }
@@ -350,6 +364,7 @@ impl Entity {
         }
         if self.status == 0 {
             let b = match &self.kind {
+                Kind::Hound(p) => p.activation_bounds(self.facing),
                 Kind::Walker(a) => a.activation_bounds(self.facing),
                 Kind::Star(p) => p.bounds(),
                 Kind::Post(p) => p.bounds(),

@@ -625,6 +625,7 @@ impl Run {
             Hard,
             Gate,
             StarFlower,
+            Hound,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -726,6 +727,8 @@ impl Run {
                 Kind::Hard(_) if o.status == 1 => Target::Hard,
                 // one_way_gate.gd projectile_contact.
                 Kind::Gate(_) => Target::Gate,
+                // ride_hound.gd projectile_contact.
+                Kind::Hound(_) => Target::Hound,
                 // star_flower.gd projectile_contact.
                 Kind::StarFlower(_) => Target::StarFlower,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
@@ -899,6 +902,31 @@ impl Run {
                     h.egg_hit(&mut o.status);
                 }
                 3
+            }
+            Target::Hound => {
+                // A thrown egg drops beside a free runner, which plays with it.
+                let o = &self.entities[other];
+                let Kind::Hound(h) = &o.kind else {
+                    unreachable!()
+                };
+                if h.ridden != 0 || h.playing != 0 || h.swimming != 0 {
+                    return Ok(0);
+                }
+                let at = o.body.x;
+                let token = self.entities[egg].origin.token();
+                let e = &mut self.entities[egg];
+                e.body.vy = -384 * 60;
+                e.body.vx = if e.body.x < at { -384 } else { 384 } * 60;
+                if let Kind::Egg(g) = &mut e.kind {
+                    g.mode = STATIONARY;
+                    g.floating = 0;
+                    g.camera = 0;
+                }
+                if let Kind::Hound(h) = &mut self.entities[other].kind {
+                    h.playing = 1;
+                    h.egg_token = token;
+                }
+                2
             }
             Target::StarFlower => {
                 // An open cup drops the egg beside it as a resting egg.
@@ -1141,6 +1169,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Lift(p) => p.bounds(),
         Kind::Melon(p) => p.bounds(),
         Kind::Seed(p) => p.bounds(),
+        Kind::Hound(p) => p.bounds(e.facing),
         Kind::Launcher(p) => p.bounds(),
         _ => [0; 4],
     }

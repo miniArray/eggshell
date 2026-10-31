@@ -32,14 +32,16 @@ print(json.dumps((cycle * (n // len(cycle) + 1))[:n]))
 cargo test --locked --release --manifest-path spikes/rust-stack/core/Cargo.toml --test fixture_parity --no-run >"$out/build.log" 2>&1
 pass=0
 fail=0
-artifact=0
 count=0
 while IFS= read -r id; do
   count=$((count + 1))
   [[ $count -le $limit ]] || break
   dir="$out/$id"
   rm -rf "$dir"
-  if ! "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 \
+  # A Godot that printed ORACLE_DONE can hang on exit, so bound the run and judge the
+  # export by its log, not its exit status.
+  timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
+  if ! grep -q 'ORACLE_DONE' "$out/$id.export.log" \
     || grep -qE 'SCRIPT ERROR|ERROR:|ORACLE_FAILED' "$out/$id.export.log"; then
     printf 'PACK_PARITY id=%s result=export-failed\n' "$id"
     fail=$((fail + 1))
@@ -52,17 +54,8 @@ while IFS= read -r id; do
     pass=$((pass + 1))
   else
     reason=$(grep -m1 -oE 'mismatch tick=[0-9]+: .{0,220}|next [a-z/ ]+gate at [^\n]{0,200}' "$out/$id.test.log" || echo unknown)
-    tick=$(printf '%s' "$reason" | sed -n 's/^mismatch tick=\([0-9]*\).*/\1/p')
-    # export.gd self-restores every 60 ticks; the next step's Life.before_step then
-    # finds the old state's collision context still "current" and the bubble meets
-    # entity solids. Rust (and an unrestored Godot run) do not: an oracle artifact.
-    if [[ -n "$tick" && $(( (tick - 2) % 60 )) == 0 ]] && printf '%s' "$reason" | grep -qE '"(recovery_x|recovery_y|companion_vx|companion_vy)"'; then
-      printf 'PACK_PARITY id=%s result=oracle-restore-artifact %s\n' "$id" "$reason"
-      artifact=$((artifact + 1))
-      continue
-    fi
     printf 'PACK_PARITY id=%s result=fail %s\n' "$id" "$reason"
     fail=$((fail + 1))
   fi
 done < <(grep '"status":"ok"' "$sweep" | sed 's/.*"id":"\([^"]*\)".*/\1/')
-printf 'PACK_PARITY_DONE tag=%s ticks=%s pass=%s fail=%s oracle_restore_artifacts=%s\n' "$tag" "$ticks" "$pass" "$fail" "$artifact"
+printf 'PACK_PARITY_DONE tag=%s ticks=%s pass=%s fail=%s\n' "$tag" "$ticks" "$pass" "$fail"

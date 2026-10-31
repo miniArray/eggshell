@@ -114,6 +114,8 @@ pub(crate) enum After {
     MelonStep,
     /// seed_shot.gd step, which strikes other bodies.
     SeedStep,
+    /// ride_hound.gd step, which carries riders, destroys enemies and kicks eggs.
+    HoundStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.

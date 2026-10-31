@@ -1,10 +1,10 @@
 #!/usr/bin/env nix-shell
 #! nix-shell ../core/toolchain.nix -i bash
-# aka only, diagnosis. Usage: corpus_dump.sh CORPUS_ID FIRST LAST
+# aka only, diagnosis. Usage: [PACK_TREE=AKA_TREE] corpus_dump.sh CORPUS_ID FIRST LAST
 # Per-tick Rust player fields for a pack parity level (run pack_parity.sh first).
 set -euo pipefail
 [[ $(hostname) == aka ]]
-out="$HOME/eggshell-remote/artifacts/full-rust-ab/core/pack-parity"
+out="$HOME/eggshell-remote/artifacts/full-rust-ab/core/pack-parity-${PACK_TREE:-$(basename "$PWD")}"
 export CORE_FIXTURE=corpus
 export CORE_FIXTURE_DIR="$out/$1"
 export CORE_FIXTURE_INPUT="$out/route-900.input.json"

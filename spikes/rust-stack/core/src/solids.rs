@@ -97,6 +97,17 @@ pub(crate) struct SolidFrame {
     wide: Vec<usize>,
 }
 const MAX_INDEXED_CELLS: i64 = 256;
+/// The union of a region and an optional box.
+fn cover(region: [i64; 4], b: Option<[i64; 4]>) -> [i64; 4] {
+    b.map_or(region, |b| {
+        [
+            region[0].min(b[0]),
+            region[1].min(b[1]),
+            region[2].max(b[2]),
+            region[3].max(b[3]),
+        ]
+    })
+}
 fn overlap(a: [i64; 4], b: [i64; 4]) -> bool {
     a[2] >= b[0] && a[0] <= b[2] && a[3] >= b[1] && a[1] <= b[3]
 }
@@ -360,6 +371,34 @@ impl SolidFrame {
                     turn: None,
                 });
             }
+            // ride_hound.gd: a running top-only back.
+            if let Kind::Hound(hound) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = crate::hound::Hound::solid_at(entity.body, entity.status);
+                let b = hound.bounds(entity.facing);
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    post: false,
+                    mode: 2,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
             // arrow_lift.gd: a moving top-only deck.
             if let Kind::Lift(lift) = &entity.kind {
                 let position = Position {
@@ -472,6 +511,9 @@ impl SolidFrame {
             }
         }
         for index in 0..self.rows.len() {
+            // collision.gd _place: the region covers the type's bounds and its boxes.
+            let row = &mut self.rows[index];
+            row.region = cover(row.region, row.live_box);
             self.index_region(index, self.rows[index].region);
         }
     }
@@ -575,7 +617,8 @@ impl SolidFrame {
         let row = &mut self.rows[index];
         row.position = position;
         row.live_box = live_box;
-        row.region = region;
+        row.region = cover(region, live_box);
+        let region = row.region;
         self.index_region(index, region);
     }
     pub fn pound(
@@ -644,13 +687,20 @@ impl SolidFrame {
             .into_iter()
             .any(|s| !(s.mode == 2 && probe[1] > s.box_[1]) && s.touches(probe))
     }
-    pub fn carry(&mut self, body: &mut Body, bounds: [i64; 4], on_floor: i64) {
+    /// collision.gd _carry: the offset the supporting solid moved this step, applied to
+    /// the body. Returns it so the caller can retreat out of terrain.
+    pub fn carry(
+        &mut self,
+        body: &mut Body,
+        bounds: [i64; 4],
+        on_floor: i64,
+    ) -> Option<(i64, i64)> {
         if self.carried {
-            return;
+            return None;
         }
         self.carried = true;
         if body.vy != 0 || on_floor == 0 {
-            return;
+            return None;
         }
         let probe = [
             body.x + bounds[0],
@@ -664,10 +714,15 @@ impl SolidFrame {
                 .is_some_and(|b| body.y + bounds[3] <= b[1] && overlap(probe, b))
                 && row.live_box.is_some()
             {
-                body.x += row.position.x - row.old_position.x;
-                body.y += row.position.y - row.old_position.y;
-                return;
+                let (dx, dy) = (
+                    row.position.x - row.old_position.x,
+                    row.position.y - row.old_position.y,
+                );
+                body.x += dx;
+                body.y += dy;
+                return Some((dx, dy));
             }
         }
+        None
     }
 }

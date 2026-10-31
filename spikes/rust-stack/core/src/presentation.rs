@@ -838,6 +838,15 @@ pub(crate) fn sample_rows(
                         ..VisualState::default()
                     },
                 ),
+                // ride_hound.gd view_state
+                Kind::Hound(h) => (
+                    h.bounds(e.facing),
+                    VisualState {
+                        animation: Some(h.animation().into()),
+                        flip_h: Some(e.facing > 0),
+                        ..VisualState::default()
+                    },
+                ),
                 // arrow_lift.gd view_state
                 Kind::Lift(l) => (
                     l.bounds(),
@@ -992,6 +1001,13 @@ pub(crate) fn sample_rows(
                             Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
                             Kind::Lift(_) | Kind::Seed(_) => e.status == 1,
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
+                            // ride_hound.gd view_state: always visible, like an actor
+                            // waiting at its placement.
+                            Kind::Hound(_) => {
+                                e.status == 1
+                                    || e.origin.placed().is_some()
+                                        && (e.status == 0 || e.status == 2 && e.can_respawn != 0)
+                            }
                             Kind::Launcher(_) => e.status == 1,
                             Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,

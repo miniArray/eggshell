@@ -20,6 +20,7 @@ mod flower;
 mod food;
 mod gate;
 mod gust;
+mod hound;
 mod items;
 mod juggler;
 mod launcher;

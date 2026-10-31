@@ -174,6 +174,11 @@ func run() -> void:
 				fail("Reference self restore failed at tick %d" % (index + 1))
 				return
 			state = restored.state
+			# The step's collision context still points at the replaced state, whose frame no
+			# longer advances, so collision._context would call it current on the next step
+			# (Life.before_step would see the old step's entity solids). A run without this
+			# self-restore never has that; drop it so the trace stays the uninterrupted run.
+			world.erase("solids_step")
 		var now := Time.get_ticks_msec()
 		if now - previous >= 1000:
 			trace.flush()

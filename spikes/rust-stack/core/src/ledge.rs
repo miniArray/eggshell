@@ -71,7 +71,7 @@ impl Run {
                     && match &o.kind {
                         Kind::Walker(w) => w.held == 0 && w.hidden == 0,
                         Kind::Star(p) => p.held == 0,
-                        Kind::Egg(_) | Kind::Stem(_) => true,
+                        Kind::Egg(_) | Kind::Stem(_) | Kind::Hound(_) => true,
                         _ => false,
                     }
             })

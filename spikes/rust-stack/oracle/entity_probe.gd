@@ -47,8 +47,17 @@ func _initialize() -> void:
 			rows.append(" ".join(parts))
 		print(
 			(
-				"ENTITIES tick=%d player=%d,%d | %s"
-				% [tick + 1, state.x / 3600, state.y / 3600, " ; ".join(rows)]
+				"ENTITIES tick=%d player=%d,%d pvy=%d floor=%d px=%d py=%d | %s"
+				% [
+					tick + 1,
+					state.x / 3600,
+					state.y / 3600,
+					state.vy,
+					state.on_floor,
+					state.x,
+					state.y,
+					" ; ".join(rows)
+				]
 			)
 		)
 	quit(0)
