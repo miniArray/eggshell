@@ -7,4 +7,4 @@ GODOT=${GODOT:-godot}
 [[ $("$GODOT" --version) == 4.7.2.* ]]
 gdformat spikes/rust-stack/oracle/posts_route_probe.gd
 gdlint spikes/rust-stack/oracle/posts_route_probe.gd
-"$GODOT" --headless --path . --script spikes/rust-stack/oracle/posts_route_probe.gd
+timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/posts_route_probe.gd

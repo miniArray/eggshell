@@ -9,4 +9,4 @@ GODOT=${GODOT:-godot}
 base=${1%%.*}
 level="$PWD/spikes/rust-stack/core/tests/fixtures/$base.level.json"
 input="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$1.input.json"
-"$GODOT" --headless --path . --script spikes/rust-stack/oracle/entity_probe.gd -- "$level" "$input" "$2" "$3" "$4" "$5" 2>&1 | grep -E '^ENTITIES|ERROR'
+timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/entity_probe.gd -- "$level" "$input" "$2" "$3" "$4" "$5" 2>&1 | grep -E '^ENTITIES|ERROR'

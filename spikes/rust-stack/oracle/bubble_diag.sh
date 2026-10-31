@@ -6,4 +6,4 @@ nix-shell spikes/rust-stack/oracle/corpus_dump.sh "$id" "$first" "$last" | grep 
 echo
 level="$HOME/.local/share/eggshell-run/corpus/levels/$id.json"
 input="$HOME/eggshell-remote/artifacts/full-rust-ab/core/pack-parity-${PACK_TREE:-$(basename "$PWD")}/route-900.input.json"
-godot --headless --path . --script spikes/rust-stack/oracle/bubble_probe.gd -- "$level" "$input" "$first" "$last" 2>&1 | grep -E '^BUBBLE' | cut -c1-200
+timeout 900 godot --headless --path . --script spikes/rust-stack/oracle/bubble_probe.gd -- "$level" "$input" "$first" "$last" 2>&1 | grep -E '^BUBBLE' | cut -c1-200

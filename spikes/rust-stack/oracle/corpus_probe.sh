@@ -8,5 +8,5 @@ GODOT=${GODOT:-godot}
 [[ $("$GODOT" --version) == 4.7.2.* ]]
 level="$HOME/.local/share/eggshell-run/corpus/levels/$1.json"
 input="$HOME/eggshell-remote/artifacts/full-rust-ab/core/pack-parity-${PACK_TREE:-$(basename "$PWD")}/route-900.input.json"
-"$GODOT" --headless --path . --script spikes/rust-stack/oracle/entity_probe.gd -- "$level" "$input" "$2" "$3" "$4" "$5" 2>&1 \
+timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/entity_probe.gd -- "$level" "$input" "$2" "$3" "$4" "$5" 2>&1 \
   | grep -E '^ENTITIES|ERROR' | if [[ -n "${6:-}" ]]; then grep -oE "tick=[0-9]+ player=[0-9,-]+|[^ ;|]+:$6@[^;]*"; else cat; fi
