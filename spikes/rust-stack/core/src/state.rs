@@ -244,6 +244,8 @@ impl Run {
                     "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
                     "e28" => Kind::Walker(crate::actors::Actor::roller(p)?),
                     "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
+                    "e18" => Kind::Walker(crate::actors::Actor::petal_stem(p)?),
+                    "e41" => Kind::Walker(crate::actors::Actor::spitter(p)?),
                     "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
                     "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
                     "e40" => Kind::Walker(crate::actors::Actor::hopper(p)?),
@@ -466,6 +468,18 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Pellet => {
                     crate::eating::After::PelletStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::PetalStem => {
+                    crate::eating::After::PetalStemStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Petal => {
+                    crate::eating::After::PetalStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spitter => {
+                    crate::eating::After::SpitterStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spike => {
+                    crate::eating::After::SpikeStep
+                }
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Wing => {
                     crate::eating::After::WingStep
                 }
@@ -513,6 +527,10 @@ impl Run {
                             | ActorKind::Roller
                             | ActorKind::Shooter
                             | ActorKind::Pellet
+                            | ActorKind::PetalStem
+                            | ActorKind::Petal
+                            | ActorKind::Spitter
+                            | ActorKind::Spike
                             | ActorKind::Wing
                             | ActorKind::Shot
                             | ActorKind::Sprout
@@ -568,6 +586,10 @@ impl Run {
                 crate::eating::After::RollerStep => self.roller_step(next - 1, map)?,
                 crate::eating::After::ShooterStep => self.shooter_step(next - 1, map)?,
                 crate::eating::After::PelletStep => self.pellet_step(next - 1, map),
+                crate::eating::After::PetalStemStep => self.petal_stem_step(next - 1, map)?,
+                crate::eating::After::PetalStep => self.petal_step(next - 1, map)?,
+                crate::eating::After::SpitterStep => self.spitter_step(next - 1, map)?,
+                crate::eating::After::SpikeStep => self.spike_step(next - 1, map)?,
                 crate::eating::After::OverlapStep => self.overlap_step(next - 1),
                 crate::eating::After::WingStep => self.wing_step(next - 1, map)?,
                 crate::eating::After::ShotStep => self.shot_step(next - 1, map)?,
@@ -979,6 +1001,22 @@ impl Run {
                     self.pellet_contact(index);
                     continue;
                 }
+                // petal_stem.gd CONTACT_PHASE -1: no contact rule.
+                if w.kind == crate::actors::ActorKind::PetalStem {
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Petal {
+                    self.petal_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Spitter {
+                    self.spitter_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Spike {
+                    self.spike_contact(index);
+                    continue;
+                }
                 if w.kind == crate::actors::ActorKind::Wing {
                     self.wing_contact(index, action);
                     continue;
@@ -1180,8 +1218,16 @@ impl Run {
                     screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
                 for e in &mut self.entities {
                     let b = match &e.kind {
-                        // enemy_pellet.gd GOAL_COIN is false.
-                        Kind::Walker(w) if w.kind == crate::actors::ActorKind::Pellet => continue,
+                        // enemy_pellet.gd and petal_stem.gd GOAL_COIN is false.
+                        Kind::Walker(w)
+                            if [
+                                crate::actors::ActorKind::Pellet,
+                                crate::actors::ActorKind::PetalStem,
+                            ]
+                            .contains(&w.kind) =>
+                        {
+                            continue
+                        }
                         Kind::Walker(w) => w.bounds(e.body, e.facing),
                         _ => continue,
                     };
@@ -1783,7 +1829,12 @@ impl Run {
                 if !w.valid()
                     || (w.kind == crate::actors::ActorKind::Hopper && !w.hopper_valid(e.body.vx))
                     || !(0..=360).contains(&w.phase)
-                    || !(0..=210).contains(&w.timer)
+                    || !(0..=if w.kind == crate::actors::ActorKind::PetalStem {
+                        318
+                    } else {
+                        210
+                    })
+                        .contains(&w.timer)
                     || !(-1..=180).contains(&w.cycles)
                     || !(0..=match w.kind {
                         crate::actors::ActorKind::Flat => 6,

@@ -243,6 +243,19 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "spitters_target":
+        # Wait by the egg producer for eggs while the first stem tracks Yoshi and spits,
+        # walk closer and throw three eggs (hurt turns, then defeat), lick at the coins,
+        # then walk on to the second stem and lick at its falling spikes (one is caught).
+        throw = [64] + [0] * 14 + [64] + [0] * 60
+        inputs = [2] * 20 + [0] * 560 + [2] * 36 + [0] * 4 + throw * 3
+        inputs += ([8] + [0] * 12) * 16 + [0] * 200 + [2] * 130 + ([8] + [0] * 12) * 30
+    elif name == "petals_target":
+        # Walk up to the first stem while its petals grow and orbit, lick one and spit it
+        # (thrown, it strikes the others), ground-pound (the rest drop), back off and
+        # wait through the regrowth, the dance and the launch.
+        inputs = [0] * 100 + [2] * 50 + [8] + [0] * 30 + [8] + [0] * 30
+        inputs += [4] * 12 + [32] * 30 + [0] * 400 + [1] * 20 + [0] * 300
     elif name == "shooters_target":
         # Run up behind the first shooter (it shoots away) and lick it, lay the egg, walk
         # on and throw it at the second (it falls; a pellet hurts on the way), then walk

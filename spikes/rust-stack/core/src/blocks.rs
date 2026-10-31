@@ -1183,8 +1183,10 @@ impl Run {
         {
             return self.thief_struck(index, from_x);
         }
-        // hanging_roller.gd hit ignores BUMP; enemy_pellet.gd has no hit.
-        if matches!(&self.entities[index].kind, Kind::Walker(w) if [crate::actors::ActorKind::Roller, crate::actors::ActorKind::Pellet].contains(&w.kind))
+        // hanging_roller.gd hit ignores BUMP; enemy_pellet.gd and petal_stem.gd have no
+        // hit; stem_petal.gd hit spares a dropped petal.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if [crate::actors::ActorKind::Roller, crate::actors::ActorKind::Pellet, crate::actors::ActorKind::PetalStem, crate::actors::ActorKind::Spitter].contains(&w.kind)
+            || (w.kind == crate::actors::ActorKind::Petal && w.mode == crate::petal::FALL))
         {
             return Ok(());
         }

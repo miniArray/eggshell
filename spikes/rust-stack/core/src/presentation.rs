@@ -118,8 +118,16 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
 }
 fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
     use crate::actors::ActorKind;
-    // hanging_roller.gd and enemy_pellet.gd have no view_state.
-    if [ActorKind::Roller, ActorKind::Pellet].contains(&w.kind) {
+    // hanging_roller.gd, enemy_pellet.gd, spitting_stem.gd and enemy_spike.gd have no
+    // view_state.
+    if [
+        ActorKind::Roller,
+        ActorKind::Pellet,
+        ActorKind::Spitter,
+        ActorKind::Spike,
+    ]
+    .contains(&w.kind)
+    {
         return VisualState::default();
     }
     if w.kind == ActorKind::Shot {
@@ -228,9 +236,21 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Spear => w.spear_animation(),
         // sneak_thief.gd view_state
         ActorKind::Thief => w.thief_animation().into(),
-        ActorKind::Roller | ActorKind::Pellet => unreachable!("no view_state"),
+        ActorKind::Roller | ActorKind::Pellet | ActorKind::Spitter | ActorKind::Spike => {
+            unreachable!("no view_state")
+        }
         // masked_shooter.gd view_state
         ActorKind::Shooter => w.shooter_animation().into(),
+        // stem_petal.gd view_state
+        ActorKind::Petal => "Petal".into(),
+        // petal_stem.gd view_state: the stem animates only while its petals dance.
+        ActorKind::PetalStem => {
+            return VisualState {
+                animation: Some("Default".into()),
+                frame: (w.dancing == 0).then_some(0),
+                ..VisualState::default()
+            };
+        }
         // wing_drifter.gd view_state
         ActorKind::Wing => w.wing_animation().into(),
         // hang_flyer.gd view_state

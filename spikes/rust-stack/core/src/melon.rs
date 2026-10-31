@@ -216,6 +216,7 @@ impl Run {
             token: self.entities[index].origin.token(),
             weapon: false,
             spat_or_roll: false,
+            hanging: false,
         };
         let candidates = self.entities.len();
         for other in 0..candidates {

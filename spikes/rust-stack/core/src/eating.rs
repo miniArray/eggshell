@@ -90,6 +90,14 @@ pub(crate) enum After {
     ShooterStep,
     /// enemy_pellet.gd step.
     PelletStep,
+    /// petal_stem.gd step, which spawns, launches and drops petals.
+    PetalStemStep,
+    /// stem_petal.gd step, which follows its stem or strikes while thrown.
+    PetalStep,
+    /// spitting_stem.gd step, which spawns its spikes.
+    SpitterStep,
+    /// enemy_spike.gd step, which strikes other bodies while spat.
+    SpikeStep,
     /// wing_drifter.gd step, which hits other bodies while spat.
     WingStep,
     /// launcher_shot.gd step.
@@ -147,6 +155,8 @@ pub(crate) struct Projectile {
     pub weapon: bool,
     /// Spat, or an actor.gd roll (hanging_roller.gd projectile_contact: consumed).
     pub spat_or_roll: bool,
+    /// An e28 hanging roller (spitting_stem.gd: removed by it).
+    pub hanging: bool,
 }
 impl Projectile {
     fn box_(&self) -> [i64; 4] {
@@ -479,6 +489,13 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Roller => 0,
                 // enemy_pellet.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => 0,
+                // petal_stem.gd tongue returns 0; stem_petal.gd: a dropped petal neither.
+                Kind::Walker(w) if w.kind == ActorKind::PetalStem => 0,
+                // spitting_stem.gd tongue: the head blocks the tongue.
+                Kind::Walker(w) if w.kind == ActorKind::Spitter => {
+                    w.spitter_tongue(e.body, e.facing, sensor)
+                }
+                Kind::Walker(w) if w.kind == ActorKind::Petal && w.mode == crate::petal::FALL => 0,
                 // sneak_thief.gd tongue: the tongue bounces off and shoves the thief away.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => {
                     if w.held != 0 || e.status != 1 {
@@ -748,6 +765,10 @@ impl Run {
                 &self.entities[index].kind,
                 Kind::Walker(w) if w.spat != 0 || w.roll != 0
             ),
+            hanging: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.kind == ActorKind::Roller
+            ),
         };
         let mut other = 0;
         while other < self.entities.len() {
@@ -806,6 +827,7 @@ impl Run {
         let projectile_breaks = projectile.breaks;
         let (projectile_token, projectile_weapon, projectile_consumed) =
             (projectile.token, projectile.weapon, projectile.spat_or_roll);
+        let projectile_hanging = projectile.hanging;
         let projectile = projectile.body;
         enum Target {
             StiltRider,
@@ -827,6 +849,7 @@ impl Run {
             Egg,
             Cache,
             Nothing,
+            Spitter,
         }
         let target = {
             let o = &self.entities[current];
@@ -878,8 +901,17 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Roller,
+                // spitting_stem.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Spitter => Target::Spitter,
                 // enemy_pellet.gd projectile_contact returns 0.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
+                // petal_stem.gd projectile_contact returns 0, as does a dropped petal's.
+                Kind::Walker(w)
+                    if w.kind == ActorKind::PetalStem
+                        || (w.kind == ActorKind::Petal && w.mode == crate::petal::FALL) =>
+                {
+                    Target::Nothing
+                }
                 // masked_shooter.gd projectile_contact: removed (hit), reaction 3.
                 Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
@@ -928,6 +960,13 @@ impl Run {
                 self.thief_struck(current, projectile.x)?;
                 1
             }
+            Target::Spitter => self.spitter_projectile(
+                current,
+                projectile_box,
+                projectile.x,
+                projectile_hanging,
+                projectile_armored,
+            ),
             Target::Roller => self.roller_projectile(
                 current,
                 projectile_token,

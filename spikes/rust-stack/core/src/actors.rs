@@ -41,6 +41,14 @@ pub(crate) enum ActorKind {
     Shooter,
     /// enemy_pellet.gd: the e31 shot.
     Pellet,
+    /// petal_stem.gd e18.
+    PetalStem,
+    /// stem_petal.gd enemy_petal: an e18 petal.
+    Petal,
+    /// spitting_stem.gd e41.
+    Spitter,
+    /// enemy_spike.gd: the e41 shot.
+    Spike,
     /// wing_drifter.gd e30.
     Wing,
     /// launcher_shot.gd enemy_shot, fired by an e37 launcher.
@@ -149,6 +157,22 @@ pub(crate) struct Actor {
     // masked_shooter.gd FIELDS (mode, timer and contact are shared above).
     pub cooldown: i64,
     pub queued: i64,
+    // petal_stem.gd FIELDS (phase and timer are shared above).
+    pub shoot_at: i64,
+    pub orbit: i64,
+    pub dancing: i64,
+    pub has_petals: i64,
+    // stem_petal.gd FIELDS (mode is shared above).
+    pub stem_token: i64,
+    pub slot: i64,
+    pub age: i64,
+    // spitting_stem.gd FIELDS (mode and timer are shared above).
+    pub hp: i64,
+    pub shots: i64,
+    pub head_angle: i64,
+    pub turn_to: i64,
+    pub turn_left: i64,
+    pub spit_ticks: i64,
     // wing_drifter.gd FIELDS.
     pub bob: i64,
     pub bob_sign: i64,
@@ -191,8 +215,7 @@ pub(crate) struct Actor {
     // gust_flyer.gd FIELDS (heading and contact are shared).
     pub toward: i64,
     pub ramp: i64,
-    // drift_spore.gd FIELDS (contact is shared).
-    pub age: i64,
+    // drift_spore.gd FIELDS (age and contact are shared).
     pub sway: i64,
     // hang_flyer.gd FIELDS (mode, timer, contact and target_y are shared).
     pub flap: i64,
@@ -289,6 +312,19 @@ impl Actor {
             landed: 0,
             cooldown: 0,
             queued: 1,
+            shoot_at: 0,
+            orbit: 0,
+            dancing: 0,
+            has_petals: 0,
+            stem_token: 0,
+            slot: 0,
+            age: 0,
+            hp: 3,
+            shots: 3,
+            head_angle: 270_000,
+            turn_to: 270_000,
+            turn_left: 0,
+            spit_ticks: 0,
             bob: 0,
             bob_sign: -1,
             drifts: 1,
@@ -325,7 +361,6 @@ impl Actor {
             squashed: 0,
             toward: 0,
             ramp: 0,
-            age: 0,
             sway: 48,
             flap: 0,
             from_x: 0,
@@ -360,6 +395,10 @@ impl Actor {
             && (self.kind != ActorKind::Roller || self.roller_valid())
             && (self.kind != ActorKind::Shooter || self.shooter_valid())
             && (self.kind != ActorKind::Pellet || self.pellet_valid())
+            && (self.kind != ActorKind::PetalStem || self.petal_stem_valid())
+            && (self.kind != ActorKind::Petal || self.petal_valid())
+            && (self.kind != ActorKind::Spitter || self.spitter_valid())
+            && (self.kind != ActorKind::Spike || self.spike_valid())
             && (self.kind != ActorKind::Wing || self.wing_valid())
             && (self.kind != ActorKind::Shot || self.shot_valid())
             && (self.kind != ActorKind::Sprout || self.sprout_valid())
@@ -448,6 +487,10 @@ impl Actor {
             ActorKind::Roller => crate::roller::BOX,
             ActorKind::Shooter => crate::shooter::BOX,
             ActorKind::Pellet => crate::shooter::PELLET_BOX,
+            ActorKind::PetalStem => crate::petal::STEM_BOX,
+            ActorKind::Petal => crate::petal::PETAL_BOX,
+            ActorKind::Spitter => crate::spitter::BODY_BOX,
+            ActorKind::Spike => crate::spitter::SPIKE_BOX,
             ActorKind::Wing => crate::wing::bounds(self.mode, facing),
             ActorKind::Shot => crate::launcher::SHOT_BOX,
             ActorKind::Sprout => crate::sprout::BOX,
@@ -471,6 +514,9 @@ impl Actor {
         }
     }
     pub fn bounds(&self, body: Body, facing: i64) -> [i64; 4] {
+        if self.kind == ActorKind::Spitter {
+            return self.spitter_bounds(body, facing);
+        }
         let b = self.body_bounds(facing);
         if self.kind == ActorKind::Plant && self.head_size != 0 {
             let h = self.head_box(body, facing);
@@ -586,6 +632,10 @@ impl Actor {
             | ActorKind::Roller
             | ActorKind::Shooter
             | ActorKind::Pellet
+            | ActorKind::PetalStem
+            | ActorKind::Petal
+            | ActorKind::Spitter
+            | ActorKind::Spike
             | ActorKind::Wing
             | ActorKind::Shot
             | ActorKind::Sprout
@@ -1053,6 +1103,19 @@ fields!(
     landed,
     cooldown,
     queued,
+    shoot_at,
+    orbit,
+    dancing,
+    has_petals,
+    stem_token,
+    slot,
+    age,
+    hp,
+    shots,
+    head_angle,
+    turn_to,
+    turn_left,
+    spit_ticks,
     bob,
     bob_sign,
     drifts,
@@ -1089,7 +1152,6 @@ fields!(
     squashed,
     toward,
     ramp,
-    age,
     sway,
     flap,
     from_x,

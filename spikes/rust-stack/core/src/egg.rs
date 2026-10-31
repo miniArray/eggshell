@@ -624,6 +624,7 @@ impl Run {
             Hanging,
             Wing,
             Bulk,
+            Spitter,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -669,8 +670,20 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact for an egg: 0 while rolling.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Hanging,
+                // spitting_stem.gd projectile_contact for an egg.
+                Kind::Walker(w) if w.kind == ActorKind::Spitter => Target::Spitter,
+                // enemy_spike.gd projectile_contact for an egg: the egg then falls.
+                Kind::Walker(w) if w.kind == ActorKind::Spike => Target::Flower,
                 // enemy_pellet.gd projectile_contact returns 0.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
+                // petal_stem.gd projectile_contact returns 0, as does a dropped petal's;
+                // any other petal is removed (reaction 3).
+                Kind::Walker(w)
+                    if w.kind == ActorKind::PetalStem
+                        || (w.kind == ActorKind::Petal && w.mode == crate::petal::FALL) =>
+                {
+                    Target::Nothing
+                }
                 // masked_shooter.gd projectile_contact for an egg: like the flower, the egg
                 // then falls.
                 Kind::Walker(w) if w.kind == ActorKind::Shooter => Target::Flower,
@@ -782,6 +795,9 @@ impl Run {
             Target::Thief => {
                 self.thief_struck(other, projectile.x)?;
                 1
+            }
+            Target::Spitter => {
+                self.spitter_projectile(other, projectile_box, projectile.x, false, false)
             }
             Target::Hanging => {
                 let o = &mut self.entities[other];

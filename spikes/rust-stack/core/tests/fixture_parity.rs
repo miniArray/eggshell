@@ -59,6 +59,8 @@ fn run(restores: bool) {
         "decor_target",
         "rejoin_target",
         "hopstems_target",
+        "petals_target",
+        "spitters_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -129,6 +131,11 @@ fn run(restores: bool) {
     let mut shooter_held = 0;
     let mut shooter_removed = 0;
     let mut pellet_ticks = 0;
+    let mut stem_phases = [0usize; 4];
+    let mut petal_modes = [0usize; 4];
+    let mut spitter_modes = [0usize; 6];
+    let mut spike_ticks = 0;
+    let mut spike_held = 0;
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -683,6 +690,33 @@ fn run(restores: bool) {
             shooter_removed += usize::from(f("status") == 3);
         }
         pellet_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_pellet"));
+        // petal_stem.gd: ticks per phase (grow, shoot, fade, regain); stem_petal.gd: ticks
+        // per petal mode (orbit, fly, fall, thrown).
+        for e in wire.entities.iter().filter(|e| e.code == "e18") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e18"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("phase")) {
+                stem_phases[f("phase") as usize] += 1;
+            }
+        }
+        // spitting_stem.gd: ticks per mode (idle, align, wait, rest, hurt, defeat);
+        // enemy_spike.gd: spikes in flight and held by the tongue.
+        for e in wire.entities.iter().filter(|e| e.code == "e41") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e41"), n).unwrap();
+            if f("status") == 1 && (0..6).contains(&f("mode")) {
+                spitter_modes[f("mode") as usize] += 1;
+            }
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "enemy_spike") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("enemy_spike"), n).unwrap();
+            spike_ticks += usize::from(f("status") == 1);
+            spike_held += usize::from(f("held") == 1);
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "enemy_petal") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("enemy_petal"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("mode")) {
+                petal_modes[f("mode") as usize] += 1;
+            }
+        }
         // arrow_lift.gd: riding ticks, shrink ticks, and arrow changes while riding.
         for e in wire.entities.iter().filter(|e| e.code == "o21") {
             let f = |n: &str| required(&e.values, schema.entity_fields("o21"), n).unwrap();
@@ -1258,6 +1292,12 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "spitters_target" {
+        println!("SPITTER_COVERAGE mode_ticks={spitter_modes:?} spike_ticks={spike_ticks} spike_held_ticks={spike_held}");
+        assert!(spitter_modes.iter().all(|n| *n > 0) && spike_ticks > 0 && spike_held > 0);
+    } else if name == "petals_target" {
+        println!("PETAL_COVERAGE stem_phase_ticks={stem_phases:?} petal_mode_ticks={petal_modes:?}");
+        assert!(stem_phases.iter().all(|n| *n > 0) && petal_modes.iter().all(|n| *n > 0));
     } else if name == "shooters_target" {
         println!("SHOOTER_COVERAGE mode_ticks={shooter_modes:?} held_ticks={shooter_held} removed_ticks={shooter_removed} pellet_ticks={pellet_ticks}");
         assert!(
