@@ -233,6 +233,8 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Shooter => w.shooter_animation().into(),
         // wing_drifter.gd view_state
         ActorKind::Wing => w.wing_animation().into(),
+        // hang_flyer.gd view_state
+        ActorKind::Hang => w.hang_animation().into(),
         ActorKind::Shot
         | ActorKind::Sprout
         | ActorKind::Hopper

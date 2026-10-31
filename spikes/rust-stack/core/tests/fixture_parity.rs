@@ -50,6 +50,7 @@ fn run(restores: bool) {
         "bulks_target",
         "gusts_target",
         "spores_target",
+        "hangs_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -146,6 +147,10 @@ fn run(restores: bool) {
     let mut shot_held = 0;
     let mut launcher_charges = 0;
     let mut bounce_fires = 0;
+    let mut hang_modes = [0usize; 5];
+    let mut hang_held = 0;
+    let mut hang_removals = 0;
+    let mut hang_status: std::collections::BTreeMap<String, i64> = Default::default();
     let mut spore_turns = 0;
     let mut spore_facings: std::collections::BTreeMap<String, i64> = Default::default();
     let mut spore_removals = 0;
@@ -719,6 +724,19 @@ fn run(restores: bool) {
             launcher_charges += usize::from(f("charge") > 0);
             bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
         }
+        // hang_flyer.gd: ticks per mode (hang, dive, swoop, forward, flee), held ticks
+        // and removals.
+        for e in wire.entities.iter().filter(|e| e.code == "e14") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e14"), n).unwrap();
+            if f("status") == 1 && (0..5).contains(&f("mode")) {
+                hang_modes[f("mode") as usize] += 1;
+            }
+            hang_held += usize::from(f("held") == 1);
+            if f("status") == 3 && hang_status.get(&e.id) == Some(&1) {
+                hang_removals += 1;
+            }
+            hang_status.insert(e.id.clone(), f("status"));
+        }
         // drift_spore.gd: sway turns, removals (grown or swallowed), grown sprouts and
         // their waking ticks.
         for e in wire.entities.iter().filter(|e| e.code == "e13") {
@@ -1003,6 +1021,9 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "hangs_target" {
+        println!("HANG_COVERAGE mode_ticks={hang_modes:?} held_ticks={hang_held} removals={hang_removals}");
+        assert!(hang_modes.iter().all(|n| *n > 0) && hang_held > 0 && hang_removals > 0);
     } else if name == "spores_target" {
         println!("SPORE_COVERAGE turns={spore_turns} removals={spore_removals} grown={} waking_ticks={waking_ticks}", grown_sprouts.len());
         // At least one spore is swallowed rather than grown.

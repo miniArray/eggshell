@@ -106,6 +106,8 @@ pub(crate) enum After {
     GustStep,
     /// drift_spore.gd step, which grows a sprout into the table.
     SporeStep,
+    /// hang_flyer.gd step.
+    HangStep,
     /// shot_launcher.gd step, which fires shots into the table.
     LauncherStep,
     /// timed_switch.gd step, which runs the shared interval.

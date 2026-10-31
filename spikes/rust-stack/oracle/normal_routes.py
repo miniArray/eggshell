@@ -102,6 +102,14 @@ def main() -> None:
         inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
         inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
         inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
+    elif name == "hangs_target":
+        # Walk under the ceiling, turn back left and lick at the first flyer as it swoops
+        # behind (caught), spit it (it flees); hop through the next swoops (landing on
+        # some) and on past the flying ones.
+        lick = [8] + [0] * 15
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = [2] * 60 + [0] * 20 + [1] * 2 + [0] * 30 + lick * 8 + [0] * 20 + [8]
+        inputs += [0] * 60 + cycle * 35 + [2] * 300
     elif name == "spores_target":
         # Lick at the nearest spore while it drifts down to mouth height (swallowed at
         # once); watch the others land and grow into waking sprouts; then hop on

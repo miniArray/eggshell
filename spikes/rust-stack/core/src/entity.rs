@@ -213,6 +213,7 @@ impl Entity {
                     ActorKind::Bulk => "e17",
                     ActorKind::Gust => "e33",
                     ActorKind::Spore => "e13",
+                    ActorKind::Hang => "e14",
                 },
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
@@ -330,6 +331,9 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spore => {
                         Kind::Walker(Actor::spore(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Hang => {
+                        Kind::Walker(Actor::hang(source)?)
                     }
                     Kind::Walker(a) => {
                         let mut a =
