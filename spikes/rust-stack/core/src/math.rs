@@ -46,6 +46,44 @@ pub fn sine(phase: i64, period: i64, amplitude: i64) -> Result<i64, Error> {
         .checked_div(denominator)
         .ok_or_else(|| invalid("sine division overflow"))
 }
+/// enemy_motion.gd turn_sine: millidegree angle, any sign.
+pub fn turn_sine(angle: i64, amplitude: i64) -> i64 {
+    sine(angle.rem_euclid(360_000), 360_000, amplitude).expect("fixed period")
+}
+/// enemy_motion.gd turn_cosine
+pub fn turn_cosine(angle: i64, amplitude: i64) -> i64 {
+    turn_sine(angle + 90_000, amplitude)
+}
+/// enemy_motion.gd angle_to: integer bisection on the same rational sine.
+pub fn angle_to(dx: i64, dy: i64) -> i64 {
+    if dx == 0 && dy == 0 {
+        return 270_000;
+    }
+    let largest = dx.abs().max(dy.abs());
+    let x = dx.abs() * 1_000_000 / largest;
+    let y = dy.abs() * 1_000_000 / largest;
+    let (mut low, mut high) = (0i64, 90_000i64);
+    while high - low > 1 {
+        let middle = (high + low) / 2;
+        if turn_sine(middle, crate::SCALE) * x < turn_cosine(middle, crate::SCALE) * y {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    let mut angle = (high + low) / 2;
+    if dx < 0 {
+        angle = 180_000 - angle;
+    }
+    if dy < 0 {
+        angle = 360_000 - angle;
+    }
+    angle.rem_euclid(360_000)
+}
+/// enemy_motion.gd angle_delta
+pub fn angle_delta(from: i64, to: i64) -> i64 {
+    (to - from + 180_000).rem_euclid(360_000) - 180_000
+}
 pub fn root(value: i64) -> i64 {
     let mut low = 0;
     let mut high = value.min(1_000_000_000);

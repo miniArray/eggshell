@@ -138,6 +138,7 @@ pub(crate) struct Body {
 pub(crate) enum HorizontalMove {
     Player { jumping: bool },
     Actor,
+    Item,
 }
 impl Body {
     fn shape_overlap(&self, b: [i64; 4], box_: [i64; 4], dx: i64, dy: i64) -> bool {
@@ -396,6 +397,8 @@ impl Body {
     ) -> i64 {
         let (jumping, jump_speed, touch_stops): (bool, i64, bool) = match movement {
             HorizontalMove::Player { jumping } => (jumping, 776 * 60, false),
+            // collision.gd horizontal defaults (thrown and skipping eggs).
+            HorizontalMove::Item => (false, 776 * 60, true),
             HorizontalMove::Actor => (false, 640 * 60, true),
         };
         if distance == 0 {

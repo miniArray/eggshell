@@ -2,8 +2,15 @@
 //! item_egg.gd egg inventory and throws, seed_shot.gd seeds, element_shot.gd fire/ice.
 use crate::{
     food::{Since, COLD, EGG, HEAT, SEED, STORED_EGG},
+    math::sine,
     Error,
 };
+
+/// What the run must do after the level consumers, in order.
+pub(crate) enum Action {
+    Spawn(crate::egg::Spawn),
+    MarkOrigin(i64),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Consumers {
@@ -80,9 +87,39 @@ impl Consumers {
         self.seed_cursor = serial;
         self.element_cursor = serial;
     }
-    /// The three consume_level_requests in registry TYPES order.
-    pub fn run(&mut self, requests: &crate::food::Requests, eggs: i64) -> Result<(), Error> {
-        // item_egg.gd consume_level_requests
+    /// The three consume_level_requests in registry TYPES order. Spawns and origin marks
+    /// are returned in order for the run to apply.
+    pub fn run(
+        &mut self,
+        requests: &crate::food::Requests,
+        eggs: i64,
+    ) -> Result<Vec<Action>, Error> {
+        let actions = self.run_eggs(requests, eggs)?;
+        // seed_shot.gd consume_level_requests
+        let seeds = requests.since(self.seed_cursor);
+        self.seed_cursor = requests.serial();
+        if let Since::Requests(list) = seeds {
+            if list.iter().any(|r| r.kind == SEED) {
+                return Err(unsupported("seed shots are not ported yet"));
+            }
+        }
+        // element_shot.gd consume_level_requests
+        let elements = requests.since(self.element_cursor);
+        self.element_cursor = requests.serial();
+        if let Since::Requests(list) = elements {
+            if list.iter().any(|r| [HEAT, COLD].contains(&r.kind)) {
+                return Err(unsupported("fire and ice shots are not ported yet"));
+            }
+        }
+        Ok(actions)
+    }
+    /// item_egg.gd consume_level_requests (also run first by an egg's grant).
+    pub fn run_eggs(
+        &mut self,
+        requests: &crate::food::Requests,
+        eggs: i64,
+    ) -> Result<Vec<Action>, Error> {
+        let mut actions = Vec::new();
         match requests.since(self.egg_cursor) {
             Since::Error => {
                 self.egg_cursor = requests.serial();
@@ -102,17 +139,32 @@ impl Consumers {
                 for r in &list {
                     let mut queue = self.inventory();
                     if r.kind == EGG {
-                        return Err(unsupported(
-                            "thrown egg o7 (item_egg.gd travel) is not ported yet",
-                        ));
+                        let item = if queue.is_empty() {
+                            Egg {
+                                colour: 0,
+                                origin: 0,
+                                ghost: 0,
+                            }
+                        } else {
+                            queue.remove(0)
+                        };
+                        let (mut vx, mut vy) = (r.vx, r.vy);
+                        if vx == 0 && vy == 0 {
+                            vx = sine((r.angle + 450_000) % 360_000, 360_000, 1024 * 60)?;
+                            vy = sine((r.angle + 360_000) % 360_000, 360_000, 1024 * 60)?;
+                        }
+                        actions.push(Action::Spawn(crate::egg::Spawn::Egg {
+                            x: r.x,
+                            y: r.y,
+                            colour: item.colour,
+                            origin: item.origin,
+                            ghost: item.ghost,
+                            vx,
+                            vy,
+                        }));
                     } else if r.kind == STORED_EGG {
                         if queue.len() == 6 {
-                            let first = queue.remove(0);
-                            if first.origin != 0 {
-                                return Err(unsupported(
-                                    "egg origin marking (item_egg.gd mark_origin)",
-                                ));
-                            }
+                            actions.push(Action::MarkOrigin(queue.remove(0).origin));
                         }
                         queue.push(Egg {
                             colour: 0,
@@ -126,23 +178,19 @@ impl Consumers {
                 self.normalize(eggs);
             }
         }
-        // seed_shot.gd consume_level_requests
-        let seeds = requests.since(self.seed_cursor);
-        self.seed_cursor = requests.serial();
-        if let Since::Requests(list) = seeds {
-            if list.iter().any(|r| r.kind == SEED) {
-                return Err(unsupported("seed shots are not ported yet"));
-            }
-        }
-        // element_shot.gd consume_level_requests
-        let elements = requests.since(self.element_cursor);
-        self.element_cursor = requests.serial();
-        if let Since::Requests(list) = elements {
-            if list.iter().any(|r| [HEAT, COLD].contains(&r.kind)) {
-                return Err(unsupported("fire and ice shots are not ported yet"));
-            }
-        }
-        Ok(())
+        Ok(actions)
+    }
+    /// item_egg.gd grant's queue step; returns the origin pushed out of a full queue.
+    pub fn push_egg(&mut self, colour: i64, origin: i64, ghost: i64) -> Option<i64> {
+        let mut queue = self.inventory();
+        let popped = (queue.len() == 6).then(|| queue.remove(0).origin);
+        queue.push(Egg {
+            colour,
+            origin,
+            ghost,
+        });
+        self.write(&queue);
+        popped
     }
     pub fn valid(&self) -> bool {
         let present = self.colour.iter().take_while(|c| **c >= 0).count();

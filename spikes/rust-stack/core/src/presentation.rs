@@ -495,6 +495,25 @@ pub(crate) fn sample_rows(
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
                 }
                 Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing)),
+                // item_egg.gd view_state: the colour picks the animation; despawn flickers.
+                Kind::Egg(egg) => (
+                    egg.bounds(),
+                    VisualState {
+                        animation: Some(
+                            ["Green", "Yellow", "Red", "Purple"][egg.colour.clamp(0, 3) as usize]
+                                .into(),
+                        ),
+                        alpha: if egg.despawn_ticks > 0
+                            && egg.despawn_ticks < 180
+                            && run.frame % 12 < 6
+                        {
+                            0.0
+                        } else {
+                            1.0
+                        },
+                        ..VisualState::default()
+                    },
+                ),
             };
             EntityPicture {
                 token: e.origin.token(),
@@ -528,6 +547,7 @@ pub(crate) fn sample_rows(
                             }
                             Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
                             Kind::Walker(_) => actor_visible(e),
+                            Kind::Egg(_) => e.status == 1 && e.collected == 0,
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),

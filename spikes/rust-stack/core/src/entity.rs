@@ -42,6 +42,7 @@ pub(crate) enum Kind {
     Bridge,
     Pad(Pad),
     Walker(Actor),
+    Egg(crate::egg::Egg),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -65,7 +66,10 @@ pub(crate) struct Entity {
 }
 impl Entity {
     pub fn placed(source: usize, p: &Placement, kind: Kind, family_index: i64) -> Self {
-        let lifecycle = i64::from(matches!(kind, Kind::Walker(_) | Kind::Star(_)));
+        let lifecycle = i64::from(matches!(
+            kind,
+            Kind::Walker(_) | Kind::Star(_) | Kind::Egg(_)
+        ));
         let layer = if matches!(kind, Kind::Post(_)) {
             9
         } else if matches!(kind, Kind::Walker(_)) {
@@ -140,6 +144,7 @@ impl Entity {
                     PickupKind::Flower => "o3",
                 },
                 Kind::Star(_) => "o4",
+                Kind::Egg(_) => "o7",
                 _ => unreachable!("runtime constructors admit only dynamic types"),
             }
         }
@@ -215,6 +220,7 @@ impl Entity {
                         Kind::Walker(a)
                     }
                     Kind::Star(_) => Kind::Star(Star::default()),
+                    Kind::Egg(_) => Kind::Egg(crate::egg::Egg::new(source.variant)),
                     Kind::Pickup(p) => {
                         Kind::Pickup(Pickup::new(p.kind, source.variant, source.position.y))
                     }
@@ -233,6 +239,7 @@ impl Entity {
                 Kind::Star(p) => p.bounds(),
                 Kind::Post(p) => p.bounds(),
                 Kind::Pickup(p) => p.bounds(),
+                Kind::Egg(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")

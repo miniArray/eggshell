@@ -28,6 +28,11 @@ def main() -> None:
             + [0] * 76
             + [32]
             + [0] * 40
+            # Aim (THROW), then throw the laid egg (THROW again).
+            + [64]
+            + [0] * 15
+            + [64]
+            + [0] * 60
             + [2] * 30
             + [8]
             + [0] * 20

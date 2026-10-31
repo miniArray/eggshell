@@ -48,6 +48,8 @@ pub(crate) enum After {
     HitOthers([i64; 4]),
     /// A held pickup or star: run its consume_requests now.
     ConsumeItem,
+    /// item_egg.gd step, which reaches other entities.
+    EggStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -265,13 +267,7 @@ impl Run {
             if e.status != 1 || held(e) || hidden(e) {
                 continue;
             }
-            let b = match &e.kind {
-                Kind::Walker(w) => w.bounds(e.body, e.facing),
-                Kind::Pickup(p) => p.bounds(),
-                Kind::Star(p) => p.bounds(),
-                Kind::Post(p) => p.bounds(),
-                _ => [0; 4],
-            };
+            let b = crate::egg::entity_bounds(e);
             let reach = e.body.x + b[2] > sensor[0]
                 && e.body.x + b[0] < sensor[2]
                 && e.body.y + b[3] > sensor[1]
@@ -281,6 +277,13 @@ impl Run {
             }
             let token = e.origin.token();
             let blocks_step = self.player.blocks_step();
+            if matches!(e.kind, Kind::Egg(_)) {
+                if self.egg_tongue(index) == 2 {
+                    self.player.block_tongue();
+                    return;
+                }
+                continue;
+            }
             let e = &mut self.entities[index];
             let result = match &mut e.kind {
                 Kind::Post(p) => {
@@ -473,9 +476,9 @@ impl Run {
                 continue;
             }
             let ob = match &o.kind {
-                Kind::Walker(w) => w.bounds(o.body, o.facing),
-                Kind::Pickup(p) => p.bounds(),
-                Kind::Star(p) => p.bounds(),
+                Kind::Walker(_) | Kind::Pickup(_) | Kind::Star(_) | Kind::Egg(_) => {
+                    crate::egg::entity_bounds(o)
+                }
                 // Posts, pads, bridges, goals and checkpoints have no hit rule.
                 _ => continue,
             };
@@ -490,6 +493,7 @@ impl Run {
                 Actor,
                 RollingPair,
                 Pickup,
+                Egg,
                 Nothing,
             }
             let target = {
@@ -516,6 +520,8 @@ impl Run {
                     Kind::Walker(_) => Target::Actor,
                     // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                     Kind::Pickup(_) => Target::Pickup,
+                    // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
+                    Kind::Egg(_) => Target::Egg,
                     // item_star.gd has projectile_contact only and is not an ENEMY.
                     _ => Target::Nothing,
                 }
@@ -548,6 +554,7 @@ impl Run {
                     self.collect_item(current);
                     3
                 }
+                Target::Egg => 3,
                 Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
             };
             if self.entities[index].status != 1 {

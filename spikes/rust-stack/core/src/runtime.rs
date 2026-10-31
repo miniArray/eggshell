@@ -70,6 +70,7 @@ pub(crate) fn restore_head(
             position.y,
         )),
         "o4" => Kind::Star(Star::default()),
+        "o7" => Kind::Egg(crate::egg::Egg::new(0)),
         _ => return Err(refuse("dynamic code outside implemented runtime closure")),
     };
     let mut entity = Entity::dynamic(

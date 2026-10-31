@@ -178,6 +178,10 @@ impl Run {
                         p.position.y,
                     )),
                     "o4" => Kind::Star(crate::items::Star::default()),
+                    // item_egg.gd prepare: forms 0..3 (others degrade).
+                    "o7" if (0..=3).contains(&p.variant) => {
+                        Kind::Egg(crate::egg::Egg::new(p.variant))
+                    }
                     "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
                         Kind::Bridge
                     }
@@ -290,7 +294,7 @@ impl Run {
             next += 1;
             if !matches!(
                 e.kind,
-                Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_) | Kind::Post(_)
+                Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_) | Kind::Post(_) | Kind::Egg(_)
             ) {
                 continue;
             }
@@ -303,6 +307,7 @@ impl Run {
             let token = e.origin.token();
             let after = match &mut e.kind {
                 Kind::Post(_) => crate::eating::After::Nothing,
+                Kind::Egg(_) => crate::eating::After::EggStep,
                 // pickup.gd / item_star.gd step: a held item only consumes its requests.
                 Kind::Pickup(p) if p.held != 0 => {
                     p.phase = (p.phase + 1) % 60;
@@ -357,6 +362,7 @@ impl Run {
             match after {
                 crate::eating::After::HitOthers(b) => self.hit_others(next - 1, b)?,
                 crate::eating::After::ConsumeItem => self.consume_item(next - 1),
+                crate::eating::After::EggStep => self.egg_step(next - 1, map)?,
                 crate::eating::After::Nothing => {}
             }
         }
@@ -487,6 +493,11 @@ impl Run {
                 contact_index += 1;
                 let e = &mut self.entities[index];
                 if e.status != 1 {
+                    continue;
+                }
+                if matches!(e.kind, Kind::Egg(_)) {
+                    stats.contacts += 1;
+                    self.egg_contact_player(index)?;
                     continue;
                 }
                 if let Kind::Post(p) = &e.kind {
@@ -709,8 +720,12 @@ impl Run {
             }
         }
         // registry.gd consume_requests: level-wide consumers, then entity consumers.
-        self.consumers
-            .run(&self.player.food.requests, self.player.food.eggs)?;
+        for action in self
+            .consumers
+            .run(&self.player.food.requests, self.player.food.eggs)?
+        {
+            self.apply_consumer(action)?;
+        }
         self.consume_item_requests();
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
@@ -823,6 +838,7 @@ impl Run {
             Kind::Walker(p) => p.field(n),
             Kind::Checkpoint(p) => p.field(n),
             Kind::Post(p) => p.field(n),
+            Kind::Egg(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1124,6 +1140,11 @@ impl Run {
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
                 {
                     return Err(unsupported("health-drop state/request path"));
+                }
+            }
+            if let Kind::Egg(egg) = &e.kind {
+                if !egg.valid(e.body) {
+                    return Err(unsupported("egg validation"));
                 }
             }
             if let Kind::Pad(pad) = &e.kind {

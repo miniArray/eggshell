@@ -516,7 +516,7 @@ fn run(restores: bool) {
     if name == "stride.eat" {
         // The eating route must really eat, spit and lay, or it proves nothing.
         assert!(
-            held_ticks > 0 && most_eggs > 0 && requests >= 2,
+            held_ticks > 0 && most_eggs > 0 && requests >= 3,
             "held={held_ticks} eggs={most_eggs} requests={requests}"
         );
     }

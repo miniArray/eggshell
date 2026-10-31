@@ -7,6 +7,7 @@ mod checkpoint;
 mod collision_grid;
 mod consumers;
 mod eating;
+mod egg;
 mod entity;
 mod food;
 mod items;
