@@ -27,6 +27,7 @@ pub(crate) struct Run {
     pub dynamic_serial: i64,
     pub checkpoint: crate::checkpoint::Memory,
     pub consumers: crate::consumers::Consumers,
+    pub message: crate::blocks::Message,
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,
 }
@@ -88,6 +89,7 @@ impl Run {
             dynamic_serial: 1,
             checkpoint: crate::checkpoint::Memory::default(),
             consumers: crate::consumers::Consumers::default(),
+            message: crate::blocks::Message::default(),
             #[cfg(test)]
             solid_trace: crate::solids::SolidTrace::default(),
         };
@@ -157,6 +159,11 @@ impl Run {
                     }
                     "o8" => Kind::Cache(crate::clouds::Cache::new(p)?),
                     "o19" => Kind::Redirect(crate::clouds::Redirect::new(p)?),
+                    "o9" | "o15" | "o18" => Kind::Block(crate::blocks::Block::new(p)?),
+                    "p2" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13" | "p14"
+                    | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
+                        Kind::Span(crate::spans::Span::new(p)?)
+                    }
                     "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
                         Kind::Bridge
                     }
@@ -221,6 +228,8 @@ impl Run {
         // item_egg/seed/element reset_map run in spawn_map, before Moves.reset clears
         // the request history, so they keep the serial from before the reset.
         self.consumers.reset_map(self.player.food.requests.serial());
+        // item_block.gd reset_map and registry.gd modal_token.
+        self.message = crate::blocks::Message::default();
         let previous = self.player.previous_input;
         let pressed = self.player.pressed_input;
         let hits = self.player.life.hits;
@@ -276,6 +285,7 @@ impl Run {
                     | Kind::Egg(_)
                     | Kind::Cache(_)
                     | Kind::Redirect(_)
+                    | Kind::Block(_)
             ) {
                 continue;
             }
@@ -288,6 +298,7 @@ impl Run {
             let token = e.origin.token();
             let after = match &mut e.kind {
                 Kind::Post(_) => crate::eating::After::Nothing,
+                Kind::Block(_) => crate::eating::After::BlockStep,
                 Kind::Egg(_) => crate::eating::After::EggStep,
                 Kind::Cache(_) => crate::eating::After::CacheStep,
                 Kind::Redirect(r) => {
@@ -350,6 +361,10 @@ impl Run {
                 crate::eating::After::ConsumeItem => self.consume_item(next - 1),
                 crate::eating::After::EggStep => self.egg_step(next - 1, map)?,
                 crate::eating::After::CacheStep => self.cache_step(next - 1, centre)?,
+                crate::eating::After::BlockStep => {
+                    self.block_step(next - 1, centre)?;
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::Nothing => {}
             }
         }
@@ -394,6 +409,10 @@ impl Run {
         self.frame = self.frame.checked_add(1).ok_or_else(|| {
             unsupported("saved frame increment exceeds the admitted Stride state range")
         })?;
+        // step.gd: an open message consumes the whole step.
+        if self.modal_step(input, world) {
+            return Ok(());
+        }
         let solids = std::cell::RefCell::new(crate::solids::SolidFrame::default());
         solids.borrow_mut().begin(&self.entities);
         let map = crate::body::Probe::with_solids(&world.maps[0], &solids);
@@ -456,6 +475,14 @@ impl Run {
                 &mut self.sound,
             );
             self.apply_post_updates(map.post_updates())?;
+            // collision.gd _bump side 0, deferred to the end of the player's move: the
+            // head bumps reach item_block.gd bump in contact order.
+            for token in map.head_bumps() {
+                if let Some(i) = self.find_token(token) {
+                    self.block_bump(i)?;
+                    self.refresh_block_solid(i, &map);
+                }
+            }
             // Contact phase 0 precedes actors (phase 1), regardless of placement order.
             for e in &mut self.entities {
                 if let Kind::Pad(pad) = &mut e.kind {
@@ -718,7 +745,9 @@ impl Run {
                 self.player.catch_companion(reach);
             }
         }
-        // registry.gd consume_requests: level-wide consumers, then entity consumers.
+        // registry.gd consume_requests: level-wide consumers (item_block.gd first, in
+        // registry order), then entity consumers.
+        self.block_level_requests();
         for action in self
             .consumers
             .run(&self.player.food.requests, self.player.food.eggs)?
@@ -794,6 +823,9 @@ impl Run {
         if let Some(value) = self.checkpoint.field(n) {
             return Some(value);
         }
+        if let Some(value) = self.message.field(n) {
+            return Some(value);
+        }
         if let Some(value) = self.consumers.field(n) {
             return Some(value);
         }
@@ -837,6 +869,8 @@ impl Run {
             Kind::Walker(p) => p.field(n),
             Kind::Checkpoint(p) => p.field(n),
             Kind::Post(p) => p.field(n),
+            Kind::Block(p) => p.field(n),
+            Kind::Span(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1107,6 +1141,16 @@ impl Run {
                 || !(-position_limit..=position_limit).contains(&e.body.y)
             {
                 return Err(unsupported("entity lifecycle validation"));
+            }
+            if let Kind::Span(s) = &e.kind {
+                if !s.valid() {
+                    return Err(unsupported("span fields"));
+                }
+            }
+            if let Kind::Block(b) = &e.kind {
+                if !b.valid() {
+                    return Err(unsupported("item block fields"));
+                }
             }
             if let Kind::Post(p) = &e.kind {
                 if !p.valid() {

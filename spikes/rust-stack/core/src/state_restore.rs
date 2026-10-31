@@ -25,7 +25,10 @@ impl Run {
             run.entities.push(entity);
         }
         for (Field(name, default), value) in schema.level().iter().zip(&wire.level) {
-            if run.checkpoint.set_field(name, *value) || run.consumers.set_field(name, *value) {
+            if run.checkpoint.set_field(name, *value)
+                || run.consumers.set_field(name, *value)
+                || run.message.set_field(name, *value)
+            {
                 continue;
             }
             match name.as_str() {
@@ -78,6 +81,8 @@ impl Run {
                     Kind::Walker(p) => p.set_field(name, *value),
                     Kind::Checkpoint(p) => p.set_field(name, *value),
                     Kind::Post(p) => p.set_field(name, *value),
+                    Kind::Block(p) => p.set_field(name, *value),
+                    Kind::Span(p) => p.set_field(name, *value),
                     Kind::Egg(p) => p.set_field(name, *value),
                     Kind::Cache(p) => p.set_field(name, *value),
                     Kind::Redirect(p) => p.set_field(name, *value),

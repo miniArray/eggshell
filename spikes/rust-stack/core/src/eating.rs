@@ -52,6 +52,8 @@ pub(crate) enum After {
     EggStep,
     /// release_cloud.gd step, which can release items.
     CacheStep,
+    /// item_block.gd step, which moves the block and can spawn eggs.
+    BlockStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {

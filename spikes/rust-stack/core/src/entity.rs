@@ -45,6 +45,8 @@ pub(crate) enum Kind {
     Egg(crate::egg::Egg),
     Cache(crate::clouds::Cache),
     Redirect(crate::clouds::Redirect),
+    Block(crate::blocks::Block),
+    Span(crate::spans::Span),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {

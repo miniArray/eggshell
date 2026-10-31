@@ -23,6 +23,29 @@ impl<'a> Probe<'a> {
         probe.solids = Some(solids);
         probe
     }
+    pub fn bump_blocks(&self, body: &Body, bounds: [i64; 4], previous_edge: i64) {
+        if let Some(frame) = self.solids {
+            frame.borrow_mut().bump_below(body, bounds, previous_edge);
+        }
+    }
+    pub fn head_bumps(&self) -> Vec<i64> {
+        self.solids
+            .map(|f| f.borrow_mut().take_head_bumps())
+            .unwrap_or_default()
+    }
+    pub fn refresh_solid(
+        &self,
+        token: i64,
+        position: crate::Position,
+        live_box: Option<[i64; 4]>,
+        region: [i64; 4],
+    ) {
+        if let Some(frame) = self.solids {
+            frame
+                .borrow_mut()
+                .refresh(token, position, live_box, region);
+        }
+    }
     pub fn pound_posts(&self, body: &mut Body, bounds: [i64; 4], previous_edge: i64) {
         if let Some(frame) = self.solids {
             frame.borrow_mut().pound(self, body, bounds, previous_edge);
@@ -78,6 +101,14 @@ impl<'a> Probe<'a> {
         self.solids
             .map(|f| f.borrow_mut().take_updates())
             .unwrap_or_default()
+    }
+    /// collision.gd _selected.
+    pub fn selected(&self, handle: i64) -> Option<crate::solids::Shape> {
+        self.solids.and_then(|s| s.borrow().selected(handle))
+    }
+    /// collision.gd _one_way: a map bridge, or a top-only entity shape.
+    pub fn one_way(&self, support: i64) -> bool {
+        support > 0 || self.selected(support).is_some_and(|s| s.mode == 2)
     }
     pub fn solid_shapes(&self, probe: [i64; 4]) -> Vec<crate::solids::Shape> {
         self.solids
@@ -163,7 +194,7 @@ impl Body {
         ];
         map.solid_shapes(q)
             .into_iter()
-            .any(|s| self.shape_overlap(b, s.box_, dx, dy))
+            .any(|s| s.mode == 1 && self.shape_overlap(b, s.box_, dx, dy))
     }
     fn terrain_at(&self, map: &Probe, b: [i64; 4], dx: i64, dy: i64) -> bool {
         let q = [
@@ -206,18 +237,30 @@ impl Body {
             && self.y + b[1] + dy <= bridge.top + 2 * S
     }
     fn bridges_at(&self, map: &Probe, b: [i64; 4]) -> Vec<i64> {
-        map.bridges
+        let mut found: Vec<i64> = map
+            .bridges
             .iter()
             .enumerate()
             .filter_map(|(index, bridge)| {
                 self.bridge_overlap(bridge, b, 0, 0)
                     .then_some(index as i64 + 1)
             })
-            .collect()
+            .collect();
+        let q = [self.x + b[0], self.y + b[1], self.x + b[2], self.y + b[3]];
+        for shape in map.solid_shapes(q) {
+            if shape.mode == 2 && self.shape_overlap(b, shape.box_, 0, 0) {
+                found.push(shape.handle);
+            }
+        }
+        found
     }
     fn overlaps_support(&self, map: &Probe, b: [i64; 4], support: i64) -> bool {
         self.overlaps(map, b, 0, 0)
             || support > 0 && self.bridge_overlap(&map.bridges[support as usize - 1], b, 0, 0)
+            || support <= -2
+                && map
+                    .selected(support)
+                    .is_some_and(|s| self.shape_overlap(b, s.box_, 0, 0))
     }
     pub fn floor(&self, map: &Probe, b: [i64; 4]) -> i64 {
         if self.overlaps(map, b, 0, 0) {
@@ -232,8 +275,9 @@ impl Body {
             self.x + b[2],
             self.y + b[3] + S,
         ];
-        for shape in map.solid_shapes(below) {
-            if self.shape_overlap(b, shape.box_, 0, S) {
+        let shapes = map.solid_shapes(below);
+        for shape in &shapes {
+            if shape.mode == 1 && self.shape_overlap(b, shape.box_, 0, S) {
                 return shape.handle;
             }
         }
@@ -242,11 +286,24 @@ impl Body {
                 return index as i64 + 1;
             }
         }
+        for shape in &shapes {
+            if shape.mode == 2
+                && self.y + b[3] <= shape.box_[1]
+                && self.shape_overlap(b, shape.box_, 0, S)
+            {
+                return shape.handle;
+            }
+        }
         0
     }
     pub fn track(&mut self, map: &Probe, b: [i64; 4], settle: bool) -> i64 {
         let support = self.floor(map, b);
-        if support > 0 && self.y + b[3] == map.bridges[support as usize - 1].top {
+        let top = if support > 0 {
+            map.bridges[support as usize - 1].top
+        } else {
+            map.selected(support).map_or(0, |s| s.box_[1])
+        };
+        if map.one_way(support) && self.y + b[3] == top {
             self.push_support(map, b, 0, -1, 2 * S, support);
         }
         if settle {
@@ -383,7 +440,8 @@ impl Body {
     }
     pub fn settle(&mut self, map: &Probe, b: [i64; 4], support: i64) {
         if support != 0 && self.vy > 0 {
-            self.refine_support(map, b, 0, -1, support.max(0));
+            let one_way = if map.one_way(support) { support } else { 0 };
+            self.refine_support(map, b, 0, -1, one_way);
             self.vy = 0;
         }
     }
@@ -410,7 +468,7 @@ impl Body {
         let wall = self.overlaps(map, b, direction * S, -S);
         self.x += distance;
         let obstacle = self.overlaps(map, b, 0, 0);
-        let bridge = if !obstacle && support > 0 {
+        let bridge = if !obstacle && map.one_way(support) {
             self.bridges_at(map, b)
                 .into_iter()
                 .find(|index| !old_bridges.contains(index))
@@ -427,7 +485,7 @@ impl Body {
             } else {
                 let retreat = (distance.abs() * 5 / 2).max(b[2] - b[0]);
                 if self.push(map, b, -direction, 0, retreat) {
-                    if support < 0 && bridge == 0 {
+                    if support < 0 && !map.one_way(support) && bridge == 0 {
                         let y = self.y;
                         self.y += S;
                         if !self.overlaps(map, b, 0, 0) || !self.push(map, b, 0, -1, 3 * S) {
@@ -463,7 +521,8 @@ impl Body {
                     self.y = y;
                 }
             } else if floor != 0 && self.vy == 0 {
-                self.refine_support(map, b, 0, -1, floor.max(0));
+                let one_way = if map.one_way(floor) { floor } else { 0 };
+                self.refine_support(map, b, 0, -1, one_way);
             }
         }
         if touch_stops && self.vx != 0 && self.wall(map, b, self.vx.signum()) {
@@ -481,7 +540,7 @@ impl Body {
         distance: i64,
         support: i64,
     ) -> i64 {
-        self.vertical_move(map, b, distance, support, false)
+        self.vertical_move(map, b, distance, support, false, false)
     }
     pub fn vertical_player(
         &mut self,
@@ -491,7 +550,7 @@ impl Body {
         support: i64,
         pounding: bool,
     ) -> i64 {
-        self.vertical_move(map, b, distance, support, pounding)
+        self.vertical_move(map, b, distance, support, pounding, true)
     }
     fn vertical_move(
         &mut self,
@@ -500,6 +559,7 @@ impl Body {
         distance: i64,
         support: i64,
         pounding: bool,
+        player: bool,
     ) -> i64 {
         if distance == 0 {
             return 0;
@@ -516,9 +576,19 @@ impl Body {
         } else {
             0
         };
+        // collision.gd vertical: _bump side 0 on the way up (the player only).
+        if player && distance < 0 {
+            map.bump_blocks(self, b, sy + b[1]);
+        }
         if pounding && distance > 0 {
             map.pound_posts(self, b, sy + b[3]);
         }
+        // collision.gd vertical: a top-only shape gone since it was found is no support.
+        let bridge = if bridge < 0 && map.selected(bridge).is_none() {
+            0
+        } else {
+            bridge
+        };
         let obstacle = if pounding && distance > 0 {
             self.overlaps(map, b, 0, 0)
         } else {

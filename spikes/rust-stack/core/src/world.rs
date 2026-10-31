@@ -335,16 +335,8 @@ impl World {
                 .map(stringify_scalar)
                 .unwrap_or_else(|| "0_255,255,255".into());
             let cave_shimmer = source.get("caveShimmer").map(loose_number).unwrap_or(0.0) == 1.0;
-            if !omit_dice_colours
-                && source
-                    .get("diceBlockColours")
-                    .and_then(Value::as_str)
-                    .is_some_and(|s| !s.is_empty())
-            {
-                return Err(Error::Unsupported {
-                    requirements: vec!["diceBlockColours compilation".into()],
-                });
-            }
+            // diceBlockColours only tints o33/o34 (map_effects.gd dice_colour). Those codes are
+            // refused until ported, so the table is not compiled yet; compile it with them.
             let dice_colours = Vec::new();
             // Snow braking (moves.gd _snow) and flowing water (water_flow.gd) change player
             // motion; refuse until ported instead of moving the player wrongly.
@@ -800,10 +792,11 @@ mod tests {
         }
     }
     #[test]
-    fn benchmark_dice_omission_keeps_source_and_normal_refusal() {
+    fn dice_colours_keep_source_and_do_not_block_levels_without_dice() {
         let level = r#"{"version":"1","name":"test","desc":"","author":"test","startpoint":{"map":1,"X":32,"Y":32},"maps":{"map1":{"width":640,"height":480,"objects":{},"diceBlockColours":"retained-source"}}}"#;
         let collision = r#"{"version":2,"tilemaps":{}}"#;
-        assert!(World::compile(level, collision).is_err());
+        // The table tints only o33/o34, which stay refused until ported.
+        assert!(World::compile(level, collision).is_ok());
         let world = World::compile_benchmark_real_screen(level, collision).unwrap();
         assert!(world.maps[0]
             .source_properties

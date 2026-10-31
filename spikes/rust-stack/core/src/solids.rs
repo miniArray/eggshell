@@ -26,6 +26,10 @@ const CELL: i64 = 128 * S;
 #[derive(Clone, Debug)]
 struct Row {
     token: i64,
+    /// item_block.gd rows: bumped from below, never pounded.
+    block: bool,
+    /// collision.gd SOLID: 1 full, 2 top-only.
+    mode: i64,
     spiked: i64,
     position: Position,
     old_position: Position,
@@ -37,6 +41,7 @@ struct Row {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Shape {
     pub handle: i64,
+    pub mode: i64,
     pub box_: [i64; 4],
 }
 #[derive(Clone, Copy, Debug)]
@@ -53,6 +58,9 @@ pub(crate) struct SolidFrame {
     carried: bool,
     bumped: std::collections::BTreeSet<i64>,
     updates: Vec<PostUpdate>,
+    /// collision.gd context.bumps for side 0 (head bumps), in contact order.
+    head_bumped: std::collections::BTreeSet<i64>,
+    head_bumps: Vec<i64>,
     /// Broad phase for `shapes`: rows listed under every CELL their region has
     /// ever covered this step (a superset). `shapes` still applies the exact
     /// region test in row order, so results and handle order are unchanged.
@@ -122,9 +130,61 @@ impl SolidFrame {
         self.carried = false;
         self.bumped.clear();
         self.updates.clear();
+        self.head_bumped.clear();
+        self.head_bumps.clear();
         self.cells.clear();
         self.wide.clear();
         for entity in entities {
+            if let Kind::Span(span) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = span.solid(entity);
+                let b = span.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    mode: 2,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: box_.unwrap_or([
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ]),
+                    handle: None,
+                });
+            }
+            if let Kind::Block(block) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = block.solid(entity);
+                let b = block.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: true,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                });
+            }
             if let Kind::Post(post) = &entity.kind {
                 let position = Position {
                     x: entity.body.x,
@@ -133,6 +193,8 @@ impl SolidFrame {
                 let box_ = post.solid(entity.body, entity.status);
                 self.rows.push(Row {
                     token: entity.origin.token(),
+                    block: false,
+                    mode: 1,
                     spiked: post.spiked,
                     position,
                     old_position: position,
@@ -188,12 +250,70 @@ impl SolidFrame {
                 self.handles.push(index);
                 handle
             });
-            result.push(Shape { handle, box_ });
+            result.push(Shape {
+                handle,
+                mode: row.mode,
+                box_,
+            });
         }
         result
     }
+    /// collision.gd _selected: the live shape behind a handle (status checked by begin).
+    pub fn selected(&self, handle: i64) -> Option<Shape> {
+        if handle > -2 {
+            return None;
+        }
+        let index = *self.handles.get((-2 - handle) as usize)?;
+        let row = &self.rows[index];
+        row.live_box.map(|box_| Shape {
+            handle,
+            mode: row.mode,
+            box_,
+        })
+    }
     pub fn take_updates(&mut self) -> Vec<PostUpdate> {
         std::mem::take(&mut self.updates)
+    }
+    /// collision.gd _bump side 0 for the player: blocks whose bottom the head crossed.
+    pub fn bump_below(&mut self, body: &Body, bounds: [i64; 4], previous_edge: i64) {
+        let probe = [
+            body.x + bounds[0],
+            body.y + bounds[1],
+            body.x + bounds[2],
+            body.y + bounds[3],
+        ];
+        let targets: Vec<usize> = self
+            .shapes(probe)
+            .into_iter()
+            .filter(|s| s.mode == 1 && previous_edge >= s.box_[3] && overlap(s.box_, probe))
+            .map(|s| self.handles[(-2 - s.handle) as usize])
+            .collect();
+        for index in targets {
+            let row = &self.rows[index];
+            if row.block && self.head_bumped.insert(row.token) {
+                self.head_bumps.push(row.token);
+            }
+        }
+    }
+    pub fn take_head_bumps(&mut self) -> Vec<i64> {
+        std::mem::take(&mut self.head_bumps)
+    }
+    /// collision.gd refresh: a solid moved or changed during its step.
+    pub fn refresh(
+        &mut self,
+        token: i64,
+        position: Position,
+        live_box: Option<[i64; 4]>,
+        region: [i64; 4],
+    ) {
+        let Some(index) = self.rows.iter().position(|r| r.token == token) else {
+            return;
+        };
+        let row = &mut self.rows[index];
+        row.position = position;
+        row.live_box = live_box;
+        row.region = region;
+        self.index_region(index, region);
     }
     pub fn pound(
         &mut self,
@@ -217,7 +337,7 @@ impl SolidFrame {
         for index in targets {
             let row = &mut self.rows[index];
             let Some(box_) = row.live_box else { continue };
-            if row.spiked != 0 || !self.bumped.insert(row.token) {
+            if row.block || row.mode != 1 || row.spiked != 0 || !self.bumped.insert(row.token) {
                 continue;
             }
             body.y = box_[1] - bounds[3] - S / 16;
@@ -254,10 +374,12 @@ impl SolidFrame {
             self.index_region(index, region);
         }
     }
+    /// collision.gd support_in_box: a top-only shape counts only when the probe's top
+    /// is at or above its top edge.
     pub fn touches(&mut self, probe: [i64; 4]) -> bool {
         self.shapes(probe)
             .into_iter()
-            .any(|s| overlap(s.box_, probe))
+            .any(|s| !(s.mode == 2 && probe[1] > s.box_[1]) && overlap(s.box_, probe))
     }
     pub fn carry(&mut self, body: &mut Body, bounds: [i64; 4], on_floor: i64) {
         if self.carried {

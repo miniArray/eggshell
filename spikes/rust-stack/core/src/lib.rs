@@ -2,6 +2,7 @@
 use std::fmt;
 
 mod actors;
+mod blocks;
 mod body;
 mod checkpoint;
 mod clouds;
@@ -27,6 +28,7 @@ pub mod schema;
 mod solids;
 #[cfg(test)]
 mod solids_trace_tests;
+mod spans;
 mod state;
 mod state_restore;
 mod stilt;

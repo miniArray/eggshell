@@ -6,10 +6,10 @@ set -euo pipefail
 if [[ -n "${EXPECTED_SOURCE_SHA:-}" ]]; then test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"; fi
 git diff --exit-code 297ada9a022d0ddc297dd2d4091c5dccfab4531e -- src tests/fixtures
 fixture=${1:-bounce}
-[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$fixture" == stride.eat || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "$fixture" == posts_target || "$fixture" == posts_target.pound || "$fixture" == posts_target.duck ]]
+[[ "$fixture" == bounce || "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$fixture" == stride.eat || "$fixture" == lagoon || "$fixture" == collections || "$fixture" == actors_target || "$fixture" == stilts_target || "$fixture" == stilts_target.knock || "$fixture" == checkpoint_target || "$fixture" == posts_target || "$fixture" == posts_target.pound || "$fixture" == posts_target.duck || "$fixture" == blocks_target || "$fixture" == spans_target ]]
 base=${fixture%%.*}
 authored=0
-case "$base" in collections|actors_target|stilts_target|checkpoint_target|posts_target) authored=1 ;; esac
+case "$base" in collections|actors_target|stilts_target|checkpoint_target|posts_target|blocks_target|spans_target) authored=1 ;; esac
 export CORE_FIXTURE_INPUT="$PWD/tests/fixtures/$fixture.input.json"
 export CORE_FIXTURE_LEVEL="$PWD/tests/fixtures/$base.level.json"
 if [[ "$fixture" == bounce.pad || "$fixture" == bounce.moves || "$fixture" == stride.eat || "$authored" == 1 ]]; then export CORE_FIXTURE_INPUT="$HOME/eggshell-remote/artifacts/full-rust-ab/core/$fixture.input.json"; fi

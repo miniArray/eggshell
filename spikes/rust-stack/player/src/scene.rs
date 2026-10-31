@@ -881,9 +881,6 @@ impl Scene {
         let map = &prepared.map;
         // The initial matched 60Hz experiment explicitly pins smoothing off.
         // p.interpolate indicates an eligible previous pair, not a setting.
-        if p.message.is_some() {
-            return Err("required default-font message panel not admitted".into());
-        }
         let focus = pixel(p.follow.current);
         let plan = screen::plan(
             container,
@@ -1269,6 +1266,56 @@ impl Scene {
                             &state.palette,
                         ));
                     }
+                } else if let (true, Some(cuts), [Some(width), Some(height)]) = (
+                    matches!(
+                        entity.code.as_str(),
+                        "p2" | "p4"
+                            | "p5"
+                            | "p6"
+                            | "p7"
+                            | "p8"
+                            | "p9"
+                            | "p10"
+                            | "p13"
+                            | "p14"
+                            | "p15"
+                            | "p16"
+                            | "p17"
+                            | "p18"
+                            | "p19"
+                            | "p20"
+                            | "p21"
+                    ),
+                    visual.slices,
+                    state.size_pixels,
+                ) {
+                    // span_dressing.gd: a span body is its pack nine-slice grown to the
+                    // span's width and drawn height, centred on the span. Omitted: the
+                    // decorative stalks (p5/p6..p8 E2) and the spans' repeat fallback.
+                    let unit = 1.0 / self.density as f64;
+                    let target = [width / unit, height / unit];
+                    let at = Transform {
+                        position: pixel(entity.motion.current),
+                        scale: [unit, unit],
+                        ..Transform::default()
+                    };
+                    if width > 0.0 && height > 0.0 {
+                        for patch in
+                            slices_uniform(size, target, cuts, self.uniform_for(frame.image))?
+                        {
+                            let d = patch.destination;
+                            quads.push(rect_quad(
+                                frame.image,
+                                patch.source,
+                                size,
+                                [-target[0] / 2.0 + d[0], -target[1] / 2.0 + d[1], d[2], d[3]],
+                                at,
+                                &plan,
+                                color,
+                                &state.palette,
+                            ));
+                        }
+                    }
                 } else if let ("e35" | "o23", Some(cuts), Some(height)) =
                     (entity.code.as_str(), visual.slices, state.size_pixels[1])
                 {
@@ -1646,6 +1693,16 @@ impl Scene {
             self.solid,
             &mut hud,
         )?;
+        if let Some(message) = &p.message {
+            self.hud.emit_message(
+                message,
+                container,
+                hud_layout.size[1],
+                &self.sizes,
+                self.solid,
+                &mut hud,
+            )?;
+        }
         let player = pixel(p.player.motion.current);
         let light_origin = [
             plan.offset[0] + player[0] * plan.scale,

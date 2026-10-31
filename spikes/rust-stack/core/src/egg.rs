@@ -345,6 +345,43 @@ impl Run {
         self.entities.push(row);
         Ok(())
     }
+    /// item_egg.gd hit with Hits.BUMP: a resting egg hops.
+    pub(crate) fn egg_bump(&mut self, index: usize) {
+        let collected = self.entities[index].collected;
+        let e = &mut self.entities[index];
+        if let Kind::Egg(egg) = &mut e.kind {
+            if egg.mode == STATIONARY && collected == 0 {
+                egg.floating = 0;
+                e.body.vy = -384 * 60;
+            }
+        }
+    }
+    /// screen.gd overlaps (open edges) for an egg's box, around the camera's screen centre.
+    pub(crate) fn egg_on_screen(&self, e: &Entity, centre: crate::Position) -> bool {
+        let Kind::Egg(egg) = &e.kind else {
+            return false;
+        };
+        let b = egg.bounds();
+        e.body.x + b[2] > centre.x - 416 * S
+            && e.body.x + b[0] < centre.x + 416 * S
+            && e.body.y + b[3] > centre.y - 224 * S
+            && e.body.y + b[1] < centre.y + 224 * S
+    }
+    /// item_block.gd o9: registry.gd spawn_dynamic("o7", x, y, {vx, vy}).
+    pub(crate) fn spawn_block_egg(
+        &mut self,
+        x: i64,
+        y: i64,
+        vx: i64,
+        vy: i64,
+    ) -> Result<(), Error> {
+        let serial = self.next_serial()?;
+        let mut row = Entity::dynamic(serial, Kind::Egg(Egg::new(0)), Body { x, y, vx, vy }, -1, 7);
+        row.can_despawn = 1;
+        self.dynamic_serial = serial + 1;
+        self.entities.push(row);
+        Ok(())
+    }
     /// The thrower's EGG request (item_egg.gd consume_level_requests): a thrown o7.
     pub(crate) fn spawn_thrown_egg(&mut self, spawn: Spawn) -> Result<(), Error> {
         let Spawn::Egg {
@@ -471,6 +508,10 @@ impl Run {
                     .solid(o.body, o.status)
                     .map(|b| vec![Shape { b, mode: 1 }])
                     .unwrap_or_default(),
+                Kind::Block(bl) => bl
+                    .solid(o)
+                    .map(|b| vec![Shape { b, mode: 1 }])
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             let full = old_shapes.iter().any(|s| {
@@ -541,6 +582,7 @@ impl Run {
             PickupSpent,
             Cache,
             Redirect,
+            Block,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -591,6 +633,8 @@ impl Run {
                     Target::Cache
                 }
                 Kind::Redirect(_) if self.egg(egg).mode == THROWN => Target::Redirect,
+                // item_block.gd projectile_contact.
+                Kind::Block(_) => Target::Block,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -675,6 +719,7 @@ impl Run {
                 }
                 2
             }
+            Target::Block => self.block_projectile_contact(other)?,
             Target::PlantMiss | Target::PickupSpent | Target::Nothing => 0,
         })
     }
@@ -868,6 +913,8 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Egg(p) => p.bounds(),
         Kind::Cache(p) => p.bounds(),
         Kind::Redirect(p) => p.bounds(),
+        Kind::Block(p) => p.bounds(),
+        Kind::Span(p) => p.bounds(),
         _ => [0; 4],
     }
 }

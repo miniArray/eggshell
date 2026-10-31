@@ -20,7 +20,9 @@ fn run(restores: bool) {
         "checkpoint_target",
         "posts_target",
         "posts_target.pound",
-        "posts_target.duck"
+        "posts_target.duck",
+        "blocks_target",
+        "spans_target"
     ]
     .contains(&name.as_str()));
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -49,6 +51,9 @@ fn run(restores: bool) {
     let mut bridge_ticks = 0;
     let mut squash_ticks = 0;
     let mut tongue_ticks = 0;
+    let mut message_ticks = 0;
+    let mut message_sections = 0;
+    let mut raised_floor_ticks = 0;
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -358,6 +363,14 @@ fn run(restores: bool) {
         bridge_ticks +=
             usize::from(required(&wire.player, schema.player(), "support_bridge").unwrap() != 0);
         tongue_ticks += usize::from(packet.player.action == 4);
+        raised_floor_ticks += usize::from(
+            required(&wire.player, schema.player(), "on_floor").unwrap() != 0
+                && required(&wire.player, schema.player(), "y").unwrap() < 380 * 3600,
+        );
+        if let Some(m) = &packet.message {
+            message_ticks += 1;
+            message_sections = message_sections.max(m.section + 1);
+        }
         held_ticks +=
             usize::from(required(&wire.player, schema.player(), "move_held_id").unwrap() != 0);
         most_eggs = most_eggs.max(required(&wire.player, schema.player(), "move_eggs").unwrap());
@@ -504,6 +517,14 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "spans_target" {
+        // The span route must stand on top-only spans above the ground.
+        println!("SPAN_COVERAGE raised_floor_ticks={raised_floor_ticks}");
+        assert!(raised_floor_ticks > 0);
+    } else if name == "blocks_target" {
+        // The block route must open the message, page it and get eggs from a block.
+        println!("BLOCK_COVERAGE message_ticks={message_ticks} sections_read={message_sections} first_spawn={first_spawn:?} max_runtime={max_runtime} most_eggs={most_eggs}");
+        assert!(message_ticks > 0 && message_sections > 1 && first_spawn.is_some());
     } else {
         assert!(tongue_ticks > 0);
         if name == "lagoon" {

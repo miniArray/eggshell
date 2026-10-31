@@ -327,6 +327,124 @@ impl Hud {
         Ok(layout)
     }
 }
+impl Hud {
+    /// message_panel.gd: a 320x216 black panel (white outline) under the HUD with the
+    /// open message wrapped to 304 px, paged by section, and a page/controls hint.
+    /// Text uses the pack's HUD bitmap font; characters it lacks advance like a space.
+    /// Approximation: line spacing is the font cell plus 4 px (Godot used its default
+    /// font's line height), so page breaks may differ by a line.
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_message(
+        &self,
+        m: &eggshell_spike_core::MessagePicture,
+        container: [f64; 2],
+        hud_bottom: f64,
+        sizes: &[[f64; 2]],
+        solid_image: usize,
+        out: &mut Vec<Quad>,
+    ) -> Result<(), String> {
+        const CONTENT: [f64; 2] = [304.0, 168.0];
+        const GAP: f64 = 8.0;
+        const SIZE: [f64; 2] = [320.0, 216.0];
+        if container.iter().any(|v| *v <= 0.0 || !v.is_finite()) {
+            return Ok(());
+        }
+        let top = (hud_bottom + GAP).min(container[1] * 0.4);
+        let available = [container[0], container[1] - top];
+        let mut factor = 1.0;
+        while SIZE[0] * factor > available[0] || SIZE[1] * factor > available[1] {
+            factor /= 2.0;
+        }
+        let origin = [
+            (available[0] - SIZE[0] * factor) / 2.0 / factor,
+            (top + (available[1] - SIZE[1] * factor) / 2.0) / factor,
+        ];
+        let plan = overlay_plan(factor);
+        let rect = |out: &mut Vec<Quad>, r: [f64; 4], colour: [f32; 4]| {
+            out.push(rect_quad(
+                solid_image,
+                [0.0, 0.0, 1.0, 1.0],
+                [1.0, 1.0],
+                [origin[0] + r[0], origin[1] + r[1], r[2], r[3]],
+                Transform::default(),
+                &plan,
+                colour,
+                &[],
+            ));
+        };
+        rect(out, [0.0, 0.0, SIZE[0], SIZE[1]], [0.0, 0.0, 0.0, 1.0]);
+        for edge in [
+            [0.0, 0.0, SIZE[0], 1.0],
+            [0.0, SIZE[1] - 1.0, SIZE[0], 1.0],
+            [0.0, 0.0, 1.0, SIZE[1]],
+            [SIZE[0] - 1.0, 0.0, 1.0, SIZE[1]],
+        ] {
+            rect(out, edge, [1.0; 4]);
+        }
+        let advance = |c: char| {
+            self.font
+                .advance(c, self.dense)
+                .unwrap_or(self.font.space_advance)
+        };
+        let width = |s: &str| s.chars().map(advance).sum::<f64>();
+        let mut lines: Vec<String> = Vec::new();
+        for paragraph in m.text.split('\n') {
+            let mut line = String::new();
+            for word in paragraph.split(' ') {
+                let candidate = if line.is_empty() {
+                    word.to_owned()
+                } else {
+                    format!("{line} {word}")
+                };
+                if !line.is_empty() && width(&candidate) > CONTENT[0] {
+                    lines.push(std::mem::take(&mut line));
+                    line = word.to_owned();
+                } else {
+                    line = candidate;
+                }
+            }
+            lines.push(line);
+        }
+        let line_height = self.font.cell[1].max(16.0) + 4.0;
+        let text_height = (lines.len() as f64 * line_height).max(CONTENT[1]);
+        let sections = m.sections.max(1);
+        let page = m.section.clamp(0, sections - 1);
+        let fraction = page as f64 / (sections - 1).max(1) as f64;
+        let scroll = (text_height - CONTENT[1]).max(0.0) * fraction;
+        let draw = |out: &mut Vec<Quad>, text: &str, at: [f64; 2]| -> Result<(), String> {
+            let clean: String = text
+                .chars()
+                .map(|c| {
+                    if self.font.characters.contains(&c) {
+                        c
+                    } else {
+                        ' '
+                    }
+                })
+                .collect();
+            self.font.emit(
+                &clean,
+                [origin[0] + at[0], origin[1] + at[1]],
+                factor,
+                sizes[self.font.image],
+                self.dense,
+                out,
+            )
+        };
+        for (i, line) in lines.iter().enumerate() {
+            let y = i as f64 * line_height - scroll;
+            if y < 0.0 || y + line_height > CONTENT[1] + 0.5 {
+                continue;
+            }
+            draw(out, line, [GAP, GAP + y])?;
+        }
+        draw(
+            out,
+            &format!("{}/{}  Up/Down: page  Throw: close", page + 1, sections),
+            [GAP, CONTENT[1] + 2.0 * GAP],
+        )
+    }
+}
 pub fn overlay_plan(scale: f64) -> Plan {
     Plan {
         scale,

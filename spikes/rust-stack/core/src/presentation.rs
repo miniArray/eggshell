@@ -587,6 +587,45 @@ pub(crate) fn sample_rows(
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal | Kind::Decor | Kind::Checkpoint(_) => ([0; 4], VisualState::default()),
+                // plank_bridge.gd / ledge_span.gd / wide_span.gd view_state
+                Kind::Span(s) => (
+                    s.bounds(),
+                    VisualState {
+                        size_pixels: [
+                            Some(s.width as f64 / SCALE as f64),
+                            Some((s.height() / SCALE) as f64),
+                        ],
+                        ..VisualState::default()
+                    },
+                ),
+                // item_block.gd view_state
+                Kind::Block(b) => (
+                    b.bounds(),
+                    match b.kind {
+                        crate::blocks::BlockKind::Linked => VisualState {
+                            animation: Some(if b.enabled != 0 { "On" } else { "Off" }.into()),
+                            ..VisualState::default()
+                        },
+                        crate::blocks::BlockKind::Message
+                            if run.message.modal_token == e.origin.token() =>
+                        {
+                            let lift = (78 - run.message.ticks).min(run.message.ticks - 42).max(0);
+                            VisualState {
+                                frame: Some(0),
+                                offset_pixels: [
+                                    0.0,
+                                    if run.message.stage == crate::blocks::OPENING {
+                                        -80.0 * lift as f64 / 18.0
+                                    } else {
+                                        0.0
+                                    },
+                                ],
+                                ..VisualState::default()
+                            }
+                        }
+                        _ => VisualState::default(),
+                    },
+                ),
                 Kind::Post(post) => (
                     post.bounds(),
                     // The pack's visible post is the Post<colour> / SpikedPost<colour>
@@ -732,6 +771,8 @@ pub(crate) fn sample_rows(
                                     && e.collected == 0
                             }
                             Kind::Redirect(_) => e.status == 1,
+                            Kind::Block(_) => e.status == 1 && e.collected == 0,
+                            Kind::Span(_) => e.status == 1,
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
@@ -753,7 +794,16 @@ pub(crate) fn sample_rows(
         player,
         companions,
         hud,
-        message: None,
+        // item_block.gd message_state while a message is open.
+        message: run
+            .find_token(run.message.modal_token)
+            .filter(|_| run.message.stage != crate::blocks::CLOSED)
+            .map(|i| crate::MessagePicture {
+                holder_token: run.message.modal_token,
+                text: run.message_text(i, world),
+                section: run.message.section,
+                sections: run.message_sections(i, world),
+            }),
         entities,
         sound: SoundEvent {
             serial: run.sound.serial,

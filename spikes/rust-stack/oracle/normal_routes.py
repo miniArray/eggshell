@@ -93,6 +93,16 @@ def main() -> None:
         inputs = [6] * 45 + [0] * 35 + ([4] * 12 + [32] * 50 + [0] * 10) * 3 + [2] * 504
     elif name == "posts_target":
         inputs = [6] * 45 + [0] * 135 + [2] * 620
+    elif name == "spans_target":
+        # Hop right through the spans from below and land on them; pauses let the body
+        # walk off span ends and stand still on a top edge; a DOWN tap ducks on a span.
+        cycle = [6] * 14 + [2] * 16 + [0] * 8 + [32] * 4 + [2] * 10
+        inputs = cycle * 30 + [2] * 200
+    elif name == "blocks_target":
+        # Walk right jumping into each block from below; tap DOWN (page/close a message,
+        # duck) and THROW (aim, then throw a collected egg into the blocks) every cycle.
+        cycle = [6] * 10 + [2] * 12 + [34] + [2] * 5 + [66] + [2] * 3
+        inputs = cycle * 40 + [2] * 300
     elif name == "checkpoint_target":
         inputs = [2] * 2400
     elif name == "stilts_target.knock":
