@@ -84,6 +84,29 @@ pub(crate) enum After {
     SwitchStep,
     /// arrow_lift.gd step, which moves a top-only deck.
     LiftStep,
+    /// seed_melon.gd step, which falls with the solids.
+    MelonStep,
+    /// seed_shot.gd step, which strikes other bodies.
+    SeedStep,
+}
+
+/// A body that strikes others: its position, contact box offset and what it is.
+pub(crate) struct Projectile {
+    pub body: Body,
+    pub bounds: [i64; 4],
+    /// An e11 (armored_walker.gd: a spit from another e11 removes it).
+    pub armored: bool,
+    /// A spinning e6/e8 shell.
+    pub spins: bool,
+    /// A rolling e1/e2.
+    pub rolls: bool,
+    /// A spat or rolling body (actor.gd e5 head: consumed).
+    pub breaks: bool,
+}
+impl Projectile {
+    fn box_(&self) -> [i64; 4] {
+        world_box(self.body, self.bounds)
+    }
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -316,6 +339,12 @@ impl Run {
             }
             let token = e.origin.token();
             let blocks_step = self.player.blocks_step();
+            if matches!(e.kind, Kind::Melon(_)) {
+                if self.melon_tongue(index) == 1 {
+                    return;
+                }
+                continue;
+            }
             if matches!(e.kind, Kind::Egg(_)) {
                 if self.egg_tongue(index) == 2 {
                     self.player.block_tongue();
@@ -496,6 +525,10 @@ impl Run {
             self.stem_consume(index);
             return;
         }
+        if matches!(self.entities[index].kind, Kind::Melon(_)) {
+            self.melon_consume(index);
+            return;
+        }
         let serial = self.player.food.requests.serial();
         let token = self.entities[index].origin.token();
         let list = match &self.entities[index].kind {
@@ -597,204 +630,34 @@ impl Run {
         kind: HitKind,
         self_breaks: bool,
     ) -> Result<(), Error> {
-        let projectile_armored = matches!(
-            &self.entities[index].kind,
-            Kind::Walker(w) if w.kind == ActorKind::Armored
-        );
-        let projectile_spins = matches!(
-            &self.entities[index].kind,
-            Kind::Walker(w) if w.kind == ActorKind::Shell && w.mode == crate::shell::SPIN
-        );
-        let projectile = self.entities[index].body;
-        let projectile_box = world_box(projectile, b);
-        let projectile_rolls = matches!(
-            &self.entities[index].kind,
-            Kind::Walker(w) if w.roll != 0 && [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind)
-        );
-        let projectile_breaks = matches!(
-            &self.entities[index].kind,
-            Kind::Walker(w) if w.spat != 0 || w.roll != 0
-        );
+        let projectile = Projectile {
+            body: self.entities[index].body,
+            bounds: b,
+            armored: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.kind == ActorKind::Armored
+            ),
+            spins: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.kind == ActorKind::Shell && w.mode == crate::shell::SPIN
+            ),
+            rolls: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.roll != 0 && [ActorKind::Walker, ActorKind::Flyer].contains(&w.kind)
+            ),
+            breaks: matches!(
+                &self.entities[index].kind,
+                Kind::Walker(w) if w.spat != 0 || w.roll != 0
+            ),
+        };
         let mut other = 0;
         while other < self.entities.len() {
             let current = other;
             other += 1;
-            if current == index {
+            if current == index || !self.spit_candidate(current, &projectile) {
                 continue;
             }
-            let o = &self.entities[current];
-            if o.status != 1 || held(o) || hidden(o) {
-                continue;
-            }
-            let ob = match &o.kind {
-                Kind::Walker(_)
-                | Kind::Pickup(_)
-                | Kind::Star(_)
-                | Kind::Egg(_)
-                | Kind::Cache(_)
-                | Kind::Redirect(_)
-                | Kind::Hard(_)
-                | Kind::Block(_)
-                | Kind::Stem(_) => crate::egg::entity_bounds(o),
-                // Posts, pads, bridges, goals, checkpoints, spans and gates have no hit
-                // rule (one_way_gate.gd projectile_contact runs for ENEMY types only).
-                _ => continue,
-            };
-            if !strict(projectile_box, world_box(o.body, ob)) {
-                continue;
-            }
-            enum Target {
-                StiltRider,
-                StiltBody,
-                PlantHead,
-                PlantMiss,
-                Actor,
-                RollingPair,
-                Shell,
-                Armored,
-                Spear,
-                Pickup,
-                Inert,
-                Egg,
-                Cache,
-                Nothing,
-            }
-            let target = {
-                let o = &self.entities[current];
-                match &o.kind {
-                    // stilt_walker.gd projectile_contact: the rider is struck near the top.
-                    Kind::Walker(w) if w.kind == ActorKind::Stilt => {
-                        if projectile.y < o.body.y - w.height + 50 * S {
-                            Target::StiltRider
-                        } else {
-                            Target::StiltBody
-                        }
-                    }
-                    // actor.gd projectile_contact for e5: a spit hits only the head; a
-                    // shell hits it anywhere.
-                    Kind::Walker(w) if w.kind == ActorKind::Plant => {
-                        if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box)
-                        {
-                            Target::PlantHead
-                        } else if kind == HitKind::Shell {
-                            Target::Actor
-                        } else {
-                            Target::PlantMiss
-                        }
-                    }
-                    Kind::Walker(w) if kind == HitKind::Spit && w.roll != 0 && projectile_rolls => {
-                        Target::RollingPair
-                    }
-                    // shell_walker.gd projectile_contact.
-                    Kind::Walker(w) if [ActorKind::Shell, ActorKind::Runner].contains(&w.kind) => {
-                        Target::Shell
-                    }
-                    // armored_walker.gd projectile_contact.
-                    Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
-                    // spear_guard.gd projectile_contact: any non-egg hit drops the spear
-                    // and defeats it.
-                    Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
-                    Kind::Walker(_) => Target::Actor,
-                    // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
-                    Kind::Pickup(_) => Target::Pickup,
-                    // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
-                    Kind::Egg(_) => Target::Egg,
-                    // release_cloud.gd hit (SPIT reveals or opens); redirect_cloud.gd has no hit.
-                    Kind::Cache(_) => Target::Cache,
-                    // hard/colour/thorn/item blocks are not ENEMY: their `hit` ignores
-                    // SPIT but still counts as reaction 3, which breaks the projectile.
-                    // item_stem.gd hit reacts to BUMP only.
-                    Kind::Hard(_) | Kind::Block(_) | Kind::Stem(_) => Target::Inert,
-                    // item_star.gd has projectile_contact only and is not an ENEMY.
-                    _ => Target::Nothing,
-                }
-            };
-            let reaction = match target {
-                Target::StiltRider => {
-                    self.unseat_stilt(current)?;
-                    3
-                }
-                Target::StiltBody => {
-                    let o = &mut self.entities[current];
-                    if let Kind::Walker(w) = &mut o.kind {
-                        w.stilt_knock(&mut o.body, &mut o.facing, projectile.x);
-                    }
-                    3
-                }
-                Target::PlantHead => {
-                    self.hit_actor(current)?;
-                    if projectile_breaks || kind == HitKind::Shell {
-                        1
-                    } else {
-                        3
-                    }
-                }
-                Target::Spear => {
-                    let o = &mut self.entities[current];
-                    if let Kind::Walker(w) = &mut o.kind {
-                        w.has_spear = 0;
-                        w.remove(&mut o.status, &mut o.can_respawn);
-                    }
-                    3
-                }
-                Target::Armored => {
-                    // A spit from another e11 removes it; a shell removes it; any other
-                    // spit rolls it away from the projectile.
-                    if kind == HitKind::Shell || projectile_armored {
-                        self.shell_remove(current);
-                    } else {
-                        let o = &mut self.entities[current];
-                        if let Kind::Walker(w) = &mut o.kind {
-                            w.armored_hit(
-                                &mut o.body,
-                                &mut o.status,
-                                &mut o.can_respawn,
-                                kind,
-                                projectile.x,
-                            );
-                        }
-                    }
-                    3
-                }
-                Target::Shell => {
-                    let o = &self.entities[current];
-                    let Kind::Walker(w) = &o.kind else {
-                        unreachable!()
-                    };
-                    if kind == HitKind::Spit && w.mode == crate::shell::SPIN {
-                        0
-                    } else {
-                        let both_spin = kind == HitKind::Shell
-                            && w.mode == crate::shell::SPIN
-                            && w.kind == ActorKind::Shell
-                            && projectile_spins;
-                        // hit with SPIT or SHELL removes it.
-                        self.shell_remove(current);
-                        if both_spin {
-                            1
-                        } else {
-                            3
-                        }
-                    }
-                }
-                Target::Actor => {
-                    self.hit_actor(current)?;
-                    3
-                }
-                Target::Pickup => {
-                    self.collect_item(current);
-                    3
-                }
-                Target::Egg | Target::Inert => 3,
-                Target::Cache => {
-                    let o = &mut self.entities[current];
-                    if let Kind::Cache(c) = &mut o.kind {
-                        c.hit(o.status, o.collected);
-                    }
-                    3
-                }
-                Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
-            };
+            let reaction = self.spit_contact(current, &projectile, kind)?;
             if self.entities[index].status != 1 {
                 return Ok(());
             }
@@ -804,6 +667,197 @@ impl Run {
             }
         }
         Ok(())
+    }
+    /// Whether another entity takes part in a spit or shell strike: active, not held or
+    /// hidden, a kind with a hit or projectile rule, and strictly overlapping the box.
+    pub(crate) fn spit_candidate(&self, other: usize, projectile: &Projectile) -> bool {
+        let o = &self.entities[other];
+        if o.status != 1 || held(o) || hidden(o) {
+            return false;
+        }
+        let ob = match &o.kind {
+            Kind::Walker(_)
+            | Kind::Pickup(_)
+            | Kind::Star(_)
+            | Kind::Egg(_)
+            | Kind::Cache(_)
+            | Kind::Redirect(_)
+            | Kind::Hard(_)
+            | Kind::Block(_)
+            | Kind::Stem(_) => crate::egg::entity_bounds(o),
+            // Posts, pads, bridges, goals, checkpoints, spans, gates and melons have no hit
+            // rule (one_way_gate.gd projectile_contact runs for ENEMY types only).
+            _ => return false,
+        };
+        strict(projectile.box_(), world_box(o.body, ob))
+    }
+    /// The struck entity's reaction to a spit or a spinning shell (enemy_body.gd
+    /// hit_others, seed_shot.gd strike): ENEMY types run projectile_contact, other types
+    /// with a hit rule take the hit (3). 0 passes, 1 consumes, 3 is solid.
+    pub(crate) fn spit_contact(
+        &mut self,
+        current: usize,
+        projectile: &Projectile,
+        kind: HitKind,
+    ) -> Result<i64, Error> {
+        let projectile_box = projectile.box_();
+        let projectile_armored = projectile.armored;
+        let projectile_spins = projectile.spins;
+        let projectile_rolls = projectile.rolls;
+        let projectile_breaks = projectile.breaks;
+        let projectile = projectile.body;
+        enum Target {
+            StiltRider,
+            StiltBody,
+            PlantHead,
+            PlantMiss,
+            Actor,
+            RollingPair,
+            Shell,
+            Armored,
+            Spear,
+            Pickup,
+            Inert,
+            Egg,
+            Cache,
+            Nothing,
+        }
+        let target = {
+            let o = &self.entities[current];
+            match &o.kind {
+                // stilt_walker.gd projectile_contact: the rider is struck near the top.
+                Kind::Walker(w) if w.kind == ActorKind::Stilt => {
+                    if projectile.y < o.body.y - w.height + 50 * S {
+                        Target::StiltRider
+                    } else {
+                        Target::StiltBody
+                    }
+                }
+                // actor.gd projectile_contact for e5: a spit hits only the head; a
+                // shell hits it anywhere.
+                Kind::Walker(w) if w.kind == ActorKind::Plant => {
+                    if w.head_size != 0 && strict(w.head_box(o.body, o.facing), projectile_box)
+                    {
+                        Target::PlantHead
+                    } else if kind == HitKind::Shell {
+                        Target::Actor
+                    } else {
+                        Target::PlantMiss
+                    }
+                }
+                Kind::Walker(w) if kind == HitKind::Spit && w.roll != 0 && projectile_rolls => {
+                    Target::RollingPair
+                }
+                // shell_walker.gd projectile_contact.
+                Kind::Walker(w) if [ActorKind::Shell, ActorKind::Runner].contains(&w.kind) => {
+                    Target::Shell
+                }
+                // armored_walker.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
+                // spear_guard.gd projectile_contact: any non-egg hit drops the spear
+                // and defeats it.
+                Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
+                Kind::Walker(_) => Target::Actor,
+                // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
+                Kind::Pickup(_) => Target::Pickup,
+                // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
+                Kind::Egg(_) => Target::Egg,
+                // release_cloud.gd hit (SPIT reveals or opens); redirect_cloud.gd has no hit.
+                Kind::Cache(_) => Target::Cache,
+                // hard/colour/thorn/item blocks are not ENEMY: their `hit` ignores
+                // SPIT but still counts as reaction 3, which breaks the projectile.
+                // item_stem.gd hit reacts to BUMP only.
+                Kind::Hard(_) | Kind::Block(_) | Kind::Stem(_) => Target::Inert,
+                // item_star.gd has projectile_contact only and is not an ENEMY.
+                _ => Target::Nothing,
+            }
+        };
+        Ok(match target {
+            Target::StiltRider => {
+                self.unseat_stilt(current)?;
+                3
+            }
+            Target::StiltBody => {
+                let o = &mut self.entities[current];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.stilt_knock(&mut o.body, &mut o.facing, projectile.x);
+                }
+                3
+            }
+            Target::PlantHead => {
+                self.hit_actor(current)?;
+                if projectile_breaks || kind == HitKind::Shell {
+                    1
+                } else {
+                    3
+                }
+            }
+            Target::Spear => {
+                let o = &mut self.entities[current];
+                if let Kind::Walker(w) = &mut o.kind {
+                    w.has_spear = 0;
+                    w.remove(&mut o.status, &mut o.can_respawn);
+                }
+                3
+            }
+            Target::Armored => {
+                // A spit from another e11 removes it; a shell removes it; any other
+                // spit rolls it away from the projectile.
+                if kind == HitKind::Shell || projectile_armored {
+                    self.shell_remove(current);
+                } else {
+                    let o = &mut self.entities[current];
+                    if let Kind::Walker(w) = &mut o.kind {
+                        w.armored_hit(
+                            &mut o.body,
+                            &mut o.status,
+                            &mut o.can_respawn,
+                            kind,
+                            projectile.x,
+                        );
+                    }
+                }
+                3
+            }
+            Target::Shell => {
+                let o = &self.entities[current];
+                let Kind::Walker(w) = &o.kind else {
+                    unreachable!()
+                };
+                if kind == HitKind::Spit && w.mode == crate::shell::SPIN {
+                    0
+                } else {
+                    let both_spin = kind == HitKind::Shell
+                        && w.mode == crate::shell::SPIN
+                        && w.kind == ActorKind::Shell
+                        && projectile_spins;
+                    // hit with SPIT or SHELL removes it.
+                    self.shell_remove(current);
+                    if both_spin {
+                        1
+                    } else {
+                        3
+                    }
+                }
+            }
+            Target::Actor => {
+                self.hit_actor(current)?;
+                3
+            }
+            Target::Pickup => {
+                self.collect_item(current);
+                3
+            }
+            Target::Egg | Target::Inert => 3,
+            Target::Cache => {
+                let o = &mut self.entities[current];
+                if let Kind::Cache(c) = &mut o.kind {
+                    c.hit(o.status, o.collected);
+                }
+                3
+            }
+            Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
+        })
     }
     /// actor.gd hit with a spit (no element, not an egg): remove the body.
     fn hit_actor(&mut self, index: usize) -> Result<(), Error> {
@@ -832,6 +886,7 @@ fn held(e: &Entity) -> bool {
         Kind::Walker(w) => w.held == 1,
         Kind::Pickup(p) => p.held == 1,
         Kind::Star(p) => p.held == 1,
+        Kind::Melon(m) => m.held == 1,
         _ => false,
     }
 }

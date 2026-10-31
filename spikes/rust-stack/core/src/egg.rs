@@ -497,6 +497,7 @@ impl Run {
                 Kind::Walker(w) => w.held == 1,
                 Kind::Pickup(p) => p.held == 1,
                 Kind::Star(p) => p.held == 1,
+                Kind::Melon(m) => m.held == 1,
                 _ => false,
             };
             let hidden = matches!(&o.kind, Kind::Walker(w) if w.hidden == 1);
@@ -1023,6 +1024,7 @@ impl Run {
                 self.mark_origin(token);
                 Ok(())
             }
+            crate::consumers::Action::Seed(x, y, angle) => self.spawn_seed(x, y, angle),
         }
     }
     /// item_egg.gd tongue: a resting egg is nudged away and blocks the tongue.
@@ -1066,6 +1068,8 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::StarFlower(p) => p.bounds(),
         Kind::Switch(p) => p.bounds(),
         Kind::Lift(p) => p.bounds(),
+        Kind::Melon(p) => p.bounds(),
+        Kind::Seed(p) => p.bounds(),
         _ => [0; 4],
     }
 }

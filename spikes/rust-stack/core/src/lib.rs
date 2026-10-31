@@ -22,6 +22,7 @@ mod items;
 mod ledge;
 mod life;
 mod lift;
+mod melon;
 pub mod math;
 mod pad;
 mod player;

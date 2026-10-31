@@ -74,6 +74,7 @@ pub(crate) fn restore_head(
         "o4" => Kind::Star(Star::default()),
         "o14" => Kind::Switch(crate::switch::Switch::released()),
         "o7" => Kind::Egg(crate::egg::Egg::new(0)),
+        "seed_shot" => Kind::Seed(crate::melon::Seed { heading: 0 }),
         _ => return Err(refuse("dynamic code outside implemented runtime closure")),
     };
     let mut entity = Entity::dynamic(

@@ -1,7 +1,7 @@
 //! Level-wide request consumers (registry.gd consume_requests, before entity consumers):
 //! item_egg.gd egg inventory and throws, seed_shot.gd seeds, element_shot.gd fire/ice.
 use crate::{
-    food::{Since, COLD, EGG, HEAT, SEED, STORED_EGG},
+    food::{Since, COLD, EGG, HEAT, STORED_EGG},
     math::sine,
     Error,
 };
@@ -10,6 +10,8 @@ use crate::{
 pub(crate) enum Action {
     Spawn(crate::egg::Spawn),
     MarkOrigin(i64),
+    /// seed_shot.gd: a runtime seed at x, y heading along the request angle.
+    Seed(i64, i64, i64),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,13 +96,13 @@ impl Consumers {
         requests: &crate::food::Requests,
         eggs: i64,
     ) -> Result<Vec<Action>, Error> {
-        let actions = self.run_eggs(requests, eggs)?;
+        let mut actions = self.run_eggs(requests, eggs)?;
         // seed_shot.gd consume_level_requests
         let seeds = requests.since(self.seed_cursor);
         self.seed_cursor = requests.serial();
         if let Since::Requests(list) = seeds {
-            if list.iter().any(|r| r.kind == SEED) {
-                return Err(unsupported("seed shots are not ported yet"));
+            for (x, y, angle) in crate::melon::seed_requests(&list) {
+                actions.push(Action::Seed(x, y, angle));
             }
         }
         // element_shot.gd consume_level_requests

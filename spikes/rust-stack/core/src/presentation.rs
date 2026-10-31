@@ -832,6 +832,22 @@ pub(crate) fn sample_rows(
                         ..VisualState::default()
                     },
                 ),
+                // seed_melon.gd view_state
+                Kind::Melon(m) => (
+                    m.bounds(),
+                    VisualState {
+                        frame: Some(m.form),
+                        ..VisualState::default()
+                    },
+                ),
+                // seed_shot.gd view_state
+                Kind::Seed(s) => (
+                    s.bounds(),
+                    VisualState {
+                        rotation_degrees: Some(s.heading as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
                 // item_egg.gd view_state: the colour picks the animation; despawn flickers.
                 Kind::Egg(egg) => (
                     egg.bounds(),
@@ -894,7 +910,8 @@ pub(crate) fn sample_rows(
                                 e.status == 1
                             }
                             Kind::StarFlower(_) => e.status == 1 && e.collected == 0,
-                            Kind::Lift(_) => e.status == 1,
+                            Kind::Lift(_) | Kind::Seed(_) => e.status == 1,
+                            Kind::Melon(m) => e.status == 1 && m.held == 0,
                             Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {

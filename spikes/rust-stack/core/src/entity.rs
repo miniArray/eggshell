@@ -59,6 +59,8 @@ pub(crate) enum Kind {
     StarFlower(crate::flower::Flower),
     Switch(crate::switch::Switch),
     Lift(crate::lift::Lift),
+    Melon(crate::melon::Melon),
+    Seed(crate::melon::Seed),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -91,6 +93,7 @@ impl Entity {
                 | Kind::StarFlower(_)
                 | Kind::Switch(_)
                 | Kind::Lift(_)
+                | Kind::Melon(_)
         ));
         // star_flower.gd create: a flower that left the screen never respawns.
         let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
@@ -184,6 +187,7 @@ impl Entity {
                 Kind::Star(_) => "o4",
                 Kind::Switch(_) => "o14",
                 Kind::Egg(_) => "o7",
+                Kind::Seed(_) => "seed_shot",
                 _ => unreachable!("runtime constructors admit only dynamic types"),
             }
         }
@@ -222,6 +226,7 @@ impl Entity {
             Kind::Walker(a) => a.held,
             Kind::Pickup(p) => p.held,
             Kind::Star(p) => p.held,
+            Kind::Melon(m) => m.held,
             _ => 0,
         };
         if self.status == 3 || held == 1 || (awake && self.can_despawn == 0) {
@@ -278,6 +283,7 @@ impl Entity {
                     Kind::StarFlower(_) => Kind::StarFlower(crate::flower::Flower::new(source)?),
                     Kind::Switch(_) => Kind::Switch(crate::switch::Switch::new(source)?),
                     Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
+                    Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -297,6 +303,7 @@ impl Entity {
                 Kind::StarFlower(p) => p.bounds(),
                 Kind::Switch(p) => p.bounds(),
                 Kind::Lift(p) => p.bounds(),
+                Kind::Melon(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {
                         unreachable!("placed pad")

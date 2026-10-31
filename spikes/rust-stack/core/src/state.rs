@@ -173,6 +173,7 @@ impl Run {
                     "o22" => Kind::StarFlower(crate::flower::Flower::new(p)?),
                     "o14" => Kind::Switch(crate::switch::Switch::new(p)?),
                     "o21" => Kind::Lift(crate::lift::Lift::new(p)?),
+                    "o25" => Kind::Melon(crate::melon::Melon::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -320,6 +321,8 @@ impl Run {
                     | Kind::StarFlower(_)
                     | Kind::Switch(_)
                     | Kind::Lift(_)
+                    | Kind::Melon(_)
+                    | Kind::Seed(_)
             ) {
                 continue;
             }
@@ -345,6 +348,8 @@ impl Run {
                 Kind::StarFlower(_) => crate::eating::After::FlowerStep,
                 Kind::Switch(_) => crate::eating::After::SwitchStep,
                 Kind::Lift(_) => crate::eating::After::LiftStep,
+                Kind::Melon(_) => crate::eating::After::MelonStep,
+                Kind::Seed(_) => crate::eating::After::SeedStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -461,6 +466,8 @@ impl Run {
                     self.fall_step(next - 1, map, centre);
                     self.refresh_block_solid(next - 1, map);
                 }
+                crate::eating::After::MelonStep => self.melon_step(next - 1, map),
+                crate::eating::After::SeedStep => self.seed_step(next - 1, map)?,
                 crate::eating::After::Nothing => {}
             }
             if matches!(&self.entities[next - 1].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Flat)
@@ -1107,6 +1114,8 @@ impl Run {
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
+            Kind::Melon(p) => p.field(n),
+            Kind::Seed(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1391,6 +1400,16 @@ impl Run {
             if let Kind::Lift(l) = &e.kind {
                 if !l.valid() {
                     return Err(unsupported("wheel fields"));
+                }
+            }
+            if let Kind::Melon(m) = &e.kind {
+                if !m.valid(serial) {
+                    return Err(unsupported("melon fields"));
+                }
+            }
+            if let Kind::Seed(s) = &e.kind {
+                if !s.valid() || e.origin.placed().is_some() {
+                    return Err(unsupported("seed fields"));
                 }
             }
             if let Kind::Switch(s) = &e.kind {

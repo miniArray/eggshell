@@ -38,6 +38,7 @@ fn run(restores: bool) {
         "lifts_target",
         "snowflow_target",
         "fish_target",
+        "melons_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -103,6 +104,10 @@ fn run(restores: bool) {
     let mut fish_modes = [0usize; 5];
     let mut fish_exhausted = 0;
     let mut fish_dry = 0;
+    let mut melon_held_ticks = 0;
+    let mut melons_eaten = 0;
+    let mut seed_ticks = 0;
+    let mut seed_struck = BTreeSet::new();
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -547,6 +552,25 @@ fn run(restores: bool) {
             fish_exhausted += usize::from(f("fish_exhausted") == 1);
             fish_dry += usize::from(f("fish_dry") == 1);
         }
+        // seed_melon.gd / seed_shot.gd: held and eaten melons, flying seeds, and placed
+        // targets defeated or collected well ahead of the player (only a seed reaches them).
+        let mut eaten = 0;
+        for e in &wire.entities {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if e.code == "o25" {
+                melon_held_ticks += usize::from(f("held") == 1);
+                eaten += usize::from(f("status") == 3 && f("can_respawn") == 0);
+            }
+            if ["e1", "e6", "e35", "o1"].contains(&e.code.as_str())
+                && f("source_index") >= 0
+                && (f("status") == 3 || f("collected") == 1)
+                && f("x") > packet.player.motion.current.x + 96 * 3600
+            {
+                seed_struck.insert(e.id.clone());
+            }
+        }
+        melons_eaten = melons_eaten.max(eaten);
+        seed_ticks += usize::from(wire.entities.iter().any(|e| e.code == "seed_shot"));
         shell_runner_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_runner"));
         stem_frames += usize::from(packet.entities.iter().any(|e| {
             e.visual.animation.as_deref() == Some("Loop") && e.visual.frame.unwrap_or(0) >= 10
@@ -725,6 +749,10 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "melons_target" {
+        println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
+        assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
+        assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
         assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);

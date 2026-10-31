@@ -93,6 +93,15 @@ def main() -> None:
         inputs = [6] * 45 + [0] * 35 + ([4] * 12 + [32] * 50 + [0] * 10) * 3 + [2] * 504
     elif name == "posts_target":
         inputs = [6] * 45 + [0] * 135 + [2] * 620
+    elif name == "melons_target":
+        # Wait for the high melon to land, lick it (30 seeds) and hold USE to spit them
+        # right at the walkers, stilt and coin; walk on, hop the rock, lick the F 1 melon
+        # (10 seeds) and spit at the shell, then the F 2 melon (60 seeds) at the last
+        # walker.
+        eat = [8] + [0] * 45
+        inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
+        inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
+        inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
     elif name == "fish_target":
         # Stand back while the fish patrol, leap and arc; then hop past the flopper and
         # wade into the pool, swimming (jump presses) and licking.
