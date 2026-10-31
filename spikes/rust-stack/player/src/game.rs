@@ -581,7 +581,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     }
                     let p = &current.p;
                     let picture = scene.picture(p, container, current.zoom)?;
-                    zoom = picture.plan.zoom;
+                    // This frame was prepared one frame earlier, with the zoom of that
+                    // time. Writing its zoom back would undo a newer request and swap
+                    // the two sizes every frame. Only clamp the request to the range.
+                    zoom = zoom.clamp(picture.plan.zoom_min, picture.plan.zoom_max);
                     zoom_min = picture.plan.zoom_min;
                     zoom_max = picture.plan.zoom_max;
                     resolved_scale = picture.plan.scale;
