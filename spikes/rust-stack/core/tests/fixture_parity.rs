@@ -206,8 +206,15 @@ fn run(restores: bool) {
                     }
                 }
                 let h = e["head"].as_array().unwrap();
+                // Godot reports only the plant head; stilt parts are a Rust-only drawing
+                // detail (the original's animated walker), not part of the oracle view.
+                let heads: Vec<_> = picture
+                    .auxiliary
+                    .iter()
+                    .filter(|a| a.kind == eggshell_spike_core::EntityAuxiliaryKind::PlantHead)
+                    .collect();
                 if h.is_empty() {
-                    assert!(picture.auxiliary.is_empty());
+                    assert!(heads.is_empty());
                     assert_eq!(picture.visual.head_box, None);
                 } else {
                     let b = [

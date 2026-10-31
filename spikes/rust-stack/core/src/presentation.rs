@@ -182,6 +182,79 @@ fn actor_visible(e: &crate::entity::Entity) -> bool {
         e.origin.placed().is_some() && (e.status == 0 || (e.status == 2 && e.can_respawn != 0));
     eligible && (e.status == 1 || inactive)
 }
+/// The original stilt walker (YFS Enemies sheet, StiltGuyCollision events): StiltGuy_Feet at
+/// the body, a StiltGuy_PolesMiddle strip on the feet's top grown to height-68 px, and
+/// StiltGuy_Top on the poles. Feet play "Walk" (12 frames, 20 fps) once per stride and the
+/// poles copy the feet frame; the top advances one of its 24 frames per feet frame. Knocked:
+/// feet and poles frame 9, top frame 21. The Godot port drew the still editor image instead.
+/// Stand-in: the parts keep their pack colours (the original recolours them per variant).
+fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryPicture> {
+    let Kind::Walker(w) = &e.kind else {
+        return Vec::new();
+    };
+    if w.kind != crate::actors::ActorKind::Stilt {
+        return Vec::new();
+    }
+    let knocked = w.phase == 1;
+    // stride counts 36 ticks per step (72 in water); three ticks per feet frame.
+    let feet = if knocked { 9 } else { (w.stride / 3).min(11) };
+    let parity = (e.body.x.div_euclid(24 * SCALE)) & 1;
+    let top = if knocked {
+        21
+    } else {
+        (feet + 12 * parity) % 24
+    };
+    let poles = (w.height / SCALE - 68).max(0);
+    let flip = if e.facing > 0 { -1.0 } else { 1.0 };
+    let part = |kind, key: &str, y: i64, frame: i64, height: Option<f64>, shown: bool| {
+        let at = Position { x: e.body.x, y };
+        EntityAuxiliaryPicture {
+            kind,
+            scale: [flip, 1.0],
+            picture: AuxiliaryPicture {
+                motion: motion(at, at),
+                visible: shown,
+                layer: 10,
+                facing: e.facing,
+                animation: String::new(),
+                tick: 0,
+                visual: VisualState {
+                    asset_key: Some(key.into()),
+                    frame: Some(frame),
+                    size_pixels: [None, height],
+                    ..VisualState::default()
+                },
+            },
+        }
+    };
+    let feet_top = e.body.y - 30 * SCALE;
+    vec![
+        part(
+            EntityAuxiliaryKind::StiltFeet,
+            "StiltGuy_Feet",
+            e.body.y,
+            feet,
+            None,
+            visible,
+        ),
+        part(
+            EntityAuxiliaryKind::StiltPoles,
+            "StiltGuy_PolesMiddle",
+            feet_top,
+            feet,
+            Some(poles as f64),
+            visible && poles > 0,
+        ),
+        part(
+            EntityAuxiliaryKind::StiltTop,
+            "StiltGuy_Top",
+            feet_top - poles * SCALE,
+            top,
+            None,
+            visible,
+        ),
+    ]
+}
 fn plant_head(
     e: &crate::entity::Entity,
     previous: Option<[i64; 4]>,
@@ -640,7 +713,11 @@ pub(crate) fn sample_rows(
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
                 hidden: matches!(&e.kind,Kind::Walker(w)if w.hidden!=0),
                 visual,
-                auxiliary: plant_head(e, previous_entity.1, frame),
+                auxiliary: {
+                    let mut parts = plant_head(e, previous_entity.1, frame);
+                    parts.extend(stilt_parts(e, e.status == 1 && actor_visible(e)));
+                    parts
+                },
             }
         })
         .collect();

@@ -365,6 +365,28 @@ impl Scene {
             }
             objects.insert(code.to_owned(), bound);
         }
+        // The original stilt walker's animated parts, by pack source type.
+        if world
+            .maps
+            .iter()
+            .flat_map(|m| m.placements.iter())
+            .any(|p| p.code == "e35")
+        {
+            for name in ["StiltGuy_Feet", "StiltGuy_PolesMiddle", "StiltGuy_Top"] {
+                let entry = pack
+                    .manifest
+                    .get("visuals")
+                    .and_then(Value::as_object)
+                    .and_then(|v| {
+                        v.values()
+                            .find(|e| e.get("source_type").and_then(Value::as_str) == Some(name))
+                    })
+                    .ok_or_else(|| format!("pack has no {name} for e35"))?;
+                let mut bound = HashMap::new();
+                bound.insert(0, catalog.visual(entry, 0, density, false)?);
+                objects.insert(name.to_owned(), bound);
+            }
+        }
         // Visible pound-post art (o23): bind the colours and forms the level places,
         // keyed by pack source type, which the core names in the post's asset_key.
         let visuals = pack.manifest.get("visuals").and_then(Value::as_object);
@@ -1168,6 +1190,15 @@ impl Scene {
                         &state.palette,
                     ));
                 }
+                // An active stilt walker is drawn from its animated parts (auxiliaries);
+                // the editor image only stands for a waiting one.
+                if entity
+                    .auxiliary
+                    .iter()
+                    .any(|a| a.kind == EntityAuxiliaryKind::StiltTop && a.picture.visible)
+                {
+                    quads.clear();
+                }
                 for q in quads {
                     if visible(&q, container) {
                         commands.push((
@@ -1192,7 +1223,10 @@ impl Scene {
                         continue;
                     }
                     let key = match auxiliary.kind {
-                        eggshell_spike_core::EntityAuxiliaryKind::PlantHead => "e5_head",
+                        EntityAuxiliaryKind::PlantHead => "e5_head",
+                        EntityAuxiliaryKind::StiltFeet => "StiltGuy_Feet",
+                        EntityAuxiliaryKind::StiltPoles => "StiltGuy_PolesMiddle",
+                        EntityAuxiliaryKind::StiltTop => "StiltGuy_Top",
                     };
                     let art = self.object(aux.visual.asset_key.as_deref().unwrap_or(key), 0)?;
                     let frame = art.sample(aux.tick, &aux.animation, 0, aux.visual.frame);

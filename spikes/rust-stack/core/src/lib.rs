@@ -216,6 +216,10 @@ pub struct EntityAuxiliaryPicture {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EntityAuxiliaryKind {
     PlantHead,
+    /// The original's stilt walker parts (Enemies sheet): feet, pole strip, body.
+    StiltFeet,
+    StiltPoles,
+    StiltTop,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SoundEvent {

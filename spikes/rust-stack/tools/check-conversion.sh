@@ -7,7 +7,7 @@ set -uo pipefail
 export NIX_CONFIG='builders ='
 [[ $(hostname) == aka ]] || exit 1
 TAG=$1
-BASE=${2:-feedback-2}  # tongue-stilt plus o23 posts drawn (Post/SpikedPost nine-patch) and closest zoom 2x on 640x480 (zoom 1,2 clamp to 0); scale-2400 zoom-0 quads, presentation and snapshots unchanged
+BASE=${2:-stilt-anim}  # feedback-2 plus animated stilt walkers (StiltGuy_Feet/PolesMiddle/Top auxiliaries); only e35 levels changed, scale-2400 identical
 failed=0
 step() {
   local name=$1
