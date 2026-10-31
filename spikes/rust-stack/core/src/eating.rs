@@ -86,6 +86,10 @@ pub(crate) enum After {
     RollerStep,
     /// enemy_overlap.gd step, which reads the paired bodies.
     OverlapStep,
+    /// masked_shooter.gd step, which spawns its shot.
+    ShooterStep,
+    /// enemy_pellet.gd step.
+    PelletStep,
     /// timed_switch.gd step, which runs the shared interval.
     SwitchStep,
     /// arrow_lift.gd step, which moves a top-only deck.
@@ -440,6 +444,8 @@ impl Run {
                 }
                 // hanging_roller.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => 0,
+                // enemy_pellet.gd has no tongue rule and is not solid.
+                Kind::Walker(w) if w.kind == ActorKind::Pellet => 0,
                 // sneak_thief.gd tongue: the tongue bounces off and shoves the thief away.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => {
                     if w.held != 0 || e.status != 1 {
@@ -501,6 +507,10 @@ impl Run {
                             w.ground_form = 1;
                             w.mode = 0;
                             w.timer = 0;
+                        }
+                        // masked_shooter.gd tongue: a caught shooter restarts its cycle.
+                        if w.kind == ActorKind::Shooter {
+                            w.shooter_caught();
                         }
                         1
                     } else {
@@ -803,6 +813,9 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Roller,
+                // enemy_pellet.gd projectile_contact returns 0.
+                Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
+                // masked_shooter.gd projectile_contact: removed (hit), reaction 3.
                 Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,

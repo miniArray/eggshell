@@ -35,6 +35,7 @@ mod render_index;
 mod runtime;
 pub mod schema;
 mod shell;
+mod shooter;
 mod solids;
 #[cfg(test)]
 mod solids_trace_tests;

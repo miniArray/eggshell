@@ -988,8 +988,8 @@ impl Run {
         {
             return self.thief_struck(index, from_x);
         }
-        // hanging_roller.gd hit ignores BUMP.
-        if matches!(&self.entities[index].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Roller)
+        // hanging_roller.gd hit ignores BUMP; enemy_pellet.gd has no hit.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if [crate::actors::ActorKind::Roller, crate::actors::ActorKind::Pellet].contains(&w.kind))
         {
             return Ok(());
         }

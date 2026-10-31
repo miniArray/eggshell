@@ -656,6 +656,11 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Thief => Target::Thief,
                 // hanging_roller.gd projectile_contact for an egg: 0 while rolling.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Hanging,
+                // enemy_pellet.gd projectile_contact returns 0.
+                Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
+                // masked_shooter.gd projectile_contact for an egg: like the flower, the egg
+                // then falls.
+                Kind::Walker(w) if w.kind == ActorKind::Shooter => Target::Flower,
                 // armored_walker.gd projectile_contact for an egg: it rolls away.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => Target::Armored,
                 // shell_walker.gd projectile_contact for an egg.

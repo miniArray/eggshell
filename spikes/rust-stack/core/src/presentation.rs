@@ -118,8 +118,8 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
 }
 fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
     use crate::actors::ActorKind;
-    // hanging_roller.gd has no view_state.
-    if w.kind == ActorKind::Roller {
+    // hanging_roller.gd and enemy_pellet.gd have no view_state.
+    if [ActorKind::Roller, ActorKind::Pellet].contains(&w.kind) {
         return VisualState::default();
     }
     if w.kind == ActorKind::Stilt {
@@ -172,7 +172,9 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Spear => w.spear_animation(),
         // sneak_thief.gd view_state
         ActorKind::Thief => w.thief_animation().into(),
-        ActorKind::Roller => unreachable!("roller has no view_state"),
+        ActorKind::Roller | ActorKind::Pellet => unreachable!("no view_state"),
+        // masked_shooter.gd view_state
+        ActorKind::Shooter => w.shooter_animation().into(),
         // actor.gd view_state
         ActorKind::Fish | ActorKind::LandFish => w.fish_animation(body, facing).into(),
         ActorKind::Flower => {

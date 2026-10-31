@@ -62,6 +62,8 @@ pub(crate) fn restore_head(
         }
         // shell_walker.gd enemy_runner: saved fields are restored after the head.
         "enemy_runner" => Kind::Walker(Actor::new(ActorKind::Runner, 0, 0, position)),
+        // masked_shooter.gd enemy_pellet: saved fields are restored after the head.
+        "enemy_pellet" => Kind::Walker(Actor::new(ActorKind::Pellet, 0, 0, position)),
         "o1" | "o2" | "o3" => Kind::Pickup(Pickup::new(
             match row.code.as_str() {
                 "o1" => PickupKind::Coin,

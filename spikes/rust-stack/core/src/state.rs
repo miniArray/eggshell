@@ -218,6 +218,7 @@ impl Run {
                     "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
                     "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
                     "e28" => Kind::Walker(crate::actors::Actor::roller(p)?),
+                    "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -405,6 +406,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Roller => {
                     crate::eating::After::RollerStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Shooter => {
+                    crate::eating::After::ShooterStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Pellet => {
+                    crate::eating::After::PelletStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -423,6 +430,8 @@ impl Run {
                             | ActorKind::Spear
                             | ActorKind::Thief
                             | ActorKind::Roller
+                            | ActorKind::Shooter
+                            | ActorKind::Pellet
                             | ActorKind::Fish
                             | ActorKind::LandFish => None,
                         };
@@ -467,6 +476,8 @@ impl Run {
                 crate::eating::After::SpearStep => self.spear_step(next - 1, map)?,
                 crate::eating::After::ThiefStep => self.thief_step(next - 1, map)?,
                 crate::eating::After::RollerStep => self.roller_step(next - 1, map)?,
+                crate::eating::After::ShooterStep => self.shooter_step(next - 1, map)?,
+                crate::eating::After::PelletStep => self.pellet_step(next - 1, map),
                 crate::eating::After::OverlapStep => self.overlap_step(next - 1),
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::LiftStep => {
@@ -808,6 +819,14 @@ impl Run {
                     self.roller_contact(index, action);
                     continue;
                 }
+                if w.kind == crate::actors::ActorKind::Shooter {
+                    self.shooter_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Pellet {
+                    self.pellet_contact(index);
+                    continue;
+                }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
                     continue;
                 }
@@ -972,10 +991,11 @@ impl Run {
                 let centre =
                     screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
                 for e in &mut self.entities {
-                    let b = if let Kind::Walker(w) = &e.kind {
-                        w.bounds(e.body, e.facing)
-                    } else {
-                        continue;
+                    let b = match &e.kind {
+                        // enemy_pellet.gd GOAL_COIN is false.
+                        Kind::Walker(w) if w.kind == crate::actors::ActorKind::Pellet => continue,
+                        Kind::Walker(w) => w.bounds(e.body, e.facing),
+                        _ => continue,
                     };
                     if e.status == 1
                         && e.body.x + b[2] > centre.x - 416 * S

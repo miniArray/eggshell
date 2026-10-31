@@ -124,6 +124,12 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "shooters_target":
+        # Run up behind the first shooter (it shoots away) and lick it, lay the egg, walk
+        # on and throw it at the second (it falls; a pellet hurts on the way), then walk
+        # right under the ledge shooter and wait.
+        inputs = [0] * 10 + [2] * 64 + [0] * 2 + [8] + [0] * 40 + [32] + [0] * 40
+        inputs += [2] * 80 + [64] + [0] * 14 + [64] + [0] * 60 + [2] * 200 + [0] * 200
     elif name == "rollers_target":
         # Eat the walker, lay an egg and throw it at the first hanging roller (it laughs,
         # drops, rolls into Yoshi and stops at the border); walk right, hop over the low

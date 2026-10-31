@@ -41,6 +41,7 @@ fn run(restores: bool) {
         "melons_target",
         "thieves_target",
         "rollers_target",
+        "shooters_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -107,6 +108,10 @@ fn run(restores: bool) {
     let mut roller_modes = [0usize; 3];
     let mut roller_walled = 0;
     let mut overlap_ticks = 0;
+    let mut shooter_modes = [0usize; 4];
+    let mut shooter_held = 0;
+    let mut shooter_removed = 0;
+    let mut pellet_ticks = 0;
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -562,6 +567,17 @@ fn run(restores: bool) {
             roller_walled += usize::from(f("status") == 2 && f("started") == 1);
         }
         overlap_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_overlap"));
+        // masked_shooter.gd: ticks per mode (walk, prepare, inhale, shoot), held by the
+        // tongue, removed; enemy_pellet.gd shots in flight.
+        for e in wire.entities.iter().filter(|e| e.code == "e31") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e31"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("mode")) {
+                shooter_modes[f("mode") as usize] += 1;
+            }
+            shooter_held += usize::from(f("held") == 1);
+            shooter_removed += usize::from(f("status") == 3);
+        }
+        pellet_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_pellet"));
         // arrow_lift.gd: riding ticks, shrink ticks, and arrow changes while riding.
         for e in wire.entities.iter().filter(|e| e.code == "o21") {
             let f = |n: &str| required(&e.values, schema.entity_fields("o21"), n).unwrap();
@@ -798,6 +814,14 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "shooters_target" {
+        println!("SHOOTER_COVERAGE mode_ticks={shooter_modes:?} held_ticks={shooter_held} removed_ticks={shooter_removed} pellet_ticks={pellet_ticks}");
+        assert!(
+            shooter_modes.iter().all(|n| *n > 0)
+                && shooter_held > 0
+                && shooter_removed > 0
+                && pellet_ticks > 0
+        );
     } else if name == "rollers_target" {
         println!("ROLLER_COVERAGE mode_ticks={roller_modes:?} walled_ticks={roller_walled} overlap_ticks={overlap_ticks}");
         assert!(roller_modes.iter().all(|n| *n > 0) && roller_walled > 0 && overlap_ticks > 0);
