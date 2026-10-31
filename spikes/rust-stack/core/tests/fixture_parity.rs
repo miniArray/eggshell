@@ -1296,7 +1296,9 @@ fn run(restores: bool) {
         println!("SPITTER_COVERAGE mode_ticks={spitter_modes:?} spike_ticks={spike_ticks} spike_held_ticks={spike_held}");
         assert!(spitter_modes.iter().all(|n| *n > 0) && spike_ticks > 0 && spike_held > 0);
     } else if name == "petals_target" {
-        println!("PETAL_COVERAGE stem_phase_ticks={stem_phases:?} petal_mode_ticks={petal_modes:?}");
+        println!(
+            "PETAL_COVERAGE stem_phase_ticks={stem_phases:?} petal_mode_ticks={petal_modes:?}"
+        );
         assert!(stem_phases.iter().all(|n| *n > 0) && petal_modes.iter().all(|n| *n > 0));
     } else if name == "shooters_target" {
         println!("SHOOTER_COVERAGE mode_ticks={shooter_modes:?} held_ticks={shooter_held} removed_ticks={shooter_removed} pellet_ticks={pellet_ticks}");
