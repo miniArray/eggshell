@@ -165,7 +165,7 @@ pub struct TonguePicture {
     pub length: i64,
 }
 /// Core samples semantic type view_state. Renderer binds animations/frames to art.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct VisualState {
     pub animation: Option<String>,
     pub frame: Option<i64>,
@@ -187,6 +187,31 @@ pub struct VisualState {
     pub palette: Vec<PaletteSwap>,
     /// Multiplicative colour (Godot self_modulate), e.g. map_effects.gd dice colours.
     pub tint: Option<[u8; 3]>,
+}
+/// The derived field list; `tint` appears only when set, so pictures without a tint
+/// print (and hash in diagnosis traces) exactly as before the field existed.
+impl std::fmt::Debug for VisualState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("VisualState");
+        s.field("animation", &self.animation)
+            .field("frame", &self.frame)
+            .field("offset_pixels", &self.offset_pixels)
+            .field("size_pixels", &self.size_pixels)
+            .field("scale", &self.scale)
+            .field("rotation_degrees", &self.rotation_degrees)
+            .field("flip_h", &self.flip_h)
+            .field("flip_v", &self.flip_v)
+            .field("alpha", &self.alpha)
+            .field("head_box", &self.head_box)
+            .field("asset_key", &self.asset_key)
+            .field("origin_pixels", &self.origin_pixels)
+            .field("slice", &self.slice)
+            .field("palette", &self.palette);
+        if let Some(tint) = &self.tint {
+            s.field("tint", tint);
+        }
+        s.finish()
+    }
 }
 impl Default for VisualState {
     fn default() -> Self {
