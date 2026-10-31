@@ -3,6 +3,10 @@
 set -euo pipefail
 [[ $(hostname) == aka ]]
 [[ "$NIX_CONFIG" == *'builders ='* ]]
+# Lanes gate concurrently on aka and share the stride artifact directory: one run at a time.
+mkdir -p "$HOME/eggshell-remote/artifacts/full-rust-ab/core"
+exec 9>"$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride.lock"
+flock 9
 bash spikes/rust-stack/core/lint.sh
 export CORE_STRIDE=1
 export CORE_ORACLE_DIR="$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2"
