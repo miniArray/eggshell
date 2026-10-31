@@ -38,6 +38,7 @@ if [[ "${3:-}" == shots ]]; then
     --frame-digest-every 150 --frame-dump-dir "$shots/route" --no-pipeline
   latest=$(find /tmp -maxdepth 4 -path "/tmp/eggshell-full-rust-owned-*/data/playtest-target/autosave.v10" -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | cut -d" " -f2- || true)
   if [[ -n "$latest" ]]; then
+    save=$(mktemp -d "$ROOT/data/shots-save-$level-XXXXXX")
     cp "$latest" "$save/from-autosave.v10"
     printf 'PLAYTEST_SHOTS_FROM_SAVE %s\n' "$latest"
     play --restore "$save/from-autosave.v10" --replay "$ROOT/private-input/idle-600.input.json" \
