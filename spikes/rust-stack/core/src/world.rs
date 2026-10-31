@@ -196,7 +196,7 @@ impl World {
                     _ => PreparedPlacement::None,
                 };
                 let layer = match code.as_str() {
-                    "d1" | "d2" | "d4" => 7,
+                    _ if crate::decor::is_decor(&code) => crate::decor::layer_for(&code),
                     _ if code.starts_with('e') => 8,
                     _ => 7,
                 };

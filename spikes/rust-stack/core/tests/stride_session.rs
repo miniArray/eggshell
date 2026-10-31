@@ -60,16 +60,26 @@ fn stride_session_produces_original_every_tick_state_and_restores() {
 }
 #[test]
 #[ignore = "requires fresh original Godot Stride schema"]
-fn unsupported_input_and_target_refuse_without_fake_success() {
+fn target_loads_and_idles_without_refusal() {
     let (_, collision, metadata, _) = data();
-    // THROW (64) is a supported input since P1; only the target load is still refused.
+    // P1 admits the 204-object target: every code it places is implemented.
     let target = fs::read_to_string(
         PathBuf::from(std::env::var("HOME").unwrap())
             .join(".local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"),
     )
     .unwrap();
-    assert!(matches!(
-        Session::load(&target, &collision, &metadata),
-        Err(Error::Unsupported { .. })
-    ));
+    let mut session = match Session::load(&target, &collision, &metadata) {
+        Ok(session) => session,
+        Err(Error::Unsupported { requirements }) => panic!("target refused: {requirements:?}"),
+        Err(error) => panic!("target load error: {error:?}"),
+    };
+    for tick in 0..2400 {
+        if let Err(error) = session.advance(0) {
+            panic!("idle tick {tick} refused: {error:?}");
+        }
+    }
+    let snapshot = session.snapshot().unwrap();
+    session.restore(&snapshot).unwrap();
+    assert_eq!(session.snapshot().unwrap(), snapshot);
+    println!("TARGET_IDLE_DONE ticks=2400 round_trip=true");
 }

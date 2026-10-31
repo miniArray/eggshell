@@ -483,6 +483,12 @@ impl Run {
             if !reaches(o.body, entity_bounds(o), probe) && !full {
                 continue;
             }
+            // redirect_cloud.gd touches: the turned rectangle.
+            if let Kind::Redirect(r) = &o.kind {
+                if !r.touches(o.body.x, o.body.y, probe) {
+                    continue;
+                }
+            }
             // pickup.gd touches
             if let Kind::Pickup(p) = &o.kind {
                 let r = p.bounds();
@@ -533,6 +539,8 @@ impl Run {
             Actor,
             Pickup { flower: bool },
             PickupSpent,
+            Cache,
+            Redirect,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -574,6 +582,15 @@ impl Run {
                         }
                     }
                 }
+                // release_cloud.gd / redirect_cloud.gd act on thrown eggs only.
+                Kind::Cache(c)
+                    if self.egg(egg).mode == THROWN
+                        && o.collected == 0
+                        && c.phase != crate::clouds::OPENING =>
+                {
+                    Target::Cache
+                }
+                Kind::Redirect(_) if self.egg(egg).mode == THROWN => Target::Redirect,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -620,6 +637,43 @@ impl Run {
                 } else {
                     3
                 }
+            }
+            Target::Cache => {
+                let o = &mut self.entities[other];
+                if let Kind::Cache(c) = &mut o.kind {
+                    c.hit(o.status, o.collected);
+                }
+                1
+            }
+            Target::Redirect => {
+                // redirect_cloud.gd projectile_contact: snap to the cloud, turn, maybe pop.
+                let (cloud, angle, infinite, last_egg) = {
+                    let o = &self.entities[other];
+                    let Kind::Redirect(r) = &o.kind else {
+                        unreachable!()
+                    };
+                    (o.body, r.angle, r.infinite, r.last_egg)
+                };
+                let token = self.entities[egg].origin.token();
+                let body = &mut self.entities[egg].body;
+                let speed = root(body.vx * body.vx + body.vy * body.vy);
+                let (vx, vy) = crate::clouds::vector(angle - 90_000, speed);
+                body.x = cloud.x;
+                body.y = cloud.y;
+                body.vx = vx;
+                body.vy = vy;
+                self.egg_mut(egg).camera = 1;
+                if last_egg != token {
+                    self.egg_mut(egg).despawn_ticks = 600;
+                }
+                let o = &mut self.entities[other];
+                if let Kind::Redirect(r) = &mut o.kind {
+                    r.last_egg = token;
+                }
+                if infinite == 0 {
+                    o.status = 3;
+                }
+                2
             }
             Target::PlantMiss | Target::PickupSpent | Target::Nothing => 0,
         })
@@ -812,6 +866,8 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Star(p) => p.bounds(),
         Kind::Post(p) => p.bounds(),
         Kind::Egg(p) => p.bounds(),
+        Kind::Cache(p) => p.bounds(),
+        Kind::Redirect(p) => p.bounds(),
         _ => [0; 4],
     }
 }

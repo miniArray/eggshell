@@ -43,6 +43,8 @@ pub(crate) enum Kind {
     Pad(Pad),
     Walker(Actor),
     Egg(crate::egg::Egg),
+    Cache(crate::clouds::Cache),
+    Redirect(crate::clouds::Redirect),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -74,6 +76,12 @@ impl Entity {
             9
         } else if matches!(kind, Kind::Walker(_)) {
             8
+        } else if matches!(kind, Kind::Decor) {
+            // decor.gd prepare: source.layer = layer_for(code).
+            p.layer
+        } else if matches!(kind, Kind::Redirect(_)) {
+            // redirect_cloud.gd create: "layer": 9.
+            9
         } else {
             7
         };

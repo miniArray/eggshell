@@ -495,6 +495,40 @@ pub(crate) fn sample_rows(
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
                 }
                 Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing)),
+                // release_cloud.gd view_state
+                Kind::Cache(c) => (
+                    c.bounds(),
+                    if c.phase == crate::clouds::OPENING {
+                        let size = 32.0 + 16.0 * (c.age.min(18) as f64) / 18.0;
+                        VisualState {
+                            animation: Some("Wingless".into()),
+                            frame: Some(0),
+                            size_pixels: [Some(size), Some(size)],
+                            ..VisualState::default()
+                        }
+                    } else {
+                        VisualState {
+                            animation: Some("Default".into()),
+                            frame: Some([0, 1, 2, 3, 2, 1][(c.age * 16 / 60 % 6) as usize]),
+                            alpha: if c.phase == crate::clouds::REVEALED {
+                                0.5
+                            } else {
+                                1.0
+                            },
+                            ..VisualState::default()
+                        }
+                    },
+                ),
+                // redirect_cloud.gd view_state
+                Kind::Redirect(r) => (
+                    r.bounds(),
+                    VisualState {
+                        animation: Some(format!("Color{}", r.colour.max(0))),
+                        frame: Some(r.age / 10 % 3),
+                        rotation_degrees: Some(r.angle as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
                 // item_egg.gd view_state: the colour picks the animation; despawn flickers.
                 Kind::Egg(egg) => (
                     egg.bounds(),
@@ -548,6 +582,12 @@ pub(crate) fn sample_rows(
                             Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
                             Kind::Walker(_) => actor_visible(e),
                             Kind::Egg(_) => e.status == 1 && e.collected == 0,
+                            Kind::Cache(c) => {
+                                e.status == 1
+                                    && c.phase != crate::clouds::HIDDEN
+                                    && e.collected == 0
+                            }
+                            Kind::Redirect(_) => e.status == 1,
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),

@@ -50,6 +50,8 @@ pub(crate) enum After {
     ConsumeItem,
     /// item_egg.gd step, which reaches other entities.
     EggStep,
+    /// release_cloud.gd step, which can release items.
+    CacheStep,
 }
 
 fn world_box(body: Body, b: [i64; 4]) -> [i64; 4] {
@@ -416,6 +418,7 @@ impl Run {
         if self.player.life_phase != 0 {
             return;
         }
+        let mut origin = 0;
         let e = &mut self.entities[index];
         match &mut e.kind {
             Kind::Pickup(p) => {
@@ -423,6 +426,7 @@ impl Run {
                     return;
                 }
                 e.collected = 1;
+                origin = p.origin_token;
                 match p.kind {
                     PickupKind::Coin => self.coins = self.coins.saturating_add(1),
                     PickupKind::RedCoin => self.redcoins = self.redcoins.saturating_add(1),
@@ -450,6 +454,10 @@ impl Run {
             }
             _ => {}
         }
+        // pickup.gd collect: the cache that released this flower is spent.
+        if let Some(i) = self.find_token(origin) {
+            self.entities[i].collected = 1;
+        }
     }
     /// enemy_body.gd hit_others with Hits.SPIT, self_breaks = true, for the spat or
     /// rolling body at `index` with contact box offset `b`.
@@ -476,9 +484,12 @@ impl Run {
                 continue;
             }
             let ob = match &o.kind {
-                Kind::Walker(_) | Kind::Pickup(_) | Kind::Star(_) | Kind::Egg(_) => {
-                    crate::egg::entity_bounds(o)
-                }
+                Kind::Walker(_)
+                | Kind::Pickup(_)
+                | Kind::Star(_)
+                | Kind::Egg(_)
+                | Kind::Cache(_)
+                | Kind::Redirect(_) => crate::egg::entity_bounds(o),
                 // Posts, pads, bridges, goals and checkpoints have no hit rule.
                 _ => continue,
             };
@@ -494,6 +505,7 @@ impl Run {
                 RollingPair,
                 Pickup,
                 Egg,
+                Cache,
                 Nothing,
             }
             let target = {
@@ -522,6 +534,8 @@ impl Run {
                     Kind::Pickup(_) => Target::Pickup,
                     // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
                     Kind::Egg(_) => Target::Egg,
+                    // release_cloud.gd hit (SPIT reveals or opens); redirect_cloud.gd has no hit.
+                    Kind::Cache(_) => Target::Cache,
                     // item_star.gd has projectile_contact only and is not an ENEMY.
                     _ => Target::Nothing,
                 }
@@ -555,6 +569,13 @@ impl Run {
                     3
                 }
                 Target::Egg => 3,
+                Target::Cache => {
+                    let o = &mut self.entities[current];
+                    if let Kind::Cache(c) = &mut o.kind {
+                        c.hit(o.status, o.collected);
+                    }
+                    3
+                }
                 Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
             };
             if self.entities[index].status != 1 {

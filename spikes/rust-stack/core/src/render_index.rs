@@ -33,6 +33,8 @@ fn bounds(e: &crate::entity::Entity, w: &World, guard: i64) -> [i64; 4] {
         Kind::Post(p) => p.bounds(),
         Kind::Walker(a) => a.body_bounds(e.facing),
         Kind::Egg(p) => p.bounds(),
+        Kind::Cache(p) => p.bounds(),
+        Kind::Redirect(p) => p.bounds(),
         Kind::Pad(_) => {
             let PreparedPlacement::Pad { large, .. } = source.unwrap().prepared else {
                 unreachable!()

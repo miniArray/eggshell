@@ -79,6 +79,8 @@ impl Run {
                     Kind::Checkpoint(p) => p.set_field(name, *value),
                     Kind::Post(p) => p.set_field(name, *value),
                     Kind::Egg(p) => p.set_field(name, *value),
+                    Kind::Cache(p) => p.set_field(name, *value),
+                    Kind::Redirect(p) => p.set_field(name, *value),
                     _ => false,
                 };
                 let handled = if specific || e.set_common(name, *value) {

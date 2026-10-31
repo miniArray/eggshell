@@ -42,42 +42,9 @@ fn overlap(a: Body, ab: [i64; 4], b: Body, bb: [i64; 4]) -> bool {
         && a.y + ab[1] < b.y + bb[3]
 }
 impl Run {
+    /// Any level whose every placement and map feature the core implements loads; any
+    /// other code, form or feature is refused with its reason (spawn_rows, World).
     pub fn create(world: &World, stats: &mut crate::Stats) -> Result<Self, Error> {
-        let identity = crate::schema::decode_hash(
-            "75c8a5af059df0550d21119c4bcd962a46c1549839da6d09da9aa74cf7b0e0fd",
-        )?;
-        let bounce_identity = crate::schema::hash(
-            include_str!("../../../../tests/fixtures/bounce.level.json").as_bytes(),
-        );
-        let lagoon_identity = crate::schema::hash(
-            include_str!("../../../../tests/fixtures/lagoon.level.json").as_bytes(),
-        );
-        let collections_identity = crate::schema::hash(
-            include_str!("../tests/fixtures/collections.level.json").as_bytes(),
-        );
-        let actors_identity = crate::schema::hash(
-            include_str!("../tests/fixtures/actors_target.level.json").as_bytes(),
-        );
-        let stilts_identity = crate::schema::hash(
-            include_str!("../tests/fixtures/stilts_target.level.json").as_bytes(),
-        );
-        let checkpoint_identity = crate::schema::hash(
-            include_str!("../tests/fixtures/checkpoint_target.level.json").as_bytes(),
-        );
-        let posts_identity = crate::schema::hash(
-            include_str!("../tests/fixtures/posts_target.level.json").as_bytes(),
-        );
-        if world.identity != identity
-            && world.identity != posts_identity
-            && world.identity != checkpoint_identity
-            && world.identity != stilts_identity
-            && world.identity != actors_identity
-            && world.identity != bounce_identity
-            && world.identity != lagoon_identity
-            && world.identity != collections_identity
-        {
-            return Err(unsupported("Only admitted public/verification worlds are supported; selected target runtime closure is not implemented"));
-        }
         Self::create_after_fixture_identity(world, stats)
     }
     /// Benchmark-only: only the fixture identity gate above is bypassed.
@@ -159,7 +126,13 @@ impl Run {
                     "o5" => Kind::Goal,
                     "o23" => Kind::Post(crate::post::Post::new(p)?),
                     "o6" => Kind::Checkpoint(crate::checkpoint::Marker::new(p)?),
-                    "d1" | "d2" | "d4" if p.variant == 0 && p.mirror == 0 && p.rotation == 0 => {
+                    // decor.gd: static scenery; out-of-range forms degrade there (not yet here),
+                    // and extendable scenery needs its E1 height drawn (not yet).
+                    code if crate::decor::is_decor(code)
+                        && !crate::decor::resized(code)
+                        && (0..crate::decor::frame_count(code)).contains(&p.variant)
+                        && (0..=1).contains(&p.mirror) =>
+                    {
                         Kind::Decor
                     }
                     "o1" => Kind::Pickup(crate::items::Pickup::new(
@@ -182,6 +155,8 @@ impl Run {
                     "o7" if (0..=3).contains(&p.variant) => {
                         Kind::Egg(crate::egg::Egg::new(p.variant))
                     }
+                    "o8" => Kind::Cache(crate::clouds::Cache::new(p)?),
+                    "o19" => Kind::Redirect(crate::clouds::Redirect::new(p)?),
                     "p1" if matches!(p.prepared, crate::PreparedPlacement::Bridge { .. }) => {
                         Kind::Bridge
                     }
@@ -294,7 +269,13 @@ impl Run {
             next += 1;
             if !matches!(
                 e.kind,
-                Kind::Pickup(_) | Kind::Star(_) | Kind::Walker(_) | Kind::Post(_) | Kind::Egg(_)
+                Kind::Pickup(_)
+                    | Kind::Star(_)
+                    | Kind::Walker(_)
+                    | Kind::Post(_)
+                    | Kind::Egg(_)
+                    | Kind::Cache(_)
+                    | Kind::Redirect(_)
             ) {
                 continue;
             }
@@ -308,6 +289,11 @@ impl Run {
             let after = match &mut e.kind {
                 Kind::Post(_) => crate::eating::After::Nothing,
                 Kind::Egg(_) => crate::eating::After::EggStep,
+                Kind::Cache(_) => crate::eating::After::CacheStep,
+                Kind::Redirect(r) => {
+                    r.step(&mut self.rng);
+                    crate::eating::After::Nothing
+                }
                 // pickup.gd / item_star.gd step: a held item only consumes its requests.
                 Kind::Pickup(p) if p.held != 0 => {
                     p.phase = (p.phase + 1) % 60;
@@ -363,6 +349,7 @@ impl Run {
                 crate::eating::After::HitOthers(b) => self.hit_others(next - 1, b)?,
                 crate::eating::After::ConsumeItem => self.consume_item(next - 1),
                 crate::eating::After::EggStep => self.egg_step(next - 1, map)?,
+                crate::eating::After::CacheStep => self.cache_step(next - 1, centre)?,
                 crate::eating::After::Nothing => {}
             }
         }
@@ -498,6 +485,18 @@ impl Run {
                 if matches!(e.kind, Kind::Egg(_)) {
                     stats.contacts += 1;
                     self.egg_contact_player(index)?;
+                    continue;
+                }
+                if let Kind::Cache(c) = &mut e.kind {
+                    stats.contacts += 1;
+                    let b = self.player.bounds();
+                    let p = self.player.body;
+                    c.contact(
+                        e.body.x,
+                        e.body.y,
+                        e.collected,
+                        [p.x + b[0], p.y + b[1], p.x + b[2], p.y + b[3]],
+                    );
                     continue;
                 }
                 if let Kind::Post(p) = &e.kind {
@@ -839,6 +838,8 @@ impl Run {
             Kind::Checkpoint(p) => p.field(n),
             Kind::Post(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
+            Kind::Cache(p) => p.field(n),
+            Kind::Redirect(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1124,7 +1125,7 @@ impl Run {
                         && (p.kind != crate::items::PickupKind::RedCoin || e.collected != 1)
                     || ![0, 1].contains(&p.held)
                     || !(0..=serial).contains(&p.request_cursor)
-                    || p.origin_token != 0
+                    || p.origin_token < 0
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
                 {
@@ -1135,7 +1136,7 @@ impl Run {
                 if !p.valid()
                     || ![0, 1].contains(&p.held)
                     || !(0..=serial).contains(&p.request_cursor)
-                    || p.origin_token != 0
+                    || p.origin_token < 0
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vx)
                     || !(-1024 * 60..=1024 * 60).contains(&e.body.vy)
                 {
@@ -1146,6 +1147,11 @@ impl Run {
                 if !egg.valid(e.body) {
                     return Err(unsupported("egg validation"));
                 }
+            }
+            if matches!(&e.kind, Kind::Cache(c) if !c.valid())
+                || matches!(&e.kind, Kind::Redirect(r) if !r.valid())
+            {
+                return Err(unsupported("cloud validation"));
             }
             if let Kind::Pad(pad) = &e.kind {
                 if !(0..=12).contains(&pad.squash)
