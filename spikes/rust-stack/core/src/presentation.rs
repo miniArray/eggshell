@@ -689,8 +689,11 @@ pub(crate) fn sample_rows(
                 .entity(e.origin.token())
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
-                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) | Kind::Overlap(_) => {
-                Kind::Goal | Kind::Decor | Kind::Checkpoint(_) | Kind::Platform(_) => {
+                Kind::Goal
+                | Kind::Decor
+                | Kind::Checkpoint(_)
+                | Kind::Overlap(_)
+                | Kind::Platform(_) => {
                     ([0; 4], VisualState::default())
                 }
                 // grow_block.gd view_state
