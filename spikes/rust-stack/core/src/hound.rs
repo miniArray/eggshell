@@ -645,7 +645,9 @@ impl Run {
                 let Kind::Walker(w) = &o.kind else {
                     return false;
                 };
-                if o.status != 1 || w.held != 0 || w.hidden != 0 || o.body.vy < 0 {
+                // ride_hound.gd riders: registry.gd is_enemy bodies only (not e33).
+                if o.status != 1 || w.held != 0 || w.hidden != 0 || o.body.vy < 0 || !o.is_enemy()
+                {
                     return false;
                 }
                 let b = world_box(o.body, w.body_bounds(o.facing));
@@ -670,7 +672,10 @@ impl Run {
                 let Kind::Walker(w) = &o.kind else {
                     return false;
                 };
+                // ride_hound.gd _destroy_enemies: registry.gd is_enemy bodies only (a
+                // gust_flyer.gd e33 is not an enemy).
                 o.status == 1
+                    && o.is_enemy()
                     && w.held == 0
                     && w.hidden == 0
                     && strict(body, world_box(o.body, w.bounds(o.body, o.facing)))

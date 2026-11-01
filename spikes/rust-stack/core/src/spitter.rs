@@ -296,7 +296,7 @@ impl Run {
         let family = self
             .entities
             .iter()
-            .filter(|e| matches!(e.kind, Kind::Walker(_)))
+            .filter(|e| e.is_enemy())
             .count() as i64;
         let spike = Actor::new(ActorKind::Spike, 0, 0, Position { x, y });
         let mut row = Entity::dynamic(

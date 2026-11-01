@@ -582,7 +582,7 @@ impl Run {
                     continue;
                 }
             }
-            let enemy = matches!(o.kind, Kind::Walker(_));
+            let enemy = o.is_enemy();
             let response = self.egg_contact(index, current, map)?;
             // item_egg.gd object_collisions: Collision.refresh(world, other).
             self.refresh_block_solid(current, map);

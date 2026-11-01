@@ -274,7 +274,7 @@ impl Run {
             let family = self
                 .entities
                 .iter()
-                .filter(|e| matches!(e.kind, Kind::Walker(_)))
+                .filter(|e| e.is_enemy())
                 .count() as i64;
             let mut petal = Actor::new(ActorKind::Petal, 0, 0, center);
             petal.stem_token = token;
