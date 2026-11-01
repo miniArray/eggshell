@@ -596,6 +596,23 @@ impl Scene {
             bound.insert(0, catalog.visual(part, 0, density, true)?);
             objects.insert("d23_pillar".to_owned(), bound);
         }
+        // pack_dressing.gd decor_entry d22: form 0 draws the second tree part, form 1
+        // the first.
+        if objects.contains_key("d22") {
+            let entry = object_entries.get("d22").ok_or("d22 entry")?;
+            for (name, slot) in [("d22_small", 1), ("d22_big", 0)] {
+                let part = entry
+                    .get("source_types")
+                    .and_then(Value::as_array)
+                    .and_then(|types| types.get(slot))
+                    .and_then(Value::as_f64)
+                    .and_then(|t| entry.get("parts")?.get((t as i64).to_string()))
+                    .ok_or("pack has no d22 tree part")?;
+                let mut bound = HashMap::new();
+                bound.insert(0, catalog.visual(part, 0, density, true)?);
+                objects.insert(name.to_owned(), bound);
+            }
+        }
         let egg_target = match pack.manifest.get("hud").and_then(|h| h.get("EggTarget")) {
             Some(entry) => Some(catalog.visual(entry, 0, density, false)?),
             None => {
@@ -1560,7 +1577,7 @@ impl Scene {
                             ));
                         }
                     }
-                } else if let ("e35" | "o23", Some(cuts), Some(height)) =
+                } else if let ("e35" | "o23" | "d22", Some(cuts), Some(height)) =
                     (entity.code.as_str(), visual.slices, state.size_pixels[1])
                 {
                     // Nine-patches grown to the entity's height from its bottom centre.

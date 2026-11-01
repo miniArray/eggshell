@@ -80,6 +80,8 @@ pub(crate) enum Kind {
     DiscBlock(crate::disc::DiscBlock),
     /// orbit_disc.gd enemy_disc (runtime only).
     Disc(crate::disc::Disc),
+    /// snow_tree.gd d22.
+    SnowTree(crate::snow_tree::SnowTree),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {

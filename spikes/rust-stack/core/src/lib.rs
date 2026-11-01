@@ -54,6 +54,7 @@ pub mod schema;
 mod shell;
 mod shooter;
 mod slime;
+mod snow_tree;
 mod solids;
 #[cfg(test)]
 mod solids_trace_tests;

@@ -760,6 +760,22 @@ pub(crate) fn sample_rows(
                 | Kind::Checkpoint(_)
                 | Kind::Overlap(_)
                 | Kind::Platform(_) => ([0; 4], VisualState::default()),
+                // pack_dressing.gd decoration_plan d22: the form's tree part, a nine-slice
+                // grown to its E1 height (at least 160 or 290 px).
+                Kind::SnowTree(t) => (
+                    [0; 4],
+                    VisualState {
+                        asset_key: Some(if t.variant == 0 { "d22_small" } else { "d22_big" }.into()),
+                        size_pixels: [
+                            None,
+                            Some(
+                                (t.height / SCALE).max(if t.variant == 0 { 160 } else { 290 })
+                                    as f64,
+                            ),
+                        ],
+                        ..VisualState::default()
+                    },
+                ),
                 // grow_block.gd view_state
                 Kind::Grow(g) => (
                     g.bounds(),

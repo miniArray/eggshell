@@ -70,6 +70,7 @@ fn run(restores: bool) {
         "slimes_target",
         "spines_target",
         "ghosts_target",
+        "snowtrees_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -262,6 +263,8 @@ fn run(restores: bool) {
     let mut blind_modes: BTreeSet<i64> = BTreeSet::new();
     let mut shy_phases: BTreeSet<(i64, i64)> = BTreeSet::new();
     let mut ghost_stars = 0;
+    // snow_tree.gd coverage: puff births per tree.
+    let mut puff_births: std::collections::BTreeMap<String, BTreeSet<i64>> = Default::default();
     let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
     let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
@@ -1159,6 +1162,19 @@ fn run(restores: bool) {
                 }
             }
         }
+        for e in wire.entities.iter().filter(|e| e.code == "d22") {
+            for slot in 0..8 {
+                let tick = required(
+                    &e.values,
+                    schema.entity_fields("d22"),
+                    &format!("puff_{slot}_tick"),
+                )
+                .unwrap();
+                if tick >= 0 {
+                    puff_births.entry(e.id.clone()).or_default().insert(tick);
+                }
+            }
+        }
         ghost_stars = ghost_stars.max(wire.entities.iter().filter(|e| e.code == "o4").count());
         for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
             thorn_frames.extend(p.visual.frame);
@@ -1572,6 +1588,12 @@ fn run(restores: bool) {
                 && ammo_kinds.contains(&2)
                 && ammo_kinds.contains(&3)
         );
+    } else if name == "snowtrees_target" {
+        let counts: Vec<_> = puff_births.iter().map(|(k, v)| (k.clone(), v.len())).collect();
+        println!("SNOWTREE_COVERAGE puff_births={counts:?}");
+        assert!(["small", "big"]
+            .iter()
+            .all(|id| puff_births.get(*id).is_some_and(|v| v.len() >= 2)));
     } else if name == "ghosts_target" {
         println!("GHOST_COVERAGE blind_modes={blind_modes:?} shy_phases={shy_phases:?} stars={ghost_stars}");
         assert!(blind_modes.len() == 4 && ghost_stars > 0);

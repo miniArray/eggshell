@@ -259,6 +259,11 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
         inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
+    elif name == "snowtrees_target":
+        # Walk and hop through each tree's crown; stand still in one (no puffs).
+        hop = [6] * 14 + [2] * 20
+        inputs = [2] * 50 + hop * 3 + [0] * 40 + [2] * 40 + hop * 4 + [2] * 60 + hop * 3
+        inputs += [2] * 200
     elif name == "ghosts_target":
         lick = [8] + [0] * 30
         inputs = [2] * 30 + [0] * 10 + lick + [2] * 20 + [1] * 12 + [0] * 323 + [2] + [10] + [2] * 18

@@ -277,6 +277,7 @@ impl Run {
                     "e26" => Kind::Walker(crate::actors::Actor::shy(p)?),
                     "e39" => Kind::Walker(crate::actors::Actor::blind(p)?),
                     "e38" => Kind::DiscBlock(crate::disc::DiscBlock::new(p)?),
+                    "d22" => Kind::SnowTree(crate::snow_tree::SnowTree::new(p)?),
                     // Name the code and form so sweeps can rank what is still missing.
                     _ => {
                         return Err(unsupported(&format!(
@@ -904,8 +905,17 @@ impl Run {
                     self.refresh_block_solid(i, &map);
                 }
             }
-            // Contact phase 0 precedes actors (phase 1), regardless of placement order.
-            for e in &mut self.entities {
+            // Contact phase 0 precedes actors (phase 1), regardless of placement order:
+            // pads and snow_tree.gd trees, in table order.
+            for index in 0..self.entities.len() {
+                if matches!(self.entities[index].kind, Kind::SnowTree(_)) {
+                    if self.entities[index].status == 1 {
+                        stats.contacts += 1;
+                        self.snow_tree_contact(index, &map);
+                    }
+                    continue;
+                }
+                let e = &mut self.entities[index];
                 if let Kind::Pad(pad) = &mut e.kind {
                     if e.status == 1 {
                         stats.contacts += 1;
@@ -1592,6 +1602,7 @@ impl Run {
             Kind::Lamp(p) => p.field(n),
             Kind::ElementShot(p) => p.field(n),
             Kind::DiscBlock(p) => p.field(n),
+            Kind::SnowTree(p) => p.field(n),
             Kind::Disc(p) => p.field(n),
             _ => None,
         };
@@ -2003,6 +2014,9 @@ impl Run {
                 if !egg.valid(e.body) {
                     return Err(unsupported("egg validation"));
                 }
+            }
+            if matches!(&e.kind, Kind::SnowTree(t) if !t.valid()) {
+                return Err(unsupported("snow tree fields"));
             }
             if matches!(&e.kind, Kind::DiscBlock(b) if !b.valid())
                 || matches!(&e.kind, Kind::Disc(d) if !d.valid() || e.origin.placed().is_some())

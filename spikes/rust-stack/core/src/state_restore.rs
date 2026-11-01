@@ -116,6 +116,7 @@ impl Run {
                     Kind::Overlap(p) => p.set_field(name, *value),
                     Kind::ElementShot(p) => p.set_field(name, *value),
                     Kind::DiscBlock(p) => p.set_field(name, *value),
+                    Kind::SnowTree(p) => p.set_field(name, *value),
                     Kind::Disc(p) => p.set_field(name, *value),
                     _ => false,
                 };
