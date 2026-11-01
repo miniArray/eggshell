@@ -34,12 +34,16 @@ stdenv.mkDerivation {
     wayland
     wayland-protocols
     libxkbcommon
-    xorg.libX11
-    xorg.libXext
     libglvnd
     libudev-zero
     libpulseaudio
     alsa-lib
+  ];
+  # SDL_syswm.h includes X11 headers once X11 is on; dependents need them too.
+  propagatedBuildInputs = [
+    xorg.libX11
+    xorg.libXext
+    xorg.xorgproto
   ];
   cmakeFlags = [
     "-DCMAKE_INSTALL_LIBDIR=lib"
