@@ -3,13 +3,14 @@
 use crate::feel::FeelSettings;
 use eggshell_spike_core::{Lifetime, Presentation, SCALE};
 
-const LIFE: i64 = 24;
+const LIFE: i64 = 28;
 // Small fixed muted palette; solid squares need no pack art.
+// Light dust tones so the puffs read against dark terrain and backgrounds.
 const PALETTE: [[f32; 4]; 4] = [
-    [0.58, 0.54, 0.46, 1.0],
-    [0.70, 0.66, 0.57, 1.0],
-    [0.63, 0.62, 0.59, 1.0],
-    [0.80, 0.72, 0.59, 1.0],
+    [0.93, 0.90, 0.82, 1.0],
+    [0.86, 0.82, 0.72, 1.0],
+    [0.98, 0.96, 0.90, 1.0],
+    [0.80, 0.76, 0.68, 1.0],
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
@@ -111,31 +112,33 @@ impl Dust {
             }
             let count = b.amount.min(settings.dust_amount)
                 * match b.kind {
-                    Kind::Landing => 3,
-                    Kind::Pound => 5,
-                    Kind::Hit => 4,
+                    Kind::Landing => 4,
+                    Kind::Pound => 8,
+                    Kind::Hit => 6,
                 };
             for i in 0..count {
                 let seed = hash((b.tick as u64).wrapping_mul(977).wrapping_add(i as u64));
                 let t = age as f64;
                 let side = if i % 2 == 0 { -1.0 } else { 1.0 };
-                let speed = 0.35 + (seed % 11) as f64 / 15.0;
+                // Fast enough to leave the player's sprite within a few steps.
+                let speed = 0.9 + (seed % 11) as f64 / 10.0;
                 let (vx, vy) = if b.kind == Kind::Hit {
                     let angle = (seed % 360) as f64 * std::f64::consts::PI / 180.0;
-                    (angle.cos() * 1.6, angle.sin() * 1.6)
+                    (angle.cos() * 2.2, angle.sin() * 2.2)
                 } else {
                     (
-                        side * speed * if b.kind == Kind::Pound { 1.5 } else { 1.0 },
-                        -0.7 - ((seed >> 8) % 10) as f64 / 12.0,
+                        side * speed * if b.kind == Kind::Pound { 1.6 } else { 1.0 },
+                        -0.5 - ((seed >> 8) % 10) as f64 / 14.0,
                     )
                 };
-                let size = if age < 10 { 2.0 } else { 1.0 };
+                // 4 px puffs shrinking to 2 px (level pixels, scaled with the camera).
+                let size = (4.0 - 2.0 * age as f64 / LIFE as f64).round();
                 let mut color = PALETTE[(seed as usize) % PALETTE.len()];
                 color[3] = 1.0 - age as f32 / LIFE as f32;
                 out.push(Particle {
                     rect: [
-                        (b.at[0] + vx * t).round(),
-                        (b.at[1] + vy * t + 0.035 * t * t).round(),
+                        (b.at[0] + vx * t - size / 2.0).round(),
+                        (b.at[1] + vy * t + 0.03 * t * t - size).round(),
                         size,
                         size,
                     ],
@@ -175,18 +178,18 @@ mod tests {
         d.observe_sample(sample(10, false, 0, false), s);
         d.observe_sample(sample(11, true, 0, false), s);
         let first = d.particles(11, 1, s);
-        assert_eq!(first.len(), 6);
+        assert_eq!(first.len(), 8);
         d.observe_sample(sample(11, true, 0, false), s);
         assert_eq!(first, d.particles(11, 1, s));
         let later = d.particles(20, 1, s);
-        assert_eq!(later.len(), 6);
+        assert_eq!(later.len(), 8);
         assert!(later[0].color[3] < first[0].color[3]);
-        assert!(d.particles(35, 1, s).is_empty());
-        d.observe_sample(sample(36, false, 2, false), s);
-        d.observe_sample(sample(37, true, 3, false), s);
-        assert_eq!(d.particles(37, 1, s).len(), 10);
-        d.observe_sample(sample(38, true, 0, true), s);
-        assert_eq!(d.particles(38, 1, s).len(), 18);
+        assert!(d.particles(39, 1, s).is_empty());
+        d.observe_sample(sample(40, false, 2, false), s);
+        d.observe_sample(sample(41, true, 3, false), s);
+        assert_eq!(d.particles(41, 1, s).len(), 16);
+        d.observe_sample(sample(42, true, 0, true), s);
+        assert_eq!(d.particles(42, 1, s).len(), 28);
         d.observe_sample(sample(5, true, 0, false), s);
         assert!(d.particles(5, 1, s).is_empty());
     }
@@ -199,7 +202,7 @@ mod tests {
         d.observe_sample(sample(12, false, 0, true), s);
         d.observe_sample(sample(13, false, 0, false), s);
         assert!(d.particles(10, 1, s).is_empty());
-        assert_eq!(d.particles(13, 1, s).len(), 14);
+        assert_eq!(d.particles(13, 1, s).len(), 20);
         // Same event history, regardless of which frames were drawn.
         let mut every = Dust::default();
         for step in [
@@ -219,7 +222,7 @@ mod tests {
         let mut d = Dust::default();
         d.observe_sample(sample(10, false, 2, false), s);
         d.observe_sample(sample(13, true, 0, false), s);
-        assert_eq!(d.particles(13, 1, s).len(), 10); // POUND_LAND not observed.
+        assert_eq!(d.particles(13, 1, s).len(), 16); // POUND_LAND not observed.
         assert!(
             d.particles(
                 13,

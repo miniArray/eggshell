@@ -2258,7 +2258,7 @@ impl Scene {
                 }
             }
         }
-        // Layer 10: behind the layer-11 player, above the ground terrain.
+        // Layer 12: in front of the layer-11 player, so puffs at the feet stay visible.
         let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
         for particle in self
             .dust
@@ -2267,7 +2267,7 @@ impl Scene {
             .particles(p.tick, p.map_index, settings)
         {
             commands.push((
-                10,
+                12,
                 order,
                 rect_quad(
                     self.solid,
