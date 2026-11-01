@@ -230,6 +230,10 @@ def main() -> None:
         inputs += [2] * 40 + [0] * 10 + [6] * 14 + [0] * 30 + [2] * 20 + [0] * 80 + [8]
         inputs += [0] * 560 + [2] * 50 + [0] * 5 + lick * 2 + [0] * 10 + shot
         inputs += [2] * 15 + [0] * 5 + shot * 2 + [2] * 120 + [0] * 200
+        # Walk on to the element melons: eat the fire melon, shoot, eat the ice melon,
+        # shoot three times.
+        inputs += lick * 2 + [0] * 60 + shot + [2] * 20 + [0] * 5 + lick * 2
+        inputs += shot * 3 + [0] * 100
     elif name == "fish_target":
         # Stand back while the fish patrol, leap and arc; then hop past the flopper and
         # wade into the pool, swimming (jump presses) and licking.

@@ -218,6 +218,7 @@ fn run(restores: bool) {
     let mut element_previous: std::collections::BTreeMap<String, (i64, i64)> = Default::default();
     let mut bubble_phases = [0usize; 5];
     let mut ammo_kinds: BTreeSet<i64> = BTreeSet::new();
+    let mut element_melons_held: BTreeSet<i64> = BTreeSet::new();
     let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
     let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
@@ -986,6 +987,13 @@ fn run(restores: bool) {
         fire_shot_ticks += usize::from(shots("fire_shot"));
         ice_shot_ticks += usize::from(shots("ice_shot"));
         ammo_kinds.insert(required(&wire.player, schema.player(), "move_ammo").unwrap());
+        // seed_melon.gd: element forms held in the mouth.
+        for e in wire.entities.iter().filter(|e| e.code == "o25") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("o25"), n).unwrap();
+            if f("held") == 1 && f("form") >= 3 {
+                element_melons_held.insert(f("form"));
+            }
+        }
         // lamp.gd: lit changes by code and new value.
         for e in wire
             .entities
@@ -1350,6 +1358,8 @@ fn run(restores: bool) {
     } else if name == "elements_target" {
         println!("ELEMENTS_COVERAGE fire_shot_ticks={fire_shot_ticks} ice_shot_ticks={ice_shot_ticks} frozen_codes={frozen_codes:?} events={element_events:?} bubble_phase_ticks={bubble_phases:?} ammo_kinds={ammo_kinds:?} lamp_changes={lamp_changes:?}");
         assert_eq!(lamp_changes.len(), 4, "both lamps lit and put out");
+        println!("ELEMENTS_MELONS held_forms={element_melons_held:?}");
+        assert!(element_melons_held.contains(&4) && element_melons_held.contains(&6));
         assert!(fire_shot_ticks > 0 && ice_shot_ticks > 0);
         assert!(["burn", "shatter", "thaw"].iter().all(|k| element_events
             .get(k)

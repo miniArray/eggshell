@@ -5,7 +5,7 @@ use crate::{
     body::{Body, Probe},
     eating::{HitKind, Projectile},
     entity::{Entity, Kind},
-    food::{AMMO_SEED, SEED},
+    food::{AMMO_COLD, AMMO_HEAT, AMMO_SEED, SEED},
     math::{turn_cosine, turn_sine},
     state::Run,
     Error, Placement, PropertyValue, SCALE as S,
@@ -18,6 +18,10 @@ const SEEDS: [i64; 3] = [30, 10, 60];
 const SEED_SPEED: i64 = 768 * 60;
 /// elements.gd LAST_MELON: forms above it degrade to an inert placeholder.
 const LAST_MELON: i64 = 8;
+/// elements.gd FIRST_FIRE_MELON, FIRST_ICE_MELON and MELON_SHOTS (by size, in form order).
+const FIRST_FIRE_MELON: i64 = 3;
+const FIRST_ICE_MELON: i64 = 6;
+const MELON_SHOTS: [i64; 3] = [3, 1, 9];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Melon {
@@ -27,8 +31,7 @@ pub(crate) struct Melon {
 }
 
 impl Melon {
-    /// seed_melon.gd prepare + create. Forms 3..8 load fire or ice shots (element_shot.gd),
-    /// which the core does not run yet; they are refused.
+    /// seed_melon.gd prepare + create. Forms 3..5 load fire shots and 6..8 ice shots.
     pub fn new(p: &Placement) -> Result<Self, Error> {
         let refuse = |why: String| Error::Unsupported {
             requirements: vec![format!("o25 {why}")],
@@ -45,11 +48,6 @@ impl Melon {
                 "melon form F={form} (degrades to a placeholder)"
             )));
         }
-        if form >= SEEDS.len() as i64 {
-            return Err(refuse(format!(
-                "fire/ice melon form F={form} (needs element shots)"
-            )));
-        }
         Ok(Self {
             form,
             held: 0,
@@ -59,9 +57,22 @@ impl Melon {
     pub fn bounds(&self) -> [i64; 4] {
         MELON_BOX
     }
-    /// seed_melon.gd ammunition: `[ammunition kind, count]` for a plain form.
+    /// seed_melon.gd ammunition: `[ammunition kind, count]`; elements.gd melon_ammo for
+    /// the fire and ice forms.
     pub fn ammunition(&self) -> (i64, i64) {
-        (AMMO_SEED, SEEDS[self.form as usize])
+        if self.form < FIRST_FIRE_MELON {
+            (AMMO_SEED, SEEDS[self.form as usize])
+        } else if self.form < FIRST_ICE_MELON {
+            (
+                AMMO_HEAT,
+                MELON_SHOTS[(self.form - FIRST_FIRE_MELON) as usize],
+            )
+        } else {
+            (
+                AMMO_COLD,
+                MELON_SHOTS[(self.form - FIRST_ICE_MELON) as usize],
+            )
+        }
     }
     pub fn field(&self, n: &str) -> Option<i64> {
         Some(match n {
@@ -81,7 +92,7 @@ impl Melon {
         true
     }
     pub fn valid(&self, serial: i64) -> bool {
-        (0..SEEDS.len() as i64).contains(&self.form)
+        (0..=LAST_MELON).contains(&self.form)
             && [0, 1].contains(&self.held)
             && (0..=serial).contains(&self.request_cursor)
     }
@@ -259,6 +270,24 @@ mod tests {
                 request_cursor: 0,
             };
             assert_eq!(m.ammunition(), (AMMO_SEED, count));
+        }
+    }
+    #[test]
+    fn element_melon_forms_load_fire_and_ice_shots() {
+        for (form, ammo) in [
+            (3, (AMMO_HEAT, 3)),
+            (4, (AMMO_HEAT, 1)),
+            (5, (AMMO_HEAT, 9)),
+            (6, (AMMO_COLD, 3)),
+            (7, (AMMO_COLD, 1)),
+            (8, (AMMO_COLD, 9)),
+        ] {
+            let m = Melon {
+                form,
+                held: 0,
+                request_cursor: 0,
+            };
+            assert_eq!(m.ammunition(), ammo);
         }
     }
 }
