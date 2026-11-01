@@ -1042,7 +1042,9 @@ fn run(restores: bool) {
             if f("status") == 1 {
                 live.insert(e.id.clone());
             } else if f("status") == 3 && live.remove(&e.id) {
-                *removals.entry(if e.code == "e36" { "e36" } else { "e43" }).or_default() += 1;
+                *removals
+                    .entry(if e.code == "e36" { "e36" } else { "e43" })
+                    .or_default() += 1;
             }
         }
         for e in wire.entities.iter().filter(|e| e.code == "e38") {
@@ -1061,9 +1063,13 @@ fn run(restores: bool) {
         disc_retract_ticks += usize::from(discs.iter().any(|e| {
             required(&e.values, schema.entity_fields("enemy_disc"), "retracting").unwrap() == 1
         }));
-        disc_hurt |= !discs.is_empty()
-            && required(&wire.player, schema.player(), "separated").unwrap() == 1;
-        for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
+        disc_hurt |=
+            !discs.is_empty() && required(&wire.player, schema.player(), "separated").unwrap() == 1;
+        for p in packet
+            .entities
+            .iter()
+            .filter(|p| p.code == "e36" && p.visible)
+        {
             thorn_frames.extend(p.visual.frame);
         }
         // lamp.gd: lit changes by code and new value.

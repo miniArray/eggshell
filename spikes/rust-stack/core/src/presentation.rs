@@ -866,7 +866,10 @@ pub(crate) fn sample_rows(
                     };
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
                 }
-                Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing, run.frame)),
+                Kind::Walker(w) => (
+                    w.body_bounds(e.facing),
+                    actor_visual(w, e.body, e.facing, run.frame),
+                ),
                 // release_cloud.gd view_state
                 Kind::Cache(c) => (
                     c.bounds(),

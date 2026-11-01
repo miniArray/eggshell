@@ -954,9 +954,9 @@ impl Run {
                     Target::Nothing
                 }
                 // masked_shooter.gd projectile_contact: removed (hit), reaction 3.
-                    // thorn_bush.gd projectile_contact: destroyed; spent on spikes.
-                    Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
-                    Kind::Walker(_) => Target::Actor,
+                // thorn_bush.gd projectile_contact: destroyed; spent on spikes.
+                Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
+                Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,
                 // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.

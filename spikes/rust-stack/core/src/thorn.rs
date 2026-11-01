@@ -57,7 +57,12 @@ impl Actor {
                 p.variant, p.mirror, p.rotation
             )));
         }
-        Ok(Actor::new(ActorKind::Thorn, p.variant, p.mirror, p.position))
+        Ok(Actor::new(
+            ActorKind::Thorn,
+            p.variant,
+            p.mirror,
+            p.position,
+        ))
     }
     /// thorn_bush.gd spikes_out: the shared beat follows the level clock; the second
     /// form is in the opposite beat.
@@ -244,7 +249,10 @@ impl Run {
             && w.spat == 0
             && e.status == 1
             && !captured
-            && strict(world_box(e.body, Actor::bee_bounds(e.facing)), world_box(p, pb));
+            && strict(
+                world_box(e.body, Actor::bee_bounds(e.facing)),
+                world_box(p, pb),
+            );
         let was = w.contact;
         let above = e.body.y > p.y - 8 * S;
         let below = e.body.y < p.y - 8 * S;
