@@ -522,6 +522,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let saves = SavePipeline::start(save_dir.clone(), benchmark_unverified_level);
     let startup_maps_path = startup_maps(&save_dir)?;
     let initial_picture = session.presentation();
+    scene.observe_feel(&initial_picture)?;
     let initial_map = session
         .world()
         .maps
@@ -689,6 +690,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             let data = std::fs::read(save_dir.join("manual.v10")).map_err(|e| e.to_string())?;
             session.restore(&data).map_err(|e| e.to_string())?;
             sound.replaced();
+            scene.observe_feel(&session.presentation_region([0; 4]))?;
         }
         if controls.save {
             saves.manual(&session, &mut save)?;
@@ -729,7 +731,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         samples.push(timer.finish());
                         let timer = Timer::new();
                         sound.observe(&*session);
+                        // A player presentation is sampled every step so short landings
+                        // and hits cannot disappear between rendered frames.
                         audio_observe.add(timer.finish());
+                        scene_ref.observe_feel(&session.presentation_region([0; 4]))?;
                         if session.stats().tick == saved_tick {
                             held += 1;
                             if require_active_window {
@@ -847,6 +852,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     let timer = Timer::new();
                     sound.observe(&session);
                     audio_observe.add(timer.finish());
+                    scene.observe_feel(&session.presentation_region([0; 4]))?;
                     if session.stats().tick == saved_tick {
                         held_saved_frame_calls += 1;
                         if require_active_window {

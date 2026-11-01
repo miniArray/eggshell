@@ -159,6 +159,7 @@ pub struct Scene {
     shake: std::sync::Mutex<crate::shake::Shake>,
     pub feel: std::sync::Mutex<crate::feel::FeelSettings>,
     pub paused_offset: [f64; 2],
+    dust: std::sync::Mutex<crate::dust::Dust>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1130,6 +1131,7 @@ impl Scene {
             shake: std::sync::Mutex::new(crate::shake::Shake::default()),
             feel: std::sync::Mutex::new(crate::feel::FeelSettings::default()),
             paused_offset: [0.0; 2],
+            dust: std::sync::Mutex::new(crate::dust::Dust::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1449,6 +1451,15 @@ impl Scene {
         zoom: i32,
     ) -> Result<Picture, String> {
         self.picture_configured(p, container, zoom, true, false)
+    }
+    /// Fed once per successful step even when that step is not drawn. Only DTO reads.
+    pub fn observe_feel(&self, p: &Presentation) -> Result<(), String> {
+        let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
+        self.dust
+            .lock()
+            .map_err(|_| "dust lock poisoned")?
+            .observe(p, settings);
+        Ok(())
     }
     pub fn feel_view(&self) -> crate::menu::View {
         let font = self.hud.font.clone();
@@ -2246,6 +2257,30 @@ impl Scene {
                     }
                 }
             }
+        }
+        // Layer 10: behind the layer-11 player, above the ground terrain.
+        let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
+        for particle in self
+            .dust
+            .lock()
+            .map_err(|_| "dust lock poisoned")?
+            .particles(p.tick, p.map_index, settings)
+        {
+            commands.push((
+                10,
+                order,
+                rect_quad(
+                    self.solid,
+                    [0.0, 0.0, 1.0, 1.0],
+                    self.sizes[self.solid],
+                    particle.rect,
+                    Transform::default(),
+                    &plan,
+                    particle.color,
+                    &[],
+                ),
+            ));
+            order += 1;
         }
         if p.player.visible
             && let (Some(tongue), Some(art)) = (p.player.tongue, &self.tongue)

@@ -8,6 +8,7 @@ pub mod call_cursor;
 pub mod clock;
 pub mod diagnosis;
 pub mod dressing;
+pub mod dust;
 pub mod effects;
 pub mod feel;
 pub mod feel_menu;
