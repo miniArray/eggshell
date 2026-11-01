@@ -356,7 +356,9 @@ def main() -> None:
         hop = [4] * 14 + [0] * 34
         pound = [4] * 14 + [0] * 6 + [32] * 24 + [0] * 20
         inputs = [0] * 600 + [2] * 60 + [6] * 10 + [2] * 4 + [0] * 30 + throw
-        inputs += (hop + pound) * 6 + pound * 2 + [0] * 30 + [2] * 22 + [0] * 4 + hop * 12
+        inputs += (
+            (hop + pound) * 6 + pound * 2 + [0] * 30 + [2] * 22 + [0] * 4 + hop * 12
+        )
         inputs += [0] * 200
     elif name == "spitters_target":
         # Wait by the egg producer for eggs while the first stem tracks Yoshi and spits,
