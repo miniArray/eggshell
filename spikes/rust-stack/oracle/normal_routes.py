@@ -329,6 +329,16 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "maces_target":
+        # Walk in and wait: the first walker conjures, aims and throws balls that hurt;
+        # an egg rolls it away while conjuring (its ball drops loose) and it breaks on
+        # the wall. After the respawn, stomp it as it conjures (its held ball hurts), hop
+        # past the second walker, follow it, catch it and spit it upward (a loft).
+        throw = [64] + [0] * 4 + [64] + [0] * 50
+        inputs = [2] * 24 + [0] * 586 + throw + [0] * 334
+        inputs += [2] * 30 + [6] * 14 + [2] * 10 + [0] * 80
+        inputs += ([2] * 30 + [6] * 14) * 3 + [0] * 200
+        inputs += [1] * 62 + [0] * 5 + [8] + [0] * 40 + [24] + [0] * 120
     elif name == "helmets_target":
         # Hop as the helmet walker arrives (a hurt and its helmet stomp), throw an egg as
         # it walks away (helmet off: fall, land, look, blush, run) and a second one as it

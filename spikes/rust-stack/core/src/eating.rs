@@ -106,6 +106,10 @@ pub(crate) enum After {
     HelmetStep,
     /// bump_walker.gd step, which strikes other bodies while spat.
     BumperStep,
+    /// mace_walker.gd step, which conjures a ball and strikes other bodies when rolling.
+    MaceStep,
+    /// mace_ball.gd step.
+    MaceBallStep,
     /// wing_drifter.gd step, which hits other bodies while spat.
     WingStep,
     /// launcher_shot.gd step.
@@ -207,6 +211,10 @@ impl Actor {
     pub(crate) fn remove(&mut self, status: &mut i64, can_respawn: &mut i64) {
         if self.kind == ActorKind::Thief && *status != 3 {
             self.carrying = 0;
+        }
+        // mace_walker.gd on_remove: Run::mace_on_remove drops the held ball.
+        if self.kind == ActorKind::Mace && *status != 3 {
+            self.drop_pending = 1;
         }
         *status = 3;
         self.held = 0;
@@ -526,6 +534,8 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Blind => 0,
                 // enemy_pellet.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => 0,
+                // mace_ball.gd tongue returns 0.
+                Kind::Walker(w) if w.kind == ActorKind::MaceBall => 0,
                 // petal_stem.gd tongue returns 0; stem_petal.gd: a dropped petal neither.
                 Kind::Walker(w) if w.kind == ActorKind::PetalStem => 0,
                 // spitting_stem.gd tongue: the head blocks the tongue.
@@ -928,6 +938,7 @@ impl Run {
             Shy,
             Soft,
             Helmet,
+            Mace,
         }
         let target = {
             let o = &self.entities[current];
@@ -995,8 +1006,12 @@ impl Run {
                 }
                 // helmet_walker.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Helmet => Target::Helmet,
-                // enemy_pellet.gd projectile_contact returns 0.
-                Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
+                // mace_walker.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Mace => Target::Mace,
+                // enemy_pellet.gd and mace_ball.gd projectile_contact return 0.
+                Kind::Walker(w) if [ActorKind::Pellet, ActorKind::MaceBall].contains(&w.kind) => {
+                    Target::Nothing
+                }
                 // petal_stem.gd projectile_contact returns 0, as does a dropped petal's.
                 Kind::Walker(w)
                     if w.kind == ActorKind::PetalStem
@@ -1060,6 +1075,7 @@ impl Run {
             }
             Target::Soft => self.soft_projectile(current, projectile.x, None),
             Target::Helmet => self.helmet_projectile(current, projectile.x, false),
+            Target::Mace => self.mace_projectile(current, projectile.x, false),
             Target::Spitter => self.spitter_projectile(
                 current,
                 projectile_box,

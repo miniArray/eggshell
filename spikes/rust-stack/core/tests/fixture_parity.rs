@@ -66,6 +66,7 @@ fn run(restores: bool) {
         "spitters_target",
         "softs_target",
         "helmets_target",
+        "maces_target",
         "elements_target",
         "thorns_target",
         "discs_target",
@@ -157,6 +158,10 @@ fn run(restores: bool) {
     let mut helmet_removed = 0;
     let mut bumper_phases = [0usize; 9];
     let mut bumper_contact = 0;
+    let mut mace_modes = [0usize; 6];
+    let mut mace_held = 0;
+    let mut mace_removed = 0;
+    let mut ball_modes = [0usize; 3];
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -813,6 +818,22 @@ fn run(restores: bool) {
                 bumper_phases[f("phase") as usize] += 1;
             }
             bumper_contact += usize::from(f("contact") == 1);
+        }
+        // mace_walker.gd: ticks per mode (walk .. loft), held and removed ticks;
+        // mace_ball.gd: ticks per mode (held, flying, loose).
+        for e in wire.entities.iter().filter(|e| e.code == "e27") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e27"), n).unwrap();
+            if f("status") == 1 && (0..6).contains(&f("mode")) {
+                mace_modes[f("mode") as usize] += 1;
+            }
+            mace_held += usize::from(f("held") == 1);
+            mace_removed += usize::from(f("status") == 3);
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "enemy_mace") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("enemy_mace"), n).unwrap();
+            if f("status") == 1 && (0..3).contains(&f("mode")) {
+                ball_modes[f("mode") as usize] += 1;
+            }
         }
         for e in wire.entities.iter().filter(|e| e.code == "enemy_spike") {
             let f = |n: &str| required(&e.values, schema.entity_fields("enemy_spike"), n).unwrap();
@@ -1681,6 +1702,14 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "maces_target" {
+        println!("MACE_COVERAGE walker_mode_ticks={mace_modes:?} held_ticks={mace_held} removed_ticks={mace_removed} ball_mode_ticks={ball_modes:?}");
+        assert!(
+            mace_modes.iter().all(|n| *n > 0)
+                && mace_held > 0
+                && mace_removed > 0
+                && ball_modes.iter().all(|n| *n > 0)
+        );
     } else if name == "helmets_target" {
         println!("HELMET_COVERAGE helmet_phase_ticks={helmet_phases:?} helmet_removed_ticks={helmet_removed} bumper_phase_ticks={bumper_phases:?} bumper_contact_ticks={bumper_contact}");
         assert!(

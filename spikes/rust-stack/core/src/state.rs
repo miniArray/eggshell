@@ -266,6 +266,7 @@ impl Run {
                     "e24" => Kind::Walker(crate::actors::Actor::soft_giant(p)?),
                     "e29" => Kind::Walker(crate::actors::Actor::helmet(p)?),
                     "e19" => Kind::Walker(crate::actors::Actor::bumper(p)?),
+                    "e27" => Kind::Walker(crate::actors::Actor::mace(p)?),
                     "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
                     "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
                     "e40" => Kind::Walker(crate::actors::Actor::hopper(p)?),
@@ -378,6 +379,9 @@ impl Run {
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
+        // mace_walker.gd on_remove runs inside every removal; with an e27 placed, each
+        // step ends by dropping the balls of walkers it removed.
+        let has_mace = map.placements.iter().any(|p| p.code == "e27");
         let mut next = 0;
         while next < self.entities.len() {
             let e = &mut self.entities[next];
@@ -553,6 +557,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bumper => {
                     crate::eating::After::BumperStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Mace => {
+                    crate::eating::After::MaceStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::MaceBall => {
+                    crate::eating::After::MaceBallStep
+                }
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Wing => {
                     crate::eating::After::WingStep
                 }
@@ -629,6 +639,8 @@ impl Run {
                             | ActorKind::SoftGiant
                             | ActorKind::Helmet
                             | ActorKind::Bumper
+                            | ActorKind::Mace
+                            | ActorKind::MaceBall
                             | ActorKind::Wing
                             | ActorKind::Shot
                             | ActorKind::Sprout
@@ -699,6 +711,8 @@ impl Run {
                 crate::eating::After::SoftGiantStep => self.soft_giant_step(next - 1, map)?,
                 crate::eating::After::HelmetStep => self.helmet_step(next - 1, map)?,
                 crate::eating::After::BumperStep => self.bumper_step(next - 1, map)?,
+                crate::eating::After::MaceStep => self.mace_step(next - 1, map)?,
+                crate::eating::After::MaceBallStep => self.mace_ball_step(next - 1, map)?,
                 crate::eating::After::OverlapStep => self.overlap_step(next - 1),
                 crate::eating::After::WingStep => self.wing_step(next - 1, map)?,
                 crate::eating::After::ShotStep => self.shot_step(next - 1, map)?,
@@ -767,6 +781,9 @@ impl Run {
                     self.refresh_block_solid(next - 1, map);
                 }
                 crate::eating::After::Nothing => {}
+            }
+            if has_mace {
+                self.mace_on_remove();
             }
             if matches!(&self.entities[next - 1].kind, Kind::Walker(w) if [crate::actors::ActorKind::Flat, crate::actors::ActorKind::Bulk].contains(&w.kind))
             {
@@ -1223,6 +1240,14 @@ impl Run {
                     self.bumper_contact(index, action);
                     continue;
                 }
+                if w.kind == crate::actors::ActorKind::Mace {
+                    self.mace_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::MaceBall {
+                    self.mace_ball_contact(index);
+                    continue;
+                }
                 if w.kind == crate::actors::ActorKind::Wing {
                     self.wing_contact(index, action);
                     continue;
@@ -1449,11 +1474,12 @@ impl Run {
                     screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
                 for e in &mut self.entities {
                     let b = match &e.kind {
-                        // enemy_pellet.gd and petal_stem.gd GOAL_COIN is false.
+                        // enemy_pellet.gd, petal_stem.gd and mace_ball.gd GOAL_COIN is false.
                         Kind::Walker(w)
                             if [
                                 crate::actors::ActorKind::Pellet,
                                 crate::actors::ActorKind::PetalStem,
+                                crate::actors::ActorKind::MaceBall,
                             ]
                             .contains(&w.kind) =>
                         {
@@ -1472,6 +1498,9 @@ impl Run {
                         self.coins = self.coins.saturating_add(1);
                     }
                 }
+            }
+            if world.maps[0].placements.iter().any(|p| p.code == "e27") {
+                self.mace_on_remove();
             }
             // registry.gd tongue_contact, in table order (eating.rs).
             if let Some(sensor) = self.player.tongue_box() {

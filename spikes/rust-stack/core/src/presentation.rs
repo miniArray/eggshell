@@ -182,6 +182,15 @@ fn actor_visual(
             ..VisualState::default()
         };
     }
+    if w.kind == ActorKind::MaceBall {
+        // mace_ball.gd view_state: the ball grows while it is conjured.
+        let size = w.ball_size();
+        return VisualState {
+            animation: Some("Spikeball".into()),
+            size_pixels: [Some(size), Some(size)],
+            ..VisualState::default()
+        };
+    }
     if w.kind == ActorKind::Sprout {
         // hop_sprout.gd view_state
         let (animation, frame) = w.sprout_view(body);
@@ -271,6 +280,9 @@ fn actor_visual(
         ActorKind::Helmet => w.helmet_animation(),
         // bump_walker.gd view_state
         ActorKind::Bumper => w.bumper_animation().into(),
+        // mace_walker.gd view_state
+        ActorKind::Mace => w.mace_animation().into(),
+        ActorKind::MaceBall => unreachable!("returns its own view above"),
         // soft_walker.gd view_state
         ActorKind::SoftWalker => {
             let (animation, frame) = w.soft_view();

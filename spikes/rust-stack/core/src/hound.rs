@@ -673,6 +673,16 @@ impl Run {
                 };
                 // ride_hound.gd _destroy_enemies: registry.gd is_enemy bodies only (a
                 // gust_flyer.gd e33 is not an enemy).
+                // ride_hound.gd NOT_DESTROYED: enemy_pellet, enemy_spike and enemy_mace.
+                if [
+                    crate::actors::ActorKind::Pellet,
+                    crate::actors::ActorKind::Spike,
+                    crate::actors::ActorKind::MaceBall,
+                ]
+                .contains(&w.kind)
+                {
+                    return false;
+                }
                 o.status == 1
                     && o.is_enemy()
                     && w.held == 0

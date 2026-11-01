@@ -388,6 +388,7 @@ impl Run {
                         ActorKind::Blind,
                         ActorKind::Spike,
                         ActorKind::Helmet,
+                        ActorKind::MaceBall,
                     ]
                     .contains(&w.kind) =>
                 {

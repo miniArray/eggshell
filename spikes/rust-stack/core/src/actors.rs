@@ -55,6 +55,10 @@ pub(crate) enum ActorKind {
     SoftGiant,
     /// helmet_walker.gd e29.
     Helmet,
+    /// mace_walker.gd e27.
+    Mace,
+    /// mace_ball.gd enemy_mace, conjured by an e27.
+    MaceBall,
     /// bump_walker.gd e19.
     Bumper,
     /// wing_drifter.gd e30.
@@ -207,6 +211,17 @@ pub(crate) struct Actor {
     pub run_age: i64,
     // bump_walker.gd FIELDS (phase, timer, cycles, age and contact are shared).
     pub flip_timer: i64,
+    // mace_walker.gd / mace_ball.gd FIELDS (mode, cooldown, grace, grounded and contact
+    // are shared).
+    pub throw_tick: i64,
+    pub aim: i64,
+    pub ball_token: i64,
+    pub bounced: i64,
+    pub owner_token: i64,
+    pub lift: i64,
+    pub growth: i64,
+    /// Not saved: a removed e27 whose ball Run::mace_on_remove still has to drop.
+    pub drop_pending: i64,
     // wing_drifter.gd FIELDS.
     pub bob: i64,
     pub bob_sign: i64,
@@ -404,6 +419,14 @@ impl Actor {
             helmet: 1,
             run_age: 0,
             flip_timer: 30,
+            throw_tick: 0,
+            aim: 1,
+            ball_token: 0,
+            bounced: 0,
+            owner_token: 0,
+            lift: 0,
+            growth: 0,
+            drop_pending: 0,
             bob: 0,
             bob_sign: -1,
             drifts: 1,
@@ -514,6 +537,8 @@ impl Actor {
             && (self.kind != ActorKind::SoftGiant || self.soft_giant_valid())
             && (self.kind != ActorKind::Helmet || self.helmet_valid())
             && (self.kind != ActorKind::Bumper || self.bumper_valid())
+            && (self.kind != ActorKind::Mace || self.mace_valid())
+            && (self.kind != ActorKind::MaceBall || self.mace_ball_valid())
             && (self.kind != ActorKind::Wing || self.wing_valid())
             && (self.kind != ActorKind::Shot || self.shot_valid())
             && (self.kind != ActorKind::Sprout || self.sprout_valid())
@@ -615,6 +640,8 @@ impl Actor {
             ActorKind::SoftGiant => crate::soft::GIANT_BOX,
             ActorKind::Helmet => crate::helmet::HELMET_BOX,
             ActorKind::Bumper => crate::helmet::BUMPER_BOX,
+            ActorKind::Mace => self.mace_bounds(),
+            ActorKind::MaceBall => self.ball_bounds(),
             ActorKind::Wing => crate::wing::bounds(self.mode, facing),
             ActorKind::Shot => crate::launcher::SHOT_BOX,
             ActorKind::Sprout => crate::sprout::BOX,
@@ -792,6 +819,8 @@ impl Actor {
             | ActorKind::SoftGiant
             | ActorKind::Helmet
             | ActorKind::Bumper
+            | ActorKind::Mace
+            | ActorKind::MaceBall
             | ActorKind::Wing
             | ActorKind::Shot
             | ActorKind::Sprout
@@ -1287,6 +1316,13 @@ fields!(
     helmet,
     run_age,
     flip_timer,
+    throw_tick,
+    aim,
+    ball_token,
+    bounced,
+    owner_token,
+    lift,
+    growth,
     bob,
     bob_sign,
     drifts,

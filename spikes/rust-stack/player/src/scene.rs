@@ -18,8 +18,9 @@ use std::{collections::HashMap, path::Path};
 
 /// Runtime codes the pinned pack has no object art for. runtime_objects.gd make_node
 /// then draws Dressing.placeholder: a square of the code's hue over the body box.
-pub const PACKLESS_RUNTIME_CODES: [&str; 10] = [
+pub const PACKLESS_RUNTIME_CODES: [&str; 11] = [
     "enemy_disc",
+    "enemy_mace",
     "enemy_overlap",
     "enemy_pellet",
     "enemy_petal",

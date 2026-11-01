@@ -632,6 +632,7 @@ impl Run {
             Spitter,
             Soft,
             Helmet,
+            Mace,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -691,6 +692,10 @@ impl Run {
                 }
                 // helmet_walker.gd projectile_contact for an egg.
                 Kind::Walker(w) if w.kind == ActorKind::Helmet => Target::Helmet,
+                // mace_walker.gd projectile_contact for an egg: it rolls away.
+                Kind::Walker(w) if w.kind == ActorKind::Mace => Target::Mace,
+                // mace_ball.gd projectile_contact returns 0.
+                Kind::Walker(w) if w.kind == ActorKind::MaceBall => Target::Nothing,
                 // bump_walker.gd projectile_contact for an egg: the egg then falls.
                 Kind::Walker(w) if w.kind == ActorKind::Bumper => Target::Flower,
                 // enemy_spike.gd projectile_contact for an egg: the egg then falls.
@@ -835,6 +840,7 @@ impl Run {
                 1
             }
             Target::Helmet => self.helmet_projectile(other, projectile.x, true),
+            Target::Mace => self.mace_projectile(other, projectile.x, true),
             Target::Soft => {
                 let vx = self.entities[egg].body.vx;
                 self.soft_projectile(other, projectile.x, Some(vx))
