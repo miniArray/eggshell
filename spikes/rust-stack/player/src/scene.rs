@@ -1197,30 +1197,6 @@ impl Scene {
                 if !entity.visible || entity.held || entity.hidden {
                     continue;
                 }
-                // seed_shot.gd has no pack art (the original view draws a diagnostic
-                // square for it): draw the seed's 8 px body as a small seed-coloured quad.
-                if entity.code == "seed_shot" {
-                    let t = Transform {
-                        position: pixel(entity.motion.current),
-                        scale: [8.0, 8.0],
-                        origin: [0.5, 0.5],
-                        ..Transform::default()
-                    };
-                    commands.push((
-                        entity.layer,
-                        order,
-                        sprite_quad(
-                            self.solid,
-                            self.sizes[self.solid],
-                            t,
-                            &plan,
-                            [0.24, 0.16, 0.08, 1.0],
-                            &[],
-                        ),
-                    ));
-                    order += 1;
-                    continue;
-                }
                 #[cfg(feature = "benchmark-work-counters")]
                 let commands_start = commands.len();
                 let placement = entity
