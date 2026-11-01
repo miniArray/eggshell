@@ -2,18 +2,17 @@
 //! Drawing only. It reads the presentation and its saved tick, never the session,
 //! so it pauses with the simulation and a replay shakes the same way.
 //! `EGGSHELL_SHAKE=off` turns it off.
+use crate::feel::FeelSettings;
 use eggshell_spike_core::{Lifetime, Presentation};
 
 /// moves.gd POUND_FALL and POUND_LAND.
 const POUND_FALL: i64 = 2;
 const POUND_LAND: i64 = 3;
-/// Shake kinds: amplitude in level pixels, duration in steps.
-const POUND: (f64, i64) = (3.0, 14);
-const HIT: (f64, i64) = (2.0, 10);
 
 #[derive(Debug)]
 pub struct Shake {
     pub enabled: bool,
+    pub settings: FeelSettings,
     start: Option<i64>,
     kind: (f64, i64),
     last_tick: Option<i64>,
@@ -25,8 +24,9 @@ impl Default for Shake {
     fn default() -> Self {
         Self {
             enabled: std::env::var("EGGSHELL_SHAKE").map_or(true, |v| v != "off"),
+            settings: FeelSettings::default(),
             start: None,
-            kind: POUND,
+            kind: (0.0, 6),
             last_tick: None,
             last_action: 0,
             last_hurt: false,
@@ -49,9 +49,21 @@ impl Shake {
                 let landed = (action == POUND_LAND && self.last_action != POUND_LAND)
                     || (self.last_action == POUND_FALL && action != POUND_FALL);
                 if landed {
-                    self.begin(tick, POUND);
+                    self.begin(
+                        tick,
+                        (
+                            self.settings.pound_strength_px as f64,
+                            self.settings.pound_steps,
+                        ),
+                    );
                 } else if hurt && !self.last_hurt {
-                    self.begin(tick, HIT);
+                    self.begin(
+                        tick,
+                        (
+                            self.settings.hit_strength_px as f64,
+                            self.settings.hit_steps,
+                        ),
+                    );
                 }
             }
             _ => {}
@@ -63,7 +75,10 @@ impl Shake {
 
     /// The camera offset in level pixels at `tick`; zero when no shake runs.
     pub fn offset(&self, tick: i64) -> [f64; 2] {
-        let Some(start) = self.start.filter(|_| self.enabled) else {
+        let Some(start) = self
+            .start
+            .filter(|_| self.enabled && self.settings.shake_enabled)
+        else {
             return [0.0, 0.0];
         };
         let elapsed = tick - start;
@@ -120,7 +135,7 @@ mod tests {
         assert_eq!(step(&mut s, 10, 2, false), [0.0, 0.0]);
         let first = step(&mut s, 11, POUND_LAND, false);
         assert!(len(first) > 0.0 && len(first) <= 3.0);
-        assert_eq!(s.offset(11 + POUND.1), [0.0, 0.0]);
+        assert_eq!(s.offset(11 + s.settings.pound_steps), [0.0, 0.0]);
     }
 
     #[test]

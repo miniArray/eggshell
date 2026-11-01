@@ -9,6 +9,7 @@ pub mod clock;
 pub mod diagnosis;
 pub mod dressing;
 pub mod effects;
+pub mod feel;
 pub mod game;
 pub mod geometry;
 pub mod gles;

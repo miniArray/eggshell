@@ -157,6 +157,7 @@ pub struct Scene {
     run_clock: std::sync::Mutex<RunClock>,
     /// Spike: drawing-only camera shake (never saved, never sim).
     shake: std::sync::Mutex<crate::shake::Shake>,
+    pub feel: std::sync::Mutex<crate::feel::FeelSettings>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1126,6 +1127,7 @@ impl Scene {
             run_clock: std::sync::Mutex::new(RunClock::default()),
             animated_files: Vec::new(),
             shake: std::sync::Mutex::new(crate::shake::Shake::default()),
+            feel: std::sync::Mutex::new(crate::feel::FeelSettings::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1476,6 +1478,7 @@ impl Scene {
         // Spike: shake moves only the drawn camera, in whole framebuffer pixels.
         {
             let mut shake = self.shake.lock().map_err(|_| "shake lock poisoned")?;
+            shake.settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
             shake.observe(p);
             let off = shake.offset(p.tick);
             for (value, shift) in plan.offset.iter_mut().zip(off) {

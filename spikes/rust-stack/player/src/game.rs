@@ -440,6 +440,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         let layers = scene.add_animated_tiles(&dir, &pack)?;
         println!("RUST_ANIMATED_TILES dir={dir:?} layers={layers}");
     }
+    *scene.feel.lock().map_err(|_| "feel lock poisoned")? =
+        crate::feel::FeelSettings::load(&save_dir);
     let mut gpu = Gles::open_game(fullscreen, !uncapped)?;
     if atlas {
         gpu.begin_atlas()?;
