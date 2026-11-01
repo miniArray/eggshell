@@ -241,6 +241,8 @@ impl Run {
                 ActorKind::Gust => Some("e33"),
                 ActorKind::Spore => Some("e13"),
                 ActorKind::Hang => Some("e14"),
+                ActorKind::Spine => Some("e25"),
+                ActorKind::Slime => Some("e15"),
                 ActorKind::Petal => Some("enemy_petal"),
                 ActorKind::Spitter => Some("e41"),
                 _ => None,

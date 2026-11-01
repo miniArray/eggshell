@@ -251,6 +251,8 @@ impl Entity {
                     ActorKind::Gust => "e33",
                     ActorKind::Spore => "e13",
                     ActorKind::Hang => "e14",
+                    ActorKind::Spine => "e25",
+                    ActorKind::Slime => "e15",
                     ActorKind::Bubble => "e16",
                     ActorKind::Thorn => "e36",
                     ActorKind::Bee => "e43",
@@ -379,6 +381,12 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spore => {
                         Kind::Walker(Actor::spore(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Slime => {
+                        Kind::Walker(Actor::slime(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Spine => {
+                        Kind::Walker(Actor::spine(source)?)
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Hang => {
                         Kind::Walker(Actor::hang(source)?)

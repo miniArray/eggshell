@@ -283,6 +283,10 @@ fn actor_visual(
         ActorKind::Hang => w.hang_animation().into(),
         // bee_flyer.gd view_state
         ActorKind::Bee => "Fly".into(),
+        // slime_drop.gd view_state
+        ActorKind::Slime => w.slime_animation().into(),
+        // spine_walker.gd view_state
+        ActorKind::Spine => w.spine_animation(),
         ActorKind::Shot
         | ActorKind::Sprout
         | ActorKind::Hopper

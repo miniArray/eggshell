@@ -116,6 +116,10 @@ pub(crate) enum After {
     SporeStep,
     /// hang_flyer.gd step.
     HangStep,
+    /// spine step.
+    SpineStep,
+    /// slime step.
+    SlimeStep,
     /// shot_launcher.gd step, which fires shots into the table.
     LauncherStep,
     /// timed_switch.gd step, which runs the shared interval.
@@ -588,6 +592,10 @@ impl Run {
                         0
                     }
                 }
+                // spine_walker.gd tongue: raised spines are not food.
+                Kind::Walker(w) if w.kind == ActorKind::Spine && w.mode != crate::spine::WALK => 0,
+                // slime_drop.gd tongue: only an exposed blob is caught.
+                Kind::Walker(w) if w.kind == ActorKind::Slime && !w.slime_edible() => 0,
                 Kind::Walker(w) => {
                     // enemy_body.gd tongue (digestible, not instant for this family).
                     if w.hidden != 0 || w.held != 0 || e.status != 1 {
@@ -882,6 +890,7 @@ impl Run {
             Thief,
             Roller,
             Wing,
+            Spine,
             Hopper,
             Bulk,
             Pickup,
@@ -928,6 +937,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Spear => Target::Spear,
                 // wing_drifter.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
+                // spine_walker.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Spine => Target::Spine,
+                // slime_drop.gd projectile_contact: hanging and squashing blobs return 0.
+                Kind::Walker(w) if w.kind == ActorKind::Slime && !w.slime_struck() => {
+                    Target::Nothing
+                }
                 // needle_juggler.gd and an intangible spike_hopper.gd absorb nothing (0).
                 Kind::Walker(w)
                     if w.kind == ActorKind::Juggler
@@ -1091,6 +1106,24 @@ impl Run {
                     c.hit(o.status, o.collected);
                 }
                 3
+            }
+            // A walking spine walker is removed (3); folding spines absorb nothing (0);
+            // raised spines destroy the projectile (1) and start folding.
+            Target::Spine => {
+                let Kind::Walker(w) = &mut self.entities[current].kind else {
+                    unreachable!()
+                };
+                match w.mode {
+                    crate::spine::WALK => {
+                        self.hit_actor(current)?;
+                        3
+                    }
+                    crate::spine::SHRINK => 0,
+                    _ => {
+                        w.spine_shrink();
+                        1
+                    }
+                }
             }
             Target::PlantMiss | Target::RollingPair | Target::Nothing => 0,
         })

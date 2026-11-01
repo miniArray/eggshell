@@ -269,6 +269,8 @@ impl Run {
                     "e33" => Kind::Walker(crate::actors::Actor::gust(p)?),
                     "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
                     "e14" => Kind::Walker(crate::actors::Actor::hang(p)?),
+                    "e25" => Kind::Walker(crate::actors::Actor::spine(p)?),
+                    "e15" => Kind::Walker(crate::actors::Actor::slime(p)?),
                     "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
                     "e36" => Kind::Walker(crate::actors::Actor::thorn(p)?),
                     "e43" => Kind::Walker(crate::actors::Actor::bee(p)?),
@@ -548,6 +550,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Hang => {
                     crate::eating::After::HangStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spine => {
+                    crate::eating::After::SpineStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Slime => {
+                    crate::eating::After::SlimeStep
+                }
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bubble => {
                     crate::eating::After::BubbleStep
                 }
@@ -590,6 +598,8 @@ impl Run {
                             | ActorKind::Gust
                             | ActorKind::Spore
                             | ActorKind::Hang
+                            | ActorKind::Spine
+                            | ActorKind::Slime
                             | ActorKind::Fish
                             | ActorKind::LandFish
                             | ActorKind::Bubble
@@ -653,6 +663,8 @@ impl Run {
                 crate::eating::After::GustStep => self.gust_step(next - 1, map)?,
                 crate::eating::After::SporeStep => self.spore_step(next - 1, map)?,
                 crate::eating::After::HangStep => self.hang_step(next - 1, map)?,
+                crate::eating::After::SpineStep => self.spine_step(next - 1, map)?,
+                crate::eating::After::SlimeStep => self.slime_step(next - 1, map)?,
                 crate::eating::After::LauncherStep => {
                     self.launcher_step(next - 1)?;
                     self.refresh_block_solid(next - 1, map);
@@ -1177,6 +1189,14 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Hang {
                     self.hang_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Spine {
+                    self.spine_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Slime {
+                    self.slime_contact(index);
                     continue;
                 }
                 if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
@@ -2001,7 +2021,9 @@ impl Run {
                     // An exhausted fish (enemy_fish.gd fish_finish) is hidden for good.
                     || (w.hidden != 0
                         && w.fish_exhausted == 0
-                        && w.kind != crate::actors::ActorKind::Bubble)
+                        && w.kind != crate::actors::ActorKind::Bubble
+                        && !(w.kind == crate::actors::ActorKind::Slime
+                            && w.phase == crate::slime::HANG))
                     || !(0..=serial).contains(&w.request_cursor)
                     || w.impact_cursor > p.impact
                     || !(0..=1).contains(&w.started)

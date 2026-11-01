@@ -102,6 +102,23 @@ def main() -> None:
         inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
         inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
         inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
+    elif name == "slimes_target":
+        # Lick the first slime; walk under the high ceiling (the hanging slime drips,
+        # drops far, lands and stares); hop onto the creeping slime (squash), walk on
+        # under the low ceiling and past the others, hopping onto them.
+        lick = [8] + [0] * 30
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = [0] * 20 + lick * 2 + [2] * 120 + [0] * 150 + cycle * 30 + [2] * 300
+    elif name == "spines_target":
+        # Lick the fast spine walker before it reaches Yoshi and swallow it (DOWN lays
+        # an egg); walk to the egg producer, wait, and throw eggs at the slow one
+        # (raised spines break them and fold); hop on past the one on the ledge.
+        lick = [8] + [0] * 20
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        inputs = [0] * 50 + [8] + [0] * 60 + [32] + [0] * 60 + [2] * 150 + [0] * 300
+        inputs += throw * 5
+        inputs += cycle * 30 + [2] * 300
     elif name == "runners_target":
         # Watch the green runner turn between the walls, hop over them and it; wait while
         # the red runner walks into the empty shell; then hop on under the sacks,

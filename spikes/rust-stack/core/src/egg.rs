@@ -627,6 +627,7 @@ impl Run {
             Thief,
             Hanging,
             Wing,
+            Spine,
             Bulk,
             Spitter,
             Flower,
@@ -696,6 +697,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Shooter => Target::Flower,
                 // wing_drifter.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Wing => Target::Wing,
+                // spine_walker.gd projectile_contact for an egg.
+                Kind::Walker(w) if w.kind == ActorKind::Spine => Target::Spine,
+                // slime_drop.gd projectile_contact: hanging and squashing blobs return 0.
+                Kind::Walker(w) if w.kind == ActorKind::Slime && !w.slime_struck() => {
+                    Target::Nothing
+                }
                 // leap_bulk.gd projectile_contact: an egg breaks on it (1).
                 Kind::Walker(w) if w.kind == ActorKind::Bulk => Target::Bulk,
                 // needle_juggler.gd and an intangible spike_hopper.gd return 0.
@@ -1010,6 +1017,25 @@ impl Run {
                     );
                 }
                 0
+            }
+            // spine_walker.gd: a walking one is removed and the egg falls (3); folding
+            // spines absorb nothing (0); raised spines break the egg (1) and fold.
+            Target::Spine => {
+                let Kind::Walker(w) = &mut self.entities[other].kind else {
+                    unreachable!()
+                };
+                match w.mode {
+                    crate::spine::WALK => {
+                        self.egg_mut(egg).fall_on_terrain = 1;
+                        self.remove_struck_actor(other)?;
+                        3
+                    }
+                    crate::spine::SHRINK => 0,
+                    _ => {
+                        w.spine_shrink();
+                        1
+                    }
+                }
             }
             Target::PlantMiss | Target::PickupSpent | Target::Nothing => 0,
         })

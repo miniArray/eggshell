@@ -73,6 +73,10 @@ pub(crate) enum ActorKind {
     Thorn,
     /// bee_flyer.gd e43.
     Bee,
+    /// slime_drop.gd e15 (phase is the slime phase).
+    Slime,
+    /// spine_walker.gd e25.
+    Spine,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -226,6 +230,12 @@ pub(crate) struct Actor {
     /// lantern_walker.gd FIRST_LOOK: 5 for an e32 drawn as a lantern walker, else 0.
     /// Not saved: the placement code decides it.
     pub look: i64,
+    pub spine_w: i64,
+    pub spine_h: i64,
+    pub from_w: i64,
+    pub from_h: i64,
+    pub fall_from: i64,
+    pub pin_dx: i64,
     // hang_flyer.gd FIELDS (mode, timer, contact and target_y are shared).
     pub flap: i64,
     pub from_x: i64,
@@ -381,6 +391,12 @@ impl Actor {
             ramp: 0,
             sway: 48,
             look: 0,
+            spine_w: 32,
+            spine_h: 28,
+            from_w: 64,
+            from_h: 62,
+            fall_from: 0,
+            pin_dx: 0,
             flap: 0,
             from_x: 0,
             from_y: 0,
@@ -433,6 +449,8 @@ impl Actor {
             && (self.kind != ActorKind::Gust || self.gust_valid())
             && (self.kind != ActorKind::Spore || self.spore_valid())
             && (self.kind != ActorKind::Hang || self.hang_valid())
+            && (self.kind != ActorKind::Spine || self.spine_valid())
+            && (self.kind != ActorKind::Slime || self.slime_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Bubble || self.bubble_valid())
             && (self.kind != ActorKind::Bee || self.bee_valid())
@@ -528,6 +546,8 @@ impl Actor {
             ActorKind::Gust => crate::gust::bounds(self.heading),
             ActorKind::Spore => crate::sprout::spore_bounds(),
             ActorKind::Hang => crate::hang::bounds(self.mode),
+            ActorKind::Spine => crate::spine::bounds(self),
+            ActorKind::Slime => crate::slime::bounds(self.phase),
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
             ActorKind::Bubble => self.bubble_bounds(),
             ActorKind::Thorn => crate::thorn::THORN_BOX,
@@ -694,7 +714,9 @@ impl Actor {
             | ActorKind::Hang
             | ActorKind::Bubble
             | ActorKind::Thorn
-            | ActorKind::Bee => {
+            | ActorKind::Bee
+            | ActorKind::Slime
+            | ActorKind::Spine => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -1211,5 +1233,11 @@ fields!(
     rise_extra,
     wait_ticks,
     travel,
-    target
+    target,
+    fall_from,
+    pin_dx,
+    spine_w,
+    spine_h,
+    from_w,
+    from_h
 );

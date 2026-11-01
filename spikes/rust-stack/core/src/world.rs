@@ -153,6 +153,13 @@ impl World {
                     x: round_units(number_required(raw, "X")?)?,
                     y: round_units(number_required(raw, "Y")?)?,
                 };
+                // slime_drop.gd prepare: the dripping form starts 16 px higher.
+                if code == "e15" && variant == 1 {
+                    position.y = position
+                        .y
+                        .checked_sub(16 * SCALE)
+                        .ok_or_else(|| invalid("slime position"))?;
+                }
                 // Original stilt preparation anchors feet at placement's lower edge.
                 if code == "e35" {
                     position.y = position

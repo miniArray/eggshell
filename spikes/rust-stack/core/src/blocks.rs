@@ -1251,6 +1251,15 @@ impl Run {
             }
             // needle_juggler.gd has no `hit`.
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Juggler => {}
+            // spine_walker.gd hit: raised spines fold instead.
+            Kind::Walker(w)
+                if w.kind == crate::actors::ActorKind::Spine && w.mode != crate::spine::WALK =>
+            {
+                w.spine_shrink()
+            }
+            // slime_drop.gd hit: hanging and squashing blobs are untouched.
+            Kind::Walker(w)
+                if w.kind == crate::actors::ActorKind::Slime && !w.slime_struck() => {}
             // leap_bulk.gd hit: defeat (with its loot).
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bulk => {
                 self.bulk_defeat(index)?

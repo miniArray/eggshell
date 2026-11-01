@@ -44,6 +44,8 @@ mod player;
 pub mod polygon;
 mod post;
 mod sack;
+mod spine;
+mod slime;
 mod pound;
 mod presentation;
 mod render_index;

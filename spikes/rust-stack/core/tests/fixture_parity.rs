@@ -67,6 +67,8 @@ fn run(restores: bool) {
         "thorns_target",
         "discs_target",
         "runners_target",
+        "slimes_target",
+        "spines_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -172,6 +174,14 @@ fn run(restores: bool) {
     let mut shot_held = 0;
     let mut launcher_charges = 0;
     let mut bounce_fires = 0;
+    let mut slime_phases = [0usize; 7];
+    let mut slime_held = 0;
+    let mut spine_modes = [0usize; 3];
+    let mut spine_turns = 0;
+    let mut spine_facings: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut spine_held = 0;
+    let mut spine_removals = 0;
+    let mut spine_status: std::collections::BTreeMap<String, i64> = Default::default();
     let mut bare_ticks = 0;
     let mut bare_turns = 0;
     let mut shell_entered = 0;
@@ -925,6 +935,36 @@ fn run(restores: bool) {
             launcher_charges += usize::from(f("charge") > 0);
             bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
         }
+        // slime_drop.gd (e15): ticks per phase (walk, squash, hang, drip, drop, land,
+        // stare) and held ticks; spine_walker.gd (e25): ticks per mode (walk, spike,
+        // shrink), walking turns, held ticks and removals.
+        for e in &wire.entities {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if e.code == "e15" {
+                if f("status") == 1 && (0..7).contains(&f("phase")) {
+                    slime_phases[f("phase") as usize] += 1;
+                }
+                slime_held += usize::from(f("held") == 1);
+            }
+            if e.code == "e25" {
+                if f("status") == 1 && (0..3).contains(&f("mode")) {
+                    spine_modes[f("mode") as usize] += 1;
+                }
+                if f("status") == 1
+                    && f("mode") == 0
+                    && f("spat") == 0
+                    && spine_facings.get(&e.id).is_some_and(|v| *v != f("facing"))
+                {
+                    spine_turns += 1;
+                }
+                spine_facings.insert(e.id.clone(), f("facing"));
+                spine_held += usize::from(f("held") == 1);
+                if f("status") == 3 && spine_status.get(&e.id) == Some(&1) {
+                    spine_removals += 1;
+                }
+                spine_status.insert(e.id.clone(), f("status"));
+            }
+        }
         // bare_runner.gd (e7/e9): bare ticks, turns, and the empty shell filled by one;
         // lantern_walker.gd (e32): walking and held ticks; spike_sack.gd (e34): bounces.
         for e in &wire.entities {
@@ -1364,6 +1404,17 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "slimes_target" {
+        println!("SLIME_COVERAGE phase_ticks={slime_phases:?} held_ticks={slime_held}");
+        assert!(slime_phases.iter().all(|n| *n > 0) && slime_held > 0);
+    } else if name == "spines_target" {
+        println!("SPINE_COVERAGE mode_ticks={spine_modes:?} turns={spine_turns} held_ticks={spine_held} removals={spine_removals}");
+        assert!(
+            spine_modes.iter().all(|n| *n > 0)
+                && spine_turns > 0
+                && spine_held > 0
+                && spine_removals > 0
+        );
     } else if name == "runners_target" {
         println!("RUNNER_COVERAGE bare_ticks={bare_ticks} bare_turns={bare_turns} shell_entries={shell_entered} lantern_walk_ticks={lantern_walks} lantern_held_ticks={lantern_held} sack_bounces={sack_bounces}");
         assert!(

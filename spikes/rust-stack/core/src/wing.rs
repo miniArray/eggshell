@@ -57,7 +57,7 @@ fn hull(mode: i64, body: Body, facing: i64) -> [[i64; 2]; 6] {
 }
 
 /// enemy_body.gd polygon_overlap: separating axes of the hull and the box, open edges.
-fn polygon_overlap(hull: &[[i64; 2]], b: [i64; 4]) -> bool {
+pub(crate) fn polygon_overlap(hull: &[[i64; 2]], b: [i64; 4]) -> bool {
     let mut axes = vec![[1, 0], [0, 1]];
     for index in 0..hull.len() {
         let a = hull[index];
