@@ -249,6 +249,15 @@ impl Model {
         Request::None
     }
 }
+pub fn feel_item(label: String) -> Item {
+    Item {
+        label,
+        detail: String::new(),
+        enabled: true,
+        kind: ItemKind::Quit,
+    }
+}
+
 fn item(label: &str, kind: ItemKind) -> Item {
     Item {
         label: label.into(),
@@ -334,6 +343,36 @@ pub fn wrap(text: &str, width: f64, measure: &dyn Fn(&str) -> f64) -> Vec<String
     lines
 }
 
+/// Shared text/panel renderer; interaction remains with each page's model.
+pub trait MenuPage {
+    fn title(&self) -> &str;
+    fn info(&self) -> String;
+    fn status(&self) -> &str;
+    fn hint(&self) -> &str;
+    fn items(&self) -> Vec<Item>;
+    fn focused(&self) -> usize;
+}
+impl MenuPage for Model {
+    fn title(&self) -> &str {
+        self.title()
+    }
+    fn info(&self) -> String {
+        self.info()
+    }
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn hint(&self) -> &str {
+        self.hint()
+    }
+    fn items(&self) -> Vec<Item> {
+        self.items()
+    }
+    fn focused(&self) -> usize {
+        self.focused()
+    }
+}
+
 struct Row {
     label: Vec<String>,
     detail: Vec<String>,
@@ -342,7 +381,7 @@ struct Row {
 }
 /// Wrapped rows of one page at one width. Wrapping all levels takes about 50 ms on the
 /// Pro, so every layout is kept: the overflow pass uses a second, narrower width.
-type RowsKey = (Page, u64, usize);
+type RowsKey = (u64, u64);
 /// Drawing of the menu model. Keeps the list scroll offset and the wrapped rows.
 pub struct View {
     font: Font,
@@ -381,13 +420,22 @@ impl View {
         let shown = self.font.displayable(text);
         wrap(&shown, width, &|t| self.measure(t))
     }
-    fn layout_rows(&mut self, model: &Model, width: f64) {
-        let key = (model.page(), width.to_bits(), model.levels.len());
+    fn layout_rows(&mut self, model: &impl MenuPage, width: f64) {
+        use std::hash::{Hash, Hasher};
+        let items = model.items();
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        for item in &items {
+            (&item.label, &item.detail, item.enabled).hash(&mut hash);
+        }
+        let key = (width.to_bits(), hash.finish());
         if self.rows_key == Some(key) {
             return;
         }
         if let Some(previous) = self.rows_key.take() {
             let rows = std::mem::take(&mut self.rows);
+            if self.layouts.len() >= 8 {
+                self.layouts.remove(0);
+            }
             self.layouts.push((previous, rows));
         }
         if let Some(at) = self.layouts.iter().position(|(k, _)| *k == key) {
@@ -396,8 +444,7 @@ impl View {
             return;
         }
         let inner = width - GAP;
-        self.rows = model
-            .items()
+        self.rows = items
             .iter()
             .map(|item| {
                 let label = self.lines(&item.label, inner);
@@ -416,7 +463,7 @@ impl View {
     /// The menu over `container`: dim, panel, readouts, the scrolled list and its bar.
     pub fn emit(
         &mut self,
-        model: &Model,
+        model: &impl MenuPage,
         container: [f64; 2],
         solid: usize,
         out: &mut Vec<Quad>,
@@ -442,7 +489,7 @@ impl View {
         let content_width = plan.size[0] - 2.0 * GAP;
         let title = self.lines(model.title(), content_width);
         let info = self.lines(&model.info(), content_width);
-        let status = self.lines(&model.status, content_width);
+        let status = self.lines(model.status(), content_width);
         let hint = self.lines(model.hint(), content_width);
         let line = self.line;
         let block = |lines: &Vec<String>| lines.len() as f64 * line;

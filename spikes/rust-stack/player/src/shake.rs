@@ -93,6 +93,20 @@ impl Shake {
         [angle.cos() * 0.5 * strength, angle.sin() * strength]
     }
 
+    /// A separate clock for the paused page; does not observe or advance core ticks.
+    pub fn preview(settings: FeelSettings, hit: bool, frame: i64) -> [f64; 2] {
+        let mut shake = Self {
+            settings,
+            ..Self::default()
+        };
+        let kind = if hit {
+            (settings.hit_strength_px as f64, settings.hit_steps)
+        } else {
+            (settings.pound_strength_px as f64, settings.pound_steps)
+        };
+        shake.begin(0, kind);
+        shake.offset(frame)
+    }
     fn begin(&mut self, tick: i64, kind: (f64, i64)) {
         // A stronger shake already running is not cut short.
         if self

@@ -19,7 +19,7 @@ pub struct Font {
 }
 #[derive(Clone, Debug)]
 pub struct Hud {
-    font: Font,
+    pub(crate) font: Font,
     icons: [Visual; 4],
     icon_variants: [i64; 4],
     dense: bool,

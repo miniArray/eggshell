@@ -158,6 +158,7 @@ pub struct Scene {
     /// Spike: drawing-only camera shake (never saved, never sim).
     shake: std::sync::Mutex<crate::shake::Shake>,
     pub feel: std::sync::Mutex<crate::feel::FeelSettings>,
+    pub paused_offset: [f64; 2],
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1128,6 +1129,7 @@ impl Scene {
             animated_files: Vec::new(),
             shake: std::sync::Mutex::new(crate::shake::Shake::default()),
             feel: std::sync::Mutex::new(crate::feel::FeelSettings::default()),
+            paused_offset: [0.0; 2],
             uniform: HashMap::new(),
             hud,
             density,
@@ -1448,6 +1450,11 @@ impl Scene {
     ) -> Result<Picture, String> {
         self.picture_configured(p, container, zoom, true, false)
     }
+    pub fn feel_view(&self) -> crate::menu::View {
+        let font = self.hud.font.clone();
+        let size = self.sizes[font.image()];
+        crate::menu::View::new(font, size, self.density > 1)
+    }
     fn picture_configured(
         &self,
         p: &Presentation,
@@ -1481,7 +1488,10 @@ impl Scene {
             shake.settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
             shake.observe(p);
             let off = shake.offset(p.tick);
-            for (value, shift) in plan.offset.iter_mut().zip(off) {
+            for (value, shift) in plan.offset.iter_mut().zip([
+                off[0] + self.paused_offset[0],
+                off[1] + self.paused_offset[1],
+            ]) {
                 *value += (shift * plan.scale).round();
             }
         }

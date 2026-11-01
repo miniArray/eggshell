@@ -216,6 +216,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     // Shots only: centre the view on this level pixel instead of the game camera.
     let mut view_at: Option<eggshell_spike_core::Position> = None;
     let mut mute = false;
+    let mut feel_demo_after = None;
     while let Some(key) = args.next() {
         match key.as_str() {
             "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
@@ -230,6 +231,15 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         .parse::<u64>()
                         .map_err(|_| "invalid input offset")?,
                 )
+            }
+            // Hidden view-only automation; use sequential drawing for paused frame dumps.
+            "--feel-demo" => {
+                feel_demo_after = Some(
+                    args.next()
+                        .ok_or("--feel-demo needs integer")?
+                        .parse::<u64>()
+                        .map_err(|_| "invalid feel demo step")?,
+                );
             }
             "--zoom" => {
                 initial_zoom = args
@@ -312,6 +322,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     }
     if benchmark_single_texture && !benchmark_unverified_level {
         return Err("--benchmark-single-texture requires --benchmark-unverified-level; picture_invalid=true".into());
+    }
+    if feel_demo_after.is_some() {
+        pipeline = false;
     }
     if capture_tick.is_some() || files.contains_key("--capture") || view_at.is_some() {
         // The pipeline draws one frame behind; captures use the sequential loop.
@@ -402,6 +415,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         })
         .transpose()?;
     let stop = ticks.unwrap_or(remaining.unwrap_or(3600));
+    if feel_demo_after.is_some_and(|n| n >= stop) {
+        return Err("--feel-demo must be before --ticks end".into());
+    }
     if stop == 0 || remaining.is_some_and(|n| stop > n) {
         return Err("successful-call window exceeds literal replay or is empty".into());
     }
@@ -535,6 +551,13 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut completed = 0u64;
     let mut swap_calls = 0u64;
     let mut paused = false;
+    let mut feel_model = crate::feel_menu::Model::default();
+    let mut feel_view = scene.feel_view();
+    let mut menu_previous = 0u8;
+    let mut release_gate = crate::feel_menu::ReleaseGate::default();
+    let mut preview: Option<(Instant, bool)> = None;
+    let mut feel_demo = feel_demo_after.map(crate::feel_menu::Demo::new);
+    let mut pause_frames = 0u64;
     let mut zoom = initial_plan.zoom;
     let mut zoom_min = initial_plan.zoom_min;
     let mut zoom_max = initial_plan.zoom_max;
@@ -589,16 +612,69 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         }
         let live = controls.mask();
         if !uncapped {
-            clock.observe(Instant::now(), paused);
+            clock.observe(Instant::now(), paused || release_gate.is_waiting());
         }
+        let was_paused = paused;
+        let edges = controls.menu_mask & !menu_previous;
+        menu_previous = controls.menu_mask;
         if controls.pause_toggle {
             paused = !paused;
+        }
+        let mut feel_action = crate::feel_menu::Action::None;
+        {
+            let mut settings = scene.feel.lock().map_err(|_| "feel lock poisoned")?;
+            let old = *settings;
+            if let Some(demo) = &mut feel_demo {
+                if completed >= demo.after {
+                    paused = true;
+                    feel_action =
+                        demo.update(Instant::now(), completed, &mut feel_model, &mut settings);
+                }
+            } else if was_paused && paused {
+                feel_action = feel_model.input(edges, &mut settings);
+            }
+            if old != *settings {
+                settings.save(&save_dir)?;
+                let before = serde_json::to_value(old).map_err(|e| e.to_string())?;
+                let after = serde_json::to_value(*settings).map_err(|e| e.to_string())?;
+                for (key, value) in after.as_object().ok_or("feel settings not object")? {
+                    if before.get(key) != Some(value) {
+                        println!("RUST_FEEL_CHANGE {key}={value}");
+                    }
+                }
+            }
+            match feel_action {
+                crate::feel_menu::Action::Preview { hit } => preview = Some((Instant::now(), hit)),
+                crate::feel_menu::Action::Resume => paused = false,
+                crate::feel_menu::Action::None => {}
+            }
+            scene.paused_offset = if paused {
+                preview.map_or([0.0; 2], |(at, hit)| {
+                    crate::shake::Shake::preview(
+                        *settings,
+                        hit,
+                        (at.elapsed().as_secs_f64() * 60.0) as i64,
+                    )
+                })
+            } else {
+                [0.0; 2]
+            };
+        }
+        if feel_action == crate::feel_menu::Action::Resume {
+            feel_demo = None;
+        }
+        if paused != was_paused {
             println!("RUST_GAME_PAUSE paused={paused} completed={completed}");
-            // Sounds wait with the simulation. After a goal the completion music keeps playing.
+            if !paused {
+                release_gate.wait();
+                preview = None;
+            }
             if let Some(device) = &mut audio_device {
                 device.set_paused(paused && !sound.goal_reached());
             }
         }
+        // Do not step until the menu's confirm/back/directions are released.
+        let waiting_release = release_gate.blocked(live | controls.menu_mask);
         if controls.exit {
             break;
         }
@@ -618,7 +694,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             saves.manual(&session, &mut save)?;
         }
         if pipeline {
-            let steps = if paused {
+            let steps = if paused || waiting_release {
                 0
             } else {
                 let owed = if uncapped { 1 } else { clock.owed() };
@@ -689,6 +765,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         gpu.draw(&picture.tint)?
                     };
                     let hud_draw = gpu.draw(&picture.hud)?;
+                    if paused {
+                        let settings = *scene.feel.lock().map_err(|_| "feel lock poisoned")?;
+                        let page = crate::feel_menu::Page {
+                            model: &feel_model,
+                            settings: &settings,
+                        };
+                        let mut overlay = Vec::new();
+                        feel_view.emit(&page, container, scene.solid, &mut overlay)?;
+                        gpu.draw(&overlay)?;
+                    }
                     let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
                     let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
                     batch_counts.add(batches);
@@ -734,7 +820,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
             pending = Some(prepared);
         } else {
-            if !paused {
+            if !paused && !waiting_release {
                 let owed = if uncapped { 1 } else { clock.owed() };
                 let budget =
                     if let Some(target) = capture_tick.filter(|t| !captured && *t >= completed) {
@@ -742,6 +828,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     } else {
                         owed
                     };
+                let budget = feel_demo
+                    .as_ref()
+                    .filter(|d| !d.running())
+                    .map_or(budget, |d| budget.min(d.after.saturating_sub(completed)));
                 for _ in 0..budget.min(stop - completed) {
                     let saved_tick = session.stats().tick;
                     let cursor = crate::call_cursor::index(cursor_start, completed)?;
@@ -800,6 +890,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 gpu.draw(&picture.tint)?
             };
             let hud_draw = gpu.draw(&picture.hud)?;
+            if paused {
+                let settings = *scene.feel.lock().map_err(|_| "feel lock poisoned")?;
+                let page = crate::feel_menu::Page {
+                    model: &feel_model,
+                    settings: &settings,
+                };
+                let mut overlay = Vec::new();
+                feel_view.emit(&page, container.map(f64::from), scene.solid, &mut overlay)?;
+                gpu.draw(&overlay)?;
+            }
             let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
             let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
             batch_counts.add(batches);
@@ -812,10 +912,20 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 f.request(swap_calls + 1, p.tick as u64)?;
             }
             draw.add(timer.finish());
-            if digest_every.is_some_and(|n| completed.is_multiple_of(n)) {
-                let dump = digest_dump
-                    .as_ref()
-                    .map(|d| d.join(format!("frame-{completed:06}.png")));
+            if digest_every.is_some_and(|n| {
+                if paused && feel_demo.is_some() {
+                    pause_frames.is_multiple_of(n)
+                } else {
+                    !paused && completed.is_multiple_of(n)
+                }
+            }) {
+                let dump = digest_dump.as_ref().map(|d| {
+                    d.join(if paused {
+                        format!("frame-{completed:06}-feel-{pause_frames:06}.png")
+                    } else {
+                        format!("frame-{completed:06}.png")
+                    })
+                });
                 let digest = gpu.frame_digest(dump.as_deref())?;
                 println!(
                     "RUST_FRAME_DIGEST completed={completed} tick={} zoom={zoom} atlas={atlas} sha256={digest} clean_timing_excluded=true",
@@ -843,6 +953,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 );
                 captured = true;
             }
+        }
+        if paused {
+            pause_frames += 1;
         }
         let timer = Timer::new();
         gpu.present()?;
@@ -891,7 +1004,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         }
     }
     if !uncapped {
-        clock.observe(Instant::now(), paused);
+        clock.observe(Instant::now(), paused || release_gate.is_waiting());
     }
     gpu.check_error()?;
     let active_wall = ready.elapsed();

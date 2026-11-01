@@ -15,6 +15,7 @@ pub struct Controls {
     pub events: u64,
     pub repeat_events: u64,
     pub pause_toggle: bool,
+    pub menu_mask: u8,
     pub exit: bool,
     pub zoom_delta: i32,
     pub zoom_reset: bool,
@@ -70,6 +71,7 @@ impl Controls {
             events: 0,
             repeat_events: 0,
             pause_toggle: false,
+            menu_mask: 0,
             exit: false,
             zoom_delta: 0,
             zoom_reset: false,
@@ -168,6 +170,14 @@ impl Controls {
             if held {
                 result |= bit;
             }
+        }
+        // A and B are separate on the paused page, even though both jump in play.
+        self.menu_mask = result & (LEFT | RIGHT | UP | DOWN);
+        if self.keyboard & JUMP != 0 || pressed(Button::A) {
+            self.menu_mask |= JUMP;
+        }
+        if self.keyboard & USE != 0 || pressed(Button::B) {
+            self.menu_mask |= USE;
         }
         // Slot chords suppress keyboard throw/lock as the reference global action does.
         if back {
