@@ -2,7 +2,7 @@
 #! nix-shell ../core/toolchain.nix -i bash
 # aka only. Usage: pack_parity_one.sh CORPUS_ID [TICKS]
 # Reruns pack_parity.sh's export and every-tick test for one corpus level, in the same
-# per-tree output directory (run pack_parity.sh once first for the route input).
+# per-tree output directory; writes the route input when the tree has none.
 set -euo pipefail
 [[ $(hostname) == aka ]]
 [[ "$NIX_CONFIG" == *'builders ='* ]]
@@ -13,6 +13,18 @@ corpus="$HOME/.local/share/eggshell-run/corpus/levels"
 input="$out/route-$ticks.input.json"
 dir="$out/$id"
 GODOT=$(command -v "${GODOT:-godot}")
+mkdir -p "$out"
+chmod 700 "$out"
+if [[ ! -f "$input" ]]; then
+  # The same route as pack_parity.sh.
+  "$GODOT" --headless --path . --editor --import >"$out/import.log" 2>&1
+  python3 -c "
+import json, sys
+n = int(sys.argv[1])
+cycle = [2] * 40 + [6] * 14 + [2] * 20 + [8] + [0] * 12 + [2] * 30 + [0] * 8
+print(json.dumps((cycle * (n // len(cycle) + 1))[:n]))
+" "$ticks" > "$input"
+fi
 rm -rf "$dir"
 timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
 if ! grep -q 'ORACLE_DONE' "$out/$id.export.log" || grep -qE 'SCRIPT ERROR|ERROR:|ORACLE_FAILED' "$out/$id.export.log"; then

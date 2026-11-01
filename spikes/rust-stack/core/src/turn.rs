@@ -12,10 +12,26 @@ pub(crate) fn wrap(angle: i64) -> i64 {
 }
 /// oriented_box.gd vector
 pub(crate) fn vector(angle: i64, length: i64) -> (i64, i64) {
-    let x = sine(wrap(angle + 90_000), TURN, 1_000_000).expect("fixed period");
-    let y = sine(wrap(angle), TURN, 1_000_000).expect("fixed period");
-    let magnitude = root(x * x + y * y);
+    let (x, y, magnitude) = unit(wrap(angle));
     (length * x / magnitude, length * y / magnitude)
+}
+/// The integer sine pair of a wrapped angle and its magnitude, remembered for the last
+/// angle asked: turned solids test the same few angles many times per step.
+type Unit = (i64, i64, i64);
+fn unit(angle: i64) -> Unit {
+    thread_local! {
+        static LAST: std::cell::Cell<Option<(i64, Unit)>> = const { std::cell::Cell::new(None) };
+    }
+    if let Some((cached, value)) = LAST.get() {
+        if cached == angle {
+            return value;
+        }
+    }
+    let x = sine(wrap(angle + 90_000), TURN, 1_000_000).expect("fixed period");
+    let y = sine(angle, TURN, 1_000_000).expect("fixed period");
+    let value = (x, y, root(x * x + y * y));
+    LAST.set(Some((angle, value)));
+    value
 }
 /// oriented_box.gd points: `rect` turned by `angle` about the origin.
 pub(crate) fn points(angle: i64, rect: [i64; 4]) -> [Position; 4] {

@@ -97,6 +97,12 @@ pub(crate) struct SolidFrame {
     /// ever covered this step (a superset). `shapes` still applies the exact
     /// region test in row order, so results and handle order are unchanged.
     cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    /// Each row's region in CELL units (kept with the region by begin and refresh).
+    row_cells: Vec<[i64; 4]>,
+    /// Reused candidate bitset for `shapes` (one bit per row).
+    scratch: Vec<u64>,
+    /// Row index by entity token, for `refresh` (collision.gd context.by_token).
+    by_token: std::collections::HashMap<i64, usize>,
     /// Rows whose region covers too many cells to list.
     wide: Vec<usize>,
 }
@@ -177,6 +183,8 @@ impl SolidFrame {
         self.head_bumps.clear();
         self.cells.clear();
         self.wide.clear();
+        self.by_token.clear();
+        self.row_cells.clear();
         for entity in entities {
             if let Kind::Grow(grow) = &entity.kind {
                 let position = Position {
@@ -729,10 +737,15 @@ impl SolidFrame {
             }
         }
         for index in 0..self.rows.len() {
+            // The first row of a token answers `refresh`, as the old linear search did.
+            self.by_token.entry(self.rows[index].token).or_insert(index);
             // collision.gd _place: the region covers the type's bounds and its boxes.
             let row = &mut self.rows[index];
             row.region = cover(row.region, row.live_box);
-            self.index_region(index, self.rows[index].region);
+            let region = row.region;
+            self.row_cells
+                .push(region.map(|v| floor_div(v, CELL).expect("positive cell size")));
+            self.index_region(index, region);
         }
     }
     pub fn shapes(&mut self, probe: [i64; 4]) -> Vec<Shape> {
@@ -741,30 +754,48 @@ impl SolidFrame {
         let scan = (p[2] - p[0] + 1) * (p[3] - p[1] + 1) > 64
             || probe[2] < probe[0]
             || probe[3] < probe[1];
-        let mut result = Vec::new();
         if self.rows.is_empty() {
-            return result;
+            return Vec::new();
         }
-        let candidates: Vec<usize> = if scan {
-            (0..self.rows.len()).collect()
+        // Candidates as a bitset over row indices: visiting set bits in order gives the
+        // same ascending, duplicate-free row order as a sorted, deduplicated list.
+        let mut bits = std::mem::take(&mut self.scratch);
+        bits.clear();
+        bits.resize(self.rows.len().div_ceil(64), 0);
+        let mut mark = |index: usize| bits[index / 64] |= 1 << (index % 64);
+        if scan {
+            (0..self.rows.len()).for_each(&mut mark);
         } else {
-            let mut found = self.wide.clone();
+            self.wide.iter().for_each(|&i| mark(i));
             for y in p[1]..=p[3] {
                 for x in p[0]..=p[2] {
                     if let Some(list) = self.cells.get(&(x, y)) {
-                        found.extend_from_slice(list);
+                        list.iter().for_each(|&i| mark(i));
                     }
                 }
             }
-            found.sort_unstable();
-            found.dedup();
-            found
-        };
-        for index in candidates {
+        }
+        let count = bits.iter().map(|w| w.count_ones() as usize).sum();
+        let mut result = Vec::with_capacity(count);
+        for (word_index, &word) in bits.iter().enumerate() {
+            let mut word = word;
+            while word != 0 {
+                let index = word_index * 64 + word.trailing_zeros() as usize;
+                word &= word - 1;
+                self.shape_at(index, scan, p, &mut result);
+            }
+        }
+        self.scratch = bits;
+        result
+    }
+    /// One candidate row of `shapes`: its live shape when the row region meets the
+    /// probe's cells (always on a full scan), with a handle on first use.
+    fn shape_at(&mut self, index: usize, scan: bool, p: [i64; 4], result: &mut Vec<Shape>) {
+        {
             let row = &mut self.rows[index];
-            let Some(box_) = row.live_box else { continue };
-            if !scan && !overlap(cells(row.region), p) {
-                continue;
+            let Some(box_) = row.live_box else { return };
+            if !scan && !overlap(self.row_cells[index], p) {
+                return;
             }
             let handle = *row.handle.get_or_insert_with(|| {
                 let handle = -2 - self.handles.len() as i64;
@@ -778,7 +809,6 @@ impl SolidFrame {
                 turn: turned(row),
             });
         }
-        result
     }
     /// collision.gd _selected: the live shape behind a handle (status checked by begin).
     pub fn selected(&self, handle: i64) -> Option<Shape> {
@@ -832,7 +862,7 @@ impl SolidFrame {
         live_box: Option<[i64; 4]>,
         region: [i64; 4],
     ) {
-        let Some(index) = self.rows.iter().position(|r| r.token == token) else {
+        let Some(&index) = self.by_token.get(&token) else {
             return;
         };
         let row = &mut self.rows[index];
@@ -840,6 +870,7 @@ impl SolidFrame {
         row.live_box = live_box;
         row.region = cover(region, live_box);
         let region = row.region;
+        self.row_cells[index] = region.map(|v| floor_div(v, CELL).expect("positive cell size"));
         self.index_region(index, region);
     }
     pub fn pound(

@@ -3,8 +3,8 @@ use eggshell_spike_core::Session;
 use std::time::Instant;
 
 #[inline(never)]
-pub fn profile_step(session: &mut Session) -> Result<(), eggshell_spike_core::Error> {
-    let result = session.advance(0);
+pub fn profile_step(session: &mut Session, input: u8) -> Result<(), eggshell_spike_core::Error> {
+    let result = session.advance(input);
     std::hint::black_box(session.stats().tick);
     result
 }
@@ -24,17 +24,26 @@ pub fn profile_host(arguments: impl Iterator<Item = String>) -> Result<(), Strin
     }
     let mut session = load(&args)?;
     let ticks = args[3].parse::<usize>().map_err(|e| e.to_string())?;
+    // HOST_SIM_INPUT: a JSON array of input masks (cycled); idle without it.
+    let inputs: Vec<u8> = match std::env::var("HOST_SIM_INPUT") {
+        Ok(path) => {
+            serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?
+        }
+        Err(_) => vec![0],
+    };
     let mut ms = Vec::with_capacity(ticks);
     let before = session.stats().entity_steps;
-    for _ in 0..ticks {
+    for tick in 0..ticks {
         let now = Instant::now();
-        profile_step(&mut session).map_err(|e| e.to_string())?;
+        profile_step(&mut session, inputs[tick % inputs.len().max(1)])
+            .map_err(|e| e.to_string())?;
         ms.push(now.elapsed().as_secs_f64() * 1000.0);
     }
     ms.sort_by(f64::total_cmp);
     println!(
         "HOST_SIM_PROFILE {}",
-        serde_json::json!({"level":args[0],"calls":ticks,"saved_tick":session.stats().tick,"entity_steps":session.stats().entity_steps-before,"step_ms_p50":ms[ticks/2],"step_ms_max":ms[ticks-1],"host_only":true,"audio":"disabled","saves":"disabled","profile_scope":"profile_step only; initialization outside marker"})
+        serde_json::json!({"level":args[0],"calls":ticks,"saved_tick":session.stats().tick,"entity_steps":session.stats().entity_steps-before,"step_ms_p50":ms[ticks/2],"step_ms_p95":ms[ticks*95/100],"step_ms_p99":ms[ticks*99/100],"step_ms_max":ms[ticks-1],"host_only":true,"audio":"disabled","saves":"disabled","profile_scope":"profile_step only; initialization outside marker"})
     );
     Ok(())
 }
@@ -71,7 +80,7 @@ pub fn trace_host(arguments: impl Iterator<Item = String>) -> Result<(), String>
     let ticks = args[3].parse::<usize>().map_err(|e| e.to_string())?;
     let mut chain = [0u8; 32];
     for tick in 1..=ticks {
-        profile_step(&mut session).map_err(|e| e.to_string())?;
+        profile_step(&mut session, 0).map_err(|e| e.to_string())?;
         let mut h = Sha256::new();
         h.update(chain);
         h.update(format!("{:?}", session.presentation()));
@@ -205,7 +214,7 @@ pub fn work_host(arguments: impl Iterator<Item = String>) -> Result<(), String> 
     let mut records = Vec::new();
     let mut first_rows = serde_json::Value::Null;
     for tick in 1..=ticks {
-        profile_step(&mut session).map_err(|e| e.to_string())?;
+        profile_step(&mut session, 0).map_err(|e| e.to_string())?;
         if tick == 1 {
             let mut original_codes = std::collections::BTreeMap::<String, u64>::new();
             let mut current_codes = std::collections::BTreeMap::<String, u64>::new();
