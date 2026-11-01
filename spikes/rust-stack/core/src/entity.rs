@@ -75,6 +75,10 @@ pub(crate) enum Kind {
     Lamp(crate::platform::Lamp),
     /// element_shot.gd fire_shot / ice_shot (runtime only).
     ElementShot(crate::elements::ElementShot),
+    /// disc_block.gd e38.
+    DiscBlock(crate::disc::DiscBlock),
+    /// orbit_disc.gd enemy_disc (runtime only).
+    Disc(crate::disc::Disc),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -111,6 +115,7 @@ impl Entity {
                 | Kind::Melon(_)
                 | Kind::Launcher(_)
                 | Kind::Balloon(_)
+                | Kind::DiscBlock(_)
         ));
         // star_flower.gd create: a flower that left the screen never respawns.
         let respawns = lifecycle != 0 && !matches!(kind, Kind::StarFlower(_));
@@ -242,6 +247,7 @@ impl Entity {
                     ActorKind::Bee => "e43",
                 },
                 Kind::ElementShot(s) => s.code(),
+                Kind::Disc(_) => "enemy_disc",
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
                     PickupKind::RedCoin => "o2",
@@ -405,6 +411,7 @@ impl Entity {
                     Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
                     Kind::Launcher(_) => Kind::Launcher(crate::launcher::Launcher::new(source)?),
                     Kind::Balloon(_) => Kind::Balloon(crate::balloon::Balloon::new(source)?),
+                    Kind::DiscBlock(_) => Kind::DiscBlock(crate::disc::DiscBlock::new(source)?),
                     other => other.clone(),
                 };
                 let mut fresh = Self::placed(index, source, kind, self.family_index);
@@ -425,6 +432,7 @@ impl Entity {
                 Kind::StarFlower(p) => p.bounds(),
                 Kind::Switch(p) => p.bounds(),
                 Kind::Lift(p) => p.bounds(),
+                Kind::DiscBlock(p) => p.bounds(),
                 Kind::Melon(p) => p.bounds(),
                 Kind::Launcher(p) => p.bounds(),
                 Kind::Balloon(p) => p.bounds(),

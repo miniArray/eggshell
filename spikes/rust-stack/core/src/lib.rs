@@ -14,6 +14,7 @@ mod collision_grid;
 mod consumers;
 mod decor;
 mod dice;
+mod disc;
 mod eating;
 mod egg;
 mod egg_block;

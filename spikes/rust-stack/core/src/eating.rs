@@ -142,6 +142,8 @@ pub(crate) enum After {
     ElementShotStep,
     /// thorn_bush.gd step.
     ThornStep,
+    /// disc_block.gd step, which spawns and recalls discs.
+    DiscBlockStep,
     /// bee_flyer.gd step.
     BeeStep,
 }
@@ -434,6 +436,7 @@ impl Run {
                 Kind::Dice(d) => Some(d.solid(e.status, e.body)),
                 Kind::SpinSpan(s) => Some(s.solid(e.status, e.body)),
                 Kind::SpinBlock(b) => Some(b.solid(e.status, e.body)),
+                Kind::DiscBlock(d) => Some(d.solid(e.status, e.body)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {

@@ -232,6 +232,11 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
         inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
+    elif name == "discs_target":
+        # Walk under the high block's discs, on toward the floor block (its discs come
+        # out), back away (they are recalled), come back (out again) and wait.
+        inputs = [2] * 200 + [0] * 120 + [1] * 50 + [0] * 120 + [2] * 50 + [0] * 200
+        inputs += [2] * 40 + [0] * 120
     elif name == "thorns_target":
         # Jump onto the low bee; lick the fast bee as it comes, spit it, lick it again
         # and swallow it for an egg; throw the egg at the green thorn; lick the walker

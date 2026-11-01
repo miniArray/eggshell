@@ -261,6 +261,7 @@ impl Run {
                     "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
                     "e36" => Kind::Walker(crate::actors::Actor::thorn(p)?),
                     "e43" => Kind::Walker(crate::actors::Actor::bee(p)?),
+                    "e38" => Kind::DiscBlock(crate::disc::DiscBlock::new(p)?),
                     // Name the code and form so sweeps can rank what is still missing.
                     _ => {
                         return Err(unsupported(&format!(
@@ -388,6 +389,7 @@ impl Run {
                     | Kind::SpinSpan(_)
                     | Kind::SpinBlock(_)
                     | Kind::ElementShot(_)
+                    | Kind::DiscBlock(_)
             ) {
                 continue;
             }
@@ -438,6 +440,7 @@ impl Run {
                 Kind::Egg(_) => crate::eating::After::EggStep,
                 Kind::Overlap(_) => crate::eating::After::OverlapStep,
                 Kind::ElementShot(_) => crate::eating::After::ElementShotStep,
+                Kind::DiscBlock(_) => crate::eating::After::DiscBlockStep,
                 Kind::Cache(_) => crate::eating::After::CacheStep,
                 Kind::Redirect(r) => {
                     r.step(&mut self.rng);
@@ -640,6 +643,10 @@ impl Run {
                 }
                 crate::eating::After::BubbleStep => self.bubble_step(next - 1, map)?,
                 crate::eating::After::ThornStep => self.thorn_step(next - 1, map)?,
+                crate::eating::After::DiscBlockStep => {
+                    self.disc_block_step(next - 1)?;
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::BeeStep => self.bee_step(next - 1, map)?,
                 crate::eating::After::ElementShotStep => self.element_shot_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
@@ -691,8 +698,26 @@ impl Run {
         if self.player.captured_by != 0 {
             return Ok(());
         }
-        // Step phase 1, still in saved table order. Pad has no activation lifecycle.
-        for e in &mut self.entities {
+        // Step phase 1, still in saved table order: pads and orbit_disc.gd discs.
+        for index in 0..self.entities.len() {
+            let e = &mut self.entities[index];
+            if matches!(e.kind, Kind::Disc(_)) {
+                let awake = e.lifecycle(
+                    map,
+                    centre,
+                    crate::Position {
+                        x: self.player.body.x,
+                        y: self.player.body.y,
+                    },
+                    self.player.impact,
+                    &mut self.rng,
+                )?;
+                if awake {
+                    stats.entity_steps += 1;
+                    self.disc_step(index);
+                }
+                continue;
+            }
             if !matches!(e.kind, Kind::Pad(_)) {
                 continue;
             }
@@ -898,6 +923,12 @@ impl Run {
                     stats.contacts += 1;
                     self.ledge_contact(index);
                     self.refresh_block_solid(index, &map);
+                    continue;
+                }
+                // orbit_disc.gd contact: touching a disc hurts.
+                if matches!(e.kind, Kind::Disc(_)) {
+                    stats.contacts += 1;
+                    self.disc_contact(index);
                     continue;
                 }
                 // spike_pillar.gd contact: touching the spike edge is fatal.
@@ -1486,6 +1517,8 @@ impl Run {
             Kind::Platform(p) => p.field(n),
             Kind::Lamp(p) => p.field(n),
             Kind::ElementShot(p) => p.field(n),
+            Kind::DiscBlock(p) => p.field(n),
+            Kind::Disc(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1891,6 +1924,11 @@ impl Run {
                 if !egg.valid(e.body) {
                     return Err(unsupported("egg validation"));
                 }
+            }
+            if matches!(&e.kind, Kind::DiscBlock(b) if !b.valid())
+                || matches!(&e.kind, Kind::Disc(d) if !d.valid() || e.origin.placed().is_some())
+            {
+                return Err(unsupported("disc block fields"));
             }
             if matches!(&e.kind, Kind::ElementShot(shot) if !shot.valid() || e.origin.placed().is_some())
             {

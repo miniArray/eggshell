@@ -1028,6 +1028,28 @@ pub(crate) fn sample_rows(
                     },
                 ),
                 // spike_pillar.gd view_state
+                // disc_block.gd view_state: frame 1 while the discs are out.
+                Kind::DiscBlock(d) => (
+                    d.bounds(),
+                    VisualState {
+                        frame: Some(d.out),
+                        ..VisualState::default()
+                    },
+                ),
+                // orbit_disc.gd view_state: sized by its extension. The pack has no disc
+                // art; the player draws the e38 block's second frame (stand-in).
+                Kind::Disc(d) => (
+                    d.bounds(),
+                    VisualState {
+                        asset_key: Some("e38".into()),
+                        frame: Some(1),
+                        size_pixels: [
+                            Some((d.half() * 2) as f64 / SCALE as f64),
+                            Some((d.half() * 2) as f64 / SCALE as f64),
+                        ],
+                        ..VisualState::default()
+                    },
+                ),
                 Kind::Pillar(p) => (
                     p.bounds(),
                     VisualState {
@@ -1143,6 +1165,8 @@ pub(crate) fn sample_rows(
                             | Kind::Seed(_)
                             | Kind::EggBlock(_)
                             | Kind::Pillar(_)
+                            | Kind::DiscBlock(_)
+                            | Kind::Disc(_)
                             | Kind::Balloon(_)
                             | Kind::Dice(_)
                             | Kind::SpinSpan(_)

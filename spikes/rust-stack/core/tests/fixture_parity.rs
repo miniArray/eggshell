@@ -65,6 +65,7 @@ fn run(restores: bool) {
         "spitters_target",
         "elements_target",
         "thorns_target",
+        "discs_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -232,6 +233,11 @@ fn run(restores: bool) {
     let mut bee_held_ticks = 0;
     let mut removals: std::collections::BTreeMap<&str, usize> = Default::default();
     let mut live: BTreeSet<String> = BTreeSet::new();
+    // disc_block.gd / orbit_disc.gd coverage.
+    let mut disc_outs: std::collections::BTreeMap<String, (i64, usize)> = Default::default();
+    let mut disc_retract_ticks = 0;
+    let mut most_discs = 0;
+    let mut disc_hurt = false;
     let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
     let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
@@ -1039,6 +1045,24 @@ fn run(restores: bool) {
                 *removals.entry(if e.code == "e36" { "e36" } else { "e43" }).or_default() += 1;
             }
         }
+        for e in wire.entities.iter().filter(|e| e.code == "e38") {
+            let out = required(&e.values, schema.entity_fields("e38"), "out").unwrap();
+            let entry = disc_outs.entry(e.id.clone()).or_insert((0, 0));
+            if out != entry.0 {
+                *entry = (out, entry.1 + 1);
+            }
+        }
+        let discs: Vec<_> = wire
+            .entities
+            .iter()
+            .filter(|e| e.code == "enemy_disc")
+            .collect();
+        most_discs = most_discs.max(discs.len());
+        disc_retract_ticks += usize::from(discs.iter().any(|e| {
+            required(&e.values, schema.entity_fields("enemy_disc"), "retracting").unwrap() == 1
+        }));
+        disc_hurt |= !discs.is_empty()
+            && required(&wire.player, schema.player(), "separated").unwrap() == 1;
         for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
             thorn_frames.extend(p.visual.frame);
         }
@@ -1430,6 +1454,11 @@ fn run(restores: bool) {
                 && ammo_kinds.contains(&2)
                 && ammo_kinds.contains(&3)
         );
+    } else if name == "discs_target" {
+        println!("DISC_COVERAGE out_changes={disc_outs:?} retract_ticks={disc_retract_ticks} most_discs={most_discs} hurt={disc_hurt}");
+        // The floor block sends its discs out, recalls them and sends them out again.
+        assert!(disc_outs.get("floor_block").is_some_and(|v| v.1 >= 3));
+        assert!(disc_retract_ticks > 0 && most_discs >= 3 && disc_hurt);
     } else if name == "thorns_target" {
         println!("THORN_COVERAGE contact_ticks={thorn_contact_ticks} frames={thorn_frames:?} bee_held_ticks={bee_held_ticks} removals={removals:?}");
         assert!(thorn_contact_ticks > 0 && thorn_frames.len() == 2 && bee_held_ticks > 0);

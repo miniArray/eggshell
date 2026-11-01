@@ -94,6 +94,7 @@ pub(crate) fn restore_head(
         "seed_shot" => Kind::Seed(crate::melon::Seed { heading: 0 }),
         // enemy_overlap.gd: a and b are restored after the head.
         "enemy_overlap" => Kind::Overlap(crate::roller::Overlap::default()),
+        "enemy_disc" => Kind::Disc(crate::disc::Disc::default()),
         "fire_shot" => Kind::ElementShot(crate::elements::ElementShot::new(
             crate::elements::Element::Fire,
         )),

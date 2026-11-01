@@ -1233,6 +1233,8 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::SpinBlock(p) => p.bounds(),
         Kind::Lamp(p) => p.bounds(),
         Kind::ElementShot(_) => crate::elements::SHOT_BOX,
+        Kind::DiscBlock(p) => p.bounds(),
+        Kind::Disc(p) => p.bounds(),
         _ => [0; 4],
     }
 }

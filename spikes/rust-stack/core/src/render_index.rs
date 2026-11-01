@@ -58,6 +58,8 @@ fn bounds(e: &crate::entity::Entity, w: &World, guard: i64) -> [i64; 4] {
         Kind::SpinBlock(p) => p.bounds(),
         Kind::Lamp(p) => p.bounds(),
         Kind::ElementShot(_) => crate::elements::SHOT_BOX,
+        Kind::DiscBlock(p) => p.bounds(),
+        Kind::Disc(p) => p.bounds(),
         Kind::Pad(_) => {
             let PreparedPlacement::Pad { large, .. } = source.unwrap().prepared else {
                 unreachable!()

@@ -503,6 +503,35 @@ impl SolidFrame {
                     turn: None,
                 });
             }
+            // disc_block.gd: a full solid while active.
+            if let Kind::DiscBlock(disc) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = disc.solid(entity.status, entity.body);
+                let b = disc.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    vanish: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
             // egg_block.gd: a full solid, bumped from below like an item block.
             if let Kind::EggBlock(block) = &entity.kind {
                 let position = Position {

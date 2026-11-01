@@ -114,6 +114,8 @@ impl Run {
                     Kind::Redirect(p) => p.set_field(name, *value),
                     Kind::Overlap(p) => p.set_field(name, *value),
                     Kind::ElementShot(p) => p.set_field(name, *value),
+                    Kind::DiscBlock(p) => p.set_field(name, *value),
+                    Kind::Disc(p) => p.set_field(name, *value),
                     _ => false,
                 };
                 let handled = if specific || e.set_common(name, *value) {
