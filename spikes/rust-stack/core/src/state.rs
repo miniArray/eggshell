@@ -257,7 +257,13 @@ impl Run {
                     "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
                     "e14" => Kind::Walker(crate::actors::Actor::hang(p)?),
                     "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
-                    _ => return Err(unsupported("fixture entity form")),
+                    // Name the code and form so sweeps can rank what is still missing.
+                    _ => {
+                        return Err(unsupported(&format!(
+                            "entity {} F={} R={}",
+                            p.code, p.variant, p.rotation
+                        )))
+                    }
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
                 let family_index = match kind {
