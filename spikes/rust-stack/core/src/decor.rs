@@ -50,3 +50,93 @@ pub(crate) fn layer_for(code: &str) -> i64 {
         7
     }
 }
+
+/// decor.gd MAX_PIXELS: MAX_COORD / S - 1024, MAX_COORD = int max / 16384.
+const MAX_PIXELS: i64 = i64::MAX / 16384 / crate::SCALE - 1024;
+
+/// Godot String.is_valid_float: the whole text is one decimal number.
+fn valid_float(text: &str) -> Option<f64> {
+    let body = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if body.is_empty()
+        || text.contains(char::is_whitespace)
+        || !body.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+    {
+        return None;
+    }
+    text.parse::<f64>().ok()
+}
+
+/// decor.gd size_option of E1 as prepare_options keeps it: `float(int(value))`. A
+/// missing E1 reads 0; text must be a whole decimal number; the value must be finite and
+/// within 0..=MAX_PIXELS, else the level does not load.
+pub(crate) fn height(p: &crate::Placement) -> Result<i64, crate::Error> {
+    let invalid = || crate::Error::InvalidInput {
+        context: "Invalid scenery height".into(),
+    };
+    let value = match p.properties.iter().find(|(k, _)| k == "E1").map(|(_, v)| v) {
+        None => 0.0,
+        Some(crate::PropertyValue::Number(v)) => *v,
+        Some(crate::PropertyValue::String(s)) => valid_float(s.trim()).ok_or_else(invalid)?,
+        Some(_) => return Err(invalid()),
+    };
+    if !value.is_finite() || value < 0.0 || value > MAX_PIXELS as f64 {
+        return Err(invalid());
+    }
+    Ok(value as i64)
+}
+
+/// decor.gd prepare_options: extendable scenery must be neither mirrored nor turned
+/// (fposmod(R, 360) == 0); otherwise it degrades.
+pub(crate) fn untransformed(p: &crate::Placement) -> bool {
+    let rotation = match p.properties.iter().find(|(k, _)| k == "R").map(|(_, v)| v) {
+        Some(crate::PropertyValue::Number(v)) => *v,
+        _ => 0.0,
+    };
+    p.mirror == 0 && rotation.rem_euclid(360.0) == 0.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn placement(props: serde_json::Value, mirror: i64) -> crate::Placement {
+        let crate::PropertyValue::Object(properties) = crate::world::property_for_tests(&props)
+        else {
+            unreachable!()
+        };
+        crate::Placement {
+            id: "1".into(),
+            code: "d28".into(),
+            position: crate::Position::default(),
+            variant: 0,
+            mirror,
+            rotation: 0,
+            layer: 7,
+            properties,
+            prepared: crate::PreparedPlacement::None,
+        }
+    }
+    #[test]
+    fn height_follows_size_option() {
+        let h = |v| height(&placement(v, 0));
+        assert_eq!(h(serde_json::json!({})).unwrap(), 0);
+        assert_eq!(h(serde_json::json!({"E1": 96.7})).unwrap(), 96);
+        assert_eq!(h(serde_json::json!({"E1": " 128 "})).unwrap(), 128);
+        assert_eq!(h(serde_json::json!({"E1": "1e2"})).unwrap(), 100);
+        for bad in [
+            serde_json::json!({"E1": "12px"}),
+            serde_json::json!({"E1": -1}),
+            serde_json::json!({"E1": ""}),
+            serde_json::json!({"E1": true}),
+            serde_json::json!({"E1": 1e300}),
+        ] {
+            assert!(height(&placement(bad, 0)).is_err());
+        }
+    }
+    #[test]
+    fn transformed_extendable_scenery_degrades() {
+        assert!(untransformed(&placement(serde_json::json!({"R": 360}), 0)));
+        assert!(!untransformed(&placement(serde_json::json!({"R": 90}), 0)));
+        assert!(!untransformed(&placement(serde_json::json!({"R": 0.5}), 0)));
+        assert!(!untransformed(&placement(serde_json::json!({}), 1)));
+    }
+}

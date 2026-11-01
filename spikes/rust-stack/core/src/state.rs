@@ -143,13 +143,17 @@ impl Run {
                     "o5" => Kind::Goal,
                     "o23" => Kind::Post(crate::post::Post::new(p)?),
                     "o6" => Kind::Checkpoint(crate::checkpoint::Marker::new(p)?),
-                    // decor.gd: static scenery; out-of-range forms degrade there (not yet here),
-                    // and extendable scenery needs its E1 height drawn (not yet).
+                    // decor.gd: static scenery; out-of-range forms and transformed
+                    // extendable scenery degrade there (refused here). Extendable scenery
+                    // is drawn from its E1 height; an invalid height does not load.
                     code if crate::decor::is_decor(code)
-                        && !crate::decor::resized(code)
                         && (0..crate::decor::frame_count(code)).contains(&p.variant)
-                        && (0..=1).contains(&p.mirror) =>
+                        && (0..=1).contains(&p.mirror)
+                        && (!crate::decor::resized(code) || crate::decor::untransformed(p)) =>
                     {
+                        if crate::decor::resized(code) {
+                            crate::decor::height(p)?;
+                        }
                         Kind::Decor
                     }
                     "o1" => Kind::Pickup(crate::items::Pickup::new(

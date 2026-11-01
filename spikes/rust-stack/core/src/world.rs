@@ -667,6 +667,10 @@ fn stringify_scalar(v: &Value) -> String {
 fn properties(o: &JsonObject<String, Value>) -> Vec<(String, PropertyValue)> {
     o.iter().map(|(k, v)| (k.clone(), property(v))).collect()
 }
+#[cfg(test)]
+pub(crate) fn property_for_tests(v: &Value) -> PropertyValue {
+    property(v)
+}
 fn property(v: &Value) -> PropertyValue {
     match v {
         Value::Null => PropertyValue::Null,

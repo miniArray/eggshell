@@ -195,6 +195,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut input_offset = None;
     let mut require_active_window = false;
     let mut initial_zoom = 0_i32;
+    // Shots only: centre the view on this level pixel instead of the game camera.
+    let mut view_at: Option<eggshell_spike_core::Position> = None;
     let mut mute = false;
     while let Some(key) = args.next() {
         match key.as_str() {
@@ -216,6 +218,21 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     .ok_or("--zoom needs integer")?
                     .parse()
                     .map_err(|_| "invalid zoom")?;
+            }
+            "--view-at" => {
+                let text = args.next().ok_or("--view-at needs X,Y")?;
+                let (x, y) = text.split_once(',').ok_or("--view-at needs X,Y")?;
+                let pixel = |v: &str| -> Result<i64, String> {
+                    let v: f64 = v.parse().map_err(|_| "invalid --view-at")?;
+                    if !v.is_finite() || v.abs() > 1e9 {
+                        return Err("invalid --view-at".into());
+                    }
+                    Ok((v * eggshell_spike_core::SCALE as f64) as i64)
+                };
+                view_at = Some(eggshell_spike_core::Position {
+                    x: pixel(x)?,
+                    y: pixel(y)?,
+                });
             }
             "--require-active-window" => require_active_window = true,
             "--ticks" => {
@@ -276,7 +293,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     if benchmark_single_texture && !benchmark_unverified_level {
         return Err("--benchmark-single-texture requires --benchmark-unverified-level; picture_invalid=true".into());
     }
-    if capture_tick.is_some() || files.contains_key("--capture") {
+    if capture_tick.is_some() || files.contains_key("--capture") || view_at.is_some() {
         // The pipeline draws one frame behind; captures use the sequential loop.
         pipeline = false;
     }
@@ -711,7 +728,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 }
             }
             let timer = Timer::new();
-            let (map_index, focus) = session.presentation_view();
+            let (map_index, mut focus) = session.presentation_view();
+            if let Some(at) = view_at {
+                focus = at;
+            }
             let container = gpu.begin(scene.clear_color(map_index)?)?;
             let region = scene.presentation_region(
                 map_index,
@@ -719,7 +739,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 [container[0] as f64, container[1] as f64],
                 zoom,
             )?;
-            let p = session.presentation_region(region);
+            let mut p = session.presentation_region(region);
+            if let Some(at) = view_at {
+                p.follow.current = at;
+                p.follow.previous = at;
+            }
             let picture = scene.picture(&p, [container[0] as f64, container[1] as f64], zoom)?;
             zoom = picture.plan.zoom;
             zoom_min = picture.plan.zoom_min;

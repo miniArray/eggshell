@@ -53,14 +53,21 @@ if [[ "${2:-}" == shots ]]; then
     --script down,down,down,page_down,page_down,page_up,back,confirm,confirm --frame-dump-dir "$shots/list" || true
   rm -f "$choice"
   if [[ -f "$ROOT/private-input/level-shots.txt" ]]; then
-    while read -r file; do
-      [[ "$file" =~ ^[A-Za-z0-9_.-]+$ && -f "$LEVELS/$file" ]] || continue
-      out="$shots/${file%.*}"
+    # Lines: FILE X Y LABEL; X Y "-" keep the game camera, else the view centres there.
+    while read -r file x y label; do
+      [[ "$file" =~ ^[A-Za-z0-9_.-]+$ && -f "$LEVELS/$file" && "$label" =~ ^[a-z0-9]+$ ]] || continue
+      view=()
+      if [[ "$x" != - ]]; then
+        [[ "$x" =~ ^-?[0-9.]+$ && "$y" =~ ^-?[0-9.]+$ ]] || continue
+        view=(--view-at "$x,$y")
+      fi
+      out="$shots/${file%.*}-$label"
       mkdir -p "$out"
       save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
-      printf 'LEVELS_SHOTS_LEVEL %s\n' "$file"
+      printf 'LEVELS_SHOTS_LEVEL %s %s\n' "$file" "$label"
       play "$file" "$save" 5 --replay "$ROOT/private-input/idle-600.input.json" --ticks 300 \
-        --frame-digest-every 100 --frame-dump-dir "$out" --no-pipeline || printf 'LEVELS_SHOTS_FAILED %s\n' "$file"
+        --frame-digest-every 100 --frame-dump-dir "$out" --no-pipeline "${view[@]}" ||
+        printf 'LEVELS_SHOTS_FAILED %s %s\n' "$file" "$label"
     done < "$ROOT/private-input/level-shots.txt"
   fi
   printf 'LEVELS_SHOTS_DONE dir=%s\n' "$shots"

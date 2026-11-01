@@ -7,6 +7,7 @@ pub mod blend_probe;
 pub mod call_cursor;
 pub mod clock;
 pub mod diagnosis;
+pub mod dressing;
 pub mod effects;
 pub mod game;
 pub mod geometry;

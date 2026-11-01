@@ -97,6 +97,16 @@ fn bounds(e: &crate::entity::Entity, w: &World, guard: i64) -> [i64; 4] {
             ];
         }
     }
+    // Extendable scenery reaches its E1 height (plus lanterns and caps) from its position.
+    if let (Kind::Decor, Some(p)) = (&e.kind, source.filter(|p| crate::decor::resized(&p.code))) {
+        let reach = (crate::decor::height(p).unwrap_or(0) + 512).saturating_mul(S);
+        result = [
+            result[0].min(at[0].saturating_sub(reach)),
+            result[1].min(at[1].saturating_sub(reach)),
+            result[2].max(at[0].saturating_add(reach)),
+            result[3].max(at[1].saturating_add(reach)),
+        ];
+    }
     let absolute = match &e.kind {
         Kind::Post(p) => p.height,
         Kind::Walker(a) if a.kind == crate::actors::ActorKind::Stilt => a.height,

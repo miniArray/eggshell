@@ -79,6 +79,9 @@ pub struct Scene {
     /// Stilt walker recolour per variant. The original recolours the parts at run time
     /// (ShyGuy_Colors); the pack's pre-coloured e1 frames give the same colour pairs.
     stilt_palettes: HashMap<i64, Vec<PaletteSwap>>,
+    /// pack_dressing.gd decoration_plan: each extendable scenery (code, variant)'s pack
+    /// `source_type`, which names the d28 cap animation.
+    decor_caps: HashMap<(String, i64), String>,
     /// The original's aim cursor (hud EggTarget), when the pack has it.
     egg_target: Option<Visual>,
     /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
@@ -160,6 +163,7 @@ fn art_can_intersect(
     inactive: bool,
 ) -> bool {
     if ["p1", "o5", "o11"].contains(&e.code.as_str())
+        || crate::dressing::resized_decor(&e.code)
         || e.visual.asset_key.is_some()
         || e.auxiliary.iter().any(|a| a.picture.visible)
     {
@@ -672,6 +676,51 @@ impl Scene {
             bound.insert(0, catalog.visual(entry, 0, density, false)?);
             objects.insert(name, bound);
         }
+        // Drawing-only parts: span stalks and spike strips, and extendable scenery parts
+        // (span_dressing.gd, pack_dressing.gd decoration_plan).
+        let mut decor_caps = HashMap::new();
+        for p in world.maps.iter().flat_map(|m| m.placements.iter()) {
+            let mut needed: Vec<(String, Option<Value>, i64)> = Vec::new();
+            if let Some(key) = crate::dressing::span_part_key(&p.code) {
+                let entry = object_entries.get(&key).cloned();
+                needed.push((key.clone(), entry.clone(), 0));
+                needed.push((key, entry, 1));
+            }
+            if crate::dressing::resized_decor(&p.code) {
+                let entry = object_entries.get(&p.code);
+                let selected = entry
+                    .and_then(|e| e.get("variants"))
+                    .and_then(|v| v.get(p.variant.to_string()))
+                    .or(entry);
+                let cap = selected
+                    .and_then(|e| e.get("source_type"))
+                    .and_then(Value::as_str);
+                if let Some(cap) = cap {
+                    decor_caps.insert((p.code.clone(), p.variant), cap.to_owned());
+                }
+                for part in crate::dressing::decoration_plan(&p.code, p.variant, 0.0, cap) {
+                    if part.art == crate::dressing::Art::Body {
+                        continue;
+                    }
+                    needed.push((
+                        crate::dressing::part_key(&p.code, &part.art),
+                        crate::dressing::part_entry(&pack.manifest, &p.code, &part.art),
+                        part.variant,
+                    ));
+                }
+            }
+            for (key, entry, variant) in needed {
+                if objects
+                    .get(&key)
+                    .is_some_and(|v: &HashMap<i64, Visual>| v.contains_key(&variant))
+                {
+                    continue;
+                }
+                let entry = entry.ok_or_else(|| format!("pack has no {key} art for {}", p.code))?;
+                let visual = catalog.visual(&entry, variant, density, true)?;
+                objects.entry(key).or_default().insert(variant, visual);
+            }
+        }
         let player=catalog.visual(&serde_json::json!({"animations":pack.manifest.get("player").ok_or("player animations missing")?,"default_animation":"Idle0"}),0,density,false)?;
         let hud_entries = pack.manifest.get("hud").ok_or("hud metadata missing")?;
         let companion = hud_entries
@@ -747,6 +796,7 @@ impl Scene {
             companions,
             tongue,
             stilt_palettes,
+            decor_caps,
             egg_target,
             trail: std::sync::Mutex::new(Trail::default()),
             uniform: HashMap::new(),
@@ -1355,7 +1405,41 @@ impl Scene {
                     [r, g, b, state.alpha.clamp(0.0, 1.0) as f32]
                 };
                 let mut quads = Vec::new();
-                if entity.code == "p1" {
+                let dressing = crate::dressing::Draw {
+                    at: pixel(entity.motion.current),
+                    rotation: state.rotation_degrees.unwrap_or(0.0),
+                    density: self.density as f64,
+                    plan: &plan,
+                    color,
+                    palette: &state.palette,
+                };
+                let resized_decor = placement
+                    .filter(|_| crate::dressing::resized_decor(&entity.code))
+                    .filter(|_| entity.visual.asset_key.is_none());
+                if let Some(placement) = resized_decor {
+                    let option = |key: &str| {
+                        placement
+                            .properties
+                            .iter()
+                            .find(|(k, _)| k == key)
+                            .map(|(_, v)| v)
+                    };
+                    let height = crate::dressing::decor_height(option("E1"));
+                    let mut parts = Vec::new();
+                    for part in crate::dressing::decoration_plan(
+                        &entity.code,
+                        placement.variant,
+                        height,
+                        self.decor_caps
+                            .get(&(entity.code.clone(), placement.variant))
+                            .map(String::as_str),
+                    ) {
+                        let key = crate::dressing::part_key(&entity.code, &part.art);
+                        let v = self.object(&key, part.variant)?;
+                        parts.push((part, v));
+                    }
+                    dressing.decoration(&parts, p.tick, &self.sizes, &mut quads)?;
+                } else if entity.code == "p1" {
                     let placement = placement.ok_or("runtime bridge not admitted")?;
                     let geometry_index = match placement.prepared {
                         eggshell_spike_core::PreparedPlacement::Bridge { geometry_index } => {
@@ -1430,6 +1514,8 @@ impl Scene {
                             | "p8"
                             | "p9"
                             | "p10"
+                            | "p11"
+                            | "p12"
                             | "p13"
                             | "p14"
                             | "p15"
@@ -1445,12 +1531,15 @@ impl Scene {
                 ) {
                     // span_dressing.gd: a span body is its pack nine-slice grown to the
                     // span's width and drawn height, centred on the span. Omitted: the
-                    // decorative stalks (p5/p6..p8 E2) and the spans' repeat fallback.
+                    // spans' repeat fallback (every pack span entry has slices).
                     let unit = 1.0 / self.density as f64;
                     let target = [width / unit, height / unit];
+                    // p11/p12 turn about their centre (span_dressing.gd: the slices follow
+                    // the span node's turn).
                     let at = Transform {
                         position: pixel(entity.motion.current),
                         scale: [unit, unit],
+                        rotation: state.rotation_degrees.unwrap_or(0.0),
                         ..Transform::default()
                     };
                     if width > 0.0 && height > 0.0 {
@@ -1536,6 +1625,32 @@ impl Scene {
                     )?;
                     pillar.append(&mut quads);
                     quads = pillar;
+                }
+                // span_dressing.gd parts: p6..p8 stalks, p11/p12 spike strips (E2).
+                if let (Some(key), Some(placement)) =
+                    (crate::dressing::span_part_key(&entity.code), placement)
+                {
+                    let e2 = crate::dressing::leading_integer(
+                        placement
+                            .properties
+                            .iter()
+                            .find(|(k, _)| k == "E2")
+                            .map(|(_, v)| v),
+                    );
+                    let width = state.size_pixels[0].unwrap_or(0.0);
+                    if let Some(variant) =
+                        crate::dressing::span_part_variant(&entity.code, e2, width)
+                    {
+                        let art = self.object(&key, variant)?;
+                        dressing.span_part(
+                            &entity.code,
+                            e2,
+                            width,
+                            art,
+                            &self.sizes,
+                            &mut quads,
+                        )?;
+                    }
                 }
                 // An active stilt walker is drawn from its animated parts (auxiliaries);
                 // the editor image only stands for a waiting one.

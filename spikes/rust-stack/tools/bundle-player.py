@@ -334,6 +334,11 @@ if presentation_bundle:
             levels_dir = inputs / "levels"
             levels_dir.mkdir(mode=0o700, parents=True)
             shots = {"gradient": [], "customGradientGenerator": [], "tint": []}
+            # One level per drawn part kind, viewed at that placement (--view-at).
+            object_shots = {
+                c: None
+                for c in ["d14", "d27", "d28", "d31", "d39", "d57", "d61", "d75", "p11", "p6"]
+            }
             level_digests = {}
             for entry in index["levels"]:
                 if not entry["ok"]:
@@ -351,14 +356,28 @@ if presentation_bundle:
                         for m in level.get("maps", {}).values()
                     ):
                         picked.append(name)
+                start = level.get("maps", {}).get(
+                    "map%d" % int(level.get("startpoint", {}).get("map", 1)), {}
+                )
+                for obj in start.get("objects", {}).values():
+                    code = obj.get("A")
+                    if code in object_shots and object_shots[code] is None:
+                        if code in ("p11", "p6") and str(obj.get("E2", "")) in ("", "0"):
+                            continue
+                        object_shots[code] = (name, obj.get("X", 0), obj.get("Y", 0))
             sources["level-index.json"] = Path(level_index_path)
-            (inputs / "level-shots.txt").write_text(
-                "".join(f"{n}\n" for n in sorted({n for v in shots.values() for n in v}))
-            )
+            lines = [f"{n} - - map\n" for n in sorted({n for v in shots.values() for n in v})]
+            lines += [
+                f"{v[0]} {float(v[1]):g} {float(v[2]):g} {c}\n"
+                for c, v in object_shots.items()
+                if v is not None
+            ]
+            (inputs / "level-shots.txt").write_text("".join(lines))
             provenance["level_list"] = {
                 "levels": len(index["levels"]),
                 "playable": sum(e["ok"] for e in index["levels"]),
                 "shots": shots,
+                "object_shots": object_shots,
                 "files": level_digests,
             }
             sources["idle-600.input.json"] = (
