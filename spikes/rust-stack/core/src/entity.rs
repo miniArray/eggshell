@@ -118,7 +118,7 @@ impl Entity {
             9
         } else if matches!(kind, Kind::Walker(_)) {
             8
-        } else if matches!(kind, Kind::Decor | Kind::Lamp(_)) {
+        } else if matches!(kind, Kind::Decor | Kind::Lamp(_) | Kind::Platform(_)) {
             // decor.gd prepare: source.layer = layer_for(code).
             p.layer
         } else if matches!(kind, Kind::Redirect(_) | Kind::Gate(_)) {

@@ -194,6 +194,9 @@ def main() -> None:
         inputs = [2] * 60 + [0] * 60 + [6] * 14 + [2] * 10 + [0] * 100
         inputs += [2] * 56 + [0] * 30 + [8] + [0] * 40 + [24] + [0] * 40 + [6] * 20
         inputs += [0] * 200
+    elif name == "sceneryledges_target":
+        # Hop right from ledge to ledge, landing on each and pausing on it.
+        inputs = [0] * 10 + ([6] * 14 + [2] * 8 + [0] * 40) * 18 + [2] * 200
     elif name == "decor_target":
         # Hop onto the plain ledge, then across onto the higher mirrored one, then walk on.
         inputs = [2] * 20 + [6] * 14 + [0] * 100 + [6] * 14 + [2] * 8 + [0] * 100

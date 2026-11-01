@@ -199,7 +199,9 @@ impl Run {
                     "o33" | "o34" => Kind::Dice(crate::dice::Dice::new(p)?),
                     "p11" | "p12" => Kind::SpinSpan(crate::spin::SpinSpan::new(p)?),
                     "o30" => Kind::SpinBlock(crate::spin::SpinBlock::new(p)?),
-                    "d6" => Kind::Platform(crate::platform::Platform::new(p)?),
+                    "d5" | "d6" | "d7" | "d8" | "d23" => {
+                        Kind::Platform(crate::platform::Platform::new(p)?)
+                    }
                     "d25" | "d26" => Kind::Lamp(crate::platform::Lamp::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {

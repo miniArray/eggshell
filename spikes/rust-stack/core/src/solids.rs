@@ -333,33 +333,30 @@ impl SolidFrame {
                     turn: None,
                 });
             }
-            // decor_platform.gd: a static top-only strip.
+            // decor_platform.gd: static top-only strips, one row per strip in solid_boxes
+            // order (collision.gd files them as the parts of one row, in that order).
             if let Kind::Platform(platform) = &entity.kind {
                 let position = Position {
                     x: entity.body.x,
                     y: entity.body.y,
                 };
-                let box_ = platform.solid(entity.status, entity.body);
-                self.rows.push(Row {
-                    token: entity.origin.token(),
-                    block: false,
-                    vanish: false,
-                    post: false,
-                    mode: 2,
-                    spiked: 0,
-                    position,
-                    old_position: position,
-                    old_box: box_,
-                    live_box: box_,
-                    region: box_.unwrap_or([
-                        entity.body.x,
-                        entity.body.y,
-                        entity.body.x,
-                        entity.body.y,
-                    ]),
-                    handle: None,
-                    turn: None,
-                });
+                for strip in platform.solids(entity.status, entity.body) {
+                    self.rows.push(Row {
+                        token: entity.origin.token(),
+                        block: false,
+                        vanish: false,
+                        post: false,
+                        mode: 2,
+                        spiked: 0,
+                        position,
+                        old_position: position,
+                        old_box: Some(strip),
+                        live_box: Some(strip),
+                        region: strip,
+                        handle: None,
+                        turn: None,
+                    });
+                }
             }
             // dice_block.gd: full solids; switches are bumped from below.
             if let Kind::Dice(dice) = &entity.kind {

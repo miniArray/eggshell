@@ -58,6 +58,7 @@ fn run(restores: bool) {
         "clears_target",
         "dice_target",
         "decor_target",
+        "sceneryledges_target",
         "rejoin_target",
         "hopstems_target",
         "petals_target",
@@ -1334,6 +1335,10 @@ fn run(restores: bool) {
     } else if name == "rejoin_target" {
         println!("REJOIN_COVERAGE rejoin_ticks={rejoin_ticks}");
         assert!(rejoin_ticks >= 51);
+    } else if name == "sceneryledges_target" {
+        // Feet heights stood on above the floor (y < 380 px): one per strip reached.
+        println!("SCENERY_LEDGE_COVERAGE heights={ledge_heights:?}");
+        assert!(ledge_heights.len() >= 4);
     } else if name == "decor_target" {
         println!("DECOR_COVERAGE ledge_heights={ledge_heights:?} lamp_views={lamp_views:?}");
         // Feet just above the strips' tops (y 322 and 282 px).

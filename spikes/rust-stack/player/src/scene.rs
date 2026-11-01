@@ -220,6 +220,20 @@ fn lamp_aliases(visual: &mut Visual) {
         }
     }
 }
+/// decor.gd size_option for an extendable scenery's E1 height, whole pixels.
+fn scenery_height(p: &Placement) -> f64 {
+    let value = p.properties.iter().find(|(k, _)| k == "E1").map(|(_, v)| v);
+    let n = match value {
+        Some(PropertyValue::Number(n)) => *n,
+        Some(PropertyValue::String(s)) => s.trim().parse().unwrap_or(0.0),
+        _ => 0.0,
+    };
+    if n.is_finite() && n > 0.0 {
+        n.trunc()
+    } else {
+        0.0
+    }
+}
 fn pixel(p: eggshell_spike_core::Position) -> [f64; 2] {
     [p.x as f64 / SCALE as f64, p.y as f64 / SCALE as f64]
 }
@@ -562,6 +576,20 @@ impl Scene {
                 bound.insert(variant, visual);
             }
             objects.insert(code.to_owned(), bound);
+        }
+        // pack_dressing.gd decoration_plan d23: the second source type is a tiled pillar.
+        if objects.contains_key("d23") {
+            let entry = object_entries.get("d23").ok_or("d23 entry")?;
+            let part = entry
+                .get("source_types")
+                .and_then(Value::as_array)
+                .and_then(|types| types.get(1))
+                .and_then(Value::as_f64)
+                .and_then(|t| entry.get("parts")?.get((t as i64).to_string()))
+                .ok_or("pack has no d23 pillar part")?;
+            let mut bound = HashMap::new();
+            bound.insert(0, catalog.visual(part, 0, density, true)?);
+            objects.insert("d23_pillar".to_owned(), bound);
         }
         let egg_target = match pack.manifest.get("hud").and_then(|h| h.get("EggTarget")) {
             Some(entry) => Some(catalog.visual(entry, 0, density, false)?),
@@ -1521,6 +1549,18 @@ impl Scene {
                         &state.palette,
                     ));
                 }
+                if entity.code == "d23" {
+                    let height = placement.map_or(0.0, scenery_height);
+                    let mut pillar = self.d23_pillar(
+                        pixel(entity.motion.current),
+                        entity.variant,
+                        height,
+                        &plan,
+                        color,
+                    )?;
+                    pillar.append(&mut quads);
+                    quads = pillar;
+                }
                 // An active stilt walker is drawn from its animated parts (auxiliaries);
                 // the editor image only stands for a waiting one.
                 if entity
@@ -1881,6 +1921,43 @@ impl Scene {
         entity.visual.asset_key.is_none()
             && PACKLESS_RUNTIME_CODES.contains(&entity.code.as_str())
             && !self.objects.contains_key(&entity.code)
+    }
+    /// pack_dressing.gd decoration_plan d23 pillar: the MountainPlatformPillar image,
+    /// centred and tiled downward to the E1 height, 32 px (form 1: 64 px) below the
+    /// placement, drawn behind the ledge.
+    fn d23_pillar(
+        &self,
+        at: [f64; 2],
+        variant: i64,
+        height: f64,
+        plan: &Plan,
+        color: [f32; 4],
+    ) -> Result<Vec<crate::gles::Quad>, String> {
+        let visual = self.object("d23_pillar", 0)?;
+        let frame = visual.sample(0, "", 0, None);
+        let texels = self.sizes[frame.image];
+        let native = texels.map(|v| v / self.density as f64);
+        let transform = Transform {
+            position: [at[0], at[1] + if variant == 0 { 32.0 } else { 64.0 }],
+            ..Transform::default()
+        };
+        let mut quads = Vec::new();
+        let mut top = 0.0;
+        while top < height && native[1] > 0.0 {
+            let h = native[1].min(height - top);
+            quads.push(rect_quad(
+                frame.image,
+                [0.0, 0.0, texels[0], h * self.density as f64],
+                texels,
+                [-native[0] / 2.0, top, native[0], h],
+                transform,
+                plan,
+                color,
+                &[],
+            ));
+            top += native[1];
+        }
+        Ok(quads)
     }
     fn object(&self, code: &str, variant: i64) -> Result<&Visual, String> {
         self.objects

@@ -205,7 +205,13 @@ impl World {
                     _ => PreparedPlacement::None,
                 };
                 let layer = match code.as_str() {
-                    _ if crate::decor::is_decor(&code) => crate::decor::layer_for(&code),
+                    // decor.gd prepare_options (also run by decor_platform.gd and lamp.gd).
+                    _ if crate::decor::is_decor(&code)
+                        || crate::platform::CODES.contains(&code.as_str())
+                        || ["d25", "d26"].contains(&code.as_str()) =>
+                    {
+                        crate::decor::layer_for(&code)
+                    }
                     _ if code.starts_with('e') => 8,
                     _ => 7,
                 };
