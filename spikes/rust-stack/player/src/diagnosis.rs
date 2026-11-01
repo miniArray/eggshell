@@ -277,3 +277,92 @@ pub fn work_host(arguments: impl Iterator<Item = String>) -> Result<(), String> 
     );
     Ok(())
 }
+
+/// Host fill estimate: screen pixels each image covers in one 640x480 zoom-0 picture,
+/// after the speed tool's walk-and-hop route. `--fill-host LEVEL COLLISION SCHEMA PACK
+/// INVENTORY METRICS TICK`. Areas are axis-aligned quad boxes clipped to the screen.
+pub fn fill_host(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    use crate::{pack::Pack, scene::Scene};
+    use std::path::Path;
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 7 {
+        return Err("fill-host LEVEL COLLISION SCHEMA PACK INVENTORY METRICS TICK".into());
+    }
+    let read = |i: usize| std::fs::read_to_string(&args[i]).map_err(|e| e.to_string());
+    let mut session = Session::load(&read(0)?, &read(1)?, &read(2)?).map_err(|e| e.to_string())?;
+    let pack = Pack::open(Path::new(&args[3]), Path::new(&args[4]))?;
+    let mut scene = Scene::prepare(
+        session.world(),
+        &session.admission_report().admitted_codes.clone(),
+        &pack,
+        Path::new(&args[5]),
+    )?;
+    scene.prepare_headless_assets(&pack)?;
+    session.configure_presentation_index(scene.absolute_origin_guard());
+    let mut cycle = Vec::new();
+    for (n, m) in [
+        (40, 2u8),
+        (14, 6),
+        (20, 2),
+        (1, 8),
+        (12, 0),
+        (30, 2),
+        (8, 0),
+    ] {
+        cycle.extend(std::iter::repeat_n(m, n));
+    }
+    let ticks: usize = args[6].parse().map_err(|_| "invalid tick")?;
+    for i in 0..ticks {
+        session
+            .advance(cycle[i % cycle.len()])
+            .map_err(|e| e.to_string())?;
+    }
+    let container = [640.0, 480.0];
+    let (map_index, focus) = session.presentation_view();
+    let region = scene.presentation_region(map_index, focus, container, 0)?;
+    let p = session.presentation_region(region);
+    let picture = scene.picture(&p, container, 0)?;
+    let files = scene.image_files();
+    let mut by: std::collections::BTreeMap<String, (f64, usize)> = Default::default();
+    let mut total = 0.0;
+    let mut quads = 0;
+    for q in picture
+        .world
+        .iter()
+        .chain(&picture.tint)
+        .chain(&picture.hud)
+    {
+        let xs = q.corners.map(|c| c[0] as f64);
+        let ys = q.corners.map(|c| c[1] as f64);
+        let x0 = xs.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
+        let x1 = xs
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max)
+            .min(container[0]);
+        let y0 = ys.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
+        let y1 = ys
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max)
+            .min(container[1]);
+        let area = (x1 - x0).max(0.0) * (y1 - y0).max(0.0);
+        let name = files
+            .get(q.image)
+            .cloned()
+            .unwrap_or_else(|| format!("#generated{}", q.image - files.len()));
+        let e = by.entry(name).or_default();
+        e.0 += area;
+        e.1 += 1;
+        total += area;
+        quads += 1;
+    }
+    let mut rows: Vec<_> = by.into_iter().collect();
+    rows.sort_by(|a, b| b.1.0.total_cmp(&a.1.0));
+    let screen = container[0] * container[1];
+    println!(
+        "HOST_FILL {}",
+        serde_json::json!({"level":args[0],"tick":ticks,"scale":picture.plan.scale,"quads":quads,"screens_covered":total/screen,"top":rows.iter().take(10).map(|(n,(a,c))|serde_json::json!({"image":n,"screens":a/screen,"quads":c})).collect::<Vec<_>>()})
+    );
+    Ok(())
+}

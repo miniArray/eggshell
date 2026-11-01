@@ -47,6 +47,20 @@ void main() {
   }
 }
 "#;
+/// FRAGMENT's non-darkness path with no palette swaps, as its own program: the same
+/// texel times vertex colour, without the per-fragment swap loop and branch that every
+/// pixel otherwise pays on the Mali-G31 (fill-bound levels with gradients and three
+/// background layers missed frames). Game pipeline only.
+const PLAIN_FRAGMENT: &str = r#"
+precision highp float;
+uniform highp sampler2D u_texture;
+varying vec2 v_uv;
+varying vec4 v_color;
+void main() {
+  vec4 pixel=texture2D(u_texture,v_uv);
+  gl_FragColor=pixel*v_color;
+}
+"#;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Quad {
     pub image: usize,
@@ -65,13 +79,16 @@ pub struct DrawCounts {
 
 /// Syntax-only translation. Numeric expressions and operation order stay exact.
 fn diagnostic_es300_render_sources() -> (String, String) {
+    es300_render_sources(FRAGMENT)
+}
+fn es300_render_sources(fragment_source: &str) -> (String, String) {
     let vertex = format!(
         "#version 300 es\nprecision highp float;\n{}",
         VERTEX
             .replace("attribute ", "in ")
             .replace("varying ", "out ")
     );
-    let fragment = FRAGMENT
+    let fragment = fragment_source
         .replacen(
             "precision highp float;",
             "precision highp float;\nlayout(location=0) out highp vec4 diagnostic_frag_color;",
@@ -86,7 +103,10 @@ fn diagnostic_es300_render_sources() -> (String, String) {
 /// Preserve our existing upper-left render/readback convention with Y reflection.
 /// No UV, texel-center bias, topology, fragment or texture change is part of this axis.
 fn game_es300_render_sources() -> (String, String) {
-    let (v, f) = diagnostic_es300_render_sources();
+    game_es300_sources_for(FRAGMENT)
+}
+fn game_es300_sources_for(fragment: &str) -> (String, String) {
+    let (v, f) = es300_render_sources(fragment);
     let v=v.replacen("uniform vec2 u_viewport;","uniform vec2 u_viewport;\nuniform mat4 u_screen_transform;",1).replace("gl_Position = vec4(a_position.x/u_viewport.x*2.0-1.0, 1.0-a_position.y/u_viewport.y*2.0,0.0,1.0);","gl_Position = u_screen_transform * vec4(a_position,0.0,1.0);");
     (v, f)
 }
@@ -161,6 +181,11 @@ struct DiagnosticTarget {
     texture: glow::Texture,
     actual_internal_format: i32,
 }
+struct PlainProgram {
+    program: glow::Program,
+    viewport: Option<glow::UniformLocation>,
+    screen_transform: Option<glow::UniformLocation>,
+}
 struct Uniforms {
     viewport: Option<glow::UniformLocation>,
     darkness: Option<glow::UniformLocation>,
@@ -226,6 +251,10 @@ pub struct Gles {
     gl: glow::Context,
     program: glow::Program,
     uniforms: Uniforms,
+    /// PLAIN_FRAGMENT program (game pipeline) with its viewport and screen transform.
+    plain: Option<PlainProgram>,
+    /// Whether the plain program is the bound one (draw batches switch per palette).
+    plain_bound: bool,
     batch_texture: Option<usize>,
     benchmark_single_texture: Option<usize>,
     batch_palette: Option<Vec<PaletteSwap>>,
@@ -382,6 +411,26 @@ impl Gles {
             None
         };
         let uniforms = unsafe { Uniforms::load(&gl, program) };
+        let plain = if pipeline == PipelineConfig::GameOpaqueRgb10 {
+            unsafe {
+                let (v, f) = game_es300_sources_for(PLAIN_FRAGMENT);
+                let p = compile_sources(&gl, &v, &f)?;
+                gl.use_program(Some(p));
+                gl.uniform_1_i32(gl.get_uniform_location(p, "u_texture").as_ref(), 0);
+                let plain = PlainProgram {
+                    program: p,
+                    viewport: gl.get_uniform_location(p, "u_viewport"),
+                    screen_transform: Some(
+                        gl.get_uniform_location(p, "u_screen_transform")
+                            .ok_or("plain screen transform uniform missing")?,
+                    ),
+                };
+                gl.use_program(Some(program));
+                Some(plain)
+            }
+        } else {
+            None
+        };
         let mut result = Self {
             _context: context,
             window,
@@ -390,6 +439,8 @@ impl Gles {
             gl,
             program,
             uniforms,
+            plain,
+            plain_bound: false,
             batch_texture: None,
             benchmark_single_texture: None,
             batch_palette: None,
@@ -460,7 +511,16 @@ impl Gles {
             return Err("game pipeline requires observed RGB10_A2 attachment".into());
         }
         unsafe {
+            if let Some(plain) = &self.plain {
+                self.gl.use_program(Some(plain.program));
+                self.gl.uniform_matrix_4_f32_slice(
+                    plain.screen_transform.as_ref(),
+                    false,
+                    &game_screen_transform(self.width, self.height),
+                );
+            }
             self.gl.use_program(Some(self.program));
+            self.plain_bound = false;
             self.gl.uniform_matrix_4_f32_slice(
                 self.screen_transform_uniform.as_ref(),
                 false,
@@ -974,7 +1034,16 @@ impl Gles {
                 1.0,
             );
             self.gl.clear(glow::COLOR_BUFFER_BIT);
+            if let Some(plain) = &self.plain {
+                self.gl.use_program(Some(plain.program));
+                self.gl.uniform_2_f32(
+                    plain.viewport.as_ref(),
+                    self.width as f32,
+                    self.height as f32,
+                );
+            }
             self.gl.use_program(Some(self.program));
+            self.plain_bound = false;
             self.gl.uniform_2_f32(
                 self.uniforms.viewport.as_ref(),
                 self.width as f32,
@@ -1085,6 +1154,15 @@ impl Gles {
                 &q.palette
             };
             unsafe {
+                let want_plain = palette.is_empty() && self.plain.is_some();
+                if want_plain != self.plain_bound {
+                    let program = match (&self.plain, want_plain) {
+                        (Some(plain), true) => plain.program,
+                        _ => self.program,
+                    };
+                    self.gl.use_program(Some(program));
+                    self.plain_bound = want_plain;
+                }
                 if self.batch_texture != Some(image) {
                     self.gl.active_texture(glow::TEXTURE0);
                     self.gl.bind_texture(
@@ -1093,7 +1171,8 @@ impl Gles {
                     );
                     self.batch_texture = Some(image);
                 }
-                if self.batch_palette.as_deref() != Some(palette) {
+                // Swap uniforms belong to the original program; the plain one has none.
+                if !want_plain && self.batch_palette.as_deref() != Some(palette) {
                     self.gl
                         .uniform_1_i32(self.uniforms.count.as_ref(), palette.len() as i32);
                     let mut keys = [0.0; 24];
@@ -1151,6 +1230,10 @@ impl Gles {
             ]);
         }
         unsafe {
+            if self.plain_bound {
+                self.gl.use_program(Some(self.program));
+                self.plain_bound = false;
+            }
             self.gl.uniform_1_i32(self.uniforms.darkness.as_ref(), 1);
             self.gl.uniform_2_f32(
                 self.uniforms.light_origin.as_ref(),
@@ -1212,6 +1295,7 @@ impl Gles {
         unsafe {
             self.gl.use_program(Some(self.program));
         }
+        self.plain_bound = false;
         if let Some(path) = dump {
             self.write_png(path, &pixels)?;
         }
@@ -1341,6 +1425,9 @@ impl Drop for Gles {
             }
             self.gl.delete_buffer(self.buffer);
             self.gl.delete_program(self.program);
+            if let Some(plain) = &self.plain {
+                self.gl.delete_program(plain.program);
+            }
         }
     }
 }
