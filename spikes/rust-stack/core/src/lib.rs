@@ -25,6 +25,7 @@ mod flow;
 mod flower;
 mod food;
 mod gate;
+mod ghost;
 mod gust;
 mod hang;
 mod hound;

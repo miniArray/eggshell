@@ -259,6 +259,10 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
         inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
+    elif name == "ghosts_target":
+        lick = [8] + [0] * 30
+        inputs = [2] * 30 + [0] * 10 + lick + [2] * 20 + [1] * 12 + [0] * 323 + [2] + [10] + [2] * 18
+        inputs += [2] * 130 + [0] * 200 + [2] * 60 + [0] * 200 + [2] * 100 + [0] * 400
     elif name == "discs_target":
         # Walk under the high block's discs, on toward the floor block (its discs come
         # out), back away (they are recalled), come back (out again) and wait.

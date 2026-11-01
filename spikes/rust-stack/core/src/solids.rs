@@ -305,6 +305,37 @@ impl SolidFrame {
                     });
                 }
             }
+            // shy_ghost.gd: a pink ghost is a full solid while hiding.
+            if let Kind::Walker(w) = &entity.kind {
+                if w.kind == crate::actors::ActorKind::Shy && w.shy_pink() {
+                    let position = Position {
+                        x: entity.body.x,
+                        y: entity.body.y,
+                    };
+                    let box_ = w.shy_solid(entity.status, entity.body);
+                    let b = w.shy_bounds();
+                    self.rows.push(Row {
+                        token: entity.origin.token(),
+                        block: false,
+                        vanish: false,
+                        post: false,
+                        mode: 1,
+                        spiked: 0,
+                        position,
+                        old_position: position,
+                        old_box: box_,
+                        live_box: box_,
+                        region: [
+                            entity.body.x + b[0],
+                            entity.body.y + b[1],
+                            entity.body.x + b[2],
+                            entity.body.y + b[3],
+                        ],
+                        handle: None,
+                        turn: None,
+                    });
+                }
+            }
             if let Kind::Span(span) = &entity.kind {
                 let position = Position {
                     x: entity.body.x,

@@ -287,6 +287,20 @@ fn actor_visual(
         ActorKind::Slime => w.slime_animation().into(),
         // spine_walker.gd view_state
         ActorKind::Spine => w.spine_animation(),
+        // shy_ghost.gd and blind_ghost.gd view_state
+        ActorKind::Shy | ActorKind::Blind => {
+            let (animation, frame) = if w.kind == ActorKind::Shy {
+                w.shy_view()
+            } else {
+                let (a, f) = w.blind_view();
+                (a.to_string(), f)
+            };
+            return VisualState {
+                animation: Some(animation),
+                frame: Some(frame),
+                ..VisualState::default()
+            };
+        }
         ActorKind::Shot
         | ActorKind::Sprout
         | ActorKind::Hopper

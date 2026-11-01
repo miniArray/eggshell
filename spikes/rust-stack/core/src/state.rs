@@ -274,6 +274,8 @@ impl Run {
                     "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
                     "e36" => Kind::Walker(crate::actors::Actor::thorn(p)?),
                     "e43" => Kind::Walker(crate::actors::Actor::bee(p)?),
+                    "e26" => Kind::Walker(crate::actors::Actor::shy(p)?),
+                    "e39" => Kind::Walker(crate::actors::Actor::blind(p)?),
                     "e38" => Kind::DiscBlock(crate::disc::DiscBlock::new(p)?),
                     // Name the code and form so sweeps can rank what is still missing.
                     _ => {
@@ -407,7 +409,8 @@ impl Run {
             ) {
                 continue;
             }
-            if !e.lifecycle(
+            let waiting = e.status == 0;
+            let awake = e.lifecycle(
                 map,
                 centre,
                 crate::Position {
@@ -416,7 +419,16 @@ impl Run {
                 },
                 self.player.impact,
                 &mut self.rng,
-            )? {
+            )?;
+            // blind_ghost.gd activate: sounds made before it woke up are not news to it.
+            if waiting && e.status == 1 {
+                if let Kind::Walker(w) = &mut e.kind {
+                    if w.kind == crate::actors::ActorKind::Blind {
+                        w.heard = self.sound.serial;
+                    }
+                }
+            }
+            if !awake {
                 // dispatch_loops.gd: every member with a solid row refiles it after its
                 // dispatch, so a solid that just woke (or left) changes the rows now.
                 self.refresh_block_solid(next - 1, map);
@@ -565,6 +577,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bee => {
                     crate::eating::After::BeeStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Shy => {
+                    crate::eating::After::ShyStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Blind => {
+                    crate::eating::After::BlindStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -604,7 +622,9 @@ impl Run {
                             | ActorKind::LandFish
                             | ActorKind::Bubble
                             | ActorKind::Thorn
-                            | ActorKind::Bee => None,
+                            | ActorKind::Bee
+                            | ActorKind::Shy
+                            | ActorKind::Blind => None,
                         };
                         if let Some(index) = index {
                             stats.benchmark_actor_steps[index] += 1;
@@ -676,6 +696,11 @@ impl Run {
                     self.refresh_block_solid(next - 1, map);
                 }
                 crate::eating::After::BeeStep => self.bee_step(next - 1, map)?,
+                crate::eating::After::ShyStep => {
+                    self.shy_step(next - 1, map)?;
+                    self.refresh_block_solid(next - 1, map);
+                }
+                crate::eating::After::BlindStep => self.blind_step(next - 1, map)?,
                 crate::eating::After::ElementShotStep => self.element_shot_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::HoundStep => {
@@ -1165,6 +1190,11 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Bee {
                     self.bee_contact(index, action)?;
+                    continue;
+                }
+                if [crate::actors::ActorKind::Shy, crate::actors::ActorKind::Blind].contains(&w.kind)
+                {
+                    self.ghost_contact(index);
                     continue;
                 }
                 if w.kind == crate::actors::ActorKind::Hopper {
@@ -1998,6 +2028,7 @@ impl Run {
             }
             if let Kind::Walker(w) = &e.kind {
                 if !w.valid()
+                    || (w.kind == crate::actors::ActorKind::Blind && !w.blind_valid(e.body))
                     || (w.kind == crate::actors::ActorKind::Hopper && !w.hopper_valid(e.body.vx))
                     || !(0..=360).contains(&w.phase)
                     || (!(0..=if w.kind == crate::actors::ActorKind::PetalStem {

@@ -645,6 +645,7 @@ impl Run {
             SpinBlock,
             Bubble,
             Thorn,
+            Shy,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -744,6 +745,10 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Bubble => Target::Bubble,
                 // thorn_bush.gd projectile_contact: destroyed; the egg is spent on spikes.
                 Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
+                // shy_ghost.gd projectile_contact: struck at its face while moving.
+                Kind::Walker(w) if w.kind == ActorKind::Shy => Target::Shy,
+                // blind_ghost.gd projectile_contact: eggs pass through.
+                Kind::Walker(w) if w.kind == ActorKind::Blind => Target::Nothing,
                 Kind::Walker(_) => Target::Actor,
                 Kind::Pickup(p) => {
                     if o.collected != 0 || p.enabled == 0 || p.pickup_delay != 0 {
@@ -895,6 +900,14 @@ impl Run {
                 3
             }
             Target::Thorn => self.thorn_projectile(other)?,
+            Target::Shy => {
+                let vx = self.entities[egg].body.vx;
+                if self.shy_struck(other, vx)? {
+                    3
+                } else {
+                    0
+                }
+            }
             Target::Bubble => {
                 self.remove_enemy(other)?;
                 1

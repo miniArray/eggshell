@@ -373,8 +373,8 @@ impl Run {
             }
             let o = &self.entities[other];
             let b = match &o.kind {
-                // sneak_thief.gd, hanging_roller.gd, needle_juggler.gd, enemy_pellet.gd and
-                // petal_stem.gd declare no ELEMENT_REACTIONS: the shot passes them.
+                // sneak_thief.gd, hanging_roller.gd, needle_juggler.gd, enemy_pellet.gd,
+                // petal_stem.gd and the ghosts declare no ELEMENT_REACTIONS: the shot passes.
                 Kind::Walker(w)
                     if [
                         ActorKind::Thief,
@@ -382,6 +382,8 @@ impl Run {
                         ActorKind::Juggler,
                         ActorKind::Pellet,
                         ActorKind::PetalStem,
+                        ActorKind::Shy,
+                        ActorKind::Blind,
                     ]
                     .contains(&w.kind) =>
                 {

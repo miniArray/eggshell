@@ -256,6 +256,8 @@ impl Entity {
                     ActorKind::Bubble => "e16",
                     ActorKind::Thorn => "e36",
                     ActorKind::Bee => "e43",
+                    ActorKind::Shy => "e26",
+                    ActorKind::Blind => "e39",
                 },
                 Kind::ElementShot(s) => s.code(),
                 Kind::Disc(_) => "enemy_disc",
@@ -402,6 +404,12 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Runner => {
                         Kind::Walker(Actor::bare_runner(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Shy => {
+                        Kind::Walker(Actor::shy(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Blind => {
+                        Kind::Walker(Actor::blind(source)?)
                     }
                     Kind::Walker(a) => {
                         let look = a.look;

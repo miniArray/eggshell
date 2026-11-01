@@ -69,6 +69,7 @@ fn run(restores: bool) {
         "runners_target",
         "slimes_target",
         "spines_target",
+        "ghosts_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -257,6 +258,10 @@ fn run(restores: bool) {
     let mut disc_retract_ticks = 0;
     let mut most_discs = 0;
     let mut disc_hurt = false;
+    // shy_ghost.gd / blind_ghost.gd coverage.
+    let mut blind_modes: BTreeSet<i64> = BTreeSet::new();
+    let mut shy_phases: BTreeSet<(i64, i64)> = BTreeSet::new();
+    let mut ghost_stars = 0;
     let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
     let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
@@ -1138,13 +1143,24 @@ fn run(restores: bool) {
         disc_retract_ticks += usize::from(discs.iter().any(|e| {
             required(&e.values, schema.entity_fields("enemy_disc"), "retracting").unwrap() == 1
         }));
-        disc_hurt |=
-            !discs.is_empty() && required(&wire.player, schema.player(), "separated").unwrap() == 1;
-        for p in packet
+        disc_hurt |= !discs.is_empty()
+            && required(&wire.player, schema.player(), "separated").unwrap() == 1;
+        for e in wire
             .entities
             .iter()
-            .filter(|p| p.code == "e36" && p.visible)
+            .filter(|e| matches!(e.code.as_str(), "e26" | "e39"))
         {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if f("status") == 1 {
+                if e.code == "e39" {
+                    blind_modes.insert(f("mode"));
+                } else {
+                    shy_phases.insert((f("variant"), f("phase")));
+                }
+            }
+        }
+        ghost_stars = ghost_stars.max(wire.entities.iter().filter(|e| e.code == "o4").count());
+        for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
             thorn_frames.extend(p.visual.frame);
         }
         // lamp.gd: lit changes by code and new value.
@@ -1556,6 +1572,12 @@ fn run(restores: bool) {
                 && ammo_kinds.contains(&2)
                 && ammo_kinds.contains(&3)
         );
+    } else if name == "ghosts_target" {
+        println!("GHOST_COVERAGE blind_modes={blind_modes:?} shy_phases={shy_phases:?} stars={ghost_stars}");
+        assert!(blind_modes.len() == 4 && ghost_stars > 0);
+        // The small ghost stalks and hides; the pink ghost hides (a solid).
+        assert!(shy_phases.contains(&(0, 0)) && shy_phases.contains(&(0, 1)));
+        assert!(shy_phases.contains(&(2, 1)));
     } else if name == "discs_target" {
         println!("DISC_COVERAGE out_changes={disc_outs:?} retract_ticks={disc_retract_ticks} most_discs={most_discs} hurt={disc_hurt}");
         // The floor block sends its discs out, recalls them and sends them out again.

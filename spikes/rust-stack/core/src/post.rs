@@ -32,6 +32,14 @@ impl crate::state::Run {
                 {
                     continue;
                 }
+                // shy_ghost.gd and blind_ghost.gd hit rules differ from removal.
+                if [crate::actors::ActorKind::Shy, crate::actors::ActorKind::Blind]
+                    .contains(&actor.kind)
+                {
+                    return Err(Error::Unsupported {
+                        requirements: vec!["post strike on an e26/e39 ghost".into()],
+                    });
+                }
                 let spawn = if actor.kind == crate::actors::ActorKind::Stilt {
                     Some((
                         crate::Position {

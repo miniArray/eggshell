@@ -150,6 +150,10 @@ pub(crate) enum After {
     DiscBlockStep,
     /// bee_flyer.gd step.
     BeeStep,
+    /// shy_ghost.gd step, whose pink forms are solid while hiding.
+    ShyStep,
+    /// blind_ghost.gd step.
+    BlindStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.
@@ -441,6 +445,8 @@ impl Run {
                 Kind::SpinSpan(s) => Some(s.solid(e.status, e.body)),
                 Kind::SpinBlock(b) => Some(b.solid(e.status, e.body)),
                 Kind::DiscBlock(d) => Some(d.solid(e.status, e.body)),
+                // shy_ghost.gd: SOLID 1 with no tongue rule.
+                Kind::Walker(w) if w.kind == ActorKind::Shy => Some(w.shy_solid(e.status, e.body)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {
@@ -508,6 +514,8 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Roller => 0,
                 // thorn_bush.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Thorn => 0,
+                // blind_ghost.gd has no tongue rule and is not solid.
+                Kind::Walker(w) if w.kind == ActorKind::Blind => 0,
                 // enemy_pellet.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => 0,
                 // petal_stem.gd tongue returns 0; stem_petal.gd: a dropped petal neither.
@@ -900,6 +908,7 @@ impl Run {
             Nothing,
             Spitter,
             Thorn,
+            Shy,
         }
         let target = {
             let o = &self.entities[current];
@@ -969,9 +978,13 @@ impl Run {
                     Target::Nothing
                 }
                 // masked_shooter.gd projectile_contact: removed (hit), reaction 3.
-                // thorn_bush.gd projectile_contact: destroyed; spent on spikes.
-                Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
-                Kind::Walker(_) => Target::Actor,
+                    // thorn_bush.gd projectile_contact: destroyed; spent on spikes.
+                    Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
+                    // shy_ghost.gd projectile_contact: struck at its face while moving.
+                    Kind::Walker(w) if w.kind == ActorKind::Shy => Target::Shy,
+                    // blind_ghost.gd projectile_contact: thrown things pass through.
+                    Kind::Walker(w) if w.kind == ActorKind::Blind => Target::Nothing,
+                    Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,
                 // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
@@ -1091,6 +1104,13 @@ impl Run {
                 }
             }
             Target::Thorn => self.thorn_projectile(current)?,
+            Target::Shy => {
+                if self.shy_struck(current, projectile.vx)? {
+                    3
+                } else {
+                    0
+                }
+            }
             Target::Actor => {
                 self.hit_actor(current)?;
                 3

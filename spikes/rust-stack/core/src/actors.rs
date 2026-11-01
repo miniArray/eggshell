@@ -77,6 +77,10 @@ pub(crate) enum ActorKind {
     Slime,
     /// spine_walker.gd e25.
     Spine,
+    /// shy_ghost.gd e26.
+    Shy,
+    /// blind_ghost.gd e39.
+    Blind,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -244,6 +248,26 @@ pub(crate) struct Actor {
     // shared above).
     // bee_flyer.gd FIELDS (speed, bob, age and contact are shared).
     pub bob_period: i64,
+    // shy_ghost.gd FIELDS (phase, timer and contact are shared).
+    pub peek: i64,
+    pub peek_wait: i64,
+    // blind_ghost.gd FIELDS (mode, pause_ticks, target_x, target_y and contact are
+    // shared).
+    pub anim: i64,
+    pub anim_ticks: i64,
+    pub listen_ticks: i64,
+    pub pause_kind: i64,
+    pub turns_left: i64,
+    pub slow_ticks: i64,
+    pub slow_vx: i64,
+    pub slow_vy: i64,
+    pub leg_from: i64,
+    pub leg_to: i64,
+    pub leg_tick: i64,
+    pub leg_ticks: i64,
+    pub wave_on: i64,
+    pub wave_phase: i64,
+    pub heard: i64,
     pub rise_units: i64,
     pub rise_extra: i64,
     pub wait_ticks: i64,
@@ -401,6 +425,23 @@ impl Actor {
             from_x: 0,
             from_y: 0,
             bob_period: 30,
+            peek: 0,
+            peek_wait: 0,
+            anim: 0,
+            anim_ticks: 0,
+            listen_ticks: 0,
+            pause_kind: 0,
+            turns_left: 3,
+            slow_ticks: 0,
+            slow_vx: 0,
+            slow_vy: 0,
+            leg_from: 0,
+            leg_to: 0,
+            leg_tick: 0,
+            leg_ticks: 0,
+            wave_on: 0,
+            wave_phase: 0,
+            heard: 0,
             rise_units: 0,
             rise_extra: 0,
             wait_ticks: 0,
@@ -422,6 +463,7 @@ impl Actor {
             ActorKind::Bulk,
             ActorKind::Gust,
             ActorKind::Bubble,
+            ActorKind::Shy,
         ]
         .contains(&self.kind)
         {
@@ -454,6 +496,7 @@ impl Actor {
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
             && (self.kind != ActorKind::Bubble || self.bubble_valid())
             && (self.kind != ActorKind::Bee || self.bee_valid())
+            && (self.kind != ActorKind::Shy || self.shy_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
                     && (0..=6).contains(&self.mode)
@@ -552,6 +595,13 @@ impl Actor {
             ActorKind::Bubble => self.bubble_bounds(),
             ActorKind::Thorn => crate::thorn::THORN_BOX,
             ActorKind::Bee => Actor::bee_bounds(facing),
+            ActorKind::Shy => self.shy_bounds(),
+            ActorKind::Blind => [
+                -crate::ghost::BLIND_HALF,
+                -crate::ghost::BLIND_HALF,
+                crate::ghost::BLIND_HALF,
+                crate::ghost::BLIND_HALF,
+            ],
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
             ActorKind::Plant => {
@@ -716,7 +766,9 @@ impl Actor {
             | ActorKind::Thorn
             | ActorKind::Bee
             | ActorKind::Slime
-            | ActorKind::Spine => {
+            | ActorKind::Spine
+            | ActorKind::Shy
+            | ActorKind::Blind => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -1229,6 +1281,23 @@ fields!(
     from_x,
     from_y,
     bob_period,
+    peek,
+    peek_wait,
+    anim,
+    anim_ticks,
+    listen_ticks,
+    pause_kind,
+    turns_left,
+    slow_ticks,
+    slow_vx,
+    slow_vy,
+    leg_from,
+    leg_to,
+    leg_tick,
+    leg_ticks,
+    wave_on,
+    wave_phase,
+    heard,
     rise_units,
     rise_extra,
     wait_ticks,

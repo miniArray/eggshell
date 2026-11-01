@@ -500,6 +500,25 @@ impl Run {
     pub(crate) fn refresh_block_solid(&self, index: usize, map: &crate::body::Probe) {
         let e = &self.entities[index];
         if let Kind::Walker(w) = &e.kind {
+            // shy_ghost.gd: a pink ghost is a full solid while hiding.
+            if w.kind == crate::actors::ActorKind::Shy && w.shy_pink() {
+                let r = w.shy_bounds();
+                map.refresh_solid(
+                    e.origin.token(),
+                    crate::Position {
+                        x: e.body.x,
+                        y: e.body.y,
+                    },
+                    w.shy_solid(e.status, e.body),
+                    [
+                        e.body.x + r[0],
+                        e.body.y + r[1],
+                        e.body.x + r[2],
+                        e.body.y + r[3],
+                    ],
+                );
+                return;
+            }
             // flat_walker.gd: a flattened e4 is a moving top-only support.
             if [
                 crate::actors::ActorKind::Flat,
@@ -988,6 +1007,10 @@ impl Run {
                 self.shell_remove(index);
                 Ok(())
             }
+            // shy_ghost.gd hit with CLEAR needs the striker's x (not carried here).
+            ActorKind::Shy => Err(Error::Unsupported {
+                requirements: vec!["screen clear on an e26 shy ghost".into()],
+            }),
             // spear_guard.gd hit: the spear drops and it is removed.
             ActorKind::Spear => {
                 let e = &mut self.entities[index];
@@ -1236,6 +1259,18 @@ impl Run {
         if matches!(&self.entities[index].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Thief)
         {
             return self.thief_struck(index, from_x);
+        }
+        // shy_ghost.gd hit: struck only at its face; blind_ghost.gd hit: CLEAR only.
+        let ghost = match &self.entities[index].kind {
+            Kind::Walker(w) => Some(w.kind),
+            _ => None,
+        };
+        if ghost == Some(crate::actors::ActorKind::Shy) {
+            let travel = (self.entities[index].body.x - from_x).signum();
+            return self.shy_struck(index, travel).map(|_| ());
+        }
+        if ghost == Some(crate::actors::ActorKind::Blind) {
+            return Ok(());
         }
         // hanging_roller.gd hit ignores BUMP; enemy_pellet.gd and petal_stem.gd have no
         // hit; stem_petal.gd hit spares a dropped petal.

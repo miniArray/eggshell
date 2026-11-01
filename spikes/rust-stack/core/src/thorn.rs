@@ -115,7 +115,7 @@ impl Actor {
 impl Run {
     /// enemy_body.gd process for the actor at `index`, with the first step's
     /// initialisation; `None` when the body is held or gone.
-    fn process_actor(&mut self, index: usize, map: &Probe) -> Option<Hold> {
+    pub(crate) fn process_actor(&mut self, index: usize, map: &Probe) -> Option<Hold> {
         let token = self.entities[index].origin.token();
         let Run {
             entities,
