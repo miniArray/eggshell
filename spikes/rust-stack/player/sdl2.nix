@@ -10,6 +10,7 @@
   wayland-protocols,
   wayland-scanner,
   libxkbcommon,
+  xorg,
   libglvnd,
   libudev-zero,
   libpulseaudio,
@@ -33,6 +34,8 @@ stdenv.mkDerivation {
     wayland
     wayland-protocols
     libxkbcommon
+    xorg.libX11
+    xorg.libXext
     libglvnd
     libudev-zero
     libpulseaudio
@@ -45,7 +48,15 @@ stdenv.mkDerivation {
     "-DSDL_STATIC=OFF"
     "-DSDL_TEST=OFF"
     "-DSDL_TESTS=OFF"
-    "-DSDL_X11=OFF"
+    "-DSDL_X11=ON"
+    "-DSDL_X11_SHARED=OFF"
+    "-DSDL_X11_XCURSOR=OFF"
+    "-DSDL_X11_XINPUT=OFF"
+    "-DSDL_X11_XFIXES=OFF"
+    "-DSDL_X11_XRANDR=OFF"
+    "-DSDL_X11_XSCRNSAVER=OFF"
+    "-DSDL_X11_XSHAPE=OFF"
+    "-DSDL_X11_XDBE=OFF"
     "-DSDL_WAYLAND=ON"
     "-DSDL_WAYLAND_SHARED=OFF"
     "-DSDL_WAYLAND_LIBDECOR=OFF"

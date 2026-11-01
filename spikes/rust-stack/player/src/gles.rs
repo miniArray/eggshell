@@ -291,13 +291,20 @@ impl Gles {
         vsync: bool,
         pipeline: PipelineConfig,
     ) -> Result<Self, String> {
+        // Spike: EGGSHELL_ALLOW_X11=1 lets the portal's sandboxed launch (Xwayland
+        // only, no Wayland socket) draw through X11 with EGL/GLES. Default unchanged.
+        let allow_x11 = std::env::var("EGGSHELL_ALLOW_X11").is_ok_and(|v| v == "1");
+        let driver = if allow_x11 { "x11" } else { "wayland" };
         unsafe {
-            std::env::set_var("SDL_VIDEODRIVER", "wayland");
+            std::env::set_var("SDL_VIDEODRIVER", driver);
+            if allow_x11 {
+                std::env::set_var("SDL_VIDEO_X11_FORCE_EGL", "1");
+            }
         }
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
-        if video.current_video_driver() != "wayland" {
-            return Err("owned GLES requires native Wayland".into());
+        if video.current_video_driver() != driver {
+            return Err(format!("owned GLES requires {driver}"));
         }
         let attributes = video.gl_attr();
         attributes.set_context_profile(GLProfile::GLES);
