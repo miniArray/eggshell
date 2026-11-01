@@ -168,6 +168,9 @@ def main() -> None:
         lick = [8] + [0] * 30
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         inputs = lick * 2 + [0] * 900 + cycle * 30 + [2] * 300
+    elif name == "blanks_target":
+        # Walk right past every blank placement and coin to the goal.
+        inputs = [0] * 10 + [2] * 600
     elif name == "spins_target":
         # Jump into the red switch overhead (the red spans turn), hop right over and onto
         # the spans, strike the blue switch (the blue span turns), then the next red and

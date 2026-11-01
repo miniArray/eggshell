@@ -44,6 +44,7 @@ fn run(restores: bool) {
         "shooters_target",
         "hounds_target",
         "spins_target",
+        "blanks_target",
         "wings_target",
         "launchers_target",
         "sprouts_target",
@@ -276,6 +277,7 @@ fn run(restores: bool) {
     let mut rescuer_ticks = 0;
     let mut post_floor_ticks = 0;
     let mut maximum_x = 0;
+    let mut blank_rows = 0;
     let mut post_height = 96 * 3600;
     let mut post_updates = Vec::new();
     let mut pound_ticks = [0usize; 3];
@@ -555,6 +557,12 @@ fn run(restores: bool) {
             checkpoint_flags_seen = true;
         }
         maximum_x = maximum_x.max(packet.player.motion.current.x);
+        blank_rows = blank_rows.max(
+            wire.entities
+                .iter()
+                .filter(|e| e.code == "empty" || e.code.is_empty())
+                .count(),
+        );
         if packet.player.posture != 0 {
             duck_ticks += 1;
             shortest_duck = shortest_duck.min(-packet.player.body_bounds[1]);
@@ -1430,6 +1438,10 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "blanks_target" {
+        // editor_blank.gd: the route walks past every blank and collects the coins.
+        println!("BLANK_COVERAGE blank_rows={blank_rows} maximum_x={maximum_x}");
+        assert!(blank_rows == 4 && maximum_x > 1600 * 3600);
     } else if name == "spins_target" {
         println!("SPIN_COVERAGE turning={spin_turning} flipped={spin_flipped} lifted={spin_lifted} colours={spin_colours:?}");
         assert!(spin_turning > 0 && spin_flipped > 0 && spin_lifted > 0 && spin_colours.len() == 2);

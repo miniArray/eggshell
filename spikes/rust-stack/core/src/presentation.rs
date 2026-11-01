@@ -756,6 +756,7 @@ pub(crate) fn sample_rows(
                 .unwrap_or((pos(e.body), None));
             let (bounds, visual) = match &e.kind {
                 Kind::Goal
+                | Kind::Blank
                 | Kind::Decor
                 | Kind::Checkpoint(_)
                 | Kind::Overlap(_)

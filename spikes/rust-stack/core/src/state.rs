@@ -141,6 +141,7 @@ impl Run {
             .map(|(source, p)| {
                 let kind = match p.code.as_str() {
                     "o5" => Kind::Goal,
+                    "empty" | "" => Kind::Blank,
                     "o23" => Kind::Post(crate::post::Post::new(p)?),
                     "o6" => Kind::Checkpoint(crate::checkpoint::Marker::new(p)?),
                     // decor.gd: static scenery; out-of-range forms and transformed

@@ -9,8 +9,9 @@ pub(crate) fn is_decor(code: &str) -> bool {
         && (1..=76).contains(&index)
         && ![5, 6, 7, 8, 22, 23, 25, 26].contains(&index)
 }
+/// GDScript `code.substr(1).to_int()`: 0 for an empty or non-numeric tail.
 fn index(code: &str) -> i64 {
-    code[1..].parse().unwrap_or(0)
+    code.get(1..).and_then(|n| n.parse().ok()).unwrap_or(0)
 }
 /// decor.gd resized: extendable scenery with an E1 height.
 pub(crate) fn resized(code: &str) -> bool {

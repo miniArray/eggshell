@@ -37,6 +37,8 @@ impl Origin {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     Goal,
+    /// editor_blank.gd ("empty" or ""): no body, no contact, never drawn.
+    Blank,
     Post(crate::post::Post),
     Checkpoint(crate::checkpoint::Marker),
     Decor,

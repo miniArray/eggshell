@@ -544,7 +544,8 @@ impl Scene {
             // e16 frames stand in for the fire and ice shots, which have no pack art.
             .chain(["e5_head", "e1", "e16"])
         {
-            if objects.contains_key(code) {
+            // editor_blank.gd: never drawn, so it binds no art.
+            if objects.contains_key(code) || ["empty", ""].contains(&code) {
                 continue;
             }
             let Some(entry) = object_entries.get(code) else {
