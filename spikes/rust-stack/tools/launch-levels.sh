@@ -73,11 +73,15 @@ if [[ "${2:-}" == shots ]]; then
   printf 'LEVELS_SHOTS_DONE dir=%s\n' "$shots"
   exit 0
 fi
-deadline=$((SECONDS + seconds))
+# Wall-clock seconds from date, not bash's SECONDS: on the Pro, a launch-levels started
+# from owned-playtest.sh saw SECONDS near 2e14 (deadline already past), so every
+# hands-on session since 949aa5a ended at once.
+now() { date +%s; }
+deadline=$(($(now) + seconds))
 focus=()
 status=()
 printf 'LEVELS_BEGIN seconds=%s\n' "$seconds"
-while left=$((deadline - SECONDS)); ((left > 2)); do
+while left=$((deadline - $(now))); ((left > 2)); do
   choice=$(mktemp "$ROOT/data/choice-XXXXXX")
   player --levels --index "$INDEX" --choice "$choice" "${pack[@]}" --seconds "$left" "${focus[@]}" "${status[@]}"
   file=$(cat "$choice")
@@ -89,7 +93,7 @@ while left=$((deadline - SECONDS)); ((left > 2)); do
     status=(--status "Cannot open $file: the level file is missing")
     continue
   fi
-  left=$((deadline - SECONDS))
+  left=$((deadline - $(now)))
   ((left > 1)) || break
   save=$(save_dir "$file")
   mkdir -p "$save"
@@ -99,7 +103,7 @@ while left=$((deadline - SECONDS)); ((left > 2)); do
     if ! play "$file" "$save" "$left" --presentation-feedback --restore "$save/continue.v10"; then
       mv "$save/continue.v10" "$save/autosave.v10.refused"
       printf 'LEVELS_CONTINUE_REFUSED file=%s starting_fresh=true\n' "$file"
-      left=$((deadline - SECONDS))
+      left=$((deadline - $(now)))
       ((left > 1)) || break
       play "$file" "$save" "$left" --presentation-feedback ||
         status=(--status "Cannot play $file: the game stopped with an error")
