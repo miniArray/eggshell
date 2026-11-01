@@ -486,7 +486,8 @@ impl Scene {
                     .iter()
                     .flat_map(|m| m.placements.iter().map(|p| p.code.as_str())),
             )
-            .chain(["e5_head", "e1"])
+            // e16 frames stand in for the fire and ice shots, which have no pack art.
+            .chain(["e5_head", "e1", "e16"])
         {
             if objects.contains_key(code) {
                 continue;

@@ -114,9 +114,8 @@ mod tests {
     }
 }
 
-/// lamp.gd (d25 here; d26 is the ice form): a candle lamp. Its own element lights it and
-/// the other puts it out; no fire or ice shot reaches it in the admitted set, so its
-/// state only comes from its placement form.
+/// lamp.gd (d25 burns with fire, d26 with ice): a candle lamp. Its own element lights it
+/// and the other puts it out (elements.rs: shots and lava bubbles).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Lamp {
     pub style: i64,
@@ -136,6 +135,10 @@ impl Lamp {
     }
     pub fn bounds(&self) -> [i64; 4] {
         [-8 * S, -16 * S, 8 * S, 16 * S]
+    }
+    /// lamp.gd projectile_contact for a fire or ice striker: lit by its own element.
+    pub fn touch(&mut self, fire: bool) {
+        self.lit = i64::from(fire == (self.color == 0));
     }
     /// lamp.gd view_state animation: pack_dressing.gd maps it to the candle frames.
     pub fn animation(&self) -> String {

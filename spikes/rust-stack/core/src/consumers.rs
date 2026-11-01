@@ -12,6 +12,13 @@ pub(crate) enum Action {
     MarkOrigin(i64),
     /// seed_shot.gd: a runtime seed at x, y heading along the request angle.
     Seed(i64, i64, i64),
+    /// element_shot.gd spawn from a heat or cold request.
+    Shot {
+        element: crate::elements::Element,
+        x: i64,
+        y: i64,
+        angle: i64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,12 +49,6 @@ struct Egg {
     colour: i64,
     origin: i64,
     ghost: i64,
-}
-
-fn unsupported(reason: &str) -> Error {
-    Error::Unsupported {
-        requirements: vec![reason.into()],
-    }
 }
 
 impl Consumers {
@@ -109,8 +110,17 @@ impl Consumers {
         let elements = requests.since(self.element_cursor);
         self.element_cursor = requests.serial();
         if let Since::Requests(list) = elements {
-            if list.iter().any(|r| [HEAT, COLD].contains(&r.kind)) {
-                return Err(unsupported("fire and ice shots are not ported yet"));
+            for r in list.iter().filter(|r| [HEAT, COLD].contains(&r.kind)) {
+                actions.push(Action::Shot {
+                    element: if r.kind == HEAT {
+                        crate::elements::Element::Fire
+                    } else {
+                        crate::elements::Element::Ice
+                    },
+                    x: r.x,
+                    y: r.y,
+                    angle: r.angle,
+                });
             }
         }
         Ok(actions)

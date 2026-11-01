@@ -159,10 +159,11 @@ impl Run {
         if [Hold::Held, Hold::Gone].contains(&action) {
             return Ok(());
         }
-        if w.frozen != 0 {
-            return Err(Error::Unsupported {
-                requirements: vec!["frozen spear guard (ice shots are not ported)".into()],
-            });
+        // element_reactions.gd frozen_step
+        match w.frozen_step(&mut e.body, e.status, map, BOX) {
+            crate::elements::Frozen::Free => {}
+            crate::elements::Frozen::Done => return Ok(()),
+            crate::elements::Frozen::Lava => return self.remove_enemy(index),
         }
         if let Some(after) = w.spit_step(
             &mut e.body,

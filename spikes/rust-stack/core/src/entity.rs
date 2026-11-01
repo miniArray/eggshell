@@ -71,6 +71,8 @@ pub(crate) enum Kind {
     Dice(crate::dice::Dice),
     Platform(crate::platform::Platform),
     Lamp(crate::platform::Lamp),
+    /// element_shot.gd fire_shot / ice_shot (runtime only).
+    ElementShot(crate::elements::ElementShot),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
@@ -126,10 +128,18 @@ impl Entity {
         Self {
             origin: Origin::Placed(source),
             family_index,
-            body: Body {
-                x: p.position.x,
-                y: p.position.y,
-                ..Body::default()
+            body: match &kind {
+                // lava_bubble.gd create: it waits at home, 16 px behind its placement.
+                Kind::Walker(a) if a.kind == ActorKind::Bubble => Body {
+                    x: a.home_x,
+                    y: a.home_y,
+                    ..Body::default()
+                },
+                _ => Body {
+                    x: p.position.x,
+                    y: p.position.y,
+                    ..Body::default()
+                },
             },
             // gust_flyer.gd prepare clears the mirror (M only turns it toward the player).
             facing: if p.mirror == 1
@@ -225,7 +235,9 @@ impl Entity {
                     ActorKind::Gust => "e33",
                     ActorKind::Spore => "e13",
                     ActorKind::Hang => "e14",
+                    ActorKind::Bubble => "e16",
                 },
+                Kind::ElementShot(s) => s.code(),
                 Kind::Pickup(p) => match p.kind {
                     PickupKind::Coin => "o1",
                     PickupKind::RedCoin => "o2",
@@ -351,6 +363,9 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Hang => {
                         Kind::Walker(Actor::hang(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Bubble => {
+                        Kind::Walker(Actor::bubble(source)?)
                     }
                     Kind::Walker(a) => {
                         let mut a =

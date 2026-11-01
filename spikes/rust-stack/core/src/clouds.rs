@@ -122,7 +122,7 @@ impl Cache {
             && body_y + bottom >= screen[1]
             && body_y - top <= screen[3]
     }
-    /// release_cloud.gd hit (kinds EGG, SHELL, SPIT; fire and ice are not ported).
+    /// release_cloud.gd hit (kinds EGG, SHELL, SPIT; fire and ice use `open`).
     pub fn hit(&mut self, status: i64, collected: i64) {
         if status != 1 || collected != 0 || self.phase == OPENING {
             return;
@@ -133,6 +133,14 @@ impl Cache {
             self.phase = OPENING;
             self.age = 0;
         }
+    }
+    /// release_cloud.gd hit with Hits.FIRE or Hits.ICE: the element opens it at once.
+    pub fn open(&mut self, status: i64, collected: i64) {
+        if status != 1 || collected != 0 || self.phase == OPENING {
+            return;
+        }
+        self.phase = OPENING;
+        self.age = 0;
     }
     /// release_cloud.gd contact: the player touching a hidden cache reveals it.
     pub fn contact(&mut self, body_x: i64, body_y: i64, collected: i64, player: [i64; 4]) {

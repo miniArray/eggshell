@@ -61,6 +61,7 @@ fn run(restores: bool) {
         "hopstems_target",
         "petals_target",
         "spitters_target",
+        "elements_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -209,6 +210,16 @@ fn run(restores: bool) {
     let mut cleared = BTreeSet::new();
     let mut balloon_landings = 0;
     let mut balloon_bob_ticks = 0;
+    // element_shot.gd / element_reactions.gd / lava_bubble.gd coverage.
+    let mut fire_shot_ticks = 0;
+    let mut ice_shot_ticks = 0;
+    let mut frozen_codes: BTreeSet<String> = BTreeSet::new();
+    let mut element_events: std::collections::BTreeMap<&str, usize> = Default::default();
+    let mut element_previous: std::collections::BTreeMap<String, (i64, i64)> = Default::default();
+    let mut bubble_phases = [0usize; 5];
+    let mut ammo_kinds: BTreeSet<i64> = BTreeSet::new();
+    let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
+    let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
     let mut held_ticks = 0;
     let mut most_eggs = 0;
@@ -971,6 +982,59 @@ fn run(restores: bool) {
             shot_held += usize::from(f("held") == 1);
         }
         shell_runner_ticks += usize::from(wire.entities.iter().any(|e| e.code == "enemy_runner"));
+        let shots = |code: &str| wire.entities.iter().any(|e| e.code == code);
+        fire_shot_ticks += usize::from(shots("fire_shot"));
+        ice_shot_ticks += usize::from(shots("ice_shot"));
+        ammo_kinds.insert(required(&wire.player, schema.player(), "move_ammo").unwrap());
+        // lamp.gd: lit changes by code and new value.
+        for e in wire
+            .entities
+            .iter()
+            .filter(|e| matches!(e.code.as_str(), "d25" | "d26"))
+        {
+            let lit = required(&e.values, schema.entity_fields(&e.code), "lamp_lit").unwrap();
+            if lamp_lit
+                .insert(e.id.clone(), lit)
+                .is_some_and(|was| was != lit)
+            {
+                lamp_changes.insert((e.code.clone(), lit));
+            }
+        }
+        for e in &wire.entities {
+            let fields = schema.entity_fields(&e.code);
+            let (Some(frozen), Ok(status)) = (
+                fields
+                    .iter()
+                    .position(|f| f.0 == "frozen")
+                    .map(|i| e.values[i]),
+                required(&e.values, fields, "status"),
+            ) else {
+                continue;
+            };
+            if frozen == 1 && status == 1 {
+                frozen_codes.insert(e.code.clone());
+            }
+            if let Some((was_frozen, was_status)) = element_previous.get(&e.id).copied() {
+                // A frozen body that thaws while alive, shatters, or a live one that burns
+                // while a fire shot is out.
+                if was_status == 1 && was_frozen == 1 && frozen == 0 && status == 1 {
+                    *element_events.entry("thaw").or_default() += 1;
+                }
+                if was_status == 1 && status == 3 && was_frozen == 1 {
+                    *element_events.entry("shatter").or_default() += 1;
+                }
+                if was_status == 1 && status == 3 && was_frozen == 0 && shots("fire_shot") {
+                    *element_events.entry("burn").or_default() += 1;
+                }
+            }
+            element_previous.insert(e.id.clone(), (frozen, status));
+            if e.code == "e16" && status == 1 {
+                let phase = required(&e.values, fields, "phase").unwrap();
+                if (0..5).contains(&phase) {
+                    bubble_phases[phase as usize] += 1;
+                }
+            }
+        }
         stem_frames += usize::from(packet.entities.iter().any(|e| {
             e.visual.animation.as_deref() == Some("Loop") && e.visual.frame.unwrap_or(0) >= 10
         }));
@@ -1282,6 +1346,24 @@ fn run(restores: bool) {
         assert!(
             !egg_block_bumped.is_empty(),
             "a bump must strike what stands on a block"
+        );
+    } else if name == "elements_target" {
+        println!("ELEMENTS_COVERAGE fire_shot_ticks={fire_shot_ticks} ice_shot_ticks={ice_shot_ticks} frozen_codes={frozen_codes:?} events={element_events:?} bubble_phase_ticks={bubble_phases:?} ammo_kinds={ammo_kinds:?} lamp_changes={lamp_changes:?}");
+        assert_eq!(lamp_changes.len(), 4, "both lamps lit and put out");
+        assert!(fire_shot_ticks > 0 && ice_shot_ticks > 0);
+        assert!(["burn", "shatter", "thaw"].iter().all(|k| element_events
+            .get(k)
+            .copied()
+            .unwrap_or(0)
+            > 0));
+        // Frozen shells, armored walkers, spear guards, flat walkers, fish and bubbles.
+        assert!(["e6", "e11", "e22", "e4", "e21", "e16"]
+            .iter()
+            .all(|c| frozen_codes.contains(*c)));
+        assert!(
+            bubble_phases.iter().all(|n| *n > 0)
+                && ammo_kinds.contains(&2)
+                && ammo_kinds.contains(&3)
         );
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");

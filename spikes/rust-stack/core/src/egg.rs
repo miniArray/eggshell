@@ -637,6 +637,7 @@ impl Run {
             StarFlower,
             Hound,
             Dice,
+            Bubble,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -725,6 +726,8 @@ impl Run {
                 {
                     Target::Flower
                 }
+                // lava_bubble.gd projectile_contact: an egg defeats it and breaks.
+                Kind::Walker(w) if w.kind == ActorKind::Bubble => Target::Bubble,
                 Kind::Walker(_) => Target::Actor,
                 Kind::Pickup(p) => {
                     if o.collected != 0 || p.enabled == 0 || p.pickup_delay != 0 {
@@ -872,6 +875,10 @@ impl Run {
             Target::Actor => {
                 self.remove_struck_actor(other)?;
                 3
+            }
+            Target::Bubble => {
+                self.remove_enemy(other)?;
+                1
             }
             Target::Pickup { flower } => {
                 self.collect_item(other);
@@ -1152,6 +1159,12 @@ impl Run {
                 Ok(())
             }
             crate::consumers::Action::Seed(x, y, angle) => self.spawn_seed(x, y, angle),
+            crate::consumers::Action::Shot {
+                element,
+                x,
+                y,
+                angle,
+            } => self.spawn_shot(element, x, y, angle),
         }
     }
     /// item_egg.gd tongue: a resting egg is nudged away and blocks the tongue.
@@ -1204,6 +1217,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Balloon(p) => p.bounds(),
         Kind::Dice(p) => p.bounds(),
         Kind::Lamp(p) => p.bounds(),
+        Kind::ElementShot(_) => crate::elements::SHOT_BOX,
         _ => [0; 4],
     }
 }

@@ -212,10 +212,11 @@ impl Run {
         if [Hold::Held, Hold::Gone].contains(&action) {
             return Ok(());
         }
-        if w.frozen != 0 {
-            return Err(Error::Unsupported {
-                requirements: vec!["frozen shell walker (ice shots are not ported)".into()],
-            });
+        // element_reactions.gd frozen_step
+        match w.frozen_step(&mut e.body, e.status, map, bounds(w.mode)) {
+            crate::elements::Frozen::Free => {}
+            crate::elements::Frozen::Done => return Ok(()),
+            crate::elements::Frozen::Lava => return self.remove_enemy(index),
         }
         if fresh {
             w.flight_direction = e.facing;

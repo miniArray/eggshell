@@ -94,6 +94,12 @@ pub(crate) fn restore_head(
         "seed_shot" => Kind::Seed(crate::melon::Seed { heading: 0 }),
         // enemy_overlap.gd: a and b are restored after the head.
         "enemy_overlap" => Kind::Overlap(crate::roller::Overlap::default()),
+        "fire_shot" => Kind::ElementShot(crate::elements::ElementShot::new(
+            crate::elements::Element::Fire,
+        )),
+        "ice_shot" => Kind::ElementShot(crate::elements::ElementShot::new(
+            crate::elements::Element::Ice,
+        )),
         _ => return Err(refuse("dynamic code outside implemented runtime closure")),
     };
     let mut entity = Entity::dynamic(

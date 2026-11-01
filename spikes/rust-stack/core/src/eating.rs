@@ -134,6 +134,10 @@ pub(crate) enum After {
     BalloonStep,
     /// dice_block.gd step, which lifts a switch or readies a block.
     DiceStep,
+    /// lava_bubble.gd step, which hits other bodies while spat.
+    BubbleStep,
+    /// element_shot.gd step, which strikes other bodies.
+    ElementShotStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.
@@ -519,6 +523,29 @@ impl Run {
                 }
                 // leap_bulk.gd has no tongue rule and is not SOLID 1.
                 Kind::Walker(w) if w.kind == ActorKind::Bulk => 0,
+                // lava_bubble.gd tongue: swallowed at once, loading three fire (or ice)
+                // shots.
+                Kind::Walker(w) if w.kind == ActorKind::Bubble => {
+                    if w.hidden != 0 || w.held != 0 || e.status != 1 || blocks_step {
+                        0
+                    } else if self.player.catch_item(
+                        token,
+                        0,
+                        w.bubble_ammo(),
+                        crate::bubble::BUBBLE_SHOTS,
+                        1,
+                        256 * 60,
+                    ) {
+                        w.held = 1;
+                        w.spat = 0;
+                        e.body.vx = 0;
+                        e.body.vy = 0;
+                        w.request_cursor = self.player.food.requests.serial();
+                        1
+                    } else {
+                        0
+                    }
+                }
                 // armored_walker.gd tongue: pushed back; the tongue is blocked.
                 Kind::Walker(w) if w.kind == ActorKind::Armored => {
                     w.armored_tongue(&mut e.body, &mut e.facing, self.player.facing);

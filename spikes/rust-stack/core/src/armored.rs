@@ -138,10 +138,11 @@ impl Run {
             w.remove(&mut e.status, &mut e.can_respawn);
             return Ok(());
         }
-        if w.frozen != 0 {
-            return Err(Error::Unsupported {
-                requirements: vec!["frozen armored walker (ice shots are not ported)".into()],
-            });
+        // element_reactions.gd frozen_step
+        match w.frozen_step(&mut e.body, e.status, map, BOX) {
+            crate::elements::Frozen::Free => {}
+            crate::elements::Frozen::Done => return Ok(()),
+            crate::elements::Frozen::Lava => return self.remove_enemy(index),
         }
         let body = &mut e.body;
         let facing = &mut e.facing;

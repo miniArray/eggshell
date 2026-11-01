@@ -67,6 +67,8 @@ pub(crate) enum ActorKind {
     Spore,
     /// hang_flyer.gd e14.
     Hang,
+    /// lava_bubble.gd e16.
+    Bubble,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Actor {
@@ -221,6 +223,13 @@ pub(crate) struct Actor {
     pub flap: i64,
     pub from_x: i64,
     pub from_y: i64,
+    // lava_bubble.gd FIELDS (form, heading, speed, phase, timer, home_x and home_y are
+    // shared above).
+    pub rise_units: i64,
+    pub rise_extra: i64,
+    pub wait_ticks: i64,
+    pub travel: i64,
+    pub target: i64,
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
@@ -365,6 +374,11 @@ impl Actor {
             flap: 0,
             from_x: 0,
             from_y: 0,
+            rise_units: 0,
+            rise_extra: 0,
+            wait_ticks: 0,
+            travel: 0,
+            target: 0,
         }
     }
     pub fn valid(&self) -> bool {
@@ -380,6 +394,7 @@ impl Actor {
             ActorKind::LandFish,
             ActorKind::Bulk,
             ActorKind::Gust,
+            ActorKind::Bubble,
         ]
         .contains(&self.kind)
         {
@@ -408,6 +423,7 @@ impl Actor {
             && (self.kind != ActorKind::Spore || self.spore_valid())
             && (self.kind != ActorKind::Hang || self.hang_valid())
             && (![ActorKind::Fish, ActorKind::LandFish].contains(&self.kind) || self.fish_valid())
+            && (self.kind != ActorKind::Bubble || self.bubble_valid())
             && (self.kind != ActorKind::Flat
                 || (self.variant == 0
                     && (0..=6).contains(&self.mode)
@@ -501,6 +517,7 @@ impl Actor {
             ActorKind::Spore => crate::sprout::spore_bounds(),
             ActorKind::Hang => crate::hang::bounds(self.mode),
             ActorKind::Fish | ActorKind::LandFish => crate::fish::bounds(self.mode, facing),
+            ActorKind::Bubble => self.bubble_bounds(),
             ActorKind::Flat if self.mode >= FLAT_FLATTEN => [-14 * S, 2 * S, 14 * S, 16 * S],
             ActorKind::Flat => [-12 * S, -14 * S, 12 * S, 16 * S],
             ActorKind::Plant => {
@@ -603,6 +620,22 @@ impl Actor {
         if [Hold::Held, Hold::Gone].contains(&action) {
             return Ok(After::Nothing);
         }
+        let b = self.bounds(*body, *facing);
+        match self.frozen_step(body, *status, step.map, b) {
+            crate::elements::Frozen::Free => {}
+            crate::elements::Frozen::Done => return Ok(After::Nothing),
+            crate::elements::Frozen::Lava => {
+                if self.kind == ActorKind::Plant && step.player.captured_by != 0 {
+                    return Err(Error::Unsupported {
+                        requirements: vec![
+                            "frozen plant in lava while a plant holds the player".into()
+                        ],
+                    });
+                }
+                self.remove(status, can_respawn);
+                return Ok(After::Nothing);
+            }
+        }
         if self.kind != ActorKind::Stilt {
             if action == Hold::Released {
                 self.on_spit_release(body, facing, step.player.facing);
@@ -644,7 +677,8 @@ impl Actor {
             | ActorKind::Bulk
             | ActorKind::Gust
             | ActorKind::Spore
-            | ActorKind::Hang => {
+            | ActorKind::Hang
+            | ActorKind::Bubble => {
                 unreachable!("the Run step of each of these kinds steps them")
             }
             ActorKind::Walker => self.walker(body, facing, step),
@@ -1155,5 +1189,10 @@ fields!(
     sway,
     flap,
     from_x,
-    from_y
+    from_y,
+    rise_units,
+    rise_extra,
+    wait_ticks,
+    travel,
+    target
 );

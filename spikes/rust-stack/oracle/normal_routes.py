@@ -223,6 +223,13 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
         inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
+    elif name == "elements_target":
+        lick = [8] + [0] * 30
+        shot = [8] + [0] * 35
+        inputs = [2] * 60 + lick * 2 + [0] * 10 + shot * 2
+        inputs += [2] * 40 + [0] * 10 + [6] * 14 + [0] * 30 + [2] * 20 + [0] * 80 + [8]
+        inputs += [0] * 560 + [2] * 50 + [0] * 5 + lick * 2 + [0] * 10 + shot
+        inputs += [2] * 15 + [0] * 5 + shot * 2 + [2] * 120 + [0] * 200
     elif name == "fish_target":
         # Stand back while the fish patrol, leap and arc; then hop past the flopper and
         # wade into the pool, swimming (jump presses) and licking.

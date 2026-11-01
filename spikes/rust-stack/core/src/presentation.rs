@@ -192,6 +192,16 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
             ..VisualState::default()
         };
     }
+    // lava_bubble.gd view_state: the form picks the frame; a frozen bubble is faded.
+    if w.kind == ActorKind::Bubble {
+        return VisualState {
+            animation: Some("Default".into()),
+            frame: Some(w.form),
+            rotation_degrees: Some(w.bubble_rotation()),
+            alpha: if w.frozen != 0 { 0.6 } else { 1.0 },
+            ..VisualState::default()
+        };
+    }
     let animation = match w.kind {
         ActorKind::Walker | ActorKind::Flyer => {
             if w.roll != 0 {
@@ -210,7 +220,9 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
                 )
             }
         }
-        ActorKind::Stilt => unreachable!("stilt samples a size, not actor animation"),
+        ActorKind::Stilt | ActorKind::Bubble => {
+            unreachable!("stilt and bubble pictures return above")
+        }
         // flat_walker.gd view_state
         ActorKind::Flat => {
             if w.mode == crate::actors::FLAT_AIR && body.vy >= 0 {
@@ -1017,6 +1029,22 @@ pub(crate) fn sample_rows(
                     },
                 ),
                 // item_egg.gd view_state: the colour picks the animation; despawn flickers.
+                // element_shot.gd view_state: rotation only. The pack has no shot art; the
+                // player draws the e16 bubble frame of the same element (stand-in).
+                Kind::ElementShot(shot) => (
+                    crate::elements::SHOT_BOX,
+                    VisualState {
+                        asset_key: Some("e16".into()),
+                        animation: Some("Default".into()),
+                        frame: Some(if shot.element == crate::elements::Element::Fire {
+                            0
+                        } else {
+                            crate::bubble::COLD_FORM
+                        }),
+                        rotation_degrees: Some(shot.heading as f64 / 1000.0),
+                        ..VisualState::default()
+                    },
+                ),
                 Kind::Egg(egg) => (
                     egg.bounds(),
                     VisualState {
@@ -1069,6 +1097,7 @@ pub(crate) fn sample_rows(
                             Kind::Star(p) => e.status == 1 && p.held == 0 && e.collected == 0,
                             Kind::Walker(_) => actor_visible(e),
                             Kind::Egg(_) => e.status == 1 && e.collected == 0,
+                            Kind::ElementShot(_) => e.status == 1,
                             Kind::Cache(c) => {
                                 e.status == 1
                                     && c.phase != crate::clouds::HIDDEN

@@ -198,7 +198,7 @@ impl Run {
                     "o26" => Kind::Balloon(crate::balloon::Balloon::new(p)?),
                     "o33" | "o34" => Kind::Dice(crate::dice::Dice::new(p)?),
                     "d6" => Kind::Platform(crate::platform::Platform::new(p)?),
-                    "d25" => Kind::Lamp(crate::platform::Lamp::new(p)?),
+                    "d25" | "d26" => Kind::Lamp(crate::platform::Lamp::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
                     | "p14" | "p15" | "p16" | "p17" | "p18" | "p19" | "p20" | "p21" => {
                         Kind::Span(crate::spans::Span::new(p)?)
@@ -254,6 +254,7 @@ impl Run {
                     "e33" => Kind::Walker(crate::actors::Actor::gust(p)?),
                     "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
                     "e14" => Kind::Walker(crate::actors::Actor::hang(p)?),
+                    "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
                     _ => return Err(unsupported("fixture entity form")),
                 };
                 // registry.gd compile: enemies and o11 springs each count their own family.
@@ -372,6 +373,7 @@ impl Run {
                     | Kind::EggBlock(_)
                     | Kind::Balloon(_)
                     | Kind::Dice(_)
+                    | Kind::ElementShot(_)
             ) {
                 continue;
             }
@@ -416,6 +418,7 @@ impl Run {
                 }
                 Kind::Egg(_) => crate::eating::After::EggStep,
                 Kind::Overlap(_) => crate::eating::After::OverlapStep,
+                Kind::ElementShot(_) => crate::eating::After::ElementShotStep,
                 Kind::Cache(_) => crate::eating::After::CacheStep,
                 Kind::Redirect(r) => {
                     r.step(&mut self.rng);
@@ -507,6 +510,9 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Hang => {
                     crate::eating::After::HangStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bubble => {
+                    crate::eating::After::BubbleStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -541,7 +547,8 @@ impl Run {
                             | ActorKind::Spore
                             | ActorKind::Hang
                             | ActorKind::Fish
-                            | ActorKind::LandFish => None,
+                            | ActorKind::LandFish
+                            | ActorKind::Bubble => None,
                         };
                         if let Some(index) = index {
                             stats.benchmark_actor_steps[index] += 1;
@@ -604,6 +611,8 @@ impl Run {
                     self.launcher_step(next - 1)?;
                     self.refresh_block_solid(next - 1, map);
                 }
+                crate::eating::After::BubbleStep => self.bubble_step(next - 1, map)?,
+                crate::eating::After::ElementShotStep => self.element_shot_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::HoundStep => {
                     self.hound_step(next - 1, map)?;
@@ -959,6 +968,23 @@ impl Run {
                     }
                     continue;
                 }
+                // element_reactions.gd frozen_contact runs first in every enemy contact;
+                // lava_bubble.gd contact (frozen contact, then a hurting touch).
+                if let Kind::Walker(w) = &e.kind {
+                    if w.held != 1
+                        && w.hidden != 1
+                        && (w.frozen != 0 || w.kind == crate::actors::ActorKind::Bubble)
+                    {
+                        stats.contacts += 1;
+                        if w.kind == crate::actors::ActorKind::Bubble {
+                            self.bubble_contact(index, action)?;
+                        } else {
+                            self.frozen_contact(index, action)?;
+                        }
+                        continue;
+                    }
+                }
+                let e = &mut self.entities[index];
                 let Kind::Walker(w) = &mut e.kind else {
                     continue;
                 };
@@ -1411,6 +1437,7 @@ impl Run {
             Kind::Dice(p) => p.field(n),
             Kind::Platform(p) => p.field(n),
             Kind::Lamp(p) => p.field(n),
+            Kind::ElementShot(p) => p.field(n),
             _ => None,
         };
         if specific.is_some() {
@@ -1812,6 +1839,10 @@ impl Run {
                     return Err(unsupported("egg validation"));
                 }
             }
+            if matches!(&e.kind, Kind::ElementShot(shot) if !shot.valid() || e.origin.placed().is_some())
+            {
+                return Err(unsupported("element shot validation"));
+            }
             if matches!(&e.kind, Kind::Cache(c) if !c.valid())
                 || matches!(&e.kind, Kind::Redirect(r) if !r.valid())
             {
@@ -1829,12 +1860,13 @@ impl Run {
                 if !w.valid()
                     || (w.kind == crate::actors::ActorKind::Hopper && !w.hopper_valid(e.body.vx))
                     || !(0..=360).contains(&w.phase)
-                    || !(0..=if w.kind == crate::actors::ActorKind::PetalStem {
+                    || (!(0..=if w.kind == crate::actors::ActorKind::PetalStem {
                         318
                     } else {
                         210
                     })
                         .contains(&w.timer)
+                        && w.kind != crate::actors::ActorKind::Bubble)
                     || !(-1..=180).contains(&w.cycles)
                     || !(0..=match w.kind {
                         crate::actors::ActorKind::Flat => 6,
@@ -1847,8 +1879,9 @@ impl Run {
                         .contains(&w.mode)
                     || (w.held != 0 && w.spat != 0)
                     // An exhausted fish (enemy_fish.gd fish_finish) is hidden for good.
-                    || (w.hidden != 0 && w.fish_exhausted == 0)
-                    || w.frozen != 0
+                    || (w.hidden != 0
+                        && w.fish_exhausted == 0
+                        && w.kind != crate::actors::ActorKind::Bubble)
                     || !(0..=serial).contains(&w.request_cursor)
                     || w.impact_cursor > p.impact
                     || !(0..=1).contains(&w.started)
