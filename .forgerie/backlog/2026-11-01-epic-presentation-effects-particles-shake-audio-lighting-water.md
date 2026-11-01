@@ -11,7 +11,7 @@ Add a set of drawing and sound effects that make play feel richer. Every part is
 ## Compatibility rules (apply to every part)
 
 - The view only reads play state. Snapshot bytes for the same level and inputs must be equal with every effect on or off.
-- No change to step timing. No hit-stop or freeze frames: a real pause changes timing against YFS, and a view-only pause would draw a state that is not true.
+- No change to step timing. No hit-stop or freeze frames: a real pause changes timing against the reference behaviour, and a view-only pause would draw a state that is not true.
 - Effects derive from saved state (saved tick, sound events, phases), so a restored snapshot or a replay draws the same effects. No independent clocks in the view.
 - Level codes are never read for new fields or written. New art data lives in graphics packs, as new optional pack v3 sections or fields. Packs without them draw as today.
 - Every effect works with any pack, including a pack that has no art for it (then the effect is skipped or uses a neutral default).
@@ -30,7 +30,7 @@ Muffle sound (low-pass filter) while the player is under water, read from water 
 
 ### 4. Real 2D lights from glowing objects
 Lamps (lit and put out by fire breath already exist in the simulation), fire breath, burning bubbles and lava emit light. Light reads object state only.
-Fairness rule: YFS `darkness` hides parts of a level on purpose. Added light must never show more of a dark level than YFS darkness shows. The existing analytic light region in `src/view/map_effects.gd` stays the limit.
+Fairness rule: Level `darkness` hides parts of a level on purpose. Added light must never show more of a dark level than the original darkness shows. The existing analytic light region in `src/view/map_effects.gd` stays the limit.
 
 ### 5. Normal maps in packs
 An optional per-image normal map in pack v3 entries, so art reacts to the lights from part 4. Images without a normal map draw flat, as today. Document the field in `docs/graphics.md` and cover it in `tests/pack_manifest.gd`.
@@ -67,5 +67,5 @@ A moving water surface, caustics and a slight bend of the picture under water. D
 ### Decisions
 - Presentation only; no simulation, timing or level-code change.
 - No hit-stop or freeze frames.
-- Light never reveals more than YFS darkness.
+- Light never reveals more than the original darkness.
 - New art data is optional pack data and is not tied to any one pack.

@@ -10,7 +10,7 @@ source: forgerie-suggestion
 Accept one bundle (a folder or a zip) that holds a set of level codes and, optionally, a graphics pack, so a level collection can ship as one file.
 
 ## Design notes
-- Level files inside the bundle stay byte-for-byte YFS level codes. The bundle adds no fields to them. Their level identity (SHA-256) and saves are the same as when the file is opened on its own.
+- Level files inside the bundle stay byte-for-byte original level codes. The bundle adds no fields to them. Their level identity (SHA-256) and saves are the same as when the file is opened on its own.
 - A small optional bundle manifest may name the collection, its level order and the pack directory. Without a manifest, use the existing `--levels` rules (every `.json` / `.txt`, natural order) and a `pack/` subfolder if present.
 - The pack inside must be a normal version 2 or 3 pack. The existing rule stays: a pack never selects or supplies the level, and never changes physics.
 - `--pack=` on the command line still wins over the bundled pack.
@@ -24,12 +24,12 @@ Accept one bundle (a folder or a zip) that holds a set of level codes and, optio
 - `--pack=` overrides the bundled pack.
 
 ## Risks
-- If a bundle's manifest becomes required for anything gameplay-related, bundles stop being plain YFS level collections. Keep it presentation and ordering only.
+- If a bundle's manifest becomes required for anything gameplay-related, bundles stop being plain level-code collections. Keep it presentation and ordering only.
 
 ## Context
 
 ### Why
-Makes level collections with matching art easy to share and open, while each level stays a plain YFS level code.
+Makes level collections with matching art easy to share and open, while each level stays a plain level code.
 
 ### Files
 - src/view/game.gd
@@ -41,9 +41,9 @@ Makes level collections with matching art easy to share and open, while each lev
 - README.md
 
 ### Decisions
-- Level files inside a bundle are unmodified YFS level codes.
+- Level files inside a bundle are unmodified level codes.
 - The bundle manifest is optional and limited to name, order and pack location.
 - A command-line --pack= overrides the bundled pack.
 - Packs still never supply or select a level.
 
-Suggested in Non-breaking YFS enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01
+Suggested in Non-breaking enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01

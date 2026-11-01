@@ -20,7 +20,7 @@ Extend the `--levels` list with per-level progress and better navigation.
 
 ## Storage
 - Store stats in the save directory under `levels/<level identity>/`, next to the autosave and slot. Never write into the level file.
-- The level identity is the SHA-256 of the level code, so editing a level in YFS changes it. Also keep a file-name index so stats can still be found, marked as possibly out of date, after an edit.
+- The level identity is the SHA-256 of the level code, so editing a level in its editor changes it. Also keep a file-name index so stats can still be found, marked as possibly out of date, after an edit.
 
 ## Layout
 - The menu stays a function of window size (`MenuView.plan`). Every row, the search field and the panel must stay reachable at every size, at scale 1 and 16 px text.
@@ -36,7 +36,7 @@ Extend the `--levels` list with per-level progress and better navigation.
 ## Context
 
 ### Why
-Makes a folder of YFS levels usable as a collection, with progress, without touching the level codes.
+Makes a folder of levels usable as a collection, with progress, without touching the level codes.
 
 ### Files
 - src/view/level_list.gd
@@ -52,4 +52,4 @@ Makes a folder of YFS levels usable as a collection, with progress, without touc
 - A file-name index is kept as a fallback so edited levels keep their stats, flagged as possibly stale.
 - Natural file-name order stays the default sort.
 
-Suggested in Non-breaking YFS enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01
+Suggested in Non-breaking enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01

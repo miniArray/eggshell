@@ -26,7 +26,7 @@ Let the player change keyboard and controller bindings from the Settings page.
 ## Context
 
 ### Why
-Accessibility and controller support, with no effect on YFS levels or simulation.
+Accessibility and controller support, with no effect on levels or simulation.
 
 ### Files
 - src/view/game.gd
@@ -43,4 +43,4 @@ Accessibility and controller support, with no effect on YFS levels or simulation
 - Menu navigation actions can never be left unbound.
 - Remapping changes InputMap events only, never the simulation input masks.
 
-Suggested in Non-breaking YFS enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01
+Suggested in Non-breaking enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01

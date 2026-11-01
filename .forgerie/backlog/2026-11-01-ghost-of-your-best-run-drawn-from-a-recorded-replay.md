@@ -29,7 +29,7 @@ Draw a translucent ghost of the player's best run of the current level, played b
 ## Context
 
 ### Why
-Gives players a reason to replay levels and a way to learn routes, without changing YFS level codes or simulation behaviour.
+Gives players a reason to replay levels and a way to learn routes, without changing level codes or simulation behaviour.
 
 ### Files
 - src/view/game.gd
@@ -45,4 +45,4 @@ Gives players a reason to replay levels and a way to learn routes, without chang
 - Recordings are bound to level identity and schema digest and are ignored on mismatch.
 - Level codes are never modified.
 
-Suggested in Non-breaking YFS enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01
+Suggested in Non-breaking enhancements (01a197a3-6afa-7459-90ba-dd095f7b3670), 2026-11-01
