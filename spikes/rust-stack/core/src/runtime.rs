@@ -182,3 +182,29 @@ impl Run {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// Every code that restore_head accepts is a RUNTIME_CODES entry, and no other.
+    #[test]
+    fn runtime_codes_are_the_restorable_codes() {
+        let source = include_str!("runtime.rs");
+        let start = source.find("let kind = match row.code.as_str() {").unwrap();
+        let end = start + source[start..].find("\n        _ =>").unwrap();
+        let mut codes = std::collections::BTreeSet::new();
+        for line in source[start..end].lines().skip(1) {
+            let arm = line.trim_start();
+            if !arm.starts_with('"') || !arm.contains("=>") {
+                continue;
+            }
+            for code in arm.split("=>").next().unwrap().split('|') {
+                codes.insert(code.trim().trim_matches('"').to_owned());
+            }
+        }
+        let listed = crate::RUNTIME_CODES
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(codes, listed);
+    }
+}

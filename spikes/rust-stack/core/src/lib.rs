@@ -73,26 +73,29 @@ pub mod world;
 mod world_polygon;
 
 pub const SCALE: i64 = 3600;
-/// Drawn codes the core can create during play (runtime.rs closure): stilt riders,
-/// thrown eggs, loot and cache releases, shell runners, pellets, petals, spikes,
-/// launcher shots, sprouts, hoppers, released switches and seeds. Drawing binds them in
-/// every level, even when no placement uses them. Not listed: enemy_overlap (never
-/// drawn) and the element shots (drawn with e16 art).
-pub const RUNTIME_CODES: [&str; 15] = [
+/// Codes the core can create during play in any level: every runtime entity code that
+/// runtime.rs restores. Drawing binds their art even when no placement uses them.
+pub const RUNTIME_CODES: [&str; 21] = [
     "e1",
+    "e12",
+    "e2",
+    "e3",
+    "e40",
+    "e5",
+    "enemy_overlap",
+    "enemy_pellet",
+    "enemy_petal",
+    "enemy_runner",
+    "enemy_shot",
+    "enemy_spike",
+    "fire_shot",
+    "ice_shot",
     "o1",
+    "o14",
     "o2",
     "o3",
     "o4",
     "o7",
-    "o14",
-    "e12",
-    "e40",
-    "enemy_runner",
-    "enemy_pellet",
-    "enemy_petal",
-    "enemy_spike",
-    "enemy_shot",
     "seed_shot",
 ];
 pub const TICKS_PER_SECOND: u32 = 60;

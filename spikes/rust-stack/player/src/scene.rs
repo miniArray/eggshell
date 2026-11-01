@@ -16,6 +16,42 @@ use eggshell_spike_core::{
 use serde_json::Value;
 use std::{collections::HashMap, path::Path};
 
+/// Runtime codes the pinned pack has no object art for. runtime_objects.gd make_node
+/// then draws Dressing.placeholder: a square of the code's hue over the body box.
+pub const PACKLESS_RUNTIME_CODES: [&str; 9] = [
+    "enemy_overlap",
+    "enemy_pellet",
+    "enemy_petal",
+    "enemy_runner",
+    "enemy_shot",
+    "enemy_spike",
+    "fire_shot",
+    "ice_shot",
+    "seed_shot",
+];
+
+/// pack_dressing.gd placeholder colour: Color.from_hsv(abs(name.hash()) % 360 / 360,
+/// 0.55, 0.65), with Godot's String.hash (djb2 over code points, 32 bits).
+fn placeholder_rgba(name: &str) -> [f32; 4] {
+    let hash = name
+        .chars()
+        .fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32));
+    let h = (hash % 360) as f64 / 360.0 * 6.0;
+    let (s, v) = (0.55, 0.65);
+    let i = h.floor();
+    let f = h - i;
+    let (p, q, t) = (v * (1.0 - s), v * (1.0 - s * f), v * (1.0 - s * (1.0 - f)));
+    let (r, g, b) = match i as i64 % 6 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    [r as f32, g as f32, b as f32, 1.0]
+}
+
 struct Terrain {
     image: usize,
     layer: usize,
@@ -492,21 +528,11 @@ impl Scene {
             if objects.contains_key(code) {
                 continue;
             }
-            // runtime_objects.gd make_node: a runtime code the pack has no art for draws
-            // as the diagnostic square (pack_dressing.gd placeholder), top-left at the
-            // entity's position. Placed codes still need their art.
-            let placeholder;
-            let entry = match object_entries.get(code) {
-                Some(entry) => entry,
-                None if eggshell_spike_core::RUNTIME_CODES.contains(&code) => {
-                    placeholder = serde_json::json!({
-                        "file": format!("{}{code}.png", crate::pack::PLACEHOLDER),
-                        "origin": [0, 0],
-                        "anchor": "position"
-                    });
-                    &placeholder
+            let Some(entry) = object_entries.get(code) else {
+                if PACKLESS_RUNTIME_CODES.contains(&code) {
+                    continue;
                 }
-                None => return Err(format!("required admitted object asset absent: {code}")),
+                return Err(format!("required admitted object asset absent: {code}"));
             };
             let mut variants = vec![0];
             if code == "e1" {
@@ -1221,7 +1247,33 @@ impl Scene {
                         inactive,
                     )
                 {
-                    self.object(&entity.code, entity.variant)?;
+                    if !self.placeholder_drawn(entity) {
+                        self.object(
+                            entity.visual.asset_key.as_deref().unwrap_or(&entity.code),
+                            entity.variant,
+                        )?;
+                    }
+                    continue;
+                }
+                if self.placeholder_drawn(entity) {
+                    let t = Transform {
+                        position: [at[0] + body[0], at[1] + body[1]],
+                        scale: [body[2] - body[0], body[3] - body[1]],
+                        ..Transform::default()
+                    };
+                    commands.push((
+                        entity.layer,
+                        order,
+                        sprite_quad(
+                            self.solid,
+                            self.sizes[self.solid],
+                            t,
+                            &plan,
+                            placeholder_rgba(&entity.code),
+                            &[],
+                        ),
+                    ));
+                    order += 1;
                     continue;
                 }
                 #[cfg(feature = "benchmark-work-counters")]
@@ -1824,6 +1876,12 @@ impl Scene {
             darkness: map.darkness_percent.clamp(0, 100) as f64 / 100.0,
         })
     }
+    /// A packless runtime code with no art key draws as its placeholder square.
+    fn placeholder_drawn(&self, entity: &EntityPicture) -> bool {
+        entity.visual.asset_key.is_none()
+            && PACKLESS_RUNTIME_CODES.contains(&entity.code.as_str())
+            && !self.objects.contains_key(&entity.code)
+    }
     fn object(&self, code: &str, variant: i64) -> Result<&Visual, String> {
         self.objects
             .get(code)
@@ -1988,5 +2046,97 @@ mod tests {
         assert_eq!(fallback_head_box(hint, &[aux.clone()]), None);
         aux.picture.visible = false;
         assert_eq!(fallback_head_box(hint, &[aux]), None);
+    }
+    #[test]
+    fn packless_runtime_codes_are_runtime_codes_and_take_godot_placeholder_hues() {
+        for code in PACKLESS_RUNTIME_CODES {
+            assert!(eggshell_spike_core::RUNTIME_CODES.contains(&code), "{code}");
+        }
+        // djb2 of "enemy_petal" is 447528952, a hue of 352 degrees.
+        let rgba = placeholder_rgba("enemy_petal");
+        let want = [
+            0.65,
+            0.2925,
+            0.65 * (1.0 - 0.55 * (352.0 / 60.0 - 5.0)),
+            1.0,
+        ];
+        for (got, want) in rgba.iter().zip(want) {
+            assert!((f64::from(*got) - want).abs() < 1e-6, "{rgba:?}");
+        }
+    }
+    /// Every code the core can create during play has an object binding in the pinned
+    /// pack or draws as its placeholder, and the verification levels that spawn them
+    /// draw every tick. aka only: PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA
+    /// and PLAYER_METRICS name the private inputs.
+    #[test]
+    #[ignore]
+    fn every_runtime_code_has_a_binding() {
+        let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let collision = include_str!("../../../../src/level/collision_table.json");
+        let fixtures = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fixtures");
+        let mut drawn = std::collections::BTreeSet::new();
+        for name in [
+            "petals_target",
+            "spitters_target",
+            "shooters_target",
+            "shells_target",
+            "launchers_target",
+            "elements_target",
+            "melons_target",
+            "rollers_target",
+            "sprouts_target",
+            "jugglers_target",
+            "stilts_target",
+        ] {
+            let level = std::fs::read_to_string(format!("{fixtures}/{name}.level.json")).unwrap();
+            let mut session =
+                eggshell_spike_core::Session::load(&level, collision, &schema).unwrap();
+            let codes = session.admission_report().admitted_codes.clone();
+            let mut scene = Scene::prepare(
+                session.world(),
+                &codes,
+                &pack,
+                Path::new(&env("PLAYER_METRICS")),
+            )
+            .unwrap();
+            scene.prepare_headless_assets(&pack).unwrap();
+            for code in eggshell_spike_core::RUNTIME_CODES {
+                assert!(
+                    scene.objects.contains_key(code) != PACKLESS_RUNTIME_CODES.contains(&code),
+                    "{name}: runtime code {code} has no binding (or a binding and a placeholder)"
+                );
+            }
+            session.configure_presentation_index(scene.absolute_origin_guard());
+            for step in 0..=900 {
+                if step > 0 {
+                    session.advance(0).unwrap();
+                }
+                let (map_index, focus) = session.presentation_view();
+                let region = scene
+                    .presentation_region(map_index, focus, [640.0, 480.0], 0)
+                    .unwrap();
+                let picture = session.presentation_region(region);
+                drawn.extend(
+                    picture
+                        .entities
+                        .iter()
+                        .filter(|e| e.visible && e.source_index.is_none())
+                        .map(|e| e.code.clone()),
+                );
+                scene
+                    .picture(&picture, [640.0, 480.0], 0)
+                    .unwrap_or_else(|e| panic!("{name} step {step}: {e}"));
+            }
+        }
+        println!("RUNTIME_CODES_DRAWN {drawn:?}");
+        for code in ["enemy_petal", "enemy_pellet", "enemy_spike"] {
+            assert!(drawn.contains(code), "{code} never drawn");
+        }
     }
 }
