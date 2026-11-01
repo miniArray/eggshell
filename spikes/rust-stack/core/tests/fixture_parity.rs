@@ -43,6 +43,7 @@ fn run(restores: bool) {
         "rollers_target",
         "shooters_target",
         "hounds_target",
+        "spins_target",
         "wings_target",
         "launchers_target",
         "sprouts_target",
@@ -146,6 +147,10 @@ fn run(restores: bool) {
     let mut fish_exhausted = 0;
     let mut fish_dry = 0;
     let mut melon_held_ticks = 0;
+    let mut spin_turning = 0;
+    let mut spin_flipped = 0;
+    let mut spin_lifted = 0;
+    let mut spin_colours = BTreeSet::new();
     let mut hound_ridden = 0;
     let mut hound_playing = 0;
     let mut hound_swimming = 0;
@@ -854,6 +859,21 @@ fn run(restores: bool) {
             }
         }
         seed_ticks += usize::from(wire.entities.iter().any(|e| e.code == "seed_shot"));
+        // spin_span.gd / spin_block.gd: turning and flipped spans (by colour), lifted
+        // blocks.
+        for e in &wire.entities {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if e.code == "p11" || e.code == "p12" {
+                if f("spin") > 0 {
+                    spin_turning += 1;
+                    spin_colours.insert(e.code.clone());
+                }
+                spin_flipped += usize::from(f("flipped") == 1);
+            }
+            if e.code == "o30" {
+                spin_lifted += usize::from(f("busy") > 0);
+            }
+        }
         // ride_hound.gd: ridden, playing, swimming and jumping ticks.
         for e in wire.entities.iter().filter(|e| e.code == "o16") {
             let f = |n: &str| required(&e.values, schema.entity_fields("o16"), n).unwrap();
@@ -1241,6 +1261,9 @@ fn run(restores: bool) {
             session.presentation().hud.deaths,
             session.presentation().hud.life_phase
         );
+    } else if name == "spins_target" {
+        println!("SPIN_COVERAGE turning={spin_turning} flipped={spin_flipped} lifted={spin_lifted} colours={spin_colours:?}");
+        assert!(spin_turning > 0 && spin_flipped > 0 && spin_lifted > 0 && spin_colours.len() == 2);
     } else if name == "hounds_target" {
         println!("HOUND_COVERAGE ridden={hound_ridden} playing={hound_playing} swimming={hound_swimming} jumping={hound_jumps}");
         assert!(hound_ridden > 0 && hound_playing > 0 && hound_swimming > 0 && hound_jumps > 0);

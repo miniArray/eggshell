@@ -55,6 +55,7 @@ mod solids;
 mod solids_trace_tests;
 mod spans;
 mod spear;
+mod spin;
 mod spitter;
 mod sprout;
 mod state;

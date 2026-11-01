@@ -134,6 +134,8 @@ pub(crate) enum After {
     BalloonStep,
     /// dice_block.gd step, which lifts a switch or readies a block.
     DiceStep,
+    /// spin_block.gd step, which lifts and drops a struck block.
+    SpinBlockStep,
     /// lava_bubble.gd step, which hits other bodies while spat.
     BubbleStep,
     /// element_shot.gd step, which strikes other bodies.
@@ -426,6 +428,8 @@ impl Run {
                 Kind::EggBlock(b) => Some(b.solid(e.status, e.body)),
                 Kind::Pillar(p) => Some(p.solid(e.status, e.body)),
                 Kind::Dice(d) => Some(d.solid(e.status, e.body)),
+                Kind::SpinSpan(s) => Some(s.solid(e.status, e.body)),
+                Kind::SpinBlock(b) => Some(b.solid(e.status, e.body)),
                 _ => None,
             };
             if let Some(solid) = plain_solid {

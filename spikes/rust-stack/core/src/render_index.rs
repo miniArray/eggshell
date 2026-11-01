@@ -54,6 +54,8 @@ fn bounds(e: &crate::entity::Entity, w: &World, guard: i64) -> [i64; 4] {
         Kind::Pillar(p) => p.bounds(),
         Kind::Balloon(p) => p.bounds(),
         Kind::Dice(p) => p.bounds(),
+        Kind::SpinSpan(p) => p.bounds(),
+        Kind::SpinBlock(p) => p.bounds(),
         Kind::Lamp(p) => p.bounds(),
         Kind::ElementShot(_) => crate::elements::SHOT_BOX,
         Kind::Pad(_) => {

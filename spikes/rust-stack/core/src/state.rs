@@ -197,6 +197,8 @@ impl Run {
                     "o13" => Kind::Pillar(crate::pillar::Pillar::new(p)?),
                     "o26" => Kind::Balloon(crate::balloon::Balloon::new(p)?),
                     "o33" | "o34" => Kind::Dice(crate::dice::Dice::new(p)?),
+                    "p11" | "p12" => Kind::SpinSpan(crate::spin::SpinSpan::new(p)?),
+                    "o30" => Kind::SpinBlock(crate::spin::SpinBlock::new(p)?),
                     "d6" => Kind::Platform(crate::platform::Platform::new(p)?),
                     "d25" | "d26" => Kind::Lamp(crate::platform::Lamp::new(p)?),
                     "p2" | "p3" | "p4" | "p5" | "p6" | "p7" | "p8" | "p9" | "p10" | "p13"
@@ -373,6 +375,8 @@ impl Run {
                     | Kind::EggBlock(_)
                     | Kind::Balloon(_)
                     | Kind::Dice(_)
+                    | Kind::SpinSpan(_)
+                    | Kind::SpinBlock(_)
                     | Kind::ElementShot(_)
             ) {
                 continue;
@@ -412,6 +416,11 @@ impl Run {
                 Kind::EggBlock(_) => crate::eating::After::EggBlockStep,
                 Kind::Balloon(_) => crate::eating::After::BalloonStep,
                 Kind::Dice(_) => crate::eating::After::DiceStep,
+                Kind::SpinSpan(s) => {
+                    s.step();
+                    crate::eating::After::RefreshSolid
+                }
+                Kind::SpinBlock(_) => crate::eating::After::SpinBlockStep,
                 Kind::Grow(g) => {
                     g.step();
                     crate::eating::After::RefreshSolid
@@ -632,6 +641,13 @@ impl Run {
                 }
                 crate::eating::After::MelonStep => self.melon_step(next - 1, map),
                 crate::eating::After::SeedStep => self.seed_step(next - 1, map)?,
+                crate::eating::After::SpinBlockStep => {
+                    let e = &mut self.entities[next - 1];
+                    if let Kind::SpinBlock(b) = &mut e.kind {
+                        b.step(&mut e.body);
+                    }
+                    self.refresh_block_solid(next - 1, map);
+                }
                 crate::eating::After::DiceStep => {
                     self.dice_step(next - 1);
                     self.refresh_block_solid(next - 1, map);
@@ -778,6 +794,8 @@ impl Run {
                 if let Some(i) = self.find_token(token) {
                     if matches!(self.entities[i].kind, Kind::EggBlock(_)) {
                         self.egg_block_bump(i)?;
+                    } else if matches!(self.entities[i].kind, Kind::SpinBlock(_)) {
+                        self.spin_block_trigger(i)?;
                     } else if matches!(self.entities[i].kind, Kind::Dice(_)) {
                         self.dice_bump(i, player, &map)?;
                     } else {
@@ -1435,6 +1453,8 @@ impl Run {
             Kind::Pillar(p) => p.field(n),
             Kind::Balloon(p) => p.field(n),
             Kind::Dice(p) => p.field(n),
+            Kind::SpinSpan(p) => p.field(n),
+            Kind::SpinBlock(p) => p.field(n),
             Kind::Platform(p) => p.field(n),
             Kind::Lamp(p) => p.field(n),
             Kind::ElementShot(p) => p.field(n),
@@ -1734,6 +1754,11 @@ impl Run {
             }
             if matches!(&e.kind, Kind::Platform(p) if !p.valid()) {
                 return Err(unsupported("scenery ledge fields"));
+            }
+            if matches!(&e.kind, Kind::SpinSpan(s) if !s.valid())
+                || matches!(&e.kind, Kind::SpinBlock(b) if !b.valid(e.body.y))
+            {
+                return Err(unsupported("turning span fields"));
             }
             if matches!(&e.kind, Kind::Dice(d) if !d.valid(e.body.y)) {
                 return Err(unsupported("dice block fields"));

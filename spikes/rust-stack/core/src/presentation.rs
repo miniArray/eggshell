@@ -977,6 +977,23 @@ pub(crate) fn sample_rows(
                         ..VisualState::default()
                     },
                 ),
+                // spin_span.gd view_state: sized to the width, turned while it spins.
+                Kind::SpinSpan(s) => (
+                    s.bounds(),
+                    VisualState {
+                        size_pixels: [Some(s.width as f64 / crate::SCALE as f64), Some(16.0)],
+                        rotation_degrees: Some(s.rotation()),
+                        ..VisualState::default()
+                    },
+                ),
+                // spin_block.gd view_state
+                Kind::SpinBlock(b) => (
+                    b.bounds(),
+                    VisualState {
+                        frame: Some(b.colour),
+                        ..VisualState::default()
+                    },
+                ),
                 // dice_block.gd view_state, tinted by map_effects.gd dice_colour.
                 Kind::Dice(d) => (
                     d.bounds(),
@@ -1112,7 +1129,9 @@ pub(crate) fn sample_rows(
                             | Kind::EggBlock(_)
                             | Kind::Pillar(_)
                             | Kind::Balloon(_)
-                            | Kind::Dice(_) => e.status == 1,
+                            | Kind::Dice(_)
+                            | Kind::SpinSpan(_)
+                            | Kind::SpinBlock(_) => e.status == 1,
                             Kind::Melon(m) => e.status == 1 && m.held == 0,
                             // ride_hound.gd view_state: always visible, like an actor
                             // waiting at its placement.

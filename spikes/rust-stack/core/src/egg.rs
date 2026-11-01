@@ -535,6 +535,10 @@ impl Run {
                     .solid(o)
                     .map(|b| vec![Shape { b, mode: 1 }])
                     .unwrap_or_default(),
+                Kind::SpinBlock(b) => b
+                    .solid(o.status, o.body)
+                    .map(|b| vec![Shape { b, mode: 1 }])
+                    .unwrap_or_default(),
                 Kind::Dice(d) => d
                     .solid(o.status, o.body)
                     .map(|b| vec![Shape { b, mode: 1 }])
@@ -637,6 +641,7 @@ impl Run {
             StarFlower,
             Hound,
             Dice,
+            SpinBlock,
             Bubble,
             Nothing,
         }
@@ -759,6 +764,8 @@ impl Run {
                 Kind::StarFlower(_) => Target::StarFlower,
                 // dice_block.gd projectile_contact.
                 Kind::Dice(_) => Target::Dice,
+                // spin_block.gd projectile_contact.
+                Kind::SpinBlock(_) => Target::SpinBlock,
                 // item_star.gd and item_egg.gd projectile_contact return 0.
                 _ => Target::Nothing,
             }
@@ -927,6 +934,7 @@ impl Run {
             }
             Target::Block => self.block_projectile_contact(other)?,
             Target::Dice => self.dice_projectile_contact(other, map)?,
+            Target::SpinBlock => self.spin_block_projectile_contact(other)?,
             Target::Hard => {
                 // o28/o29: the following physical bounce spends this extra charge.
                 if matches!(&self.entities[other].kind, Kind::Hard(h) if h.refunds_bounce()) {
@@ -1216,6 +1224,8 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Pillar(p) => p.bounds(),
         Kind::Balloon(p) => p.bounds(),
         Kind::Dice(p) => p.bounds(),
+        Kind::SpinSpan(p) => p.bounds(),
+        Kind::SpinBlock(p) => p.bounds(),
         Kind::Lamp(p) => p.bounds(),
         Kind::ElementShot(_) => crate::elements::SHOT_BOX,
         _ => [0; 4],

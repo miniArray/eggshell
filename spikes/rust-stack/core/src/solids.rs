@@ -382,6 +382,64 @@ impl SolidFrame {
                     turn: None,
                 });
             }
+            // spin_span.gd: full solids, none while turning.
+            if let Kind::SpinSpan(dice) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = dice.solid(entity.status, entity.body);
+                let b = dice.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: false,
+                    vanish: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
+            // spin_block.gd: a full solid, bumped from below.
+            if let Kind::SpinBlock(dice) = &entity.kind {
+                let position = Position {
+                    x: entity.body.x,
+                    y: entity.body.y,
+                };
+                let box_ = dice.solid(entity.status, entity.body);
+                let b = dice.bounds();
+                self.rows.push(Row {
+                    token: entity.origin.token(),
+                    block: true,
+                    vanish: false,
+                    post: false,
+                    mode: 1,
+                    spiked: 0,
+                    position,
+                    old_position: position,
+                    old_box: box_,
+                    live_box: box_,
+                    region: [
+                        entity.body.x + b[0],
+                        entity.body.y + b[1],
+                        entity.body.x + b[2],
+                        entity.body.y + b[3],
+                    ],
+                    handle: None,
+                    turn: None,
+                });
+            }
             // rise_balloon.gd: a moving top-only deck.
             if let Kind::Balloon(balloon) = &entity.kind {
                 let position = Position {

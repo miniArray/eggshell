@@ -69,6 +69,8 @@ pub(crate) enum Kind {
     Pillar(crate::pillar::Pillar),
     Balloon(crate::balloon::Balloon),
     Dice(crate::dice::Dice),
+    SpinSpan(crate::spin::SpinSpan),
+    SpinBlock(crate::spin::SpinBlock),
     Platform(crate::platform::Platform),
     Lamp(crate::platform::Lamp),
     /// element_shot.gd fire_shot / ice_shot (runtime only).
