@@ -77,13 +77,14 @@ mod world_polygon;
 pub const SCALE: i64 = 3600;
 /// Codes the core can create during play in any level: every runtime entity code that
 /// runtime.rs restores. Drawing binds their art even when no placement uses them.
-pub const RUNTIME_CODES: [&str; 21] = [
+pub const RUNTIME_CODES: [&str; 22] = [
     "e1",
     "e12",
     "e2",
     "e3",
     "e40",
     "e5",
+    "enemy_disc",
     "enemy_overlap",
     "enemy_pellet",
     "enemy_petal",
