@@ -198,7 +198,9 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         throw = [64] + [0] * 14 + [64] + [0] * 60
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + [2] * 90 + [6] * 14 + [2] * 10
-        inputs += [0] * 40 + [2] * 24 + [0] * 30 + jump * 2 + [2] * 40 + [0] * 30 + throw
+        inputs += (
+            [0] * 40 + [2] * 24 + [0] * 30 + jump * 2 + [2] * 40 + [0] * 30 + throw
+        )
         inputs += [2] * 300
     elif name == "clears_target":
         # Stop under the clear block and jump straight up into it three times.
