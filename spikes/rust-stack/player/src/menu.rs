@@ -287,7 +287,11 @@ struct Row {
     label: Vec<String>,
     detail: Vec<String>,
     height: f64,
+    enabled: bool,
 }
+/// Wrapped rows of one page at one width. Wrapping all levels takes about 50 ms on the
+/// Pro, so every layout is kept: the overflow pass uses a second, narrower width.
+type RowsKey = (Page, u64, usize);
 /// Drawing of the menu model. Keeps the list scroll offset and the wrapped rows.
 pub struct View {
     font: Font,
@@ -295,8 +299,9 @@ pub struct View {
     dense: bool,
     line: f64,
     scroll: f64,
-    rows_key: Option<(Page, u64, usize)>,
+    layouts: Vec<(RowsKey, Vec<Row>)>,
     rows: Vec<Row>,
+    rows_key: Option<RowsKey>,
     /// Rows that fit in the list area at the last layout, for paging.
     pub visible_rows: usize,
 }
@@ -309,8 +314,9 @@ impl View {
             dense,
             line,
             scroll: 0.0,
-            rows_key: None,
+            layouts: Vec::new(),
             rows: Vec::new(),
+            rows_key: None,
             visible_rows: 1,
         }
     }
@@ -329,6 +335,15 @@ impl View {
         if self.rows_key == Some(key) {
             return;
         }
+        if let Some(previous) = self.rows_key.take() {
+            let rows = std::mem::take(&mut self.rows);
+            self.layouts.push((previous, rows));
+        }
+        if let Some(at) = self.layouts.iter().position(|(k, _)| *k == key) {
+            self.rows = self.layouts.swap_remove(at).1;
+            self.rows_key = Some(key);
+            return;
+        }
         let inner = width - GAP;
         self.rows = model
             .items()
@@ -341,6 +356,7 @@ impl View {
                     label,
                     detail,
                     height,
+                    enabled: item.enabled,
                 }
             })
             .collect();
@@ -518,7 +534,6 @@ impl View {
         if let Some(at) = info_at {
             text(out, &info, [x, base + at], MUTED, clip)?;
         }
-        let items = model.items();
         let mut visible = 0usize;
         for (index, (row, row_top)) in self.rows.iter().zip(&row_tops).enumerate() {
             let y0 = base + row_top;
@@ -545,7 +560,7 @@ impl View {
                     out.push(q);
                 }
             }
-            let enabled = items.get(index).is_some_and(|i| i.enabled);
+            let enabled = row.enabled;
             let color = if on {
                 BLACK
             } else if enabled {
