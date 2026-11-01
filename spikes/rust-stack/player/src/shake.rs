@@ -4,7 +4,8 @@
 //! `EGGSHELL_SHAKE=off` turns it off.
 use eggshell_spike_core::{Lifetime, Presentation};
 
-/// moves.gd POUND_LAND.
+/// moves.gd POUND_FALL and POUND_LAND.
+const POUND_FALL: i64 = 2;
 const POUND_LAND: i64 = 3;
 /// Shake kinds: amplitude in level pixels, duration in steps.
 const POUND: (f64, i64) = (3.0, 14);
@@ -43,7 +44,11 @@ impl Shake {
         match self.last_tick {
             Some(last) if tick < last => self.start = None, // restore or restart
             Some(last) if tick > last => {
-                if action == POUND_LAND && self.last_action != POUND_LAND {
+                // POUND_LAND can last a single step, and a slow or dumped frame may never
+                // draw it. Leaving POUND_FALL for anything else also means the pound landed.
+                let landed = (action == POUND_LAND && self.last_action != POUND_LAND)
+                    || (self.last_action == POUND_FALL && action != POUND_FALL);
+                if landed {
                     self.begin(tick, POUND);
                 } else if hurt && !self.last_hurt {
                     self.begin(tick, HIT);
@@ -116,6 +121,17 @@ mod tests {
         let first = step(&mut s, 11, POUND_LAND, false);
         assert!(len(first) > 0.0 && len(first) <= 3.0);
         assert_eq!(s.offset(11 + POUND.1), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn pound_landing_between_drawn_frames_still_shakes() {
+        let mut s = Shake {
+            enabled: true,
+            ..Shake::default()
+        };
+        step(&mut s, 10, POUND_FALL, false);
+        // The one POUND_LAND step (11) was never drawn; 13 is back to normal.
+        assert!(len(step(&mut s, 13, 0, false)) > 0.0);
     }
 
     #[test]
