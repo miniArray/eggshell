@@ -63,6 +63,7 @@ mod state_restore;
 mod stem;
 mod stilt;
 mod switch;
+mod thorn;
 mod thief;
 mod tongue;
 mod turn;

@@ -140,6 +140,10 @@ pub(crate) enum After {
     BubbleStep,
     /// element_shot.gd step, which strikes other bodies.
     ElementShotStep,
+    /// thorn_bush.gd step.
+    ThornStep,
+    /// bee_flyer.gd step.
+    BeeStep,
 }
 
 /// A body that strikes others: its position, contact box offset and what it is.
@@ -495,6 +499,8 @@ impl Run {
                 }
                 // hanging_roller.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Roller => 0,
+                // thorn_bush.gd has no tongue rule and is not solid.
+                Kind::Walker(w) if w.kind == ActorKind::Thorn => 0,
                 // enemy_pellet.gd has no tongue rule and is not solid.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => 0,
                 // petal_stem.gd tongue returns 0; stem_petal.gd: a dropped petal neither.
@@ -881,6 +887,7 @@ impl Run {
             Cache,
             Nothing,
             Spitter,
+            Thorn,
         }
         let target = {
             let o = &self.entities[current];
@@ -944,7 +951,9 @@ impl Run {
                     Target::Nothing
                 }
                 // masked_shooter.gd projectile_contact: removed (hit), reaction 3.
-                Kind::Walker(_) => Target::Actor,
+                    // thorn_bush.gd projectile_contact: destroyed; spent on spikes.
+                    Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
+                    Kind::Walker(_) => Target::Actor,
                 // pickup.gd is not an ENEMY: its `hit` collects (SPIT is a collecting hit).
                 Kind::Pickup(_) => Target::Pickup,
                 // item_egg.gd is not an ENEMY: its `hit` reacts to BUMP only, but counts.
@@ -1063,6 +1072,7 @@ impl Run {
                     }
                 }
             }
+            Target::Thorn => self.thorn_projectile(current)?,
             Target::Actor => {
                 self.hit_actor(current)?;
                 3

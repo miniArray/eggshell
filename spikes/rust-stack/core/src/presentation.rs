@@ -116,7 +116,12 @@ fn pickup_visual(p: &crate::items::Pickup, collected: i64) -> VisualState {
         ..VisualState::default()
     }
 }
-fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) -> VisualState {
+fn actor_visual(
+    w: &crate::actors::Actor,
+    body: crate::body::Body,
+    facing: i64,
+    frame: i64,
+) -> VisualState {
     use crate::actors::ActorKind;
     // hanging_roller.gd, enemy_pellet.gd, spitting_stem.gd and enemy_spike.gd have no
     // view_state.
@@ -193,6 +198,14 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         };
     }
     // lava_bubble.gd view_state: the form picks the frame; a frozen bubble is faded.
+    // thorn_bush.gd view_state: the form's colour; frame 1 while the spikes are out.
+    if w.kind == ActorKind::Thorn {
+        return VisualState {
+            animation: Some(if w.variant == 1 { "Red" } else { "Green" }.into()),
+            frame: Some(i64::from(w.thorn_spikes_out(frame))),
+            ..VisualState::default()
+        };
+    }
     if w.kind == ActorKind::Bubble {
         return VisualState {
             animation: Some("Default".into()),
@@ -220,7 +233,7 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
                 )
             }
         }
-        ActorKind::Stilt | ActorKind::Bubble => {
+        ActorKind::Stilt | ActorKind::Bubble | ActorKind::Thorn => {
             unreachable!("stilt and bubble pictures return above")
         }
         // flat_walker.gd view_state
@@ -267,6 +280,8 @@ fn actor_visual(w: &crate::actors::Actor, body: crate::body::Body, facing: i64) 
         ActorKind::Wing => w.wing_animation().into(),
         // hang_flyer.gd view_state
         ActorKind::Hang => w.hang_animation().into(),
+        // bee_flyer.gd view_state
+        ActorKind::Bee => "Fly".into(),
         ActorKind::Shot
         | ActorKind::Sprout
         | ActorKind::Hopper
@@ -851,7 +866,7 @@ pub(crate) fn sample_rows(
                     };
                     (crate::pad::bounds(large), pad_visual(large, pad.squash))
                 }
-                Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing)),
+                Kind::Walker(w) => (w.body_bounds(e.facing), actor_visual(w, e.body, e.facing, run.frame)),
                 // release_cloud.gd view_state
                 Kind::Cache(c) => (
                     c.bounds(),

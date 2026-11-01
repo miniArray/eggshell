@@ -238,6 +238,8 @@ impl Entity {
                     ActorKind::Spore => "e13",
                     ActorKind::Hang => "e14",
                     ActorKind::Bubble => "e16",
+                    ActorKind::Thorn => "e36",
+                    ActorKind::Bee => "e43",
                 },
                 Kind::ElementShot(s) => s.code(),
                 Kind::Pickup(p) => match p.kind {
@@ -368,6 +370,12 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Bubble => {
                         Kind::Walker(Actor::bubble(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Thorn => {
+                        Kind::Walker(Actor::thorn(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Bee => {
+                        Kind::Walker(Actor::bee(source)?)
                     }
                     Kind::Walker(a) => {
                         let mut a =

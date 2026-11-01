@@ -643,6 +643,7 @@ impl Run {
             Dice,
             SpinBlock,
             Bubble,
+            Thorn,
             Nothing,
         }
         let projectile = self.entities[egg].body;
@@ -724,6 +725,7 @@ impl Run {
                         ActorKind::Flower,
                         ActorKind::Flat,
                         ActorKind::Sprout,
+                        ActorKind::Bee,
                         ActorKind::Hopper,
                         ActorKind::Gust,
                     ]
@@ -733,6 +735,8 @@ impl Run {
                 }
                 // lava_bubble.gd projectile_contact: an egg defeats it and breaks.
                 Kind::Walker(w) if w.kind == ActorKind::Bubble => Target::Bubble,
+                // thorn_bush.gd projectile_contact: destroyed; the egg is spent on spikes.
+                Kind::Walker(w) if w.kind == ActorKind::Thorn => Target::Thorn,
                 Kind::Walker(_) => Target::Actor,
                 Kind::Pickup(p) => {
                     if o.collected != 0 || p.enabled == 0 || p.pickup_delay != 0 {
@@ -883,6 +887,7 @@ impl Run {
                 self.remove_struck_actor(other)?;
                 3
             }
+            Target::Thorn => self.thorn_projectile(other)?,
             Target::Bubble => {
                 self.remove_enemy(other)?;
                 1

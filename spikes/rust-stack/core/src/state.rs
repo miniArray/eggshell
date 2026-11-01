@@ -259,6 +259,8 @@ impl Run {
                     "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
                     "e14" => Kind::Walker(crate::actors::Actor::hang(p)?),
                     "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
+                    "e36" => Kind::Walker(crate::actors::Actor::thorn(p)?),
+                    "e43" => Kind::Walker(crate::actors::Actor::bee(p)?),
                     // Name the code and form so sweeps can rank what is still missing.
                     _ => {
                         return Err(unsupported(&format!(
@@ -530,6 +532,12 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bubble => {
                     crate::eating::After::BubbleStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Thorn => {
+                    crate::eating::After::ThornStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bee => {
+                    crate::eating::After::BeeStep
+                }
                 Kind::Walker(w) => {
                     #[cfg(debug_assertions)]
                     {
@@ -565,7 +573,9 @@ impl Run {
                             | ActorKind::Hang
                             | ActorKind::Fish
                             | ActorKind::LandFish
-                            | ActorKind::Bubble => None,
+                            | ActorKind::Bubble
+                            | ActorKind::Thorn
+                            | ActorKind::Bee => None,
                         };
                         if let Some(index) = index {
                             stats.benchmark_actor_steps[index] += 1;
@@ -629,6 +639,8 @@ impl Run {
                     self.refresh_block_solid(next - 1, map);
                 }
                 crate::eating::After::BubbleStep => self.bubble_step(next - 1, map)?,
+                crate::eating::After::ThornStep => self.thorn_step(next - 1, map)?,
+                crate::eating::After::BeeStep => self.bee_step(next - 1, map)?,
                 crate::eating::After::ElementShotStep => self.element_shot_step(next - 1, map)?,
                 crate::eating::After::SwitchStep => self.switch_step(next - 1, map),
                 crate::eating::After::HoundStep => {
@@ -1079,6 +1091,14 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Sprout {
                     self.sprout_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Thorn {
+                    self.thorn_contact(index, action)?;
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Bee {
+                    self.bee_contact(index, action)?;
                     continue;
                 }
                 if w.kind == crate::actors::ActorKind::Hopper {

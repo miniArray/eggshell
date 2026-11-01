@@ -232,6 +232,16 @@ def main() -> None:
         jump = [4] * 14 + [0] * 50
         inputs = [0] * 10 + [2] * 30 + [0] * 30 + jump + jump
         inputs += ([2] * 42 + [0] * 30 + jump + jump) * 3 + [2] * 300
+    elif name == "thorns_target":
+        # Jump onto the low bee; lick the fast bee as it comes, spit it, lick it again
+        # and swallow it for an egg; throw the egg at the green thorn; lick the walker
+        # and spit it at the red thorn; walk into a thorn.
+        lick = [8] + [0] * 30
+        throw = [64] + [0] * 14 + [64] + [0] * 40
+        inputs = [2] * 30 + [0] * 111 + [4] * 14 + [0] * 135
+        inputs += [2] * 100 + [0] * 100 + lick * 3 + [32] + [0] * 60
+        inputs += [2] * 90 + [0] * 10 + throw + lick * 3 + [8] + [0] * 60
+        inputs += [2] * 150 + [0] * 100
     elif name == "elements_target":
         lick = [8] + [0] * 30
         shot = [8] + [0] * 35

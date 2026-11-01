@@ -64,6 +64,7 @@ fn run(restores: bool) {
         "petals_target",
         "spitters_target",
         "elements_target",
+        "thorns_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -225,6 +226,12 @@ fn run(restores: bool) {
     let mut bubble_phases = [0usize; 5];
     let mut ammo_kinds: BTreeSet<i64> = BTreeSet::new();
     let mut element_melons_held: BTreeSet<i64> = BTreeSet::new();
+    // thorn_bush.gd / bee_flyer.gd coverage.
+    let mut thorn_contact_ticks = 0;
+    let mut thorn_frames: BTreeSet<i64> = BTreeSet::new();
+    let mut bee_held_ticks = 0;
+    let mut removals: std::collections::BTreeMap<&str, usize> = Default::default();
+    let mut live: BTreeSet<String> = BTreeSet::new();
     let mut lamp_lit: std::collections::BTreeMap<String, i64> = Default::default();
     let mut lamp_changes: BTreeSet<(String, i64)> = BTreeSet::new();
     let mut swimming_ticks = 0;
@@ -1015,6 +1022,26 @@ fn run(restores: bool) {
                 element_melons_held.insert(f("form"));
             }
         }
+        for e in wire
+            .entities
+            .iter()
+            .filter(|e| matches!(e.code.as_str(), "e36" | "e43"))
+        {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            if e.code == "e36" {
+                thorn_contact_ticks += usize::from(f("contact") == 1);
+            } else {
+                bee_held_ticks += usize::from(f("held") == 1);
+            }
+            if f("status") == 1 {
+                live.insert(e.id.clone());
+            } else if f("status") == 3 && live.remove(&e.id) {
+                *removals.entry(if e.code == "e36" { "e36" } else { "e43" }).or_default() += 1;
+            }
+        }
+        for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
+            thorn_frames.extend(p.visual.frame);
+        }
         // lamp.gd: lit changes by code and new value.
         for e in wire
             .entities
@@ -1403,6 +1430,12 @@ fn run(restores: bool) {
                 && ammo_kinds.contains(&2)
                 && ammo_kinds.contains(&3)
         );
+    } else if name == "thorns_target" {
+        println!("THORN_COVERAGE contact_ticks={thorn_contact_ticks} frames={thorn_frames:?} bee_held_ticks={bee_held_ticks} removals={removals:?}");
+        assert!(thorn_contact_ticks > 0 && thorn_frames.len() == 2 && bee_held_ticks > 0);
+        assert!(removals.get("e36").copied().unwrap_or(0) >= 1);
+        // One bee stomped, one swallowed.
+        assert!(removals.get("e43").copied().unwrap_or(0) >= 2);
     } else if name == "fish_target" {
         println!("FISH_COVERAGE mode_ticks={fish_modes:?} exhausted_ticks={fish_exhausted} dry_ticks={fish_dry}");
         assert!(fish_modes.iter().all(|n| *n > 0) && fish_exhausted > 0 && fish_dry > 0);
