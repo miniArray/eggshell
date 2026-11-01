@@ -1202,7 +1202,11 @@ impl Run {
                     self.bee_contact(index, action)?;
                     continue;
                 }
-                if [crate::actors::ActorKind::Shy, crate::actors::ActorKind::Blind].contains(&w.kind)
+                if [
+                    crate::actors::ActorKind::Shy,
+                    crate::actors::ActorKind::Blind,
+                ]
+                .contains(&w.kind)
                 {
                     self.ghost_contact(index);
                     continue;

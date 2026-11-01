@@ -765,7 +765,14 @@ pub(crate) fn sample_rows(
                 Kind::SnowTree(t) => (
                     [0; 4],
                     VisualState {
-                        asset_key: Some(if t.variant == 0 { "d22_small" } else { "d22_big" }.into()),
+                        asset_key: Some(
+                            if t.variant == 0 {
+                                "d22_small"
+                            } else {
+                                "d22_big"
+                            }
+                            .into(),
+                        ),
                         size_pixels: [
                             None,
                             Some(

@@ -95,11 +95,12 @@ impl Actor {
     }
     /// shy_ghost.gd solid_box: a pink ghost is a full solid while hiding.
     pub(crate) fn shy_solid(&self, status: i64, body: Body) -> Option<[i64; 4]> {
-        (self.kind == ActorKind::Shy && status == 1 && self.shy_pink() && self.phase == HIDE)
-            .then(|| {
+        (self.kind == ActorKind::Shy && status == 1 && self.shy_pink() && self.phase == HIDE).then(
+            || {
                 let half = self.shy_size() / 2;
                 [body.x - half, body.y - half, body.x + half, body.y + half]
-            })
+            },
+        )
     }
     pub fn shy_valid(&self) -> bool {
         (0..=3).contains(&self.variant)
@@ -422,7 +423,12 @@ impl Run {
         if self.process_actor(index, map).is_none() {
             return Ok(());
         }
-        let sound = (self.sound.serial, self.sound.kind, self.sound.x, self.sound.y);
+        let sound = (
+            self.sound.serial,
+            self.sound.kind,
+            self.sound.x,
+            self.sound.y,
+        );
         let e = &mut self.entities[index];
         let Kind::Walker(w) = &mut e.kind else {
             unreachable!()

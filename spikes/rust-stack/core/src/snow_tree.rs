@@ -62,8 +62,14 @@ impl SnowTree {
         let bottom = center_y - if large { 48 } else { 18 } * S;
         [
             Position { x, y: top },
-            Position { x: x + half, y: bottom },
-            Position { x: x - half, y: bottom },
+            Position {
+                x: x + half,
+                y: bottom,
+            },
+            Position {
+                x: x - half,
+                y: bottom,
+            },
         ]
     }
     pub fn field(&self, n: &str) -> Option<i64> {
@@ -103,7 +109,8 @@ impl SnowTree {
             && (0..=MAX_COORD).contains(&self.height)
             && self.height % S == 0
             && self.puffs.iter().all(|p| {
-                p[2] >= -1 && (-MAX_COORD..=MAX_COORD).contains(&p[0])
+                p[2] >= -1
+                    && (-MAX_COORD..=MAX_COORD).contains(&p[0])
                     && (-MAX_COORD..=MAX_COORD).contains(&p[1])
             })
     }
@@ -140,7 +147,10 @@ impl Run {
             return;
         }
         let pbox = [p.x + body[0], p.y + body[1], p.x + body[2], p.y + body[3]];
-        if pbox[2] < points[2].x || pbox[0] > points[1].x || pbox[3] < points[0].y || pbox[1] > points[1].y
+        if pbox[2] < points[2].x
+            || pbox[0] > points[1].x
+            || pbox[3] < points[0].y
+            || pbox[1] > points[1].y
         {
             return;
         }

@@ -1146,8 +1146,8 @@ fn run(restores: bool) {
         disc_retract_ticks += usize::from(discs.iter().any(|e| {
             required(&e.values, schema.entity_fields("enemy_disc"), "retracting").unwrap() == 1
         }));
-        disc_hurt |= !discs.is_empty()
-            && required(&wire.player, schema.player(), "separated").unwrap() == 1;
+        disc_hurt |=
+            !discs.is_empty() && required(&wire.player, schema.player(), "separated").unwrap() == 1;
         for e in wire
             .entities
             .iter()
@@ -1176,7 +1176,11 @@ fn run(restores: bool) {
             }
         }
         ghost_stars = ghost_stars.max(wire.entities.iter().filter(|e| e.code == "o4").count());
-        for p in packet.entities.iter().filter(|p| p.code == "e36" && p.visible) {
+        for p in packet
+            .entities
+            .iter()
+            .filter(|p| p.code == "e36" && p.visible)
+        {
             thorn_frames.extend(p.visual.frame);
         }
         // lamp.gd: lit changes by code and new value.
@@ -1589,7 +1593,10 @@ fn run(restores: bool) {
                 && ammo_kinds.contains(&3)
         );
     } else if name == "snowtrees_target" {
-        let counts: Vec<_> = puff_births.iter().map(|(k, v)| (k.clone(), v.len())).collect();
+        let counts: Vec<_> = puff_births
+            .iter()
+            .map(|(k, v)| (k.clone(), v.len()))
+            .collect();
         println!("SNOWTREE_COVERAGE puff_births={counts:?}");
         assert!(["small", "big"]
             .iter()
