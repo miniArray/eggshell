@@ -66,6 +66,7 @@ fn run(restores: bool) {
         "elements_target",
         "thorns_target",
         "discs_target",
+        "runners_target",
         // Pack parity sweep: a private corpus level on a generic route, no coverage goal.
         "corpus"
     ]
@@ -171,6 +172,14 @@ fn run(restores: bool) {
     let mut shot_held = 0;
     let mut launcher_charges = 0;
     let mut bounce_fires = 0;
+    let mut bare_ticks = 0;
+    let mut bare_turns = 0;
+    let mut shell_entered = 0;
+    let mut empty_inside = 0;
+    let mut lantern_walks = 0;
+    let mut lantern_held = 0;
+    let mut sack_bounces = 0;
+    let mut sack_headings: std::collections::BTreeMap<String, i64> = Default::default();
     let mut hang_modes = [0usize; 5];
     let mut hang_held = 0;
     let mut hang_removals = 0;
@@ -916,6 +925,32 @@ fn run(restores: bool) {
             launcher_charges += usize::from(f("charge") > 0);
             bounce_fires += usize::from(f("form") == 1 && f("shot_token") != 0);
         }
+        // bare_runner.gd (e7/e9): bare ticks, turns, and the empty shell filled by one;
+        // lantern_walker.gd (e32): walking and held ticks; spike_sack.gd (e34): bounces.
+        for e in &wire.entities {
+            let f = |n: &str| required(&e.values, schema.entity_fields(&e.code), n).unwrap();
+            match e.code.as_str() {
+                "e7" | "e9" if f("status") == 1 => {
+                    bare_ticks += usize::from(f("mode") == 7);
+                    bare_turns += usize::from(f("mode") == 9);
+                }
+                "e6" if e.id == "empty" => {
+                    shell_entered += usize::from(f("inside") == 1 && empty_inside == 0);
+                    empty_inside = f("inside");
+                }
+                "e32" => {
+                    lantern_walks += usize::from(f("status") == 1 && f("mode") == 1);
+                    lantern_held += usize::from(f("held") == 1);
+                }
+                "e34" => {
+                    if sack_headings.get(&e.id).is_some_and(|h| *h != f("heading")) {
+                        sack_bounces += 1;
+                    }
+                    sack_headings.insert(e.id.clone(), f("heading"));
+                }
+                _ => {}
+            }
+        }
         // hang_flyer.gd: ticks per mode (hang, dive, swoop, forward, flee), held ticks
         // and removals.
         for e in wire.entities.iter().filter(|e| e.code == "e14") {
@@ -1329,6 +1364,16 @@ fn run(restores: bool) {
         println!("MELON_COVERAGE held_ticks={melon_held_ticks} eaten={melons_eaten} seed_ticks={seed_ticks} struck={seed_struck:?}");
         assert!(melon_held_ticks > 0 && melons_eaten >= 3 && seed_ticks > 0);
         assert!(seed_struck.len() >= 3, "seeds must strike placed targets");
+    } else if name == "runners_target" {
+        println!("RUNNER_COVERAGE bare_ticks={bare_ticks} bare_turns={bare_turns} shell_entries={shell_entered} lantern_walk_ticks={lantern_walks} lantern_held_ticks={lantern_held} sack_bounces={sack_bounces}");
+        assert!(
+            bare_ticks > 0
+                && bare_turns > 0
+                && shell_entered > 0
+                && lantern_walks > 0
+                && lantern_held > 0
+                && sack_bounces >= 2
+        );
     } else if name == "hangs_target" {
         println!("HANG_COVERAGE mode_ticks={hang_modes:?} held_ticks={hang_held} removals={hang_removals}");
         assert!(hang_modes.iter().all(|n| *n > 0) && hang_held > 0 && hang_removals > 0);

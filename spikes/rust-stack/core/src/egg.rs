@@ -1225,6 +1225,7 @@ pub(crate) fn entity_bounds(e: &Entity) -> [i64; 4] {
         Kind::Seed(p) => p.bounds(),
         Kind::Hound(p) => p.bounds(e.facing),
         Kind::Launcher(p) => p.bounds(),
+        Kind::Sack(p) => p.bounds(),
         Kind::EggBlock(p) => p.bounds(),
         Kind::Pillar(p) => p.bounds(),
         Kind::Balloon(p) => p.bounds(),

@@ -102,6 +102,14 @@ def main() -> None:
         inputs = [0] * 30 + [2] * 16 + eat + [8] * 170 + [0] * 30
         inputs += [2] * 150 + [6] * 14 + [2] * 26 + [0] * 30 + eat + [8] * 60 + [0] * 20
         inputs += [2] * 70 + [0] * 30 + eat + [8] * 310 + [0] * 30 + [2] * 200
+    elif name == "runners_target":
+        # Watch the green runner turn between the walls, hop over them and it; wait while
+        # the red runner walks into the empty shell; then hop on under the sacks,
+        # licking after each hop (the second lantern walker is caught).
+        lick = [8] + [0] * 30
+        cycle = [6] * 14 + [2] * 20 + [0] * 10
+        hop_lick = [6] * 14 + [2] * 20 + [0] * 10 + [8] + [0] * 25
+        inputs = [0] * 150 + cycle * 3 + lick * 4 + [0] * 500 + hop_lick * 25 + [2] * 300
     elif name == "hangs_target":
         # Walk under the ceiling, turn back left and lick at the first flyer as it swoops
         # behind (caught), spit it (it flees); hop through the next swoops (landing on

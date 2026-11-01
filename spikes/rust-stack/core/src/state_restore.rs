@@ -95,6 +95,7 @@ impl Run {
                     Kind::Seed(p) => p.set_field(name, *value),
                     Kind::Hound(p) => p.set_field(name, *value),
                     Kind::Launcher(p) => p.set_field(name, *value),
+                    Kind::Sack(p) => p.set_field(name, *value),
                     Kind::EggBlock(p) => p.set_field(name, *value),
                     Kind::Pillar(p) => p.set_field(name, *value),
                     Kind::Balloon(p) => p.set_field(name, *value),

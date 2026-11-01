@@ -65,6 +65,7 @@ pub(crate) enum Kind {
     Overlap(crate::roller::Overlap),
     Hound(crate::hound::Hound),
     Launcher(crate::launcher::Launcher),
+    Sack(crate::sack::Sack),
     EggBlock(crate::egg_block::EggBlock),
     Pillar(crate::pillar::Pillar),
     Balloon(crate::balloon::Balloon),
@@ -114,6 +115,7 @@ impl Entity {
                 | Kind::Hound(_)
                 | Kind::Melon(_)
                 | Kind::Launcher(_)
+                | Kind::Sack(_)
                 | Kind::Balloon(_)
                 | Kind::DiscBlock(_)
         ));
@@ -141,6 +143,13 @@ impl Entity {
                     x: a.home_x,
                     y: a.home_y,
                     ..Body::default()
+                },
+                // spike_sack.gd create: it starts at full speed along its heading.
+                Kind::Sack(sack) => Body {
+                    x: p.position.x,
+                    y: p.position.y,
+                    vx: sack.velocity().0,
+                    vy: sack.velocity().1,
                 },
                 _ => Body {
                     x: p.position.x,
@@ -383,9 +392,14 @@ impl Entity {
                     Kind::Walker(a) if a.kind == ActorKind::Bee => {
                         Kind::Walker(Actor::bee(source)?)
                     }
+                    Kind::Walker(a) if a.kind == ActorKind::Runner => {
+                        Kind::Walker(Actor::bare_runner(source)?)
+                    }
                     Kind::Walker(a) => {
+                        let look = a.look;
                         let mut a =
                             Actor::new(a.kind, source.variant, source.mirror, source.position);
+                        a.look = look;
                         if a.kind == ActorKind::Stilt {
                             a.height = crate::stilt::height(source)?;
                         }
@@ -410,6 +424,7 @@ impl Entity {
                     Kind::Lift(_) => Kind::Lift(crate::lift::Lift::new(source)?),
                     Kind::Melon(_) => Kind::Melon(crate::melon::Melon::new(source)?),
                     Kind::Launcher(_) => Kind::Launcher(crate::launcher::Launcher::new(source)?),
+                    Kind::Sack(_) => Kind::Sack(crate::sack::Sack::new(source)?),
                     Kind::Balloon(_) => Kind::Balloon(crate::balloon::Balloon::new(source)?),
                     Kind::DiscBlock(_) => Kind::DiscBlock(crate::disc::DiscBlock::new(source)?),
                     other => other.clone(),
@@ -435,6 +450,7 @@ impl Entity {
                 Kind::DiscBlock(p) => p.bounds(),
                 Kind::Melon(p) => p.bounds(),
                 Kind::Launcher(p) => p.bounds(),
+                Kind::Sack(p) => p.bounds(),
                 Kind::Balloon(p) => p.bounds(),
                 Kind::Pad(_) => {
                     let crate::PreparedPlacement::Pad { large, .. } = source.prepared else {

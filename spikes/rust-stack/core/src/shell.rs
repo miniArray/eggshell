@@ -60,6 +60,22 @@ impl Actor {
         a.inside = i64::from(p.variant <= 2);
         Ok(a)
     }
+    /// bare_runner.gd prepare + create: a placed shell-less walker (e7 green, e9 red).
+    pub fn bare_runner(p: &Placement) -> Result<Self, Error> {
+        if p.variant != 0 || !(0..=2).contains(&p.mirror) || p.rotation != 0 {
+            return Err(Error::Unsupported {
+                requirements: vec![format!(
+                    "{} form F={} M={} R={}",
+                    p.code, p.variant, p.mirror, p.rotation
+                )],
+            });
+        }
+        let mut a = Actor::new(ActorKind::Runner, 0, p.mirror, p.position);
+        a.colour = i64::from(p.code == "e9");
+        a.mode = BARE;
+        a.inside = 0;
+        Ok(a)
+    }
     pub fn shell_valid(&self) -> bool {
         (WALK..=UP_SPIT).contains(&self.mode)
             && (0..=120).contains(&self.timer)

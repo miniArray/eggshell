@@ -220,9 +220,10 @@ fn actor_visual(
             if w.roll != 0 {
                 "Roll".into()
             } else {
+                // lantern_walker.gd view_state: looks from FIRST_LOOK on.
                 format!(
                     "{}{}",
-                    w.variant,
+                    w.variant + w.look,
                     if w.kind == ActorKind::Flyer && w.ground_form == 0 {
                         "Fly"
                     } else if w.mode == 0 {
@@ -895,6 +896,14 @@ pub(crate) fn sample_rows(
                     },
                 ),
                 // shot_launcher.gd view_state
+                // spike_sack.gd view_state
+                Kind::Sack(s) => (
+                    s.bounds(),
+                    VisualState {
+                        frame: Some(s.form),
+                        ..VisualState::default()
+                    },
+                ),
                 Kind::Launcher(l) => (
                     l.bounds(),
                     VisualState {
@@ -1182,7 +1191,7 @@ pub(crate) fn sample_rows(
                                     || e.origin.placed().is_some()
                                         && (e.status == 0 || e.status == 2 && e.can_respawn != 0)
                             }
-                            Kind::Launcher(_) => e.status == 1,
+                            Kind::Launcher(_) | Kind::Sack(_) => e.status == 1,
                             Kind::Switch(s) => e.status == 1 && s.view().is_ok_and(|v| v.0),
                             Kind::Block(_) => e.status == 1 && e.collected == 0,
                             Kind::Span(_) | Kind::Hard(_) | Kind::Fall(_) | Kind::Grow(_) => {

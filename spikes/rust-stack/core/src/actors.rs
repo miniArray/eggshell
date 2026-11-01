@@ -223,6 +223,9 @@ pub(crate) struct Actor {
     pub ramp: i64,
     // drift_spore.gd FIELDS (age and contact are shared).
     pub sway: i64,
+    /// lantern_walker.gd FIRST_LOOK: 5 for an e32 drawn as a lantern walker, else 0.
+    /// Not saved: the placement code decides it.
+    pub look: i64,
     // hang_flyer.gd FIELDS (mode, timer, contact and target_y are shared).
     pub flap: i64,
     pub from_x: i64,
@@ -377,6 +380,7 @@ impl Actor {
             toward: 0,
             ramp: 0,
             sway: 48,
+            look: 0,
             flap: 0,
             from_x: 0,
             from_y: 0,

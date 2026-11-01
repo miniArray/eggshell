@@ -197,6 +197,7 @@ impl Run {
                         Kind::Hound(crate::hound::Hound::new(p, ordinal)?)
                     }
                     "e37" => Kind::Launcher(crate::launcher::Launcher::new(p)?),
+                    "e34" => Kind::Sack(crate::sack::Sack::new(p)?),
                     "o27" => Kind::EggBlock(crate::egg_block::EggBlock::new(p)?),
                     "o13" => Kind::Pillar(crate::pillar::Pillar::new(p)?),
                     "o26" => Kind::Balloon(crate::balloon::Balloon::new(p)?),
@@ -217,11 +218,12 @@ impl Run {
                     "o11" if matches!(p.prepared, crate::PreparedPlacement::Pad { .. }) => {
                         Kind::Pad(crate::pad::Pad::default())
                     }
-                    "e1" | "e2" | "e3" | "e4" | "e5" | "e35" | "e20" | "e21"
+                    "e1" | "e2" | "e3" | "e4" | "e5" | "e35" | "e20" | "e21" | "e32"
                         if p.variant >= 0
                             && p.variant
                                 <= match p.code.as_str() {
                                     "e1" | "e2" | "e35" => 4,
+                                    "e32" => 3,
                                     "e20" | "e21" => 3,
                                     "e4" => 0,
                                     _ => 1,
@@ -230,7 +232,8 @@ impl Run {
                             && p.rotation == 0 =>
                     {
                         let kind = match p.code.as_str() {
-                            "e1" => crate::actors::ActorKind::Walker,
+                            // lantern_walker.gd runs the plain walker's rules as e1.
+                            "e1" | "e32" => crate::actors::ActorKind::Walker,
                             "e20" => crate::actors::ActorKind::Fish,
                             "e21" => crate::actors::ActorKind::LandFish,
                             "e2" => crate::actors::ActorKind::Flyer,
@@ -244,9 +247,13 @@ impl Run {
                         if kind == crate::actors::ActorKind::Stilt {
                             actor.height = crate::stilt::height(p)?;
                         }
+                        if p.code == "e32" {
+                            actor.look = 5;
+                        }
                         Kind::Walker(actor)
                     }
                     "e6" | "e8" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::shell(p)?),
+                    "e7" | "e9" => Kind::Walker(crate::actors::Actor::bare_runner(p)?),
                     "e11" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::armored(p)?),
                     "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
                     "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
@@ -387,6 +394,7 @@ impl Run {
                     | Kind::Seed(_)
                     | Kind::Overlap(_)
                     | Kind::Launcher(_)
+                    | Kind::Sack(_)
                     | Kind::EggBlock(_)
                     | Kind::Balloon(_)
                     | Kind::Dice(_)
@@ -429,6 +437,10 @@ impl Run {
                 Kind::Seed(_) => crate::eating::After::SeedStep,
                 Kind::Hound(_) => crate::eating::After::HoundStep,
                 Kind::Launcher(_) => crate::eating::After::LauncherStep,
+                Kind::Sack(s) => {
+                    s.step(&mut e.body, map);
+                    crate::eating::After::Nothing
+                }
                 Kind::EggBlock(_) => crate::eating::After::EggBlockStep,
                 Kind::Balloon(_) => crate::eating::After::BalloonStep,
                 Kind::Dice(_) => crate::eating::After::DiceStep,
@@ -911,6 +923,13 @@ impl Run {
                 if matches!(e.kind, Kind::Lift(_)) {
                     stats.contacts += 1;
                     self.lift_contact(index);
+                    continue;
+                }
+                if matches!(e.kind, Kind::Sack(_)) {
+                    stats.contacts += 1;
+                    if self.sack_contact(index) {
+                        stats.damage_events += 1;
+                    }
                     continue;
                 }
                 if matches!(e.kind, Kind::Balloon(_)) {
@@ -1506,6 +1525,7 @@ impl Run {
             Kind::Switch(p) => p.field(n),
             Kind::Lift(p) => p.field(n),
             Kind::Launcher(p) => p.field(n),
+            Kind::Sack(p) => p.field(n),
             Kind::Egg(p) => p.field(n),
             Kind::Cache(p) => p.field(n),
             Kind::Redirect(p) => p.field(n),
@@ -1842,6 +1862,11 @@ impl Run {
             if let Kind::Seed(s) = &e.kind {
                 if !s.valid() || e.origin.placed().is_some() {
                     return Err(unsupported("seed fields"));
+                }
+            }
+            if let Kind::Sack(s) = &e.kind {
+                if !s.valid() {
+                    return Err(unsupported("sack fields"));
                 }
             }
             if let Kind::Launcher(l) = &e.kind {
