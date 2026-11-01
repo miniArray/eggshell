@@ -28,8 +28,14 @@ const FOLD_EASE: [i64; 21] = [
     0, -3753, -13902, -28689, -46230, -64529, -81494, -94948, -102654, -102337, -91703, -68471,
     -30395, 24710, 98941, 194288, 312612, 455626, 624885, 821775, 1000000,
 ];
-/// Largest raised size in whole pixels, with the overshoot.
-const MOST: [i64; 2] = [68, 66];
+/// Largest size in whole pixels the tweens reach, with the overshoot. spine_walker.gd
+/// MOST is [68, 66], but its own play goes further: a raise cut short near its peak
+/// (from 67 x 65) folding through the easeinback undershoot reaches 70 x 68 (Godot
+/// 4.7.2 on corpus level 654d070c, idle route, ticks 540-545). Godot never validates
+/// during play, only when it encodes or restores a snapshot, so its saves fail for
+/// those ticks while the walker plays on. Rust validates every step, so it bounds the
+/// reachable sizes instead of refusing the level.
+const MOST: [i64; 2] = [70, 68];
 /// Spine hull at full size, relative to the bottom centre, facing left.
 const HULL: [[i64; 2]; 5] = [[-32, -18], [0, -62], [32, -46], [32, 0], [-32, 0]];
 pub(crate) const BOX: [i64; 4] = [-14 * S, -10 * S, 14 * S, 16 * S];
@@ -295,5 +301,39 @@ impl Run {
                 e.facing = if e.body.x > px { -1 } else { 1 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// Every size the raise and fold tweens can reach stays inside MOST, and the
+    /// corpus case (fold from 67 x 65) reaches it exactly as Godot did.
+    #[test]
+    fn spine_sizes_reachable_in_play_are_valid() {
+        let mut a = Actor::new(ActorKind::Spine, 0, 0, crate::Position::default());
+        let (mut most_w, mut most_h, mut from) = (0, 0, Vec::new());
+        a.mode = SPIKE;
+        for tick in 0..=SPIKE_TICKS {
+            a.timer = tick;
+            let [w, h] = a.spine_size();
+            from.push([w / S, h / S]);
+        }
+        a.mode = SHRINK;
+        for [fw, fh] in from {
+            (a.from_w, a.from_h) = (fw, fh);
+            for tick in 0..=TWEEN {
+                a.timer = tick;
+                let [w, h] = a.spine_size();
+                most_w = most_w.max(w / S);
+                most_h = most_h.max(h / S);
+            }
+        }
+        assert_eq!([most_w, most_h], MOST);
+        (a.from_w, a.from_h, a.timer) = (67, 65, 7);
+        let [w, h] = a.spine_size();
+        assert_eq!([w / S, h / S], [70, 68]);
+        (a.spine_w, a.spine_h) = (70, 68);
+        assert!(a.spine_valid());
     }
 }
