@@ -155,6 +155,8 @@ pub struct Scene {
     animated_files: Vec<std::path::PathBuf>,
     /// Walk/Sprint animation phase, advanced at the original's speed-scaled rate.
     run_clock: std::sync::Mutex<RunClock>,
+    /// Spike: drawing-only camera shake (never saved, never sim).
+    shake: std::sync::Mutex<crate::shake::Shake>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1123,6 +1125,7 @@ impl Scene {
             trail: std::sync::Mutex::new(Trail::default()),
             run_clock: std::sync::Mutex::new(RunClock::default()),
             animated_files: Vec::new(),
+            shake: std::sync::Mutex::new(crate::shake::Shake::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1463,13 +1466,22 @@ impl Scene {
         // The initial matched 60Hz experiment explicitly pins smoothing off.
         // p.interpolate indicates an eligible previous pair, not a setting.
         let focus = pixel(p.follow.current);
-        let plan = screen::plan(
+        let mut plan = screen::plan(
             container,
             [map.width_pixels as f64, map.height_pixels as f64],
             focus,
             self.density,
             zoom,
         )?;
+        // Spike: shake moves only the drawn camera, in whole framebuffer pixels.
+        {
+            let mut shake = self.shake.lock().map_err(|_| "shake lock poisoned")?;
+            shake.observe(p);
+            let off = shake.offset(p.tick);
+            for (value, shift) in plan.offset.iter_mut().zip(off) {
+                *value += (shift * plan.scale).round();
+            }
+        }
         #[cfg(feature = "benchmark-work-counters")]
         let mut work = crate::diagnosis::SceneWork {
             art_cull_margin: self.art_cull_margin,

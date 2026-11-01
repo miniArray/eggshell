@@ -24,4 +24,5 @@ pub mod platform;
 pub mod presentation_feedback;
 pub mod scene;
 pub mod screen;
+pub mod shake;
 pub mod timing;
