@@ -68,6 +68,8 @@ pub(crate) fn restore_head(
         "enemy_petal" => Kind::Walker(Actor::new(ActorKind::Petal, 0, 0, position)),
         // spitting_stem.gd enemy_spike: saved fields are restored after the head.
         "enemy_spike" => Kind::Walker(Actor::new(ActorKind::Spike, 0, 0, position)),
+        // soft_giant.gd burst copies: saved fields are restored after the head.
+        "e23" => Kind::Walker(Actor::new(ActorKind::SoftWalker, 0, 0, position)),
         // launcher_shot.gd: saved fields are restored after the head.
         "enemy_shot" => Kind::Walker(Actor::new(ActorKind::Shot, 0, 0, position)),
         // hop_sprout.gd grown from a drift_spore.gd: saved fields follow the head.

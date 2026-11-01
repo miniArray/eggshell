@@ -329,6 +329,25 @@ def main() -> None:
         inputs = [2] * 44 + [0] * 20 + up + [0] * 300 + [6] * 14 + [2] * 6 + [0] * 40
         inputs += [2] * 120 + [0] * 20 + up + [0] * 260
         inputs += ([6] * 14 + [2] * 20 + [0] * 20) * 12 + [2] * 300
+    elif name == "helmets_target":
+        # Hop as the helmet walker arrives (a hurt and its helmet stomp), throw an egg as
+        # it walks away (helmet off: fall, land, look, blush, run) and a second one as it
+        # runs back (removed), then walk and hop right past the bumpers (shoves, the
+        # slider's hop, slide, get-up and look, the idler's steps, the flyer) to the goal.
+        throw = [64] + [0] * 4 + [64] + [0] * 50
+        inputs = [0] * 494 + [4] * 14 + [0] * 270 + throw + [0] * 12 + throw + [0] * 30
+        inputs += ([2] * 60 + [6] * 14) * 14 + [0] * 200
+    elif name == "softs_target":
+        # Wait for eggs, hop onto the giant pen's left wall and throw one (a shove), hop
+        # and pound in place until the walking giant passes under (a plain landing and
+        # its pause, then a pound: squash and a burst into tumbling e23 copies), then step
+        # into the pen and hop in place until a copy squashes and bursts (knock-backs).
+        throw = [64] + [0] * 4 + [64] + [0] * 50
+        hop = [4] * 14 + [0] * 34
+        pound = [4] * 14 + [0] * 6 + [32] * 24 + [0] * 20
+        inputs = [0] * 600 + [2] * 60 + [6] * 10 + [2] * 4 + [0] * 30 + throw
+        inputs += (hop + pound) * 6 + pound * 2 + [0] * 30 + [2] * 22 + [0] * 4 + hop * 12
+        inputs += [0] * 200
     elif name == "spitters_target":
         # Wait by the egg producer for eggs while the first stem tracks Yoshi and spits,
         # walk closer and throw three eggs (hurt turns, then defeat), lick at the coins,

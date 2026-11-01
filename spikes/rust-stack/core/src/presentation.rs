@@ -267,6 +267,27 @@ fn actor_visual(
         }
         // masked_shooter.gd view_state
         ActorKind::Shooter => w.shooter_animation().into(),
+        // helmet_walker.gd view_state
+        ActorKind::Helmet => w.helmet_animation(),
+        // bump_walker.gd view_state
+        ActorKind::Bumper => w.bumper_animation().into(),
+        // soft_walker.gd view_state
+        ActorKind::SoftWalker => {
+            let (animation, frame) = w.soft_view();
+            return VisualState {
+                animation: Some(animation.into()),
+                frame,
+                ..VisualState::default()
+            };
+        }
+        // soft_giant.gd view_state: the squash halves the drawn height.
+        ActorKind::SoftGiant => {
+            return VisualState {
+                animation: Some("Walk".into()),
+                size_pixels: [None, Some(w.giant_height() as f64)],
+                ..VisualState::default()
+            };
+        }
         // stem_petal.gd view_state
         ActorKind::Petal => "Petal".into(),
         // petal_stem.gd view_state: the stem animates only while its petals dance.

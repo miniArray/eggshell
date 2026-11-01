@@ -49,6 +49,14 @@ pub(crate) enum ActorKind {
     Spitter,
     /// enemy_spike.gd: the e41 shot.
     Spike,
+    /// soft_walker.gd e23.
+    SoftWalker,
+    /// soft_giant.gd e24.
+    SoftGiant,
+    /// helmet_walker.gd e29.
+    Helmet,
+    /// bump_walker.gd e19.
+    Bumper,
     /// wing_drifter.gd e30.
     Wing,
     /// launcher_shot.gd enemy_shot, fired by an e37 launcher.
@@ -187,6 +195,18 @@ pub(crate) struct Actor {
     pub turn_to: i64,
     pub turn_left: i64,
     pub spit_ticks: i64,
+    // soft_walker.gd / soft_giant.gd FIELDS (mode, timer and contact are shared;
+    // spine_walker.gd shares pin_dx).
+    pub pin_dx: i64,
+    pub slide_from: i64,
+    pub slide_to: i64,
+    pub slide_ticks: i64,
+    pub slide_total: i64,
+    // helmet_walker.gd FIELDS (phase, timer, speed and contact are shared).
+    pub helmet: i64,
+    pub run_age: i64,
+    // bump_walker.gd FIELDS (phase, timer, cycles, age and contact are shared).
+    pub flip_timer: i64,
     // wing_drifter.gd FIELDS.
     pub bob: i64,
     pub bob_sign: i64,
@@ -239,7 +259,6 @@ pub(crate) struct Actor {
     pub from_w: i64,
     pub from_h: i64,
     pub fall_from: i64,
-    pub pin_dx: i64,
     // hang_flyer.gd FIELDS (mode, timer, contact and target_y are shared).
     pub flap: i64,
     pub from_x: i64,
@@ -377,6 +396,14 @@ impl Actor {
             turn_to: 270_000,
             turn_left: 0,
             spit_ticks: 0,
+            pin_dx: 0,
+            slide_from: 0,
+            slide_to: 0,
+            slide_ticks: 0,
+            slide_total: 0,
+            helmet: 1,
+            run_age: 0,
+            flip_timer: 30,
             bob: 0,
             bob_sign: -1,
             drifts: 1,
@@ -420,7 +447,6 @@ impl Actor {
             from_w: 64,
             from_h: 62,
             fall_from: 0,
-            pin_dx: 0,
             flap: 0,
             from_x: 0,
             from_y: 0,
@@ -464,6 +490,7 @@ impl Actor {
             ActorKind::Gust,
             ActorKind::Bubble,
             ActorKind::Shy,
+            ActorKind::Bumper,
         ]
         .contains(&self.kind)
         {
@@ -483,6 +510,10 @@ impl Actor {
             && (self.kind != ActorKind::Petal || self.petal_valid())
             && (self.kind != ActorKind::Spitter || self.spitter_valid())
             && (self.kind != ActorKind::Spike || self.spike_valid())
+            && (self.kind != ActorKind::SoftWalker || self.soft_walker_valid())
+            && (self.kind != ActorKind::SoftGiant || self.soft_giant_valid())
+            && (self.kind != ActorKind::Helmet || self.helmet_valid())
+            && (self.kind != ActorKind::Bumper || self.bumper_valid())
             && (self.kind != ActorKind::Wing || self.wing_valid())
             && (self.kind != ActorKind::Shot || self.shot_valid())
             && (self.kind != ActorKind::Sprout || self.sprout_valid())
@@ -580,6 +611,10 @@ impl Actor {
             ActorKind::Petal => crate::petal::PETAL_BOX,
             ActorKind::Spitter => crate::spitter::BODY_BOX,
             ActorKind::Spike => crate::spitter::SPIKE_BOX,
+            ActorKind::SoftWalker => self.soft_bounds(),
+            ActorKind::SoftGiant => crate::soft::GIANT_BOX,
+            ActorKind::Helmet => crate::helmet::HELMET_BOX,
+            ActorKind::Bumper => crate::helmet::BUMPER_BOX,
             ActorKind::Wing => crate::wing::bounds(self.mode, facing),
             ActorKind::Shot => crate::launcher::SHOT_BOX,
             ActorKind::Sprout => crate::sprout::BOX,
@@ -753,6 +788,10 @@ impl Actor {
             | ActorKind::Petal
             | ActorKind::Spitter
             | ActorKind::Spike
+            | ActorKind::SoftWalker
+            | ActorKind::SoftGiant
+            | ActorKind::Helmet
+            | ActorKind::Bumper
             | ActorKind::Wing
             | ActorKind::Shot
             | ActorKind::Sprout
@@ -1240,6 +1279,14 @@ fields!(
     turn_to,
     turn_left,
     spit_ticks,
+    pin_dx,
+    slide_from,
+    slide_to,
+    slide_ticks,
+    slide_total,
+    helmet,
+    run_age,
+    flip_timer,
     bob,
     bob_sign,
     drifts,
@@ -1304,7 +1351,6 @@ fields!(
     travel,
     target,
     fall_from,
-    pin_dx,
     spine_w,
     spine_h,
     from_w,

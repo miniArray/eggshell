@@ -280,6 +280,10 @@ impl Player {
         false
     }
     pub fn stomp(&mut self, enemy_vy: i64, input: u8, sound: &mut Sound) {
+        self.bounce(-(enemy_vy / 2).abs() - 320 * 60, input, sound);
+    }
+    /// moves.gd bounce with a negative launch `velocity` (before the jump bonus).
+    pub fn bounce(&mut self, velocity: i64, input: u8, sound: &mut Sound) {
         let pounding = [1, 2, 3].contains(&self.action);
         if pounding {
             self.pound_delay = 6;
@@ -299,7 +303,7 @@ impl Player {
             }
         }
         self.support_bridge = 0;
-        self.body.vy = -(enemy_vy / 2).abs() - 320 * 60 - if input & 4 != 0 { 384 * 60 } else { 0 };
+        self.body.vy = velocity - if input & 4 != 0 { 384 * 60 } else { 0 };
         self.on_floor = 0;
         self.jump_buffer = 0;
         self.flutter_ready = 1;

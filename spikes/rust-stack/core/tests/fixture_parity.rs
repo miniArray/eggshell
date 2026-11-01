@@ -64,6 +64,8 @@ fn run(restores: bool) {
         "hopstems_target",
         "petals_target",
         "spitters_target",
+        "softs_target",
+        "helmets_target",
         "elements_target",
         "thorns_target",
         "discs_target",
@@ -147,6 +149,14 @@ fn run(restores: bool) {
     let mut spitter_modes = [0usize; 6];
     let mut spike_ticks = 0;
     let mut spike_held = 0;
+    let mut soft_modes = [0usize; 4];
+    let mut giant_modes = [0usize; 4];
+    let mut giant_shoved = 0;
+    let mut soft_runtime = 0;
+    let mut helmet_phases = [0usize; 7];
+    let mut helmet_removed = 0;
+    let mut bumper_phases = [0usize; 9];
+    let mut bumper_contact = 0;
     let mut lift_riding = 0;
     let mut lift_shrinks = 0;
     let mut lift_angles: std::collections::BTreeMap<String, i64> = Default::default();
@@ -771,6 +781,38 @@ fn run(restores: bool) {
             if f("status") == 1 && (0..6).contains(&f("mode")) {
                 spitter_modes[f("mode") as usize] += 1;
             }
+        }
+        // soft_walker.gd: ticks per mode (walk, squash, tumble, knocked) and runtime
+        // copies; soft_giant.gd: ticks per mode (wait, walk, pause, squash) and shoves.
+        for e in wire.entities.iter().filter(|e| e.code == "e23") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e23"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("mode")) {
+                soft_modes[f("mode") as usize] += 1;
+            }
+            soft_runtime += usize::from(f("source_index") == -1 && f("status") == 1);
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "e24") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e24"), n).unwrap();
+            if f("status") == 1 && (0..4).contains(&f("mode")) {
+                giant_modes[f("mode") as usize] += 1;
+            }
+            giant_shoved += usize::from(f("slide_ticks") > 0);
+        }
+        // helmet_walker.gd: ticks per phase (walk .. run) and removed ticks; bump_walker.gd:
+        // ticks per phase (idle .. fly) and touching ticks.
+        for e in wire.entities.iter().filter(|e| e.code == "e29") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e29"), n).unwrap();
+            if f("status") == 1 && (0..7).contains(&f("phase")) {
+                helmet_phases[f("phase") as usize] += 1;
+            }
+            helmet_removed += usize::from(f("status") == 3);
+        }
+        for e in wire.entities.iter().filter(|e| e.code == "e19") {
+            let f = |n: &str| required(&e.values, schema.entity_fields("e19"), n).unwrap();
+            if f("status") == 1 && (0..9).contains(&f("phase")) {
+                bumper_phases[f("phase") as usize] += 1;
+            }
+            bumper_contact += usize::from(f("contact") == 1);
         }
         for e in wire.entities.iter().filter(|e| e.code == "enemy_spike") {
             let f = |n: &str| required(&e.values, schema.entity_fields("enemy_spike"), n).unwrap();
@@ -1639,6 +1681,22 @@ fn run(restores: bool) {
     } else if name == "lifts_target" {
         println!("LIFT_COVERAGE riding_ticks={lift_riding} shrink_ticks={lift_shrinks} reflections={lift_turns}");
         assert!(lift_riding > 0 && lift_shrinks > 0 && lift_turns > 0);
+    } else if name == "helmets_target" {
+        println!("HELMET_COVERAGE helmet_phase_ticks={helmet_phases:?} helmet_removed_ticks={helmet_removed} bumper_phase_ticks={bumper_phases:?} bumper_contact_ticks={bumper_contact}");
+        assert!(
+            helmet_phases.iter().all(|n| *n > 0)
+                && helmet_removed > 0
+                && bumper_phases.iter().all(|n| *n > 0)
+                && bumper_contact > 0
+        );
+    } else if name == "softs_target" {
+        println!("SOFT_COVERAGE walker_mode_ticks={soft_modes:?} giant_mode_ticks={giant_modes:?} shove_ticks={giant_shoved} runtime_copy_ticks={soft_runtime}");
+        assert!(
+            soft_modes.iter().all(|n| *n > 0)
+                && giant_modes.iter().all(|n| *n > 0)
+                && giant_shoved > 0
+                && soft_runtime > 0
+        );
     } else if name == "spitters_target" {
         println!("SPITTER_COVERAGE mode_ticks={spitter_modes:?} spike_ticks={spike_ticks} spike_held_ticks={spike_held}");
         assert!(spitter_modes.iter().all(|n| *n > 0) && spike_ticks > 0 && spike_held > 0);

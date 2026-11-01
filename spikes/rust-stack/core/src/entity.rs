@@ -244,6 +244,10 @@ impl Entity {
                     ActorKind::Petal => "enemy_petal",
                     ActorKind::Spitter => "e41",
                     ActorKind::Spike => "enemy_spike",
+                    ActorKind::SoftWalker => "e23",
+                    ActorKind::SoftGiant => "e24",
+                    ActorKind::Helmet => "e29",
+                    ActorKind::Bumper => "e19",
                     ActorKind::Fish => "e20",
                     ActorKind::LandFish => "e21",
                     ActorKind::Wing => "e30",
@@ -366,6 +370,18 @@ impl Entity {
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spitter => {
                         Kind::Walker(Actor::spitter(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::SoftWalker => {
+                        Kind::Walker(Actor::soft_walker(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::SoftGiant => {
+                        Kind::Walker(Actor::soft_giant(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Helmet => {
+                        Kind::Walker(Actor::helmet(source)?)
+                    }
+                    Kind::Walker(a) if a.kind == ActorKind::Bumper => {
+                        Kind::Walker(Actor::bumper(source)?)
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Wing => {
                         Kind::Walker(Actor::wing(source)?)

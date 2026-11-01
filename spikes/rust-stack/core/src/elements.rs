@@ -283,6 +283,8 @@ impl Run {
                 }
                 element == Element::Fire && cold && e.status == 1
             }
+            // soft_giant.gd ELEMENT_REACTIONS is FREEZES only: fire does nothing.
+            Kind::Walker(w) if w.kind == ActorKind::SoftGiant && element == Element::Fire => false,
             // element_reactions.gd hit: fire burns (Body.remove); ice freezes once.
             Kind::Walker(w) if e.status == 1 && w.held == 0 => {
                 if element == Element::Ice && w.frozen == 0 {
@@ -384,6 +386,8 @@ impl Run {
                         ActorKind::PetalStem,
                         ActorKind::Shy,
                         ActorKind::Blind,
+                        ActorKind::Spike,
+                        ActorKind::Helmet,
                     ]
                     .contains(&w.kind) =>
                 {

@@ -98,6 +98,14 @@ pub(crate) enum After {
     SpitterStep,
     /// enemy_spike.gd step, which strikes other bodies while spat.
     SpikeStep,
+    /// soft_walker.gd step, which bursts and knocks other soft walkers.
+    SoftWalkerStep,
+    /// soft_giant.gd step, which bursts into runtime soft walkers.
+    SoftGiantStep,
+    /// helmet_walker.gd step, which strikes other bodies while spat.
+    HelmetStep,
+    /// bump_walker.gd step, which strikes other bodies while spat.
+    BumperStep,
     /// wing_drifter.gd step, which hits other bodies while spat.
     WingStep,
     /// launcher_shot.gd step.
@@ -524,6 +532,14 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Spitter => {
                     w.spitter_tongue(e.body, e.facing, sensor)
                 }
+                // soft_walker.gd tongue: only a walking body is caught; soft_giant.gd has
+                // no tongue rule and is not solid.
+                Kind::Walker(w)
+                    if w.kind == ActorKind::SoftGiant
+                        || (w.kind == ActorKind::SoftWalker && w.mode != crate::soft::WALK) =>
+                {
+                    0
+                }
                 Kind::Walker(w) if w.kind == ActorKind::Petal && w.mode == crate::petal::FALL => 0,
                 // sneak_thief.gd tongue: the tongue bounces off and shoves the thief away.
                 Kind::Walker(w) if w.kind == ActorKind::Thief => {
@@ -610,7 +626,8 @@ impl Run {
                         0
                     } else if self.player.catch_item(
                         token,
-                        1,
+                        // bump_walker.gd tongue: caught, but not food.
+                        i64::from(w.kind != ActorKind::Bumper),
                         0,
                         0,
                         // actor.gd tongue: fish are swallowed at once; so are
@@ -909,6 +926,8 @@ impl Run {
             Spitter,
             Thorn,
             Shy,
+            Soft,
+            Helmet,
         }
         let target = {
             let o = &self.entities[current];
@@ -968,6 +987,14 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Roller,
                 // spitting_stem.gd projectile_contact.
                 Kind::Walker(w) if w.kind == ActorKind::Spitter => Target::Spitter,
+                // soft_walker.gd / soft_giant.gd projectile_contact.
+                Kind::Walker(w)
+                    if [ActorKind::SoftWalker, ActorKind::SoftGiant].contains(&w.kind) =>
+                {
+                    Target::Soft
+                }
+                // helmet_walker.gd projectile_contact.
+                Kind::Walker(w) if w.kind == ActorKind::Helmet => Target::Helmet,
                 // enemy_pellet.gd projectile_contact returns 0.
                 Kind::Walker(w) if w.kind == ActorKind::Pellet => Target::Nothing,
                 // petal_stem.gd projectile_contact returns 0, as does a dropped petal's.
@@ -1031,6 +1058,8 @@ impl Run {
                 self.thief_struck(current, projectile.x)?;
                 1
             }
+            Target::Soft => self.soft_projectile(current, projectile.x, None),
+            Target::Helmet => self.helmet_projectile(current, projectile.x, false),
             Target::Spitter => self.spitter_projectile(
                 current,
                 projectile_box,

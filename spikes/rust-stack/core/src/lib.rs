@@ -28,6 +28,7 @@ mod gate;
 mod ghost;
 mod gust;
 mod hang;
+mod helmet;
 mod hound;
 mod items;
 mod juggler;
@@ -55,6 +56,7 @@ mod shell;
 mod shooter;
 mod slime;
 mod snow_tree;
+mod soft;
 mod solids;
 #[cfg(test)]
 mod solids_trace_tests;
@@ -82,10 +84,11 @@ mod world_polygon;
 pub const SCALE: i64 = 3600;
 /// Codes the core can create during play in any level: every runtime entity code that
 /// runtime.rs restores. Drawing binds their art even when no placement uses them.
-pub const RUNTIME_CODES: [&str; 22] = [
+pub const RUNTIME_CODES: [&str; 23] = [
     "e1",
     "e12",
     "e2",
+    "e23",
     "e3",
     "e40",
     "e5",

@@ -262,6 +262,10 @@ impl Run {
                     "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
                     "e18" => Kind::Walker(crate::actors::Actor::petal_stem(p)?),
                     "e41" => Kind::Walker(crate::actors::Actor::spitter(p)?),
+                    "e23" => Kind::Walker(crate::actors::Actor::soft_walker(p)?),
+                    "e24" => Kind::Walker(crate::actors::Actor::soft_giant(p)?),
+                    "e29" => Kind::Walker(crate::actors::Actor::helmet(p)?),
+                    "e19" => Kind::Walker(crate::actors::Actor::bumper(p)?),
                     "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
                     "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
                     "e40" => Kind::Walker(crate::actors::Actor::hopper(p)?),
@@ -537,6 +541,18 @@ impl Run {
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Spike => {
                     crate::eating::After::SpikeStep
                 }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::SoftWalker => {
+                    crate::eating::After::SoftWalkerStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::SoftGiant => {
+                    crate::eating::After::SoftGiantStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Helmet => {
+                    crate::eating::After::HelmetStep
+                }
+                Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bumper => {
+                    crate::eating::After::BumperStep
+                }
                 Kind::Walker(w) if w.kind == crate::actors::ActorKind::Wing => {
                     crate::eating::After::WingStep
                 }
@@ -609,6 +625,10 @@ impl Run {
                             | ActorKind::Petal
                             | ActorKind::Spitter
                             | ActorKind::Spike
+                            | ActorKind::SoftWalker
+                            | ActorKind::SoftGiant
+                            | ActorKind::Helmet
+                            | ActorKind::Bumper
                             | ActorKind::Wing
                             | ActorKind::Shot
                             | ActorKind::Sprout
@@ -675,6 +695,10 @@ impl Run {
                 crate::eating::After::PetalStep => self.petal_step(next - 1, map)?,
                 crate::eating::After::SpitterStep => self.spitter_step(next - 1, map)?,
                 crate::eating::After::SpikeStep => self.spike_step(next - 1, map)?,
+                crate::eating::After::SoftWalkerStep => self.soft_walker_step(next - 1, map)?,
+                crate::eating::After::SoftGiantStep => self.soft_giant_step(next - 1, map)?,
+                crate::eating::After::HelmetStep => self.helmet_step(next - 1, map)?,
+                crate::eating::After::BumperStep => self.bumper_step(next - 1, map)?,
                 crate::eating::After::OverlapStep => self.overlap_step(next - 1),
                 crate::eating::After::WingStep => self.wing_step(next - 1, map)?,
                 crate::eating::After::ShotStep => self.shot_step(next - 1, map)?,
@@ -1181,6 +1205,22 @@ impl Run {
                 }
                 if w.kind == crate::actors::ActorKind::Spike {
                     self.spike_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::SoftWalker {
+                    self.soft_walker_contact(index);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::SoftGiant {
+                    self.soft_giant_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Helmet {
+                    self.helmet_contact(index, action);
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Bumper {
+                    self.bumper_contact(index, action);
                     continue;
                 }
                 if w.kind == crate::actors::ActorKind::Wing {

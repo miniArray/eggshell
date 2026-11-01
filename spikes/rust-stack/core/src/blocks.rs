@@ -1272,6 +1272,21 @@ impl Run {
         if ghost == Some(crate::actors::ActorKind::Blind) {
             return Ok(());
         }
+        // helmet_walker.gd hit: any kind strikes the helmet off.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if w.kind == crate::actors::ActorKind::Helmet)
+        {
+            let e = &self.entities[index];
+            if e.status == 1 && matches!(&e.kind, Kind::Walker(w) if w.held == 0) {
+                self.helmet_strike(index, from_x);
+            }
+            return Ok(());
+        }
+        // soft_walker.gd / soft_giant.gd hit with BUMP: removed or shoved.
+        if matches!(&self.entities[index].kind, Kind::Walker(w) if [crate::actors::ActorKind::SoftWalker, crate::actors::ActorKind::SoftGiant].contains(&w.kind))
+        {
+            self.soft_hit(index, from_x);
+            return Ok(());
+        }
         // hanging_roller.gd hit ignores BUMP; enemy_pellet.gd and petal_stem.gd have no
         // hit; stem_petal.gd hit spares a dropped petal.
         if matches!(&self.entities[index].kind, Kind::Walker(w) if [crate::actors::ActorKind::Roller, crate::actors::ActorKind::Pellet, crate::actors::ActorKind::PetalStem, crate::actors::ActorKind::Spitter].contains(&w.kind)

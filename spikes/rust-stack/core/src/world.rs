@@ -160,6 +160,13 @@ impl World {
                         .checked_sub(16 * SCALE)
                         .ok_or_else(|| invalid("slime position"))?;
                 }
+                // soft_giant.gd prepare: the body stands on the placement's lower edge.
+                if code == "e24" {
+                    position.y = position
+                        .y
+                        .checked_add(32 * SCALE)
+                        .ok_or_else(|| invalid("soft giant position"))?;
+                }
                 // Original stilt preparation anchors feet at placement's lower edge.
                 if code == "e35" {
                     position.y = position

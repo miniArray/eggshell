@@ -76,6 +76,13 @@ pub(crate) fn kinds(map: &Map, [left, top, right, bottom]: [i64; 4]) -> u8 {
     found
 }
 
+/// world.gd named_overlaps: a tilemap by name in layer1 or layer2 overlaps the box.
+pub(crate) fn named_overlaps(map: &Map, name: &str, box_: [i64; 4]) -> bool {
+    map.layers
+        .iter()
+        .any(|l| l.tilemap == name && l.source_layer != "layer3" && l.overlaps_box(box_))
+}
+
 /// moves.gd _snow: snow64 terrain 4 px under the box (2 px while already sliding).
 pub(crate) fn on_snow(map: &Map, box_: [i64; 4], sliding: bool) -> bool {
     let offset = if sliding { 2 * S } else { 4 * S };

@@ -630,6 +630,8 @@ impl Run {
             Spine,
             Bulk,
             Spitter,
+            Soft,
+            Helmet,
             Flower,
             Actor,
             Pickup { flower: bool },
@@ -681,6 +683,16 @@ impl Run {
                 Kind::Walker(w) if w.kind == ActorKind::Roller => Target::Hanging,
                 // spitting_stem.gd projectile_contact for an egg.
                 Kind::Walker(w) if w.kind == ActorKind::Spitter => Target::Spitter,
+                // soft_walker.gd / soft_giant.gd projectile_contact for an egg.
+                Kind::Walker(w)
+                    if [ActorKind::SoftWalker, ActorKind::SoftGiant].contains(&w.kind) =>
+                {
+                    Target::Soft
+                }
+                // helmet_walker.gd projectile_contact for an egg.
+                Kind::Walker(w) if w.kind == ActorKind::Helmet => Target::Helmet,
+                // bump_walker.gd projectile_contact for an egg: the egg then falls.
+                Kind::Walker(w) if w.kind == ActorKind::Bumper => Target::Flower,
                 // enemy_spike.gd projectile_contact for an egg: the egg then falls.
                 Kind::Walker(w) if w.kind == ActorKind::Spike => Target::Flower,
                 // enemy_pellet.gd projectile_contact returns 0.
@@ -821,6 +833,11 @@ impl Run {
             Target::Thief => {
                 self.thief_struck(other, projectile.x)?;
                 1
+            }
+            Target::Helmet => self.helmet_projectile(other, projectile.x, true),
+            Target::Soft => {
+                let vx = self.entities[egg].body.vx;
+                self.soft_projectile(other, projectile.x, Some(vx))
             }
             Target::Spitter => {
                 self.spitter_projectile(other, projectile_box, projectile.x, false, false)
