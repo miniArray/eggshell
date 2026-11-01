@@ -1,5 +1,10 @@
 # Backlog storage
 
+Open Eggshell work is tracked as GitHub issues on `miniArray/eggshell`. The
+repository is public, so an issue follows the same rules as a tracked card: run
+the private publication gate on its text before filing it. The remaining
+`.forgerie/backlog/*.md` cards are finished work or belong to other projects.
+
 Tracked `.forgerie/backlog/*.md` cards contain neutral task summaries, public
 code paths, acceptance checks, and status. They must not contain private source
 names, sample identifiers, source locations, or copied technical evidence.
