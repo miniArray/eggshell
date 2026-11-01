@@ -646,8 +646,7 @@ impl Run {
                     return false;
                 };
                 // ride_hound.gd riders: registry.gd is_enemy bodies only (not e33).
-                if o.status != 1 || w.held != 0 || w.hidden != 0 || o.body.vy < 0 || !o.is_enemy()
-                {
+                if o.status != 1 || w.held != 0 || w.hidden != 0 || o.body.vy < 0 || !o.is_enemy() {
                     return false;
                 }
                 let b = world_box(o.body, w.body_bounds(o.facing));

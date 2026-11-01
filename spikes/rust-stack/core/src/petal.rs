@@ -271,11 +271,7 @@ impl Run {
         let center = w.face_center(e.body);
         for slot in 0..PETALS {
             let serial = self.next_serial()?;
-            let family = self
-                .entities
-                .iter()
-                .filter(|e| e.is_enemy())
-                .count() as i64;
+            let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
             let mut petal = Actor::new(ActorKind::Petal, 0, 0, center);
             petal.stem_token = token;
             petal.slot = slot;

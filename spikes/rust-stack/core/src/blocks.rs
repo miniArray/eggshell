@@ -1258,8 +1258,7 @@ impl Run {
                 w.spine_shrink()
             }
             // slime_drop.gd hit: hanging and squashing blobs are untouched.
-            Kind::Walker(w)
-                if w.kind == crate::actors::ActorKind::Slime && !w.slime_struck() => {}
+            Kind::Walker(w) if w.kind == crate::actors::ActorKind::Slime && !w.slime_struck() => {}
             // leap_bulk.gd hit: defeat (with its loot).
             Kind::Walker(w) if w.kind == crate::actors::ActorKind::Bulk => {
                 self.bulk_defeat(index)?

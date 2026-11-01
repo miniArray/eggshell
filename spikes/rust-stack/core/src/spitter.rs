@@ -293,11 +293,7 @@ impl Run {
         let facing = e.facing;
         // registry.gd spawn_dynamic("enemy_spike", x, y, {vx, vy, facing}).
         let serial = self.next_serial()?;
-        let family = self
-            .entities
-            .iter()
-            .filter(|e| e.is_enemy())
-            .count() as i64;
+        let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
         let spike = Actor::new(ActorKind::Spike, 0, 0, Position { x, y });
         let mut row = Entity::dynamic(
             serial,

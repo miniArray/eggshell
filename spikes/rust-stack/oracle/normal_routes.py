@@ -126,7 +126,9 @@ def main() -> None:
         lick = [8] + [0] * 30
         cycle = [6] * 14 + [2] * 20 + [0] * 10
         hop_lick = [6] * 14 + [2] * 20 + [0] * 10 + [8] + [0] * 25
-        inputs = [0] * 150 + cycle * 3 + lick * 4 + [0] * 500 + hop_lick * 25 + [2] * 300
+        inputs = (
+            [0] * 150 + cycle * 3 + lick * 4 + [0] * 500 + hop_lick * 25 + [2] * 300
+        )
     elif name == "hangs_target":
         # Walk under the ceiling, turn back left and lick at the first flyer as it swoops
         # behind (caught), spit it (it flees); hop through the next swoops (landing on
