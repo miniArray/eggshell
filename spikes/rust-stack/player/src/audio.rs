@@ -7,8 +7,8 @@
 //! restore never replays old sounds. `Mixer` plays the cues in SDL's audio thread: eight
 //! effect voices and one music voice. Effects are decoded once on a loader thread; music
 //! is decoded while it plays and kept, so loops and restarts are exact.
-use crate::pack::Pack;
-use eggshell_spike_core::{PropertyValue, Session, World};
+use crate::{feel::FeelSettings, pack::Pack};
+use eggshell_spike_core::{Presentation, PropertyValue, Session, World};
 use serde_json::Value;
 use std::{
     collections::HashMap,
@@ -817,6 +817,9 @@ pub fn decode_check(pack: &Pack) -> Result<(), String> {
 
 /// Requests from the observer to the mixer.
 pub enum Command {
+    Muffle {
+        strength: i64,
+    },
     Effect {
         event: &'static str,
         clip: Arc<Pcm>,
@@ -1053,6 +1056,7 @@ pub struct Mixer {
     voices: [Voice; VOICES],
     order: u64,
     music: Option<MusicVoice>,
+    muffle: Muffle,
     stats: Arc<MixerStats>,
 }
 impl Mixer {
@@ -1062,11 +1066,13 @@ impl Mixer {
             voices: Default::default(),
             order: 0,
             music: None,
+            muffle: Muffle::default(),
             stats,
         }
     }
     fn apply(&mut self, command: Command) {
         match command {
+            Command::Muffle { strength } => self.muffle.set_strength(strength),
             Command::Effect {
                 event,
                 clip,
@@ -1150,6 +1156,7 @@ impl Mixer {
             }
         }
         self.mix_music(out, frames);
+        self.muffle.process(out);
     }
     fn mix_music(&mut self, out: &mut [f32], frames: usize) {
         let mut written = 0;
@@ -1207,6 +1214,68 @@ fn clamp(out: &mut [f32]) {
     }
 }
 
+/// One pole per output channel, with a 150 ms wet/coefficient ramp. The filter
+/// runs even when dry so entering water never starts from stale sample history.
+struct Muffle {
+    low: [f32; 2],
+    wet: f32,
+    alpha: f32,
+    target: [f32; 2],
+    delta: [f32; 2],
+    remaining: u32,
+}
+const MUFFLE_FADE_FRAMES: u32 = RATE * 150 / 1000;
+fn low_pass_alpha(cutoff: f32) -> f32 {
+    1.0 - (-2.0 * std::f32::consts::PI * cutoff / RATE as f32).exp()
+}
+impl Default for Muffle {
+    fn default() -> Self {
+        let alpha = low_pass_alpha(800.0);
+        Self {
+            low: [0.0; 2],
+            wet: 0.0,
+            alpha,
+            target: [0.0, alpha],
+            delta: [0.0; 2],
+            remaining: 0,
+        }
+    }
+}
+impl Muffle {
+    fn set_strength(&mut self, strength: i64) {
+        let strength = strength.clamp(0, 3);
+        let alpha = match strength {
+            1 => low_pass_alpha(1600.0),
+            2 => low_pass_alpha(800.0),
+            3 => low_pass_alpha(400.0),
+            _ => self.alpha,
+        };
+        self.target = [if strength > 0 { 1.0 } else { 0.0 }, alpha];
+        self.delta = [
+            (self.target[0] - self.wet) / MUFFLE_FADE_FRAMES as f32,
+            (alpha - self.alpha) / MUFFLE_FADE_FRAMES as f32,
+        ];
+        self.remaining = MUFFLE_FADE_FRAMES;
+    }
+    fn process(&mut self, out: &mut [f32]) {
+        for frame in out.chunks_exact_mut(2) {
+            if self.remaining > 0 {
+                self.wet += self.delta[0];
+                self.alpha += self.delta[1];
+                self.remaining -= 1;
+                if self.remaining == 0 {
+                    self.wet = self.target[0];
+                    self.alpha = self.target[1];
+                }
+            }
+            for (sample, low) in frame.iter_mut().zip(&mut self.low) {
+                *low += self.alpha * (*sample - *low);
+                *sample += self.wet * (*low - *sample);
+            }
+        }
+    }
+}
+
 struct Callback {
     mixer: Mixer,
     stats: Arc<MixerStats>,
@@ -1250,6 +1319,7 @@ pub struct Observer {
     effects_gain: Option<f32>,
     out: Option<mpsc::Sender<Command>>,
     timer_paused: bool,
+    muffle_state: Option<(bool, i64)>,
     /// How many states this observer has derived from; one per simulation step.
     pub observations: u64,
     /// Derived effect cues by event, for the run summary.
@@ -1341,10 +1411,27 @@ impl Observer {
             effects_gain: volume_gain(EFFECTS_VOLUME),
             out,
             timer_paused: false,
+            muffle_state: None,
             observations: 0,
             heard: Default::default(),
             missing_clips: 0,
         })
+    }
+    /// Swimming/submerged is a presentation flag, never a write to saved state.
+    pub fn observe_muffle(&mut self, p: &Presentation, settings: FeelSettings) {
+        self.update_muffle(p.player.swimming, settings);
+    }
+    fn update_muffle(&mut self, swimming: bool, settings: FeelSettings) {
+        let strength = settings.muffle_strength.clamp(0, 3);
+        let active = swimming && settings.muffle_enabled && strength > 0;
+        let state = (active, strength);
+        if self.muffle_state != Some(state) {
+            self.send(Command::Muffle {
+                strength: if active { strength } else { 0 },
+            });
+            println!("RUST_AUDIO_MUFFLE active={active} strength={strength} swimming={swimming}");
+            self.muffle_state = Some(state);
+        }
     }
     pub fn muted(&self) -> bool {
         self.out.is_none()
@@ -2183,6 +2270,109 @@ mod tests {
         );
     }
 
+    #[test]
+    fn muffle_attenuates_high_frequencies_but_passes_low_and_keeps_stereo_separate() {
+        let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+        for (hz, min, max) in [(100.0, 0.95, 1.01), (8000.0, 0.0, 0.15)] {
+            let (send, receive) = mpsc::channel();
+            let mut mixer = Mixer::new(receive, Arc::default());
+            let mono: Vec<i16> = (0..RATE)
+                .map(|i| {
+                    ((i as f32 * 2.0 * std::f32::consts::PI * hz / RATE as f32).sin() * 16000.0)
+                        as i16
+                })
+                .collect();
+            let stereo: Vec<i16> = mono.iter().flat_map(|&v| [v, 0]).collect();
+            send.send(Command::Effect {
+                event: "signal",
+                clip: Arc::new(Pcm {
+                    channels: 2,
+                    samples: stereo,
+                }),
+                from_frame: 0,
+                gain: 1.0,
+            })
+            .unwrap();
+            send.send(Command::Muffle { strength: 2 }).unwrap();
+            let mut out = vec![0.0; RATE as usize * 2];
+            mixer.mix(&mut out);
+            let left: Vec<f32> = out[RATE as usize..].iter().step_by(2).copied().collect();
+            let input: Vec<f32> = mono[RATE as usize / 2..]
+                .iter()
+                .map(|&v| f32::from(v) / 32768.0)
+                .collect();
+            let ratio = rms(&left) / rms(&input);
+            assert!(ratio >= min && ratio < max, "{hz} Hz ratio={ratio}");
+            assert!(out.iter().skip(1).step_by(2).all(|&v| v == 0.0));
+        }
+    }
+    #[test]
+    fn muffle_ramps_in_out_and_between_strengths_without_a_step() {
+        let mut f = Muffle::default();
+        let mut dry = vec![1.0; 200];
+        f.process(&mut dry);
+        assert!(dry.iter().all(|&v| v == 1.0));
+        f.set_strength(3);
+        f.process(&mut [1.0, 1.0]);
+        assert!((f.wet - 1.0 / MUFFLE_FADE_FRAMES as f32).abs() < 1e-7);
+        let mut rest = vec![1.0; (MUFFLE_FADE_FRAMES as usize - 1) * 2];
+        f.process(&mut rest);
+        assert_eq!(f.wet, 1.0);
+        assert_eq!(f.alpha, low_pass_alpha(400.0));
+        f.set_strength(1);
+        let alpha = f.alpha;
+        f.process(&mut [1.0, 1.0]);
+        assert!((f.alpha - alpha).abs() < 0.0001);
+        f.set_strength(0);
+        let mut release = vec![1.0; MUFFLE_FADE_FRAMES as usize * 2];
+        f.process(&mut release);
+        assert_eq!(f.wet, 0.0);
+        let mut dry = [-0.8, 0.7];
+        f.process(&mut dry);
+        assert_eq!(dry, [-0.8, 0.7]);
+    }
+    #[test]
+    fn observer_only_sends_muffle_on_state_or_strength_changes() {
+        let world=World::compile(r#"{"version":"1","name":"muffle","desc":"","author":"test","startpoint":{"map":1,"X":32,"Y":32},"maps":{"map1":{"width":640,"height":480,"objects":{}}}}"#,r#"{"version":2,"tilemaps":{}}"#).unwrap();
+        let mut observer = Observer::new(AudioMap::default(), &world, None, None).unwrap();
+        let (send, receive) = mpsc::channel();
+        observer.out = Some(send);
+        let s = FeelSettings::default();
+        observer.update_muffle(false, s);
+        assert!(matches!(
+            receive.try_recv().unwrap(),
+            Command::Muffle { strength: 0 }
+        ));
+        observer.update_muffle(false, s);
+        assert!(receive.try_recv().is_err());
+        observer.update_muffle(true, s);
+        assert!(matches!(
+            receive.try_recv().unwrap(),
+            Command::Muffle { strength: 2 }
+        ));
+        observer.update_muffle(
+            true,
+            FeelSettings {
+                muffle_enabled: false,
+                ..s
+            },
+        );
+        assert!(matches!(
+            receive.try_recv().unwrap(),
+            Command::Muffle { strength: 0 }
+        ));
+        observer.update_muffle(
+            true,
+            FeelSettings {
+                muffle_strength: 0,
+                ..s
+            },
+        );
+        assert!(matches!(
+            receive.try_recv().unwrap(),
+            Command::Muffle { strength: 0 }
+        ));
+    }
     #[test]
     fn mixer_reuses_the_events_voice_and_keeps_the_switch_timer() {
         let (send, receive) = mpsc::channel();
