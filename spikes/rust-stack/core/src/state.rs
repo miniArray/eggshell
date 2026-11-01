@@ -1846,7 +1846,9 @@ impl Run {
             || (p.life_phase == 8) != (self.goal_reached != 0)
             || !(-2000 * 60..=2000 * 60).contains(&p.body.vx)
             || p.body.vy < -2000 * 60
-            || p.body.vy > if p.action == 2 { 1408 * 60 } else { 704 * 60 }
+            // bump_walker.gd contact turns an upward speed under it downward
+            // (state.vy = absi(state.vy)), past the gravity caps.
+            || p.body.vy > 2000 * 60
             || self.sound.serial < 0
             || !(0..=4).contains(&self.sound.kind)
         {
