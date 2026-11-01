@@ -79,6 +79,12 @@ impl Pack {
         Ok(bytes)
     }
     pub fn png(&self, file: &str) -> Result<Image, String> {
+        if let Some(name) = file
+            .strip_prefix(PLACEHOLDER)
+            .and_then(|f| f.strip_suffix(".png"))
+        {
+            return Ok(Image::placeholder(name));
+        }
         let image = Image::load(&safe_file(&self.root, file)?)?;
         if self.file_hashes.get(file).map(String::as_str) != Some(image.sha256.as_str()) {
             return Err(format!("private asset hash mismatch: {file}"));
@@ -92,7 +98,27 @@ pub struct Image {
     pub rgba: Vec<u8>,
     pub sha256: String,
 }
+/// Image names for generated diagnostic squares (no pack file).
+pub const PLACEHOLDER: &str = "@placeholder/";
 impl Image {
+    /// pack_dressing.gd placeholder: a 32 px square of one colour, its hue from the name.
+    /// The hue comes from FNV-1a, not Godot's String.hash, so colours differ from Godot's.
+    pub fn placeholder(name: &str) -> Self {
+        let hash = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+        });
+        let rgb = hsv((hash % 360) as f64 / 360.0, 0.55, 0.65);
+        let mut rgba = Vec::with_capacity(32 * 32 * 4);
+        for _ in 0..32 * 32 {
+            rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+        }
+        Self {
+            width: 32,
+            height: 32,
+            rgba,
+            sha256: format!("placeholder:{name}"),
+        }
+    }
     pub fn load(path: &Path) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|e| e.to_string())?;
         let sha256 = hash(&bytes);
@@ -131,6 +157,22 @@ impl Image {
     }
 }
 
+/// HSV to 8-bit RGB (Godot Color.from_hsv).
+fn hsv(h: f64, s: f64, v: f64) -> [u8; 3] {
+    let i = (h * 6.0).floor();
+    let f = h * 6.0 - i;
+    let (p, q, t) = (v * (1.0 - s), v * (1.0 - f * s), v * (1.0 - (1.0 - f) * s));
+    let (r, g, b) = match i as i64 % 6 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    [r, g, b].map(|c| (c * 255.0).round() as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +187,20 @@ mod tests {
         assert_eq!(
             hash(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+    #[test]
+    fn placeholder_is_one_colour_square() {
+        let a = super::Image::placeholder("enemy_runner");
+        assert_eq!((a.width, a.height, a.rgba.len()), (32, 32, 32 * 32 * 4));
+        assert!(
+            a.rgba
+                .chunks_exact(4)
+                .all(|p| p == &a.rgba[..4] && p[3] == 255)
+        );
+        assert_ne!(
+            a.rgba[..3],
+            super::Image::placeholder("enemy_shot").rgba[..3]
         );
     }
 }

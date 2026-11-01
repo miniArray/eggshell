@@ -492,9 +492,22 @@ impl Scene {
             if objects.contains_key(code) {
                 continue;
             }
-            let entry = object_entries
-                .get(code)
-                .ok_or_else(|| format!("required admitted object asset absent: {code}"))?;
+            // runtime_objects.gd make_node: a runtime code the pack has no art for draws
+            // as the diagnostic square (pack_dressing.gd placeholder), top-left at the
+            // entity's position. Placed codes still need their art.
+            let placeholder;
+            let entry = match object_entries.get(code) {
+                Some(entry) => entry,
+                None if eggshell_spike_core::RUNTIME_CODES.contains(&code) => {
+                    placeholder = serde_json::json!({
+                        "file": format!("{}{code}.png", crate::pack::PLACEHOLDER),
+                        "origin": [0, 0],
+                        "anchor": "position"
+                    });
+                    &placeholder
+                }
+                None => return Err(format!("required admitted object asset absent: {code}")),
+            };
             let mut variants = vec![0];
             if code == "e1" {
                 variants.extend(0..=4);
