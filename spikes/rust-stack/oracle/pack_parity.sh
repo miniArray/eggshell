@@ -2,6 +2,7 @@
 #! nix-shell ../core/toolchain.nix -i bash
 # aka only. Usage: pack_parity.sh SWEEP_TAG [TICKS] [LIMIT] [SKIP]
 # SKIP: leave out the first SKIP admitted levels (shards across aka trees).
+# PACK_TIMEOUT: seconds allowed for each Godot export (default 900).
 # Every-tick Godot parity on each admitted corpus level of pack-sweep-SWEEP_TAG.jsonl, on
 # a generic walk-and-hop route (no state edits). Prints one PACK_PARITY line per level
 # and a PACK_PARITY_DONE summary. Private levels and streams stay under artifacts.
@@ -43,7 +44,7 @@ while IFS= read -r id; do
   rm -rf "$dir"
   # A Godot that printed ORACLE_DONE can hang on exit, so bound the run and judge the
   # export by its log, not its exit status.
-  timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
+  timeout "${PACK_TIMEOUT:-900}" "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
   if ! grep -q 'ORACLE_DONE' "$out/$id.export.log" \
     || grep -qE 'SCRIPT ERROR|ERROR:|ORACLE_FAILED' "$out/$id.export.log"; then
     printf 'PACK_PARITY id=%s result=export-failed\n' "$id"
