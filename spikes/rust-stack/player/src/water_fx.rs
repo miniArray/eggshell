@@ -122,6 +122,23 @@ pub struct Frame {
     container: [f64; 2],
 }
 impl Frame {
+    /// Bounding copy area in top-left screen pixels. All rectangles were clipped
+    /// to the actual drawable; round outward to include every sampled texel.
+    pub fn copy_bounds(&self) -> Option<[i32; 4]> {
+        let first = *self.regions.first()?;
+        let b = self.regions.iter().fold(first, |a, r| {
+            [
+                a[0].min(r[0]),
+                a[1].min(r[1]),
+                a[2].max(r[2]),
+                a[3].max(r[3]),
+            ]
+        });
+        let l = b[0].floor() as i32;
+        let t = b[1].floor() as i32;
+        Some([l, t, b[2].ceil() as i32 - l, b[3].ceil() as i32 - t])
+    }
+
     pub fn emit_surface(&self, solid: usize, out: &mut Vec<Quad>) {
         // Existing white fallback + alpha: no new art/filtering or palette.
         // Two-pixel steps and a one-pixel line keep the surface pixel-art friendly.
@@ -277,6 +294,13 @@ mod tests {
             union(&[[0.0, 0.0, 10.0, 10.0], [20.0, 0.0, 30.0, 10.0]]).len(),
             2
         );
+    }
+    #[test]
+    fn snapshot_bounds_cover_only_visible_water_and_round_outward() {
+        let mut frame = Frame::default();
+        assert_eq!(frame.copy_bounds(), None);
+        frame.regions = vec![[4.2, 7.1, 20.3, 30.2], [40.0, 10.0, 60.0, 20.0]];
+        assert_eq!(frame.copy_bounds(), Some([4, 7, 56, 24]));
     }
     #[test]
     fn clipping_excludes_touching_edges() {
