@@ -101,7 +101,7 @@ impl Water {
             surfaces: self
                 .surfaces
                 .iter()
-                .filter_map(|r| project(*r, plan, container))
+                .filter_map(|r| project_surface(*r, plan, container))
                 .collect(),
             phase: phase(tick),
             strength,
@@ -187,6 +187,18 @@ fn project(r: Rect, plan: &Plan, container: [f64; 2]) -> Option<Rect> {
         ],
         [0.0, 0.0, container[0], container[1]],
     )
+}
+fn project_surface(r: Rect, plan: &Plan, container: [f64; 2]) -> Option<Rect> {
+    let left = r[0] * plan.scale + screen::godot_round(plan.offset[0]);
+    let right = r[2] * plan.scale + screen::godot_round(plan.offset[0]);
+    let top = r[1] * plan.scale + screen::godot_round(plan.offset[1]);
+    // Keep the true surface origin when it is just above the drawable. A crest
+    // can still reach the first row; clipping its origin would move the wave.
+    let clipped = clip(
+        [left, top, right, top + 3.0],
+        [0.0, 0.0, container[0], container[1]],
+    )?;
+    Some([clipped[0], top, clipped[2], clipped[3]])
 }
 pub fn clip(r: Rect, bounds: Rect) -> Option<Rect> {
     let r = [
@@ -279,6 +291,45 @@ mod tests {
             l.water = false;
         }
         assert!(Water::prepare(layers).unwrap().surfaces.is_empty());
+    }
+    #[test]
+    fn overlapping_layers_do_not_duplicate_water_or_surfaces() {
+        let mut world = lagoon();
+        let extra = world.maps[0]
+            .layers
+            .iter()
+            .find(|l| l.water)
+            .unwrap()
+            .clone();
+        let original = Water::prepare(&world.maps[0].layers).unwrap();
+        world.maps[0].layers.push(extra);
+        let duplicated = Water::prepare(&world.maps[0].layers).unwrap();
+        assert_eq!(original.regions, duplicated.regions);
+        assert_eq!(original.surfaces, duplicated.surfaces);
+    }
+    #[test]
+    fn wave_near_top_edge_keeps_its_origin_and_clips_all_output() {
+        let water = Water::prepare(&lagoon().maps[0].layers).unwrap();
+        let mut plan =
+            screen::plan([640.0, 480.0], [2048.0, 448.0], [1408.0, 224.0], 1, 0).unwrap();
+        plan.scale = 1.0;
+        plan.offset = [-1100.0, -331.0];
+        let frame = water.frame(&plan, [640.0, 480.0], 90, 3);
+        assert_eq!(frame.surfaces[0][1], -1.0);
+        let mut quads = Vec::new();
+        frame.emit_surface(1, &mut quads);
+        assert!(!quads.is_empty());
+        assert!(
+            quads
+                .iter()
+                .flat_map(|q| q.corners)
+                .all(|[x, y]| (0.0..=640.0).contains(&x) && (0.0..=480.0).contains(&y))
+        );
+        let mut off = Vec::new();
+        water
+            .frame(&plan, [640.0, 480.0], 90, 0)
+            .emit_surface(1, &mut off);
+        assert!(off.is_empty());
     }
     #[test]
     fn overlapping_regions_are_disjoint_and_holes_survive() {

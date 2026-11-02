@@ -14,6 +14,8 @@ pub struct FeelSettings {
     pub dust_amount: i64,
     pub muffle_enabled: bool,
     pub muffle_strength: i64,
+    pub water_fx_enabled: bool,
+    pub water_fx_strength: i64,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -27,6 +29,8 @@ impl Default for FeelSettings {
             dust_amount: 2,
             muffle_enabled: true,
             muffle_strength: 2,
+            water_fx_enabled: true,
+            water_fx_strength: 2,
         }
     }
 }
@@ -38,6 +42,7 @@ impl FeelSettings {
         self.hit_steps = self.hit_steps.clamp(6, 30);
         self.dust_amount = self.dust_amount.clamp(0, 3);
         self.muffle_strength = self.muffle_strength.clamp(0, 3);
+        self.water_fx_strength = self.water_fx_strength.clamp(0, 3);
     }
     pub fn load(directory: &Path) -> Self {
         let path = directory.join("feel.json");
@@ -70,6 +75,25 @@ impl FeelSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_feel_json_gets_water_defaults_and_new_values_clamp() {
+        let old = r#"{"shake_enabled":false,"pound_strength_px":3,"pound_steps":14,"hit_strength_px":2,"hit_steps":10,"dust_enabled":false,"dust_amount":1,"muffle_enabled":false,"muffle_strength":1}"#;
+        let mut s: FeelSettings = serde_json::from_str(old).unwrap();
+        assert!(s.water_fx_enabled);
+        assert_eq!(s.water_fx_strength, 2);
+        assert!(!s.shake_enabled);
+        s.water_fx_strength = -10;
+        s.clamp();
+        assert_eq!(s.water_fx_strength, 0);
+        s.water_fx_strength = 99;
+        s.clamp();
+        assert_eq!(s.water_fx_strength, 3);
+        s.water_fx_enabled = false;
+        assert_eq!(
+            serde_json::from_slice::<FeelSettings>(&serde_json::to_vec(&s).unwrap()).unwrap(),
+            s
+        );
+    }
     #[test]
     fn load_defaults_invalid_partial_clamped_and_atomic_round_trip() {
         let dir = std::env::temp_dir().join(format!(

@@ -2538,7 +2538,16 @@ impl Scene {
         if let Some(rgba) = map_tint(&map.tint) {
             tint.push(fullscreen_quad(self.solid, container, rgba));
         }
-        let water = prepared.water.frame(&plan, container, p.tick, 2);
+        let water = prepared.water.frame(
+            &plan,
+            container,
+            p.tick,
+            if settings.water_fx_enabled {
+                settings.water_fx_strength
+            } else {
+                0
+            },
+        );
         let mut water_surface = Vec::new();
         water.emit_surface(self.solid, &mut water_surface);
         Ok(Picture {
