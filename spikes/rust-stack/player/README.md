@@ -391,3 +391,34 @@ existing maximum. Reset (0/right-stick click) selects the default scale.
 Changing back to whole snaps to the nearest whole offset. `RUST_ZOOM scale=...`
 reports each drawn scale change. World textures remain nearest-sampled; unequal
 pixel widths are intentional. HUD scale still uses the integer base scale.
+
+### Death animation playtest (presentation deviation)
+
+Verified with `cargo run --example death_probe -- SCHEMA.json PACK_MANIFEST.json`
+on the public lighting fixture, starting at x400 above its lava. At call 7 the
+core reports `Dying`, phase 2, visible, alpha 1, selected `Fall0` tick 7; at call
+247 it reports phase 3 and still `Fall0` tick 247. The same frame resolves without
+fallback. The body and camera remain in view. The pinned pack contains `Defeat0`
+and `Defeat1`: five frames, 24 fps, non-looping. Thus the missing animation is
+pose selection, not missing art or a hidden player.
+
+Fidelity finding: core `src/presentation.rs:475-581` and root
+`src/view/player_pose.gd:7-82` never select death art. Root `src/sim/life.gd:318-336`
+only changes lifetime/timers and stops hazard motion; `src/view/level_view.gd:471-479`
+uses the normal pose selector. Core `src/presentation.rs:612-625` does expose
+`Dying` for phases 2/3 and keeps the player visible after death clears capture and
+immunity. The existing Rust `sample_required` refuses unknown poses; it does not
+silently replace death with idle.
+
+The player now overrides Dying with the pack's Defeat animation, then holds its
+last frame. **This is a spike presentation deviation, not reference parity.**
+The invented clock starts at the saved tick of the first observed Dying step.
+Every successful step observes it, including skipped draws. Pausing does not
+advance it; leaving Dying resets it; a backward tick starts a new local episode.
+Restoring mid-death restarts the local animation at the restored tick (the DTO
+has no death-start timestamp). The clock retains one finished span for the
+pipelined draw that can still be in flight. No core or snapshot bytes change.
+Full-mouth dry poses select Defeat1; ambiguous wet-action suffixes select
+Defeat0 because the DTO has no separate full-mouth flag. If the chosen Defeat
+entry is absent, the original selected pose remains in use. Die on lava to see
+all five frames; quick restart can also play the animation during its short fade.

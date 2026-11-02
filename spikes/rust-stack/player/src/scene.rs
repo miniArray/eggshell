@@ -161,6 +161,7 @@ pub struct Scene {
     pub feel: std::sync::Mutex<crate::feel::FeelSettings>,
     pub paused_offset: [f64; 2],
     dust: std::sync::Mutex<crate::dust::Dust>,
+    death_pose: std::sync::Mutex<crate::death_pose::DeathPose>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1137,6 +1138,7 @@ impl Scene {
             feel: std::sync::Mutex::new(crate::feel::FeelSettings::default()),
             paused_offset: [0.0; 2],
             dust: std::sync::Mutex::new(crate::dust::Dust::default()),
+            death_pose: std::sync::Mutex::new(crate::death_pose::DeathPose::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1464,6 +1466,10 @@ impl Scene {
     }
     /// Fed once per successful step even when that step is not drawn. Only DTO reads.
     pub fn observe_feel(&self, p: &Presentation) -> Result<(), String> {
+        self.death_pose
+            .lock()
+            .map_err(|_| "death pose lock poisoned")?
+            .observe(p);
         let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
         self.dust.lock().map_err(|_| "dust lock poisoned")?.observe(
             p,
@@ -2384,8 +2390,10 @@ impl Scene {
                 None
             };
             let f = self
-                .player
-                .sample_required(pose.tick, &pose.name, pose.frame, literal)?;
+                .death_pose
+                .lock()
+                .map_err(|_| "death pose lock poisoned")?
+                .frame(p.tick, p.player.lifetime, pose, &self.player, literal)?;
             let mut t = Transform {
                 position: pixel(p.player.motion.current),
                 scale: [

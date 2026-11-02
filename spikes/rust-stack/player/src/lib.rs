@@ -6,6 +6,7 @@ pub mod binding;
 pub mod blend_probe;
 pub mod call_cursor;
 pub mod clock;
+pub mod death_pose;
 pub mod diagnosis;
 pub mod dressing;
 pub mod dust;
