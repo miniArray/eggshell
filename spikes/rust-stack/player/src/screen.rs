@@ -6,21 +6,23 @@ pub struct Plan {
     pub visible: [f64; 2],
     pub offset: [f64; 2],
     pub base_scale: f64,
-    pub zoom: i32,
-    pub zoom_min: i32,
-    pub zoom_max: i32,
+    pub zoom: f64,
+    pub zoom_min: f64,
+    pub zoom_max: f64,
 }
 pub fn plan(
     container: [f64; 2],
     level: [f64; 2],
     focus: [f64; 2],
     density: u32,
-    zoom: i32,
+    zoom: impl Into<f64>,
 ) -> Result<Plan, String> {
-    if container
-        .into_iter()
-        .chain(level)
-        .any(|v| !v.is_finite() || v <= 0.0)
+    let zoom = zoom.into();
+    if !zoom.is_finite()
+        || container
+            .into_iter()
+            .chain(level)
+            .any(|v| !v.is_finite() || v <= 0.0)
         || focus.into_iter().any(|v| !v.is_finite())
         || density == 0
     {
@@ -52,8 +54,8 @@ pub fn plan(
     // `fit` down to 1x. A view larger than the level
     // centres the level on that axis; the bands outside it show the clear colour.
     let smallest = 1;
-    let multiple = k.saturating_add(zoom).clamp(smallest, largest);
-    let scale = multiple as f64 * d;
+    let multiple = (f64::from(k) + zoom).clamp(f64::from(smallest), f64::from(largest));
+    let scale = multiple * d;
     let visible = [container[0] / scale, container[1] / scale];
     let center = std::array::from_fn(|i| {
         if visible[i] >= level[i] {
@@ -70,9 +72,9 @@ pub fn plan(
         visible,
         offset,
         base_scale: k as f64 * d,
-        zoom: multiple - k,
-        zoom_min: smallest - k,
-        zoom_max: largest - k,
+        zoom: multiple - f64::from(k),
+        zoom_min: f64::from(smallest - k),
+        zoom_max: f64::from(largest - k),
     })
 }
 pub fn godot_round(x: f64) -> f64 {
@@ -85,6 +87,28 @@ pub fn godot_round(x: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fractional_zoom_keeps_exact_scale_visible_extent_and_clamps_focus() {
+        for scale in [1.25, 1.5] {
+            let container = [640.0, 480.0];
+            let level = [2048.0, 448.0];
+            for focus in [[0.0; 2], [1024.0, 224.0], [2048.0, 448.0]] {
+                let p = plan(container, level, focus, 1, scale - 1.0).unwrap();
+                assert_eq!(p.scale, scale);
+                assert_eq!(p.base_scale, 1.0); // HUD never inherits fractional zoom.
+                assert_eq!(p.visible, container.map(|v| v / scale));
+                for i in 0..2 {
+                    assert!(p.center[i] >= p.visible[i] / 2.0);
+                    assert!(p.center[i] <= level[i] - p.visible[i] / 2.0);
+                    assert_eq!(p.offset[i], container[i] / 2.0 - p.center[i] * scale);
+                }
+            }
+            let p = plan(container, [2048.0, 300.0], [0.0; 2], 1, scale - 2.0).unwrap();
+            assert_eq!(p.scale, scale);
+            assert_eq!(p.center[1], 150.0);
+        }
+        assert!(plan([640.0, 480.0], [2048.0, 448.0], [0.0; 2], 1, f64::NAN).is_err());
+    }
     #[test]
     fn pro_default_deliberately_keeps_near_full_height_at_one_to_one() {
         let p = plan([640.0, 480.0], [15040.0, 448.0], [416.0, 224.0], 1, 0).unwrap();
@@ -121,8 +145,8 @@ mod tests {
     fn stress_zoom_clamps_extreme_initial_values() {
         let low = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MIN).unwrap();
         let high = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MAX).unwrap();
-        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (0, 0, 1));
-        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1, 0, 1));
+        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (0.0, 0.0, 1.0));
+        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1.0, 0.0, 1.0));
     }
     #[test]
     fn zoom_out_still_reaches_one_to_one_when_default_requires_fit() {

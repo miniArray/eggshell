@@ -328,9 +328,31 @@ mod tests {
             visible: [container[0] / scale, container[1] / scale],
             offset: std::array::from_fn(|i| container[i] / 2.0 - center[i] * scale),
             base_scale: scale,
-            zoom: 0,
-            zoom_min: 0,
-            zoom_max: 0,
+            zoom: 0.0,
+            zoom_min: 0.0,
+            zoom_max: 0.0,
+        }
+    }
+    #[test]
+    fn fractional_plans_keep_gradient_bands_full_width() {
+        let g = CustomGradient::prepare("4|0|448|0,0,0_255,255,255").unwrap();
+        for scale in [1.25, 1.5] {
+            let p = crate::screen::plan(
+                [640.0, 480.0],
+                [2048.0, 448.0],
+                [800.0, 224.0],
+                1,
+                scale - 1.0,
+            )
+            .unwrap();
+            let mut quads = Vec::new();
+            g.emit(&p, [640.0, 480.0], 0, &mut quads);
+            assert!(!quads.is_empty());
+            for q in quads {
+                assert_eq!(q.corners[0][0], 0.0);
+                assert_eq!(q.corners[2][0], 640.0);
+                assert!(q.corners.iter().flatten().all(|v| v.is_finite()));
+            }
         }
     }
     #[test]

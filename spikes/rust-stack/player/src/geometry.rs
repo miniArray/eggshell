@@ -252,6 +252,41 @@ pub fn slices_uniform(
 mod tests {
     use super::*;
     #[test]
+    fn adjacent_fractional_terrain_quads_share_edges_and_cull_by_actual_extent() {
+        for scale in [1.25, 1.5] {
+            let p = crate::screen::plan(
+                [640.0, 480.0],
+                [2048.0, 448.0],
+                [800.0, 224.0],
+                1,
+                scale - 1.0,
+            )
+            .unwrap();
+            let tile = |x| {
+                rect_quad(
+                    0,
+                    [0.0, 0.0, 32.0, 32.0],
+                    [32.0; 2],
+                    [x, 200.0, 32.0, 32.0],
+                    Transform::default(),
+                    &p,
+                    [1.0; 4],
+                    &[],
+                )
+            };
+            let left = tile(768.0);
+            let right = tile(800.0);
+            assert_eq!(left.corners[1], right.corners[0]);
+            assert_eq!(left.corners[2], right.corners[3]);
+            assert_eq!(
+                left.corners[1][0] - left.corners[0][0],
+                (32.0 * scale) as f32
+            );
+            assert!(visible(&left, [640.0, 480.0]));
+            assert!(!visible(&tile(0.0), [640.0, 480.0]));
+        }
+    }
+    #[test]
     fn all_eight_tiled_transforms_are_permutations() {
         for flags in 0..8 {
             let uv = tile_uv([0.0, 0.0, 1.0, 1.0], [1.0, 1.0], flags << 29);

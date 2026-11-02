@@ -381,3 +381,13 @@ full-screen passes, zero fallback-normal texture memory. Normal maps add their
 own RGBA textures. Auto normals adds four alpha taps and up to 128 replacement
 draws (not extra geometry passes). This cap trades coverage in dense scenes for
 bounded work. Mali timings must be measured; no sustained-60 claim is made.
+
+### Fractional zoom playtest
+
+Feel → Zoom steps (`zoom_steps`) defaults to `"whole"`, preserving the old
+1x/2x controls and limits. `"quarter"` makes each R2/L2, right-stick or +/- edge
+move 0.25x: 1, 1.25, 1.5, 1.75, 2 at 640x480. Larger containers retain their
+existing maximum. Reset (0/right-stick click) selects the default scale.
+Changing back to whole snaps to the nearest whole offset. `RUST_ZOOM scale=...`
+reports each drawn scale change. World textures remain nearest-sampled; unequal
+pixel widths are intentional. HUD scale still uses the integer base scale.

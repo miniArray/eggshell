@@ -1390,7 +1390,7 @@ impl Scene {
         map_index: usize,
         focus: eggshell_spike_core::Position,
         container: [f64; 2],
-        zoom: i32,
+        zoom: impl Into<f64>,
     ) -> Result<[i64; 4], String> {
         let map = &self
             .maps
@@ -1440,27 +1440,27 @@ impl Scene {
         &self,
         p: &Presentation,
         container: [f64; 2],
-        zoom: i32,
+        zoom: impl Into<f64>,
     ) -> Result<Picture, String> {
-        self.picture_configured(p, container, zoom, true, true)
+        self.picture_configured(p, container, zoom.into(), true, true)
     }
     #[cfg(feature = "benchmark-work-counters")]
     pub fn picture_unculled(
         &self,
         p: &Presentation,
         container: [f64; 2],
-        zoom: i32,
+        zoom: impl Into<f64>,
     ) -> Result<Picture, String> {
-        self.picture_configured(p, container, zoom, false, false)
+        self.picture_configured(p, container, zoom.into(), false, false)
     }
     #[cfg(feature = "benchmark-work-counters")]
     pub fn picture_before_spatial(
         &self,
         p: &Presentation,
         container: [f64; 2],
-        zoom: i32,
+        zoom: impl Into<f64>,
     ) -> Result<Picture, String> {
-        self.picture_configured(p, container, zoom, true, false)
+        self.picture_configured(p, container, zoom.into(), true, false)
     }
     /// Fed once per successful step even when that step is not drawn. Only DTO reads.
     pub fn observe_feel(&self, p: &Presentation) -> Result<(), String> {
@@ -1485,7 +1485,7 @@ impl Scene {
         &self,
         p: &Presentation,
         container: [f64; 2],
-        zoom: i32,
+        zoom: impl Into<f64>,
         cull_art: bool,
         chunk_layers: bool,
     ) -> Result<Picture, String> {

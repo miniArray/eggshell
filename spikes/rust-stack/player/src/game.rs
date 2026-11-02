@@ -257,14 +257,14 @@ struct Prepared {
     p: eggshell_spike_core::Presentation,
     background: [u8; 3],
     container: [f64; 2],
-    zoom: i32,
+    zoom: f64,
     completed: u64,
 }
 fn prepare_frame(
     session: &Session,
     scene: &crate::scene::Scene,
     container: [f64; 2],
-    zoom: i32,
+    zoom: f64,
     completed: u64,
 ) -> Result<Prepared, String> {
     let (map_index, focus) = session.presentation_view();
@@ -687,6 +687,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
     let mut batch_total = 0_u64;
     let mut quad_total = 0_u64;
     let mut resolved_scale = initial_plan.scale;
+    let mut logged_scale = initial_plan.scale;
     let mut present = Samples::default();
     let mut save = Samples::default();
     let mut intervals = crate::timing::Histogram::default();
@@ -809,9 +810,14 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             break;
         }
         if controls.zoom_reset {
-            zoom = 0;
+            zoom = 0.0;
         }
-        zoom += controls.zoom_delta;
+        zoom = scene
+            .feel
+            .lock()
+            .map_err(|_| "feel lock poisoned")?
+            .zoom_steps
+            .advance(zoom, controls.zoom_delta);
         if controls.restore && !saves.disabled() {
             if replay.is_some() {
                 return Err("interactive replay restore requires an explicit cursor: restart with --restore and --input-offset".into());
@@ -896,6 +902,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                     zoom_min = picture.plan.zoom_min;
                     zoom_max = picture.plan.zoom_max;
                     resolved_scale = picture.plan.scale;
+                    if logged_scale != resolved_scale {
+                        println!("RUST_ZOOM scale={resolved_scale}");
+                        logged_scale = resolved_scale;
+                    }
                     let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
                     let water_draw = gpu.water_fx(&picture.water)?;
                     let surface_draw = gpu.draw(&picture.water_surface)?;
@@ -1040,6 +1050,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             zoom_min = picture.plan.zoom_min;
             zoom_max = picture.plan.zoom_max;
             resolved_scale = picture.plan.scale;
+            if logged_scale != resolved_scale {
+                println!("RUST_ZOOM scale={resolved_scale}");
+                logged_scale = resolved_scale;
+            }
             let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
             let water_draw = gpu.water_fx(&picture.water)?;
             let surface_draw = gpu.draw(&picture.water_surface)?;

@@ -494,9 +494,9 @@ pub fn overlay_plan(scale: f64) -> Plan {
         visible: [0.0; 2],
         offset: [0.0; 2],
         base_scale: scale,
-        zoom: 0,
-        zoom_min: 0,
-        zoom_max: 0,
+        zoom: 0.0,
+        zoom_min: 0.0,
+        zoom_max: 0.0,
     }
 }
 pub fn clock_text(ticks: i64) -> String {

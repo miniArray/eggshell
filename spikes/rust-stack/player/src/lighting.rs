@@ -49,8 +49,8 @@ impl Frame {
         plan: &Plan,
     ) {
         self.grid = [
-            plan.offset[0] as f32,
-            plan.offset[1] as f32,
+            crate::screen::godot_round(plan.offset[0]) as f32,
+            crate::screen::godot_round(plan.offset[1]) as f32,
             plan.scale as f32,
         ];
         let phase = at[0] as f32 * 0.071 + at[1] as f32 * 0.037;

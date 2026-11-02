@@ -4,6 +4,36 @@ use std::{io::Write, path::Path};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ZoomSteps {
+    #[default]
+    Whole,
+    Quarter,
+}
+impl ZoomSteps {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Whole => Self::Quarter,
+            Self::Quarter => Self::Whole,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Whole => "whole",
+            Self::Quarter => "quarter",
+        }
+    }
+    /// Zoom is an offset from the integer default. Snap when changing modes.
+    pub fn advance(self, zoom: f64, delta: i32) -> f64 {
+        let step = match self {
+            Self::Whole => 1.0,
+            Self::Quarter => 0.25,
+        };
+        (zoom / step).round() * step + f64::from(delta) * step
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GlowStyle {
     #[default]
     Pixel,
@@ -48,6 +78,7 @@ pub struct FeelSettings {
     pub glow_strength: i64,
     pub auto_normals: bool,
     pub glow_style: GlowStyle,
+    pub zoom_steps: ZoomSteps,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -73,6 +104,7 @@ impl Default for FeelSettings {
             glow_strength: 1,
             auto_normals: false,
             glow_style: GlowStyle::Pixel,
+            zoom_steps: ZoomSteps::Whole,
         }
     }
 }
@@ -121,6 +153,23 @@ impl FeelSettings {
 mod tests {
     use super::*;
     #[test]
+    fn zoom_controls_visit_each_quarter_and_whole_mode_stays_integral() {
+        let mut zoom = 0.0;
+        let mut scales = vec![1.0];
+        for _ in 0..8 {
+            zoom = ZoomSteps::Quarter.advance(zoom, 1);
+            scales.push(1.0 + zoom);
+        }
+        assert_eq!(scales, [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]);
+        for expected in scales.iter().rev().skip(1) {
+            zoom = ZoomSteps::Quarter.advance(zoom, -1);
+            assert_eq!(1.0 + zoom, *expected);
+        }
+        assert_eq!(ZoomSteps::Whole.advance(0.25, 0), 0.0);
+        assert_eq!(ZoomSteps::Whole.advance(0.0, 1), 1.0);
+        assert_eq!(ZoomSteps::Whole.advance(1.0, -1), 0.0);
+    }
+    #[test]
     fn old_settings_get_new_defaults_and_goal_strength_is_clamped() {
         let old = r#"{"shake_enabled":false,"pound_strength_px":4,"pound_steps":12,"hit_strength_px":1,"hit_steps":8,"dust_enabled":false,"dust_amount":1,"muffle_enabled":false,"muffle_strength":1}"#;
         let mut s: FeelSettings = serde_json::from_str(old).unwrap();
@@ -158,6 +207,8 @@ mod tests {
         let s: FeelSettings = serde_json::from_str(old).unwrap();
         assert!(!s.shake_enabled);
         assert_eq!(s.glow_style, GlowStyle::Pixel);
+        assert_eq!(s.zoom_steps, ZoomSteps::Whole);
+        assert_eq!(serde_json::to_value(s).unwrap()["zoom_steps"], "whole");
         assert_eq!(serde_json::to_value(s).unwrap()["glow_style"], "pixel");
         assert_eq!(s.muffle_strength, 3);
         assert_eq!(
