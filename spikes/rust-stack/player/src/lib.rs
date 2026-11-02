@@ -20,6 +20,7 @@ pub mod hud;
 pub mod input;
 pub mod level_index;
 pub mod level_list;
+pub mod lighting;
 pub mod menu;
 pub mod pack;
 pub mod picker;

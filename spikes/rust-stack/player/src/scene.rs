@@ -182,6 +182,7 @@ pub struct Picture {
     #[cfg(feature = "benchmark-work-counters")]
     pub work: crate::diagnosis::SceneWork,
     pub hud_layout: Layout,
+    pub lights: crate::lighting::Frame,
     pub light_origin: [f64; 2],
     pub light_radius: f64,
     pub darkness: f64,
@@ -1512,6 +1513,10 @@ impl Scene {
             ..Default::default()
         };
         let mut entity_bounds_in_view = 0_u64; // measurement only, inside existing entity traversal
+        let mut lights = crate::lighting::Frame::new(container, map.darkness_percent as f64);
+        for entity in &p.entities {
+            lights.entity(entity, p.tick, &plan);
+        }
         let mut commands: Vec<(i64, u64, Quad)> = Vec::new();
         let mut order = 0u64;
         let mut gradients = Vec::new();
@@ -1612,6 +1617,13 @@ impl Scene {
                     let cell = layer.cells[y * layer.width + x];
                     if cell == -1 {
                         continue;
+                    }
+                    if layer.hazard == eggshell_spike_core::TerrainHazard::Lava {
+                        lights.lava(
+                            [(x as f64 + 0.5) * size, (y as f64 + 0.5) * size],
+                            p.tick,
+                            &plan,
+                        );
                     }
                     let raw = cell as u32;
                     let id = raw & 0x1fff_ffff;
@@ -2534,7 +2546,9 @@ impl Scene {
         if let Some(rgba) = map_tint(&map.tint) {
             tint.push(fullscreen_quad(self.solid, container, rgba));
         }
+        lights.budget();
         Ok(Picture {
+            lights,
             #[cfg(feature = "benchmark-work-counters")]
             work,
             tint,
