@@ -175,7 +175,28 @@ impl Run {
     /// dispatch loops call it after every step and contact, before anything reads the
     /// ball again.
     pub(crate) fn mace_on_remove(&mut self) {
-        for index in 0..self.entities.len() {
+        // The mace walkers' rows, in table order, rebuilt when the table length changed
+        // or a remembered row no longer holds one (scanning the whole table after every
+        // dispatch made big levels quadratic).
+        let is_mace = |e: &crate::entity::Entity| {
+            matches!(&e.kind, Kind::Walker(w) if w.kind == ActorKind::Mace)
+        };
+        let stale = self.mace_rows.0 != self.entities.len()
+            || self
+                .mace_rows
+                .1
+                .iter()
+                .any(|&i| !self.entities.get(i).is_some_and(is_mace));
+        if stale {
+            self.mace_rows = (
+                self.entities.len(),
+                (0..self.entities.len())
+                    .filter(|&i| is_mace(&self.entities[i]))
+                    .collect(),
+            );
+        }
+        let rows = self.mace_rows.1.clone();
+        for index in rows {
             let pending = matches!(&self.entities[index].kind,
                 Kind::Walker(w) if w.kind == ActorKind::Mace && w.drop_pending != 0);
             if pending {

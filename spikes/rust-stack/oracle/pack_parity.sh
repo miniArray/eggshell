@@ -1,6 +1,7 @@
 #!/usr/bin/env nix-shell
 #! nix-shell ../core/toolchain.nix -i bash
-# aka only. Usage: pack_parity.sh SWEEP_TAG [TICKS] [LIMIT]
+# aka only. Usage: pack_parity.sh SWEEP_TAG [TICKS] [LIMIT] [SKIP]
+# SKIP: leave out the first SKIP admitted levels (shards across aka trees).
 # Every-tick Godot parity on each admitted corpus level of pack-sweep-SWEEP_TAG.jsonl, on
 # a generic walk-and-hop route (no state edits). Prints one PACK_PARITY line per level
 # and a PACK_PARITY_DONE summary. Private levels and streams stay under artifacts.
@@ -11,6 +12,7 @@ git diff --exit-code 297ada9a022d0ddc297dd2d4091c5dccfab4531e -- src tests/fixtu
 tag=$1
 ticks=${2:-900}
 limit=${3:-100000}
+skip=${4:-0}
 root="$HOME/eggshell-remote/artifacts/full-rust-ab"
 sweep="$root/speed/pack-sweep-$tag.jsonl"
 corpus="$HOME/.local/share/eggshell-run/corpus/levels"
@@ -35,7 +37,8 @@ fail=0
 count=0
 while IFS= read -r id; do
   count=$((count + 1))
-  [[ $count -le $limit ]] || break
+  [[ $count -gt $skip ]] || continue
+  [[ $((count - skip)) -le $limit ]] || break
   dir="$out/$id"
   rm -rf "$dir"
   # A Godot that printed ORACLE_DONE can hang on exit, so bound the run and judge the

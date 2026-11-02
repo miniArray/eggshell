@@ -11,7 +11,9 @@ D="$ROOT/speed/sim-corpus-$(git rev-parse --short HEAD)-$(date -u +%Y%m%dT%H%M%S
 mkdir "$D"
 export CARGO_TARGET_DIR="$ROOT/speed/profile-target"
 export RUSTFLAGS='-C force-frame-pointers=yes -C debuginfo=2'
-nix develop ./spikes/rust-stack/player -c cargo build --release --manifest-path spikes/rust-stack/player/Cargo.toml
+# The dev shell sets its own RUSTFLAGS; pass frame pointers and line tables inside it.
+nix develop ./spikes/rust-stack/player -c env RUSTFLAGS="$RUSTFLAGS" CARGO_PROFILE_RELEASE_DEBUG=line-tables-only \
+  cargo build --release --manifest-path spikes/rust-stack/player/Cargo.toml
 SCHEMA="$ROOT/core/stride-4.7.2/schema.json"
 # The pack parity walk-and-hop route (host-sim-corpus.sh writes the same file).
 export HOST_SIM_INPUT="$ROOT/speed/host-sim-route.json"
@@ -25,6 +27,9 @@ for id in "$@"; do
   printf 'SELF_PROFILE %s\n' "$id"
   perf report -i "$D/$id.perf.data" --stdio --no-children -g none --sort symbol 2>/dev/null \
     | grep -E "^ +[0-9]" | head -15 || true
+  printf 'HOT_LINES %s\n' "$id"
+  perf report -i "$D/$id.perf.data" --stdio --no-children -g none --sort srcline 2>/dev/null \
+    | grep -E "^ +[0-9]" | head -12 || true
   printf 'CALLERS %s\n' "$id"
   perf report -i "$D/$id.perf.data" --stdio --children -g none --sort symbol 2>/dev/null \
     | grep -E "^ +[0-9]" | grep -E 'eggshell_spike_core' | head -30 || true

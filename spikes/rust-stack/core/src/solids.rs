@@ -82,6 +82,36 @@ pub(crate) struct PostUpdate {
     pub height: i64,
     pub status: i64,
 }
+/// A small multiply-rotate hasher (FxHash) for the integer keys of the step's indexes:
+/// lookups only, never iterated for results, so the hash order cannot change behaviour.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Fx(u64);
+impl std::hash::Hasher for Fx {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.write_u64(u64::from(b));
+        }
+    }
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0.rotate_left(5) ^ value).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+    fn write_i64(&mut self, value: i64) {
+        self.write_u64(value as u64);
+    }
+}
+pub(crate) type FastHash = std::hash::BuildHasherDefault<Fx>;
+/// A SolidFrame kept between steps for its buffers. Cloning (state copies, saves)
+/// starts a fresh one: `begin` clears every row each step, so contents never carry over.
+#[derive(Default, Debug)]
+pub(crate) struct Scratch(pub SolidFrame);
+impl Clone for Scratch {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
 #[derive(Default, Debug)]
 pub(crate) struct SolidFrame {
     rows: Vec<Row>,
@@ -96,13 +126,13 @@ pub(crate) struct SolidFrame {
     /// Broad phase for `shapes`: rows listed under every CELL their region has
     /// ever covered this step (a superset). `shapes` still applies the exact
     /// region test in row order, so results and handle order are unchanged.
-    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>, FastHash>,
     /// Each row's region in CELL units (kept with the region by begin and refresh).
     row_cells: Vec<[i64; 4]>,
     /// Reused candidate bitset for `shapes` (one bit per row).
     scratch: Vec<u64>,
     /// Row index by entity token, for `refresh` (collision.gd context.by_token).
-    by_token: std::collections::HashMap<i64, usize>,
+    by_token: std::collections::HashMap<i64, usize, FastHash>,
     /// Rows whose region covers too many cells to list.
     wide: Vec<usize>,
 }
@@ -181,7 +211,10 @@ impl SolidFrame {
         self.updates.clear();
         self.head_bumped.clear();
         self.head_bumps.clear();
-        self.cells.clear();
+        // Empty each cell's list but keep it (and the key) for the next step's rows.
+        for list in self.cells.values_mut() {
+            list.clear();
+        }
         self.wide.clear();
         self.by_token.clear();
         self.row_cells.clear();

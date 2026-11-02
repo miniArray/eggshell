@@ -30,6 +30,11 @@ pub(crate) struct Run {
     pub message: crate::blocks::Message,
     /// timed_switch.gd LEVEL_FIELDS.
     pub clock: crate::switch::Clock,
+    /// Reused buffers of the step's solid rows (no game state; never saved).
+    pub solid_scratch: crate::solids::Scratch,
+    /// Table length and row indices of the e27 mace walkers, for mace_on_remove
+    /// (derived from the table; never saved).
+    pub mace_rows: (usize, Vec<usize>),
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,
 }
@@ -93,6 +98,8 @@ impl Run {
             consumers: crate::consumers::Consumers::default(),
             message: crate::blocks::Message::default(),
             clock: crate::switch::Clock::default(),
+            solid_scratch: crate::solids::Scratch::default(),
+            mace_rows: (usize::MAX, Vec::new()),
             #[cfg(test)]
             solid_trace: crate::solids::SolidTrace::default(),
         };
@@ -852,6 +859,19 @@ impl Run {
         world: &World,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
+        // The step's solid rows start empty every step; only their buffers are reused.
+        let solids = std::cell::RefCell::new(std::mem::take(&mut self.solid_scratch.0));
+        let result = self.advance_with(input, world, stats, &solids);
+        self.solid_scratch.0 = solids.into_inner();
+        result
+    }
+    fn advance_with(
+        &mut self,
+        input: u8,
+        world: &World,
+        stats: &mut crate::Stats,
+        solids: &std::cell::RefCell<crate::solids::SolidFrame>,
+    ) -> Result<(), Error> {
         if self.goal_reached != 0 {
             return Ok(());
         }
@@ -862,9 +882,8 @@ impl Run {
         if self.modal_step(input, world)? {
             return Ok(());
         }
-        let solids = std::cell::RefCell::new(crate::solids::SolidFrame::default());
         solids.borrow_mut().begin(&self.entities);
-        let map = crate::body::Probe::with_solids(&world.maps[0], &solids);
+        let map = crate::body::Probe::with_solids(&world.maps[0], solids);
         if self.player.life_phase == 0 {
             self.play_ticks = self.play_ticks.saturating_add(1);
             self.total_play_ticks = self.total_play_ticks.saturating_add(1);
