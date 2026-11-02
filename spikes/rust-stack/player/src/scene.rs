@@ -1469,7 +1469,14 @@ impl Scene {
         self.death_pose
             .lock()
             .map_err(|_| "death pose lock poisoned")?
-            .observe(p);
+            .observe(
+                p,
+                &self
+                    .maps
+                    .get(p.map_index.checked_sub(1).ok_or("zero saved map index")?)
+                    .ok_or("picture map absent")?
+                    .map,
+            );
         let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
         self.dust.lock().map_err(|_| "dust lock poisoned")?.observe(
             p,

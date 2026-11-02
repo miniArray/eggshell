@@ -52,7 +52,7 @@ fn main() {
     for call in 1..=310 {
         session.advance(0).unwrap();
         let p = session.presentation();
-        death.observe(&p);
+        death.observe(&p, &session.world().maps[p.map_index - 1]);
         if p.player.lifetime == Lifetime::Dying {
             let pose = &p.player.selected_pose;
             let frame = art
@@ -82,9 +82,15 @@ fn main() {
         }
     }
     assert_eq!(phases, BTreeSet::from([2, 3]));
-    assert_eq!(rendered.len(), 5);
+    assert_eq!(
+        rendered.len(),
+        manifest["player"]["Spin"]["frames"]
+            .as_array()
+            .unwrap()
+            .len()
+    );
     println!(
-        "DEATH_PROBE rendered_defeat_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
+        "DEATH_PROBE rendered_spin_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
         rendered.len()
     );
 }

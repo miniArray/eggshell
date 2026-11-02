@@ -486,3 +486,14 @@ Post-rebase compile integration: removed a stale placeholder-sidecar filter
 menu; passed the upstream run-clock override through DeathPose and its probe.
 Host checks: 139 library tests passed, one ignored; all-target clippy passed.
 No core edits, device builds, deployment, pushes or other branch updates.
+
+### Lava death spin (spike deviation)
+
+The first observed Dying step compares player world body bounds with occupied
+compiled `TerrainHazard::Lava` cells. Contact (including the boundary) locks Spin
+for that dying episode, even after moving away; other deaths retain Defeat0/1.
+The verified private manifest has six Spin frames at 24 fps, looping, versus five
+Defeat frames at 24 fps, non-looping. The every-step observer retains the episode
+for the pipelined previous frame. No simulation state or visibility changes.
+Host death_probe advanced 310 real Session steps and sampled all six Spin frames
+through death phases 2 and 3. Visual/device acceptance remains untested.
