@@ -19,7 +19,9 @@ impl ZoomSteps {
         };
     }
     pub fn cycle(&mut self, delta: i64) {
-        for _ in 0..if delta < 0 { 2 } else { 1 } { self.toggle(); }
+        for _ in 0..if delta < 0 { 2 } else { 1 } {
+            self.toggle();
+        }
     }
     pub fn label(self) -> &'static str {
         match self {
@@ -61,6 +63,39 @@ impl GlowStyle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ButtonLayout {
+    #[default]
+    Snes,
+    Xbox,
+}
+impl ButtonLayout {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Snes => Self::Xbox,
+            Self::Xbox => Self::Snes,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Snes => "SNES",
+            Self::Xbox => "Xbox",
+        }
+    }
+    /// Logical reference button to the corresponding physical SDL button.
+    pub fn button(self, button: sdl2::controller::Button) -> sdl2::controller::Button {
+        use sdl2::controller::Button;
+        match (self, button) {
+            (Self::Xbox, Button::A) => Button::B,
+            (Self::Xbox, Button::B) => Button::A,
+            (Self::Xbox, Button::X) => Button::Y,
+            (Self::Xbox, Button::Y) => Button::X,
+            _ => button,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeelSettings {
@@ -86,6 +121,7 @@ pub struct FeelSettings {
     pub auto_normals: bool,
     pub glow_style: GlowStyle,
     pub zoom_steps: ZoomSteps,
+    pub button_layout: ButtonLayout,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -112,6 +148,7 @@ impl Default for FeelSettings {
             auto_normals: false,
             glow_style: GlowStyle::Pixel,
             zoom_steps: ZoomSteps::Whole,
+            button_layout: ButtonLayout::Snes,
         }
     }
 }
@@ -129,8 +166,10 @@ impl FeelSettings {
         self.glow_strength = self.glow_strength.clamp(0, 3);
     }
     pub fn load(directory: &Path) -> Self {
-        let path = directory.join("feel.json");
-        let (mut settings, source) = match std::fs::read(&path) {
+        Self::load_path(&directory.join("feel.json"))
+    }
+    pub fn load_path(path: &Path) -> Self {
+        let (mut settings, source) = match std::fs::read(path) {
             Ok(bytes) => match serde_json::from_slice::<Self>(&bytes) {
                 Ok(settings) => (settings, "file"),
                 Err(_) => (Self::default(), "defaults-invalid"),
@@ -232,6 +271,8 @@ mod tests {
         assert!(!s.shake_enabled);
         assert_eq!(s.glow_style, GlowStyle::Pixel);
         assert_eq!(s.zoom_steps, ZoomSteps::Whole);
+        assert_eq!(s.button_layout, ButtonLayout::Snes);
+        assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");
         assert_eq!(serde_json::to_value(s).unwrap()["zoom_steps"], "whole");
         assert_eq!(serde_json::to_value(s).unwrap()["glow_style"], "pixel");
         assert_eq!(s.muffle_strength, 3);

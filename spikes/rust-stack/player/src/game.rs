@@ -726,7 +726,13 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
         if let Some(f) = &mut feedback {
             f.collect()?;
         }
-        let live = controls.mask();
+        let live = controls.mask(
+            scene
+                .feel
+                .lock()
+                .map_err(|_| "feel lock poisoned")?
+                .button_layout,
+        );
         if !uncapped {
             clock.observe(Instant::now(), paused || release_gate.is_waiting());
         }
@@ -781,7 +787,17 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             // Consume the confirm press before returning to the launcher. No
             // simulation or new saves run here; a fast relaunch cannot inherit A.
             release_gate.wait();
-            while !controls.exit && release_gate.blocked(controls.mask() | controls.menu_mask) {
+            while !controls.exit
+                && release_gate.blocked(
+                    controls.mask(
+                        scene
+                            .feel
+                            .lock()
+                            .map_err(|_| "feel lock poisoned")?
+                            .button_layout,
+                    ) | controls.menu_mask,
+                )
+            {
                 for event in events.poll_iter() {
                     controls.event(event);
                 }
@@ -1313,7 +1329,15 @@ fn goal_menu(
                 _ => {}
             }
         }
-        pad.commands(Instant::now(), &mut commands);
+        pad.commands(
+            Instant::now(),
+            scene
+                .feel
+                .lock()
+                .map_err(|_| "feel lock poisoned")?
+                .button_layout,
+            &mut commands,
+        );
         if opened.elapsed() < Duration::from_millis(250) {
             commands.clear();
         }

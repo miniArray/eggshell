@@ -510,3 +510,17 @@ Reset to defaults adopts 2. Smooth mode also uses the stronger default.
 `zoom_steps` now cycles `whole` → `half` → `quarter` on the existing Feel row.
 Half advances by 0.5 (1, 1.5, 2, 2.5…). Whole remains the default. Changing mode
 snaps to its nearest step; nearest texture sampling is unchanged.
+
+### Controller labels
+
+Feel adds `Buttons: SNES / Xbox`, key `button_layout` (`"snes"` default,
+`"xbox"` alternative). One logical-to-physical mapping swaps A/B and X/Y for
+live play, Feel, the goal menu and the separate level-list process. Reference
+play aliases A+B to jump and X+Y to tongue/use, so these gameplay pairs remain
+identical after swapping; menus keep confirm/back distinct. Keyboard unchanged.
+Changing layout while holding a face button waits for release before another
+face-button menu action, so changing the setting cannot immediately resume.
+
+Launcher integration: invoke list mode with `--levels ... --feel "$SAVE_ROOT/feel.json"`.
+`--feel PATH` reads that exact file (not the level save directory); omitted,
+missing or invalid files use defaults. Gameplay still reads save-dir/feel.json.

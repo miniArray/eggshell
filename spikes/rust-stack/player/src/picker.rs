@@ -4,6 +4,7 @@
 //! Select+Start quit. Keyboard on a host: arrows, Page Up/Down, Enter, Backspace, Escape.
 use crate::{
     binding::Catalog,
+    feel::{ButtonLayout, FeelSettings},
     gles::Gles,
     hud::Font,
     level_list::Entry,
@@ -127,8 +128,8 @@ impl Pad {
             chord: false,
         })
     }
-    pub(crate) fn commands(&mut self, now: Instant, out: &mut Vec<Command>) {
-        let pressed = |b: Button| self.controllers.iter().any(|c| c.button(b));
+    pub(crate) fn commands(&mut self, now: Instant, layout: ButtonLayout, out: &mut Vec<Command>) {
+        let pressed = |b: Button| self.controllers.iter().any(|c| c.button(layout.button(b)));
         let back_held = pressed(Button::Back);
         let state: [bool; 8] = PAD_BUTTONS.map(pressed);
         for (i, &down) in state.iter().enumerate() {
@@ -183,6 +184,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut metrics = None;
     let mut choice = None;
     let mut focus = None;
+    let mut feel_path = None;
     let mut status = String::new();
     let mut seconds = 900u64;
     let mut fullscreen = true;
@@ -196,6 +198,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             "--pack-inventory" => inventory = Some(PathBuf::from(value()?)),
             "--view-metrics" => metrics = Some(PathBuf::from(value()?)),
             "--choice" => choice = Some(PathBuf::from(value()?)),
+            "--feel" => feel_path = Some(PathBuf::from(value()?)),
             "--focus" => focus = Some(value()?),
             "--status" => status = value()?,
             "--seconds" => {
@@ -217,6 +220,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             _ => return Err(format!("unrecognized level list argument: {key}")),
         }
     }
+    let layout = feel_path
+        .as_deref()
+        .map(FeelSettings::load_path)
+        .unwrap_or_default()
+        .button_layout;
     let index = index.ok_or("--index required")?;
     let choice = choice.ok_or("--choice required")?;
     let parsed: serde_json::Value =
@@ -277,7 +285,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 _ => {}
             }
         }
-        pad.commands(Instant::now(), &mut commands);
+        pad.commands(Instant::now(), layout, &mut commands);
         let shot = !script.is_empty() && frames > 0 && frames.is_multiple_of(SCRIPT_FRAMES);
         if shot {
             if let Some(dir) = &dump {

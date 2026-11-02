@@ -15,10 +15,11 @@ const GLOW_STRENGTH_ROW: usize = 18;
 const AUTO_NORMALS_ROW: usize = 19;
 const GLOW_STYLE_ROW: usize = 20;
 const ZOOM_STEPS_ROW: usize = 21;
-const PREVIEW_ROW: usize = 22;
-const RESTART_ROW: usize = 23;
-const RESET_ROW: usize = 24;
-const RESUME_ROW: usize = 25;
+const BUTTON_LAYOUT_ROW: usize = 22;
+const PREVIEW_ROW: usize = 23;
+const RESTART_ROW: usize = 24;
+const RESET_ROW: usize = 25;
+const RESUME_ROW: usize = 26;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -71,6 +72,7 @@ impl Model {
                 GLOW_STRENGTH_ROW => s.glow_strength += delta,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 GLOW_STYLE_ROW => s.glow_style.toggle(),
+                BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.cycle(delta),
                 _ => {}
             }
@@ -88,6 +90,7 @@ impl Model {
                 GLOW_ROW => s.glow_enabled = !s.glow_enabled,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 GLOW_STYLE_ROW => s.glow_style.toggle(),
+                BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.toggle(),
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESTART_ROW => return Action::Restart,
@@ -153,6 +156,7 @@ impl MenuPage for Page<'_> {
             format!("Auto normals: {}", on(s.auto_normals)),
             format!("Glow style: {}", s.glow_style.label()),
             format!("Zoom steps: {}", s.zoom_steps.label()),
+            format!("Buttons: {}", s.button_layout.label()),
             "Preview shake".into(),
             "Restart level".into(),
             "Reset to defaults".into(),
@@ -385,6 +389,7 @@ mod tests {
             GLOW_ROW,
             AUTO_NORMALS_ROW,
             GLOW_STYLE_ROW,
+            BUTTON_LAYOUT_ROW,
             ZOOM_STEPS_ROW,
         ] {
             m.focus = row;

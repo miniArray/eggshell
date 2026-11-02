@@ -1,4 +1,5 @@
 //! SDL input adapter. Core owns gameplay held/released edge semantics.
+use crate::feel::ButtonLayout;
 use sdl2::{
     controller::{Axis, Button, GameController},
     event::Event,
@@ -12,6 +13,8 @@ pub struct Controls {
     _joysticks: Vec<Joystick>,
     keyboard: u8,
     previous_actions: u16,
+    layout: ButtonLayout,
+    wait_faces: bool,
     pub events: u64,
     pub repeat_events: u64,
     pub pause_toggle: bool,
@@ -68,6 +71,8 @@ impl Controls {
             _joysticks: joysticks,
             keyboard: 0,
             previous_actions: 0,
+            layout: ButtonLayout::default(),
+            wait_faces: false,
             events: 0,
             repeat_events: 0,
             pause_toggle: false,
@@ -140,8 +145,18 @@ impl Controls {
     }
     /// Call once after each event batch. OR held states across device handles,
     /// then sample action edges once; duplicate interfaces cannot double-toggle.
-    pub fn mask(&mut self) -> u8 {
-        let pressed = |b| self.controllers.iter().any(|c| c.button(b));
+    pub fn mask(&mut self, layout: ButtonLayout) -> u8 {
+        let pressed = |b| self.controllers.iter().any(|c| c.button(layout.button(b)));
+        if layout != self.layout {
+            self.wait_faces = true;
+            self.layout = layout;
+        }
+        if ![Button::A, Button::B, Button::X, Button::Y]
+            .into_iter()
+            .any(pressed)
+        {
+            self.wait_faces = false;
+        }
         let axis = |a, positive| {
             self.controllers.iter().any(|c| {
                 if positive {
@@ -156,12 +171,13 @@ impl Controls {
         if back && start || pressed(Button::Guide) {
             self.exit = true;
         }
+        let faces = face_masks(layout, |b| self.controllers.iter().any(|c| c.button(b)));
         let mut result = self.keyboard;
         for (held, bit) in [
             (pressed(Button::DPadLeft) || axis(Axis::LeftX, false), LEFT),
             (pressed(Button::DPadRight) || axis(Axis::LeftX, true), RIGHT),
-            (pressed(Button::A) || pressed(Button::B), JUMP),
-            (pressed(Button::X) || pressed(Button::Y), USE),
+            (faces.0 & JUMP != 0, JUMP),
+            (faces.0 & USE != 0, USE),
             (pressed(Button::DPadUp) || axis(Axis::LeftY, false), UP),
             (pressed(Button::DPadDown) || axis(Axis::LeftY, true), DOWN),
             (pressed(Button::LeftShoulder) && !back, THROW),
@@ -173,10 +189,10 @@ impl Controls {
         }
         // A and B are separate on the paused page, even though both jump in play.
         self.menu_mask = result & (LEFT | RIGHT | UP | DOWN);
-        if self.keyboard & JUMP != 0 || pressed(Button::A) {
+        if self.keyboard & JUMP != 0 || (!self.wait_faces && faces.1 & JUMP != 0) {
             self.menu_mask |= JUMP;
         }
-        if self.keyboard & USE != 0 || pressed(Button::B) {
+        if self.keyboard & USE != 0 || (!self.wait_faces && faces.1 & USE != 0) {
             self.menu_mask |= USE;
         }
         // Slot chords suppress keyboard throw/lock as the reference global action does.
@@ -228,6 +244,22 @@ impl Controls {
         result
     }
 }
+/// Shared label mapping for live gameplay and Feel input. Gameplay deliberately
+/// aliases A/B to jump and X/Y to use, as in the reference; menus keep A/B distinct.
+pub fn face_masks(layout: ButtonLayout, physical: impl Fn(Button) -> bool) -> (u8, u8) {
+    let pressed = |b| physical(layout.button(b));
+    let play = if pressed(Button::A) || pressed(Button::B) {
+        JUMP
+    } else {
+        0
+    } | if pressed(Button::X) || pressed(Button::Y) {
+        USE
+    } else {
+        0
+    };
+    let menu = if pressed(Button::A) { JUMP } else { 0 } | if pressed(Button::B) { USE } else { 0 };
+    (play, menu)
+}
 pub fn replay(path: &Path) -> Result<Vec<u8>, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let masks: Vec<u8> = serde_json::from_slice(&data)
@@ -244,6 +276,35 @@ pub fn replay(path: &Path) -> Result<Vec<u8>, String> {
 }
 #[cfg(test)]
 mod tests {
+    use super::*;
+    #[test]
+    fn layouts_swap_labels_for_faces_and_keep_reference_gameplay_aliases() {
+        for (button, snes, xbox) in [
+            (Button::A, (JUMP, JUMP), (JUMP, USE)),
+            (Button::B, (JUMP, USE), (JUMP, JUMP)),
+            (Button::X, (USE, 0), (USE, 0)),
+            (Button::Y, (USE, 0), (USE, 0)),
+        ] {
+            assert_eq!(face_masks(ButtonLayout::Snes, |b| b == button), snes);
+            assert_eq!(face_masks(ButtonLayout::Xbox, |b| b == button), xbox);
+        }
+        for button in [
+            Button::A,
+            Button::B,
+            Button::X,
+            Button::Y,
+            Button::Start,
+            Button::LeftShoulder,
+        ] {
+            assert_eq!(
+                ButtonLayout::Xbox.button(ButtonLayout::Xbox.button(button)),
+                button
+            );
+        }
+        assert_eq!(ButtonLayout::Xbox.button(Button::X), Button::Y);
+        assert_eq!(ButtonLayout::Xbox.button(Button::Y), Button::X);
+    }
+
     #[test]
     fn input_bits_match_reference_order() {
         assert_eq!(
