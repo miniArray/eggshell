@@ -131,6 +131,7 @@ struct PreparedMap {
     custom_gradient: Option<CustomGradient>,
     terrain_chunks: HashMap<(i64, i64), Vec<usize>>,
     max_tile_size: f64,
+    water: crate::water_fx::Water,
 }
 pub struct Scene {
     catalog: Catalog,
@@ -177,6 +178,8 @@ pub struct Scene {
 pub struct Picture {
     pub plan: Plan,
     pub world: Vec<Quad>,
+    pub water: crate::water_fx::Frame,
+    pub water_surface: Vec<Quad>,
     pub hud: Vec<Quad>,
     pub tint: Vec<Quad>,
     #[cfg(feature = "benchmark-work-counters")]
@@ -798,6 +801,7 @@ impl Scene {
                 custom_gradient,
                 terrain_chunks,
                 max_tile_size,
+                water: crate::water_fx::Water::prepare(&map.layers)?,
             });
         }
         let object_entries = pack.manifest.get("objects").ok_or("pack objects missing")?;
@@ -2534,7 +2538,12 @@ impl Scene {
         if let Some(rgba) = map_tint(&map.tint) {
             tint.push(fullscreen_quad(self.solid, container, rgba));
         }
+        let water = prepared.water.frame(&plan, container, p.tick, 2);
+        let mut water_surface = Vec::new();
+        water.emit_surface(self.solid, &mut water_surface);
         Ok(Picture {
+            water,
+            water_surface,
             #[cfg(feature = "benchmark-work-counters")]
             work,
             tint,
