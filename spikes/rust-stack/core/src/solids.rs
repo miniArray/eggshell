@@ -205,7 +205,8 @@ impl SolidFrame {
         for y in c[1]..=c[3] {
             for x in c[0]..=c[2] {
                 let list = self.cells.entry((x, y)).or_default();
-                if list.last() != Some(&index) {
+                // No duplicates: kept lists would otherwise grow every step a row moves.
+                if !list.contains(&index) {
                     list.push(index);
                 }
             }
@@ -829,7 +830,20 @@ impl SolidFrame {
                 });
             }
         }
+        // Keep the lists only while few rows change cells: many moving rows (a crowd of
+        // runners) leave stale entries everywhere, and a fresh index is cheaper.
+        let moved = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(index, row)| {
+                let region = cover(row.region, row.live_box);
+                let cells = region.map(|v| floor_div(v, CELL).expect("positive cell size"));
+                self.previous_cells.get(*index) != Some(&cells)
+            })
+            .count();
         let keep = self.kept_steps < 600
+            && moved * 16 <= self.rows.len()
             && self.previous_tokens.len() == self.rows.len()
             && self
                 .rows
