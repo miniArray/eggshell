@@ -253,8 +253,19 @@ fn actor_visual(
                     .into()
             }
         }
-        // shell_walker.gd view_state
-        ActorKind::Shell | ActorKind::Runner => w.shell_animation(),
+        // shell_walker.gd view_state. The pack's Shell animation is four frames at 0 fps
+        // (Godot drew one); the original (YFS Enemies sheet, KoopaTroopa) plays it at
+        // 12 fps while the shell spins, so a spinning shell steps through its frames.
+        ActorKind::Shell | ActorKind::Runner => {
+            if let Some(spin) = w.shell_spin_frame(frame) {
+                return VisualState {
+                    animation: Some(w.shell_animation()),
+                    frame: Some(spin),
+                    ..VisualState::default()
+                };
+            }
+            w.shell_animation()
+        }
         // armored_walker.gd view_state
         ActorKind::Armored => w.armored_animation(),
         // spear_guard.gd view_state

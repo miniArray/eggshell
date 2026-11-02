@@ -123,6 +123,11 @@ impl Actor {
             self.remove(status, can_respawn);
         }
     }
+    /// The spinning shell's frame of the original's 12 fps Shell animation (4 frames),
+    /// from the saved step count; None when the shell does not spin.
+    pub fn shell_spin_frame(&self, frame: i64) -> Option<i64> {
+        (self.mode == SPIN).then(|| (frame * 12 / 60).rem_euclid(4))
+    }
     /// shell_walker.gd view_state animation.
     pub fn shell_animation(&self) -> String {
         let pose = match self.mode {
