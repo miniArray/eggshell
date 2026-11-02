@@ -7,10 +7,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("RUST_ADMISSION_ERROR {error}");
-        std::process::exit(2);
+fn main() -> std::process::ExitCode {
+    let result = if std::env::args().nth(1).as_deref() == Some("--play") {
+        eggshell_spike_player::game::run(std::env::args().skip(2)).map(|outcome| outcome.code())
+    } else {
+        run().map(|()| 0)
+    };
+    match result {
+        Ok(code) => std::process::ExitCode::from(code),
+        Err(error) => {
+            eprintln!("RUST_ADMISSION_ERROR {error}");
+            std::process::ExitCode::from(2)
+        }
     }
 }
 fn run() -> Result<(), String> {
@@ -62,9 +70,6 @@ fn run() -> Result<(), String> {
     }
     if std::env::args().nth(1).as_deref() == Some("--level-index") {
         return eggshell_spike_player::level_index::run(std::env::args().skip(2));
-    }
-    if std::env::args().nth(1).as_deref() == Some("--play") {
-        return eggshell_spike_player::game::run(std::env::args().skip(2));
     }
     let real_assets = std::env::args().nth(1).as_deref() == Some("--validate-real-screen-assets");
     if real_assets || std::env::args().nth(1).as_deref() == Some("--validate-assets") {

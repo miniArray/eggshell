@@ -14,8 +14,9 @@ const GLOW_ROW: usize = 17;
 const GLOW_STRENGTH_ROW: usize = 18;
 const AUTO_NORMALS_ROW: usize = 19;
 const PREVIEW_ROW: usize = 20;
-const RESET_ROW: usize = 21;
-const RESUME_ROW: usize = 22;
+const RESTART_ROW: usize = 21;
+const RESET_ROW: usize = 22;
+const RESUME_ROW: usize = 23;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -26,6 +27,7 @@ pub enum Action {
     None,
     Preview { hit: bool },
     Resume,
+    Restart,
 }
 impl Model {
     pub fn step(&mut self, delta: i64) {
@@ -82,6 +84,7 @@ impl Model {
                 GLOW_ROW => s.glow_enabled = !s.glow_enabled,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 PREVIEW_ROW => return Action::Preview { hit: false },
+                RESTART_ROW => return Action::Restart,
                 RESET_ROW => *s = FeelSettings::default(),
                 RESUME_ROW => return Action::Resume,
                 _ => {}
@@ -143,6 +146,7 @@ impl MenuPage for Page<'_> {
             format!("Glow strength: {}", s.glow_strength),
             format!("Auto normals: {}", on(s.auto_normals)),
             "Preview shake".into(),
+            "Restart level".into(),
             "Reset to defaults".into(),
             "Resume".into(),
         ]
@@ -154,7 +158,7 @@ impl MenuPage for Page<'_> {
 
 /// Hidden screenshot hook: `--feel-demo N` pauses after N successful steps.
 /// Visits every row at 400 ms intervals, changes pound strength and back, previews,
-/// then resumes. No reset activation: an unattended demo preserves preferences.
+/// then resumes. Restart and reset are never activated by an unattended demo.
 pub struct Demo {
     pub after: u64,
     row: Option<usize>,
@@ -261,6 +265,35 @@ mod tests {
         }
         .items();
         assert_eq!(items.len(), ROWS);
+    }
+    #[test]
+    fn restart_is_confirm_only_before_reset_and_does_not_change_settings() {
+        let mut m = Model { focus: RESTART_ROW };
+        let mut s = FeelSettings::default();
+        let original = s;
+        for edges in [0, input::LEFT, input::RIGHT] {
+            assert_eq!(m.input(edges, &mut s), Action::None);
+        }
+        assert_eq!(m.input(input::JUMP, &mut s), Action::Restart);
+        assert_eq!(s, original);
+        assert_eq!(m.input(input::USE, &mut s), Action::Resume);
+        let labels: Vec<_> = Page {
+            model: &m,
+            settings: &s,
+        }
+        .items()
+        .into_iter()
+        .map(|item| item.label)
+        .collect();
+        assert_eq!(labels[PREVIEW_ROW], "Preview shake");
+        assert_eq!(labels[RESTART_ROW], "Restart level");
+        assert_eq!(labels[RESET_ROW], "Reset to defaults");
+        assert_eq!(labels[RESUME_ROW], "Resume");
+        assert_eq!(RESTART_ROW + 1, RESET_ROW);
+        let mut gate = ReleaseGate::default();
+        gate.wait();
+        assert!(gate.blocked(input::JUMP));
+        assert!(!gate.blocked(0));
     }
     #[test]
     fn resume_waits_for_release() {

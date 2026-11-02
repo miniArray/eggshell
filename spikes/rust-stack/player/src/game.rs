@@ -179,6 +179,21 @@ impl SavePipeline {
             AutosaveAction::Skip => Ok(()),
         }
     }
+    fn restart(self) -> Result<(), String> {
+        // Drain all queued manual/autosave writes before deletion. Never enqueue a
+        // final autosave. Even a failed worker must be joined before clearing.
+        if let Some(writer) = self.writer
+            && let Err(error) = writer.finish()
+        {
+            eprintln!("RUST_SAVE_DRAIN_FAILED reason=restart error={error}");
+        }
+        let path = self.directory.join("autosave.v10");
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("restart autosave removal {path:?}: {e}")),
+        }
+    }
     pub(crate) fn finish(self, session: &Session, samples: &mut Samples) -> Result<u64, String> {
         self.autosave(session, true, samples)?;
         match self.writer {
@@ -262,7 +277,26 @@ fn prepare_frame(
         completed,
     })
 }
-pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunExit {
+    Success,
+    Restart,
+}
+impl RunExit {
+    pub fn code(self) -> u8 {
+        match self {
+            Self::Success => 0,
+            Self::Restart => 75,
+        }
+    }
+}
+fn restart(saves: SavePipeline) -> Result<RunExit, String> {
+    saves.restart()?;
+    println!("RUST_GAME_RESTART");
+    flush()?;
+    Ok(RunExit::Restart)
+}
+pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
     let startup = Instant::now();
     let mut args = arguments;
     let mut files = std::collections::HashMap::new();
@@ -728,7 +762,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             match feel_action {
                 crate::feel_menu::Action::Preview { hit } => preview = Some((Instant::now(), hit)),
                 crate::feel_menu::Action::Resume => paused = false,
-                crate::feel_menu::Action::None => {}
+                crate::feel_menu::Action::None | crate::feel_menu::Action::Restart => {}
             }
             scene.paused_offset = if paused {
                 preview.map_or([0.0; 2], |(at, hit)| {
@@ -741,6 +775,20 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             } else {
                 [0.0; 2]
             };
+        }
+        if feel_action == crate::feel_menu::Action::Restart {
+            // Consume the confirm press before returning to the launcher. No
+            // simulation or new saves run here; a fast relaunch cannot inherit A.
+            release_gate.wait();
+            while !controls.exit && release_gate.blocked(controls.mask() | controls.menu_mask) {
+                for event in events.poll_iter() {
+                    controls.event(event);
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+            if !controls.exit {
+                return restart(saves);
+            }
         }
         if feel_action == crate::feel_menu::Action::Resume {
             feel_demo = None;
@@ -1183,7 +1231,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     flush()?;
     if controls.exit || goal_choice.is_some() {
         println!("RUST_GAME_EXIT user_requested=true completed={completed} expected={stop}");
-        return Ok(());
+        return Ok(RunExit::Success);
     }
     if completed != stop || capture_tick.is_some() && !captured {
         return Err("bounded game run incomplete; no successful completion marker".into());
@@ -1192,7 +1240,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         "RUST_GAME_DONE completed_ticks={completed} expected_ticks={stop} benchmark_unverified_level={benchmark_unverified_level} target_A_B_claim=false"
     );
     flush()?;
-    Ok(())
+    Ok(RunExit::Success)
 }
 
 /// game.gd _summary.
@@ -1389,6 +1437,65 @@ mod tests {
         ));
         std::fs::create_dir(&directory).unwrap();
         directory
+    }
+    #[test]
+    fn restart_exits_75_after_draining_and_removing_autosave_without_summary() {
+        const CHILD_DIR: &str = "EGGSHELL_RESTART_TEST_DIR";
+        if let Some(directory) = std::env::var_os(CHILD_DIR) {
+            let directory = PathBuf::from(directory);
+            let saves = SavePipeline::start(directory.clone(), false);
+            let writer = saves.writer.as_ref().unwrap();
+            writer
+                .enqueue(directory.join("autosave.v10"), vec![1, 2])
+                .unwrap();
+            writer
+                .enqueue(directory.join("manual.v10"), vec![3, 4])
+                .unwrap();
+            // Exercise the same shutdown and exit-code contract as the --play entry point.
+            let outcome = restart(saves).unwrap();
+            std::process::exit(outcome.code().into());
+        }
+        let directory = test_save_directory("restart-process");
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "game::tests::restart_exits_75_after_draining_and_removing_autosave_without_summary", "--nocapture"])
+            .env(CHILD_DIR, &directory)
+            .output().unwrap();
+        assert_eq!(output.status.code(), Some(75), "{output:?}");
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(stdout.matches("RUST_GAME_RESTART").count(), 1);
+        assert!(!stdout.contains("RUST_GAME_DONE"));
+        assert!(!stdout.contains("RUST_GAME_SUMMARY"));
+        assert!(!directory.join("autosave.v10").exists());
+        assert!(!directory.join("autosave.tmp").exists());
+        assert_eq!(std::fs::read(directory.join("manual.v10")).unwrap(), [3, 4]);
+        assert_eq!(RunExit::Success.code(), 0);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn restart_with_no_autosave_is_safe_but_failed_removal_does_not_request_relaunch() {
+        let directory = test_save_directory("restart-missing");
+        assert_eq!(
+            restart(SavePipeline::start(directory.clone(), false)).unwrap(),
+            RunExit::Restart
+        );
+        std::fs::create_dir(directory.join("autosave.v10")).unwrap();
+        assert!(restart(SavePipeline::start(directory.clone(), false)).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn restart_joins_a_failed_worker_before_removing_existing_autosave() {
+        let directory = test_save_directory("restart-failed-worker");
+        std::fs::write(directory.join("autosave.v10"), [1]).unwrap();
+        let saves = SavePipeline::start(directory.clone(), false);
+        saves
+            .writer
+            .as_ref()
+            .unwrap()
+            .enqueue(directory.join("absent/manual.v10"), vec![2])
+            .unwrap();
+        assert_eq!(restart(saves).unwrap(), RunExit::Restart);
+        assert!(!directory.join("autosave.v10").exists());
+        std::fs::remove_dir_all(directory).unwrap();
     }
     #[test]
     fn startup_maps_are_private_nonempty_and_never_overwritten() {
