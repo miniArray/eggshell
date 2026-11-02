@@ -531,8 +531,6 @@ pub struct Session {
     previous: presentation::Previous,
     render_index: render_index::Index,
     interpolate: bool,
-    /// Reused storage for the next step's entity rows. Contents are never read.
-    spare_entities: Vec<entity::Entity>,
 }
 impl Session {
     pub fn load(level_json: &str, collision_json: &str, schema_json: &str) -> Result<Self, Error> {
@@ -575,7 +573,6 @@ impl Session {
             previous,
             render_index,
             interpolate: false,
-            spare_entities: Vec::new(),
         })
     }
     /// Benchmark-only entry; normal load remains strict and all other checks run.
@@ -642,7 +639,6 @@ impl Session {
             previous,
             render_index,
             interpolate: false,
-            spare_entities: Vec::new(),
         })
     }
     pub fn benchmark_actor_steps(&self) -> Option<[u64; 5]> {
@@ -656,32 +652,21 @@ impl Session {
         }
     }
     pub fn advance(&mut self, input_mask: u8) -> Result<(), Error> {
-        // Transactional refusal while this narrow vertical slice still has unsupported
-        // contacts. This is a typed-state copy, never snapshot encoding or JSON.
-        // Remove the rollback copy only when the admitted closure cannot fail mid-step.
-        // The entity rows are copied into a recycled buffer (the rows of the state
-        // before last), so a step makes no large allocation.
-        let rows = std::mem::take(&mut self.state.entities);
-        let mut next = self.state.clone();
-        self.state.entities = rows;
-        let mut buffer = std::mem::take(&mut self.spare_entities);
-        buffer.clone_from(&self.state.entities);
-        next.entities = buffer;
+        // The state steps in place. All 858 pack levels are admitted, and every caller
+        // stops at the first refused step, so the whole-state rollback copy (about
+        // 1.4 KB per entity row, every step) is gone. A frame overflow still refuses
+        // before anything changes. After any other refusal the session must not be used.
+        let previous = presentation::Previous::of(&self.state, self.world.maps[0].placements.len());
         let mut stats = self.stats.clone();
         #[cfg(feature = "benchmark-work-counters")]
         stats.benchmark_stepped_source_rows.clear();
-        next.advance(input_mask, &self.world, &mut stats)?;
-        next.validate(&self.world)?;
+        self.state.advance(input_mask, &self.world, &mut stats)?;
+        self.state.validate(&self.world)?;
         stats.completed_ticks += 1;
-        stats.tick = next.frame;
+        stats.tick = self.state.frame;
         self.stats = stats;
-        self.render_index.update(&next, &self.world);
-        let finished = std::mem::replace(&mut self.state, next);
-        let older = std::mem::replace(
-            &mut self.previous,
-            presentation::Previous::from_run(finished, self.world.maps[0].placements.len()),
-        );
-        self.spare_entities = older.into_entities();
+        self.render_index.update(&self.state, &self.world);
+        self.previous = previous;
         self.interpolate = true;
         Ok(())
     }

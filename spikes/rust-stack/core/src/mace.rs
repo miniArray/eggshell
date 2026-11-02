@@ -178,9 +178,7 @@ impl Run {
         // The mace walkers' rows, in table order, rebuilt when the table length changed
         // or a remembered row no longer holds one (scanning the whole table after every
         // dispatch made big levels quadratic).
-        let is_mace = |e: &crate::entity::Entity| {
-            matches!(&e.kind, Kind::Walker(w) if w.kind == ActorKind::Mace)
-        };
+        let is_mace = |e: &crate::entity::Entity| matches!(&e.kind, Kind::Walker(w) if w.kind == ActorKind::Mace);
         let stale = self.mace_rows.0 != self.entities.len()
             || self
                 .mace_rows

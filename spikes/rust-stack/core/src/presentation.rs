@@ -8,22 +8,29 @@ pub(crate) struct Previous {
     pub player: Position,
     pub companion: Position,
     pub follow: Position,
-    /// The previous state's entity rows, moved (not copied) from that state.
+    /// The previous state's rows as (token, position, plant head box), in table order.
     /// Looked up by token only for the rows a picture samples.
-    entities: Vec<crate::entity::Entity>,
+    entities: Vec<(i64, Position, Option<[i64; 4]>)>,
     placed: usize,
     pub rescuers: [Position; 4],
 }
 impl Previous {
     pub fn of(run: &Run, placed: usize) -> Self {
-        Self::from_entities(run, run.entities.clone(), placed)
-    }
-    /// Takes the finished state's rows without copying them.
-    pub fn from_run(mut run: Run, placed: usize) -> Self {
-        let entities = std::mem::take(&mut run.entities);
-        Self::from_entities(&run, entities, placed)
-    }
-    fn from_entities(run: &Run, entities: Vec<crate::entity::Entity>, placed: usize) -> Self {
+        let entities = run
+            .entities
+            .iter()
+            .map(|e| {
+                let head = match &e.kind {
+                    Kind::Walker(w)
+                        if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
+                    {
+                        Some(w.head_box(e.body, e.facing))
+                    }
+                    _ => None,
+                };
+                (e.origin.token(), pos(e.body), head)
+            })
+            .collect();
         Self {
             player: pos(run.player.body),
             companion: Position {
@@ -36,43 +43,26 @@ impl Previous {
             rescuers: run.player.life.rescuers,
         }
     }
-    pub fn into_entities(self) -> Vec<crate::entity::Entity> {
-        self.entities
-    }
     /// Same result as the former token map: position and plant head box of the
     /// previous row with this token, or None when the token did not exist.
     pub fn entity(&self, token: i64) -> Option<(Position, Option<[i64; 4]>)> {
-        let row = |e: &crate::entity::Entity| {
-            let head = match &e.kind {
-                Kind::Walker(w)
-                    if w.kind == crate::actors::ActorKind::Plant && w.head_size != 0 =>
-                {
-                    Some(w.head_box(e.body, e.facing))
-                }
-                _ => None,
-            };
-            (pos(e.body), head)
-        };
+        let row = |e: &(i64, Position, Option<[i64; 4]>)| (e.1, e.2);
         // Placed token t lives at index t-1 in a validated state.
         if token >= 1 && token <= self.placed as i64 {
             if let Some(e) = self.entities.get(token as usize - 1) {
-                if e.origin.token() == token {
+                if e.0 == token {
                     return Some(row(e));
                 }
             }
         } else if let Some(runtime) = self.entities.get(self.placed..) {
-            if let Ok(i) = runtime.binary_search_by_key(&token, |e| e.origin.token()) {
-                if runtime[i].origin.token() == token {
+            if let Ok(i) = runtime.binary_search_by_key(&token, |e| e.0) {
+                if runtime[i].0 == token {
                     return Some(row(&runtime[i]));
                 }
             }
         }
         // Fallback for any layout the fast paths do not cover.
-        self.entities
-            .iter()
-            .rev()
-            .find(|e| e.origin.token() == token)
-            .map(row)
+        self.entities.iter().rev().find(|e| e.0 == token).map(row)
     }
 }
 fn pos(b: crate::body::Body) -> Position {

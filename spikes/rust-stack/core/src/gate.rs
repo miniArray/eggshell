@@ -118,7 +118,14 @@ impl Run {
                     Kind::Switch(_) => true,
                     _ => false,
                 };
-                if !actor || o.status != 1 || o.collected != 0 {
+                // The turned area stays within 64 px of the gate; bodies 2048 px away
+                // cannot reach it with any type's bounds.
+                if !actor
+                    || o.status != 1
+                    || o.collected != 0
+                    || (o.body.x - x).abs() > 2048 * S
+                    || (o.body.y - y).abs() > 2048 * S
+                {
                     return false;
                 }
                 let b = crate::egg::entity_bounds(o);

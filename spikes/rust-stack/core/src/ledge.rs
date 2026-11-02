@@ -58,37 +58,40 @@ impl Ledge {
 
 impl Run {
     /// count_ledge.gd _bodies: enemies, o4 stars, o7 eggs and o17 producers (pads have no
-    /// bounds; o16 is not admitted yet) that are not held, hidden or collected, with
-    /// each body's world box and vertical speed.
-    fn ledge_bodies(&self, index: usize) -> Vec<([i64; 4], i64, i64)> {
-        self.entities
-            .iter()
-            .enumerate()
-            .filter(|(i, o)| {
-                *i != index
-                    && o.status == 1
-                    && o.collected == 0
-                    && match &o.kind {
-                        Kind::Walker(w) => w.held == 0 && w.hidden == 0,
-                        Kind::Star(p) => p.held == 0,
-                        Kind::Egg(_) | Kind::Stem(_) | Kind::Hound(_) => true,
-                        _ => false,
-                    }
-            })
-            .map(|(_, o)| {
-                let b = crate::egg::entity_bounds(o);
-                (
-                    [
-                        o.body.x + b[0],
-                        o.body.y + b[1],
-                        o.body.x + b[2],
-                        o.body.y + b[3],
-                    ],
-                    o.body.y,
-                    o.body.vy,
-                )
-            })
-            .collect()
+    /// bounds) that are not held, hidden or collected; whether any one's world box, top
+    /// and vertical speed meet `test`. Bodies more than 2048 px away from the ledge
+    /// cannot reach its 64 px area with any type's bounds, so they are skipped before
+    /// their bounds are read (Near.nearby is a region query too).
+    fn ledge_any(&self, index: usize, test: impl Fn([i64; 4], i64, i64) -> bool) -> bool {
+        const REACH: i64 = 2048 * S;
+        let at = self.entities[index].body;
+        self.entities.iter().enumerate().any(|(i, o)| {
+            if i == index
+                || o.status != 1
+                || o.collected != 0
+                || (o.body.x - at.x).abs() > REACH
+                || (o.body.y - at.y).abs() > REACH
+                || !match &o.kind {
+                    Kind::Walker(w) => w.held == 0 && w.hidden == 0,
+                    Kind::Star(p) => p.held == 0,
+                    Kind::Egg(_) | Kind::Stem(_) | Kind::Hound(_) => true,
+                    _ => false,
+                }
+            {
+                return false;
+            }
+            let b = crate::egg::entity_bounds(o);
+            test(
+                [
+                    o.body.x + b[0],
+                    o.body.y + b[1],
+                    o.body.x + b[2],
+                    o.body.y + b[3],
+                ],
+                o.body.y,
+                o.body.vy,
+            )
+        })
     }
     fn ledge_player_box(&self) -> Option<[i64; 4]> {
         (self.player.captured_by == 0).then(|| {
@@ -117,10 +120,9 @@ impl Run {
                 self.player.body.y <= top && self.player.body.vy >= 0 && overlap(lowered(b), area)
             });
             let pressing = player
-                || self
-                    .ledge_bodies(index)
-                    .into_iter()
-                    .any(|(b, by, vy)| by <= top && vy >= 0 && overlap(lowered(b), area));
+                || self.ledge_any(index, |b, by, vy| {
+                    by <= top && vy >= 0 && overlap(lowered(b), area)
+                });
             if pressing {
                 if let Kind::Ledge(l) = &mut self.entities[index].kind {
                     l.pressed = 1;
@@ -131,10 +133,7 @@ impl Run {
         // The ledge raised by 2 px still touches something.
         let raised = [x - 32 * S, y - 28 * S, x + 32 * S, y + 30 * S];
         if self.ledge_player_box().is_some_and(|b| overlap(b, raised))
-            || self
-                .ledge_bodies(index)
-                .into_iter()
-                .any(|(b, _, _)| overlap(b, raised))
+            || self.ledge_any(index, |b, _, _| overlap(b, raised))
         {
             return;
         }
