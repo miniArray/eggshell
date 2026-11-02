@@ -523,7 +523,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let startup_maps_path = startup_maps(&save_dir)?;
     let initial_picture = session.presentation();
     scene.observe_feel(&initial_picture)?;
-    sound.observe_muffle(
+    sound.observe_feel(
         &initial_picture,
         *scene.feel.lock().map_err(|_| "feel lock poisoned")?,
     );
@@ -640,7 +640,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
             if old != *settings {
                 settings.save(&save_dir)?;
-                sound.observe_muffle(&session.presentation_region([0; 4]), *settings);
+                sound.observe_feel(&session.presentation_region([0; 4]), *settings);
                 let before = serde_json::to_value(old).map_err(|e| e.to_string())?;
                 let after = serde_json::to_value(*settings).map_err(|e| e.to_string())?;
                 for (key, value) in after.as_object().ok_or("feel settings not object")? {
@@ -696,7 +696,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             session.restore(&data).map_err(|e| e.to_string())?;
             sound.replaced();
             let p = session.presentation_region([0; 4]);
-            sound.observe_muffle(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
+            sound.observe_feel(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
             scene.observe_feel(&p)?;
         }
         if controls.save {
@@ -741,7 +741,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         // A player presentation is sampled every step so short landings
                         // and hits cannot disappear between rendered frames.
                         let p = session.presentation_region([0; 4]);
-                        sound.observe_muffle(&p, *scene_ref.feel.lock().map_err(|_| "feel lock poisoned")?);
+                        sound.observe_feel(&p, *scene_ref.feel.lock().map_err(|_| "feel lock poisoned")?);
                         audio_observe.add(timer.finish());
                         scene_ref.observe_feel(&p)?;
                         if session.stats().tick == saved_tick {
@@ -861,7 +861,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     let timer = Timer::new();
                     sound.observe(&session);
                     let p = session.presentation_region([0; 4]);
-                    sound.observe_muffle(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
+                    sound.observe_feel(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
                     audio_observe.add(timer.finish());
                     scene.observe_feel(&p)?;
                     if session.stats().tick == saved_tick {

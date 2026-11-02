@@ -5,9 +5,10 @@
 //! one after each simulation step and never writes state. A restored state, a frame that
 //! does not advance or a gap of more than four frames resynchronizes without cues, so a
 //! restore never replays old sounds. `Mixer` plays the cues in SDL's audio thread: eight
-//! effect voices and one music voice. Effects are decoded once on a loader thread; music
+//! effect voices, one base music voice and an optional aligned stem. Effects are decoded
+//! once on a loader thread; music
 //! is decoded while it plays and kept, so loops and restarts are exact.
-use crate::{feel::FeelSettings, pack::Pack};
+use crate::{feel::FeelSettings, goal_music, pack::Pack};
 use eggshell_spike_core::{Presentation, PropertyValue, Session, World};
 use serde_json::Value;
 use std::{
@@ -790,7 +791,11 @@ pub fn decode(bytes: Arc<[u8]>) -> Result<Pcm, String> {
 /// Decodes every pack track and effect and reports frames and decode time per file.
 pub fn decode_check(pack: &Pack) -> Result<(), String> {
     let map = AudioMap::parse(&pack.manifest);
-    let mut files: Vec<_> = map.music.values().chain(map.effects.values()).collect();
+    let mut files: Vec<_> = map
+        .music
+        .values()
+        .chain(map.effects.values())
+        .collect();
     files.sort();
     files.dedup();
     let (mut seconds, mut decode_ms) = (0.0, 0.0);
@@ -817,6 +822,9 @@ pub fn decode_check(pack: &Pack) -> Result<(), String> {
 
 /// Requests from the observer to the mixer.
 pub enum Command {
+    Goal {
+        amount: f32,
+    },
     Muffle {
         strength: i64,
     },
@@ -1050,12 +1058,14 @@ struct MusicVoice {
     gain: f32,
 }
 
-/// The SDL audio callback: mixes eight effect voices and one music voice.
+/// The SDL audio callback: eight effects and one streaming music bus.
 pub struct Mixer {
     commands: mpsc::Receiver<Command>,
     voices: [Voice; VOICES],
     order: u64,
     music: Option<MusicVoice>,
+    music_buffer: Vec<f32>,
+    lift: goal_music::Lift,
     muffle: Muffle,
     stats: Arc<MixerStats>,
 }
@@ -1066,12 +1076,15 @@ impl Mixer {
             voices: Default::default(),
             order: 0,
             music: None,
+            music_buffer: Vec::new(),
+            lift: goal_music::Lift::default(),
             muffle: Muffle::default(),
             stats,
         }
     }
     fn apply(&mut self, command: Command) {
         match command {
+            Command::Goal { amount } => self.lift.set(amount),
             Command::Muffle { strength } => self.muffle.set_strength(strength),
             Command::Effect {
                 event,
@@ -1121,10 +1134,14 @@ impl Mixer {
                 }
             }
             Command::Music { stream, gain } => {
+                self.lift.clear_history();
                 self.music = Some(MusicVoice { stream, gain });
                 self.stats.music_started.fetch_add(1, Ordering::Relaxed);
             }
-            Command::StopMusic => self.music = None,
+            Command::StopMusic => {
+                self.lift.clear_history();
+                self.music = None;
+            }
         }
     }
     /// Mixes interleaved stereo frames into `out`.
@@ -1155,13 +1172,24 @@ impl Mixer {
                 voice.clip = None;
             }
         }
-        self.mix_music(out, frames);
+        self.music_buffer.resize(out.len(), 0.0);
+        self.music_buffer.fill(0.0);
+        Self::mix_music(&mut self.music, &self.stats, &mut self.music_buffer, frames);
+        self.lift.process(&mut self.music_buffer);
+        for (sample, music) in out.iter_mut().zip(&self.music_buffer) {
+            *sample += music;
+        }
         self.muffle.process(out);
     }
-    fn mix_music(&mut self, out: &mut [f32], frames: usize) {
+    fn mix_music(
+        voice: &mut Option<MusicVoice>,
+        stats: &MixerStats,
+        out: &mut [f32],
+        frames: usize,
+    ) {
         let mut written = 0;
         while written < frames {
-            let Some(music) = &mut self.music else { return };
+            let Some(music) = voice else { return };
             let stream = &mut music.stream;
             if stream.offset >= stream.current.len() {
                 match stream.packets.try_recv() {
@@ -1171,10 +1199,10 @@ impl Mixer {
                         stream.offset = 0;
                     }
                     Ok(Packet::Error) => {
-                        self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
+                        stats.decode_errors.fetch_add(1, Ordering::Relaxed);
                     }
                     Ok(Packet::End) | Err(mpsc::TryRecvError::Disconnected) => {
-                        self.music = None;
+                        *voice = None;
                         return;
                     }
                     // The decoder is behind (only at a track start): silence for now.
@@ -1198,6 +1226,7 @@ impl Mixer {
         }
     }
 }
+
 fn add(out: &mut [f32], samples: &[i16], channels: usize, from: usize, count: usize, gain: f32) {
     let scale = gain / 32768.0;
     for (i, frame) in out.chunks_exact_mut(2).take(count).enumerate() {
@@ -1307,6 +1336,8 @@ pub struct Observer {
     /// The level track of each map, by zero-based map index.
     level_tracks: Vec<Option<LevelTrack>>,
     music_bytes: HashMap<String, Arc<[u8]>>,
+    goal_proximity: goal_music::Proximity,
+    goal_amount: Option<f32>,
     effects: Effects,
     previous: Summary,
     current: Summary,
@@ -1399,6 +1430,8 @@ impl Observer {
             },
             level_tracks,
             music_bytes,
+            goal_proximity: goal_music::Proximity::new(world),
+            goal_amount: None,
             effects,
             previous: Summary::default(),
             current: Summary::default(),
@@ -1417,9 +1450,14 @@ impl Observer {
             missing_clips: 0,
         })
     }
-    /// Swimming/submerged is a presentation flag, never a write to saved state.
-    pub fn observe_muffle(&mut self, p: &Presentation, settings: FeelSettings) {
+    /// Presentation flags/positions only; called after every step and on settings changes.
+    pub fn observe_feel(&mut self, p: &Presentation, settings: FeelSettings) {
         self.update_muffle(p.player.swimming, settings);
+        let amount = self.goal_proximity.observe(p, settings);
+        if self.goal_amount != Some(amount) {
+            self.send(Command::Goal { amount });
+            self.goal_amount = Some(amount);
+        }
     }
     fn update_muffle(&mut self, swimming: bool, settings: FeelSettings) {
         let strength = settings.muffle_strength.clamp(0, 3);
@@ -1440,6 +1478,7 @@ impl Observer {
     /// resynchronizes without cues.
     pub fn replaced(&mut self) {
         self.replaced = true;
+        self.goal_proximity.reset();
     }
     /// True after the goal: game.gd stops stepping, so nothing more is observed.
     pub fn goal_reached(&self) -> bool {
@@ -2104,6 +2143,7 @@ mod tests {
             "tracks": {"goal": "4"}
         }));
         assert_eq!(audio.music.keys().collect::<Vec<_>>(), ["1"]);
+
         assert_eq!(audio.settings_for("1"), TrackSettings::default());
         assert_eq!(audio.effects.keys().collect::<Vec<_>>(), ["hop"]);
         assert_eq!(audio.effect_key("jump", 0), "hop");
@@ -2454,6 +2494,46 @@ mod tests {
         (left, false)
     }
 
+    #[test]
+    fn fallback_lifts_music_only_and_never_effects() {
+        let (send, receive) = mpsc::channel();
+        let mut mixer = Mixer::new(receive, Arc::default());
+        let (packets, receive_packets) = mpsc::sync_channel(STREAM_PACKETS);
+        packets.send(Packet::Samples {
+            channels: 2,
+            samples: (0..4000).flat_map(|_| [4000, 0]).collect(),
+        }).unwrap();
+        send.send(Command::Music {
+            stream: MusicStream {
+                packets: receive_packets,
+                current: Vec::new(),
+                channels: 2,
+                offset: 0,
+            },
+            gain: 1.0,
+        }).unwrap();
+        send.send(Command::Effect {
+            event: "effect",
+            clip: Arc::new(Pcm {
+                channels: 2,
+                samples: (0..4000).flat_map(|_| [0, 4000]).collect(),
+            }),
+            from_frame: 0,
+            gain: 1.0,
+        })
+        .unwrap();
+        send.send(Command::Goal { amount: 1.0 }).unwrap();
+        let mut out = vec![0.0; 2 * 2000];
+        mixer.mix(&mut out);
+        assert!((out[out.len() - 2] - 4000.0 / 32768.0 * goal_music::gain(1.0)).abs() < 1e-6);
+        assert_eq!(out[out.len() - 1], 4000.0 / 32768.0);
+        send.send(Command::StopMusic).unwrap();
+        send.send(Command::StopVoices).unwrap();
+        mixer.mix(&mut out);
+        assert!(out.iter().all(|&v| v == 0.0));
+        assert!(mixer.music.is_none());
+
+    }
     #[test]
     fn music_loops_back_to_its_loop_start() {
         // 20 frames in packets of 4, looping from frame 6 (inside the second packet).

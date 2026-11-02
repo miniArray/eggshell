@@ -15,6 +15,7 @@ pub mod feel_menu;
 pub mod game;
 pub mod geometry;
 pub mod gles;
+pub mod goal_music;
 pub mod gradient;
 pub mod hud;
 pub mod input;

@@ -257,3 +257,40 @@ view/input files; pinned SDL owning-source capability checks; pinned
 wayland-protocols1.49 `stable/presentation-time/presentation-time.xml` for actual
 presented/discarded/clock/sequence semantics. Device compatibility is not inferred
 from source support. Rust tests and asset counts are not picture evidence.
+
+## Feel spike: pickups, water, and goal music
+
+`feel.json` is local presentation configuration, never snapshot data. The paused
+Feel page adds Coin sparkle, Water splashes, Goal music, and Goal music strength
+(0..3, default 2). Missing keys in old files use defaults; all three switches
+start on. These use the existing menu layout and particle layer 12.
+
+Sparkles read `Presentation.sound` kind 2 and its serial/position: the core's
+explicit pickup signal, including tongue pickups and stars at the health cap.
+The packet retains the last sound in a step, so simultaneous pickups can coalesce
+into one twinkle (or be masked by a later sound in that same step). No viewport
+query or full entity scan is added to the per-step observer. Water reads swimming
+edges and the current/previous vertical velocity. The fan begins at the nearest
+compiled water polygon's top at the player's x; internal tile edges are excluded.
+
+Goal music reads immutable `o5` placements and the presented player position.
+The nearest goal starts the lift at 640 level pixels; 64 pixels gives full lift.
+A one-second time constant uses saved simulation ticks, not rendering time.
+`RUST_AUDIO_GOAL proximity=...` reports changes of at least 0.1.
+
+Music streams through upstream's bounded decoder-thread queue; only compressed
+music remains in memory. The music bus gets up to +3 dB and a gentle presence
+shelf above 1.5 kHz at strength 3. Effects do not receive that lift. A 20 ms
+audio ramp removes control steps; underwater muffle processes the final mix.
+Clipping/headroom still need listening checks on device. Packs with no music
+stay silent. Remote music retains upstream's verified private-copy loading.
+
+The optional `music_layers` stem from the earlier spike is dropped in rebase 4.
+Independent streaming queues can drift on underruns; joint lockstep decoding
+needs a separate contract. The current pinned pack has no stems, so it uses
+the same gain/presence lift as before. No asset admission checks are relaxed.
+
+Host-only read-only integration probe (needs an existing v10 schema extract):
+`nix develop . -c cargo run --example feel_probe -- /path/to/schema.json`.
+It runs 400 actual collection steps and 400 Lagoon steps with effects on/off,
+checks pickup/water signals, and compares literal snapshot bytes every step.
