@@ -443,6 +443,10 @@ pub fn held_trace(arguments: impl Iterator<Item = String>) -> Result<(), String>
     let mut watched: std::collections::BTreeMap<i64, i64> = Default::default();
     for (i, mask) in masks.iter().enumerate() {
         session.advance(*mask).map_err(|e| e.to_string())?;
+        // The game's autosave cadence: a snapshot every 60 accepted calls.
+        if std::env::var_os("HELD_TRACE_SAVES").is_some() && (i + 1) % 60 == 0 {
+            session.snapshot().map_err(|e| e.to_string())?;
+        }
         let full = session.presentation();
         let (map_index, focus) = session.presentation_view();
         let region = scene.presentation_region(map_index, focus, container, 0)?;

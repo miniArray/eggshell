@@ -18,6 +18,8 @@ use std::{collections::HashMap, path::Path};
 
 /// Runtime codes the pinned pack has no object art for. runtime_objects.gd make_node
 /// then draws Dressing.placeholder: a square of the code's hue over the body box.
+/// Object-table key of the pack's ShyGuyRollSprite visual.
+const ROLL_SPRITE: &str = "#visual:ShyGuyRollSprite";
 pub const PACKLESS_RUNTIME_CODES: [&str; 11] = [
     "enemy_disc",
     "enemy_mace",
@@ -777,6 +779,23 @@ impl Scene {
         }
         // Drawing-only parts: span stalks and spike strips, and extendable scenery parts
         // (span_dressing.gd, pack_dressing.gd decoration_plan).
+        // The Shy Guy roll sprite (drawn for a rolling e1/e2; see ROLL_SPRITE).
+        let roll_entry = pack
+            .manifest
+            .get("visuals")
+            .and_then(Value::as_object)
+            .and_then(|v| {
+                v.values().find(|e| {
+                    e.get("source_type").and_then(Value::as_str) == Some("ShyGuyRollSprite")
+                })
+            });
+        if let Some(entry) =
+            roll_entry.filter(|_| objects.contains_key("e1") || objects.contains_key("e2"))
+        {
+            let mut bound = HashMap::new();
+            bound.insert(0, catalog.visual(entry, 0, density, false)?);
+            objects.insert(ROLL_SPRITE.to_owned(), bound);
+        }
         let mut decor_caps = HashMap::new();
         for p in world.maps.iter().flat_map(|m| m.placements.iter()) {
             let mut needed: Vec<(String, Option<Value>, i64)> = Vec::new();
@@ -1751,6 +1770,29 @@ impl Scene {
                             &state.palette,
                         ));
                     }
+                } else if let (true, Some(roll)) = (
+                    ["e1", "e2"].contains(&entity.code.as_str())
+                        && state.animation.as_deref() == Some("Roll"),
+                    self.objects.get(ROLL_SPRITE),
+                ) {
+                    // The pack's ShyGuy "Roll" frame is fully transparent: the original
+                    // (YFS Enemies sheet) hides the Shy Guy and spawns a ShyGuyRollSprite
+                    // child playing "<colour>Roll", turning at 1248 degrees per second
+                    // in the roll direction. Godot drew the empty frame (invisible).
+                    let art = roll.get(&0).ok_or("roll sprite binding")?;
+                    let rf = art.sample(0, &format!("{}Roll", entity.variant), 0, None);
+                    let direction = if entity.facing < 0 { -1.0 } else { 1.0 };
+                    let mut t = transform;
+                    t.origin = rf.origin;
+                    t.rotation += direction * (1248.0 / 60.0 * p.tick as f64).rem_euclid(360.0);
+                    quads.push(sprite_quad(
+                        rf.image,
+                        self.sizes[rf.image],
+                        t,
+                        &plan,
+                        color,
+                        &state.palette,
+                    ));
                 } else {
                     quads.push(sprite_quad(
                         frame.image,
