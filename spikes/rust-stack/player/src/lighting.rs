@@ -12,6 +12,7 @@ pub struct Light {
     pub radius: f32,
     pub color: [f32; 3],
     pub intensity: f32,
+    pub glow: f32,
 }
 #[derive(Clone, Debug)]
 pub struct Frame {
@@ -38,6 +39,7 @@ impl Frame {
         radius: f64,
         color: [f32; 3],
         intensity: f32,
+        glow: f32,
         tick: i64,
         plan: &Plan,
     ) {
@@ -59,6 +61,7 @@ impl Frame {
             radius,
             color,
             intensity: intensity * flicker,
+            glow: glow * flicker,
         });
         let center = self.center;
         self.lights
@@ -82,10 +85,15 @@ impl Frame {
             e.motion.current.x as f64 / SCALE as f64 + (b[0] + b[2]) / 2.0,
             e.motion.current.y as f64 / SCALE as f64 + (b[1] + b[3]) / 2.0,
         ];
-        self.add(at, radius, color, intensity, tick, plan);
+        let glow = match e.code.as_str() {
+            "o1" | "o2" => 0.4,
+            "o5" => 0.7,
+            _ => 1.0,
+        };
+        self.add(at, radius, color, intensity, glow, tick, plan);
     }
     pub fn lava(&mut self, at: [f64; 2], tick: i64, plan: &Plan) {
-        self.add(at, 72.0, FIRE, 0.65, tick, plan);
+        self.add(at, 72.0, FIRE, 0.65, 0.0, tick, plan);
     }
     pub fn budget(&mut self) {
         // Bound total additive energy, including dense coin/lava clusters.
@@ -93,6 +101,12 @@ impl Frame {
         if sum > 3.0 {
             for l in &mut self.lights {
                 l.intensity *= 3.0 / sum;
+            }
+        }
+        let sum: f32 = self.lights.iter().map(|l| l.glow).sum();
+        if sum > 3.0 {
+            for l in &mut self.lights {
+                l.glow *= 3.0 / sum;
             }
         }
     }
@@ -109,6 +123,7 @@ fn source(
         // e16 form 3 is cold; frozen bubbles are explicitly faded by Presentation.
         "e16" if variant != 3 && alpha >= 1.0 => (80.0, FIRE, 0.9),
         "o1" | "o2" => (36.0, GOLD, 0.18),
+        "o5" => (72.0, GOLD, 0.0),
         _ => return None,
     })
 }
@@ -159,6 +174,19 @@ mod tests {
         for code in ["fire_shot", "e16", "o1", "o2"] {
             assert!(source(code, None, 0, 1.0).is_some());
         }
+    }
+    #[test]
+    fn goal_is_glow_only_and_glow_energy_is_bounded() {
+        assert_eq!(source("o5", None, 0, 1.0).unwrap().2, 0.0);
+        let plan =
+            crate::screen::plan([640.0, 480.0], [2048.0, 480.0], [320.0, 240.0], 1, 0).unwrap();
+        let mut frame = Frame::new([640.0, 480.0], 0.0);
+        for _ in 0..MAX_LIGHTS {
+            frame.add([320.0, 240.0], 72.0, GOLD, 0.0, 1.0, 5, &plan);
+        }
+        frame.budget();
+        assert!(frame.lights.iter().map(|l| l.glow).sum::<f32>() <= 3.00001);
+        assert!(frame.lights.iter().all(|l| l.intensity == 0.0));
     }
     #[test]
     fn cap_nearest_energy_and_saved_tick_repeat() {

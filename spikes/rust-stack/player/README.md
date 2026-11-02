@@ -273,3 +273,9 @@ the original shader. The auto-normal option derives an alpha-edge bevel with fou
 extra texture taps, with no generated textures. Both paths use one nearby light
 per quad and at most 128 replacement draws per frame, preserving painter order,
 palette swaps and alpha. With lights off, the exact original renderer is used.
+
+Glow uses the same soft radial sprite kernel at 45% light radius for fire,
+coins, goals and lit lamps. The light and glow sprites share one additive batch;
+there is no full-screen bright-pass, blur target, readback or extra texture.
+Dark-map glow follows the same tint-only fairness rule. Each frame caps total
+light and glow energy separately, so a dense coin row cannot wash out the screen.

@@ -263,26 +263,36 @@ impl Gles {
     /// source.rgb <= source.a implies output.rgb <= destination.rgb everywhere.
     pub fn lights(&mut self, frame: &crate::lighting::Frame) -> Result<DrawCounts, String> {
         self.vertices.clear();
+        let mut sprites = 0;
         for l in &frame.lights {
-            let r = l.radius;
-            let [x, y] = l.at;
-            let corners = [
-                [x - r, y - r],
-                [x + r, y - r],
-                [x + r, y + r],
-                [x - r, y + r],
-            ];
-            for i in self.rect_vertex_order {
-                self.vertices.extend_from_slice(&[
-                    corners[i][0],
-                    corners[i][1],
-                    crate::geometry::UNIT_UV[i][0],
-                    crate::geometry::UNIT_UV[i][1],
-                    l.color[0],
-                    l.color[1],
-                    l.color[2],
-                    l.intensity * 0.12,
-                ]);
+            // Broad additive light plus a smaller prefiltered glow, submitted once.
+            for (r, alpha) in [
+                (l.radius, l.intensity * 0.12),
+                (l.radius * 0.45, l.glow * 0.10),
+            ] {
+                if alpha <= 0.0 {
+                    continue;
+                }
+                sprites += 1;
+                let [x, y] = l.at;
+                let corners = [
+                    [x - r, y - r],
+                    [x + r, y - r],
+                    [x + r, y + r],
+                    [x - r, y + r],
+                ];
+                for i in self.rect_vertex_order {
+                    self.vertices.extend_from_slice(&[
+                        corners[i][0],
+                        corners[i][1],
+                        crate::geometry::UNIT_UV[i][0],
+                        crate::geometry::UNIT_UV[i][1],
+                        l.color[0],
+                        l.color[1],
+                        l.color[2],
+                        alpha,
+                    ]);
+                }
             }
         }
         if self.vertices.is_empty() {
@@ -301,9 +311,9 @@ impl Gles {
         }
         self.check_error()?;
         Ok(DrawCounts {
-            quads: frame.lights.len() as u64,
+            quads: sprites,
             batches: 1,
-            vertices: (frame.lights.len() * 6) as u64,
+            vertices: sprites * 6,
         })
     }
     unsafe fn fx_blend(&self, dark: bool) {
