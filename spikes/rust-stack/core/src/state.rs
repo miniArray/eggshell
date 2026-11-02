@@ -1809,69 +1809,71 @@ impl Run {
             return Err(unsupported("checkpoint memory"));
         }
         let position_limit = i64::MAX / 16384;
-        if self.frame < 0
-            || self.play_ticks < 0
-            || self.total_play_ticks < self.play_ticks
-            || self.attempt_ticks < 0
-            || self.coins < 0
-            || self.redcoins < 0
-            || self.flowers < 0
-            || self.deaths < 0
-            || !(0..=1).contains(&self.goal_reached)
-            || ![-1, 1].contains(&p.facing)
-            || !(0..=1).contains(&p.on_floor)
-            || p.captured_by < 0
-            || p.captured_by > self.entities.iter().filter(|e| e.is_enemy()).count() as i64
-            || p.support_bridge < 0
-            || p.support_bridge > world.maps[0].bridges.len() as i64
-            || !(0..=6).contains(&p.movement)
-            || !(0..=255).contains(&p.previous_input)
-            || !(0..=255).contains(&p.pressed_input)
-            || !(0..=11).contains(&p.action)
-            || ![0, 1].contains(&p.duck)
-            || ![0, 1].contains(&p.look)
-            || !(0..=9).contains(&p.posture_tick)
-            || !p.food.valid(p.water.swimming, p.duck)
-            || !(0..=position_limit).contains(&p.impact)
-            || !p.tongue.valid(p.action)
-            || !p.water.valid()
-            || ![0, 1].contains(&p.action_wet)
-            || p.action_tick < 0
-            || p.action_tick
-                >= match p.action {
-                    1 => 24,
-                    4 => p.tongue_end_tick(),
-                    5 | 9 => 10,
-                    6 => 25,
-                    8 => 13,
-                    10 => 4,
-                    11 => 35,
-                    _ => 36,
-                }
-            || !(0..=6).contains(&p.jump_buffer)
-            || !(0..=72).contains(&p.flutter_remaining)
-            || !(0..=17).contains(&p.flutter_cooldown)
-            || !(0..=1).contains(&p.flutter_ready)
-            || !(0..=1).contains(&p.boosted_flutter)
-            || !(0..=24).contains(&p.gravity_tick)
-            || !(0..=2).contains(&p.bounce)
-            || !(0..=1).contains(&p.jump_carry)
-            || ![-1, 0, 1].contains(&p.turn)
-            || !(0..=30).contains(&p.turn_ticks)
-            || !(0..=6).contains(&p.pound_delay)
-            || !(0..=1).contains(&p.push)
-            || !p.life.valid(p.life_phase, p.life_ticks)
-            || (p.life_phase == 0 && p.life_ticks != 0)
-            || (p.life_phase == 8) != (self.goal_reached != 0)
-            || !(-2000 * 60..=2000 * 60).contains(&p.body.vx)
-            || p.body.vy < -2000 * 60
-            // bump_walker.gd contact turns an upward speed under it downward
-            // (state.vy = absi(state.vy)), past the gravity caps.
-            || p.body.vy > 2000 * 60
-            || self.sound.serial < 0
-            || !(0..=4).contains(&self.sound.kind)
-        {
-            return Err(unsupported("state outside implemented Stride semantics"));
+        // Each condition is named, so a refusal says which part of the state left the
+        // implemented range.
+        let outside: Vec<&str> = [
+            ("self.frame < 0", self.frame < 0),
+            ("self.play_ticks < 0", self.play_ticks < 0),
+            ("self.total_play_ticks < self.play_ticks", self.total_play_ticks < self.play_ticks),
+            ("self.attempt_ticks < 0", self.attempt_ticks < 0),
+            ("self.coins < 0", self.coins < 0),
+            ("self.redcoins < 0", self.redcoins < 0),
+            ("self.flowers < 0", self.flowers < 0),
+            ("self.deaths < 0", self.deaths < 0),
+            ("!(0..=1).contains(&self.goal_reached)", !(0..=1).contains(&self.goal_reached)),
+            ("![-1, 1].contains(&p.facing)", ![-1, 1].contains(&p.facing)),
+            ("!(0..=1).contains(&p.on_floor)", !(0..=1).contains(&p.on_floor)),
+            ("p.captured_by < 0", p.captured_by < 0),
+            ("p.captured_by > self.entities.iter().filter(|e| e.is_enemy()).count() as i64", p.captured_by > self.entities.iter().filter(|e| e.is_enemy()).count() as i64),
+            ("p.support_bridge < 0", p.support_bridge < 0),
+            ("p.support_bridge > world.maps[0].bridges.len() as i64", p.support_bridge > world.maps[0].bridges.len() as i64),
+            ("!(0..=6).contains(&p.movement)", !(0..=6).contains(&p.movement)),
+            ("!(0..=255).contains(&p.previous_input)", !(0..=255).contains(&p.previous_input)),
+            ("!(0..=255).contains(&p.pressed_input)", !(0..=255).contains(&p.pressed_input)),
+            ("!(0..=11).contains(&p.action)", !(0..=11).contains(&p.action)),
+            ("![0, 1].contains(&p.duck)", ![0, 1].contains(&p.duck)),
+            ("![0, 1].contains(&p.look)", ![0, 1].contains(&p.look)),
+            ("!(0..=9).contains(&p.posture_tick)", !(0..=9).contains(&p.posture_tick)),
+            ("!p.food.valid(p.water.swimming, p.duck)", !p.food.valid(p.water.swimming, p.duck)),
+            ("!(0..=position_limit).contains(&p.impact)", !(0..=position_limit).contains(&p.impact)),
+            ("!p.tongue.valid(p.action)", !p.tongue.valid(p.action)),
+            ("!p.water.valid()", !p.water.valid()),
+            ("![0, 1].contains(&p.action_wet)", ![0, 1].contains(&p.action_wet)),
+            ("p.action_tick < 0", p.action_tick < 0),
+            ("p.action_tick >= match p.action { 1 => 24, 4 => p.tongue_end_tick(), 5 | 9 => 10, 6 => 25, 8 => 13, 10 => 4, 11 => 35, _", p.action_tick >= match p.action { 1 => 24, 4 => p.tongue_end_tick(), 5 | 9 => 10, 6 => 25, 8 => 13, 10 => 4, 11 => 35, _ => 36, }),
+            ("!(0..=6).contains(&p.jump_buffer)", !(0..=6).contains(&p.jump_buffer)),
+            ("!(0..=72).contains(&p.flutter_remaining)", !(0..=72).contains(&p.flutter_remaining)),
+            ("!(0..=17).contains(&p.flutter_cooldown)", !(0..=17).contains(&p.flutter_cooldown)),
+            ("!(0..=1).contains(&p.flutter_ready)", !(0..=1).contains(&p.flutter_ready)),
+            ("!(0..=1).contains(&p.boosted_flutter)", !(0..=1).contains(&p.boosted_flutter)),
+            ("!(0..=24).contains(&p.gravity_tick)", !(0..=24).contains(&p.gravity_tick)),
+            ("!(0..=2).contains(&p.bounce)", !(0..=2).contains(&p.bounce)),
+            ("!(0..=1).contains(&p.jump_carry)", !(0..=1).contains(&p.jump_carry)),
+            ("![-1, 0, 1].contains(&p.turn)", ![-1, 0, 1].contains(&p.turn)),
+            ("!(0..=30).contains(&p.turn_ticks)", !(0..=30).contains(&p.turn_ticks)),
+            ("!(0..=6).contains(&p.pound_delay)", !(0..=6).contains(&p.pound_delay)),
+            ("!(0..=1).contains(&p.push)", !(0..=1).contains(&p.push)),
+            ("!p.life.valid(p.life_phase, p.life_ticks)", !p.life.valid(p.life_phase, p.life_ticks)),
+            ("(p.life_phase == 0 && p.life_ticks != 0)", (p.life_phase == 0 && p.life_ticks != 0)),
+            ("(p.life_phase == 8) != (self.goal_reached != 0)", (p.life_phase == 8) != (self.goal_reached != 0)),
+            ("!(-2000 * 60..=2000 * 60).contains(&p.body.vx)", !(-2000 * 60..=2000 * 60).contains(&p.body.vx)),
+            ("p.body.vy < -2000 * 60", p.body.vy < -2000 * 60),
+            // Bodies like bump_walker.gd push the player past the fall caps (Godot reaches
+            // 44512 on 64eb684c), so only the speed range bounds the fall.
+            ("p.body.vy > 2000 * 60", p.body.vy > 2000 * 60),
+            ("self.sound.serial < 0", self.sound.serial < 0),
+            ("!(0..=4).contains(&self.sound.kind)", !(0..=4).contains(&self.sound.kind)),
+        ]
+        .into_iter()
+        .filter_map(|(name, bad)| bad.then_some(name))
+        .collect();
+        if !outside.is_empty() {
+            return Err(Error::Unsupported {
+                requirements: outside
+                    .iter()
+                    .map(|n| format!("state outside implemented Stride semantics: {n}"))
+                    .collect(),
+            });
         }
         for v in [
             p.body.x,
