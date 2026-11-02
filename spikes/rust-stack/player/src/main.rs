@@ -48,6 +48,9 @@ fn run() -> Result<(), String> {
     if std::env::args().nth(1).as_deref() == Some("--fill-host") {
         return eggshell_spike_player::diagnosis::fill_host(std::env::args().skip(2));
     }
+    if std::env::args().nth(1).as_deref() == Some("--held-trace") {
+        return eggshell_spike_player::diagnosis::held_trace(std::env::args().skip(2));
+    }
     if std::env::args().nth(1).as_deref() == Some("--save-info") {
         return eggshell_spike_player::diagnosis::save_info(std::env::args().skip(2));
     }

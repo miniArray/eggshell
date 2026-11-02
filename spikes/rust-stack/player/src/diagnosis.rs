@@ -416,3 +416,111 @@ pub fn save_info(arguments: impl Iterator<Item = String>) -> Result<(), String> 
     );
     Ok(())
 }
+
+/// `--held-trace LEVEL COLLISION SCHEMA PACK INVENTORY METRICS INPUT`: per step, every
+/// enemy row that is or was just held: its picture flags, position, animation, and how
+/// many world quads the scene draws with and without it (host only).
+pub fn held_trace(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    use crate::{pack::Pack, scene::Scene};
+    use std::path::Path;
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 7 {
+        return Err("held-trace LEVEL COLLISION SCHEMA PACK INVENTORY METRICS INPUT".into());
+    }
+    let read = |i: usize| std::fs::read_to_string(&args[i]).map_err(|e| e.to_string());
+    let mut session = Session::load(&read(0)?, &read(1)?, &read(2)?).map_err(|e| e.to_string())?;
+    let pack = Pack::open(Path::new(&args[3]), Path::new(&args[4]))?;
+    let mut scene = Scene::prepare(
+        session.world(),
+        &session.admission_report().admitted_codes.clone(),
+        &pack,
+        Path::new(&args[5]),
+    )?;
+    scene.prepare_headless_assets(&pack)?;
+    session.configure_presentation_index(scene.absolute_origin_guard());
+    let masks: Vec<u8> = serde_json::from_str(&read(6)?).map_err(|e| e.to_string())?;
+    let container = [640.0, 480.0];
+    let mut watched: std::collections::BTreeMap<i64, i64> = Default::default();
+    for (i, mask) in masks.iter().enumerate() {
+        session.advance(*mask).map_err(|e| e.to_string())?;
+        let full = session.presentation();
+        let (map_index, focus) = session.presentation_view();
+        let region = scene.presentation_region(map_index, focus, container, 0)?;
+        let p = session.presentation_region(region);
+        for e in &full.entities {
+            if e.held && !p.entities.iter().any(|r| r.token == e.token) {
+                println!(
+                    "HELD_TRACE_MISSING_FROM_REGION call={} token={}",
+                    i + 1,
+                    e.token
+                );
+            }
+        }
+        for e in &p.entities {
+            if e.held {
+                watched.insert(e.token, i as i64);
+            }
+        }
+        for e in full
+            .entities
+            .iter()
+            .filter(|e| watched.get(&e.token).is_some_and(|t| i as i64 - *t <= 40))
+        {
+            if !p.entities.iter().any(|r| r.token == e.token) {
+                println!(
+                    "HELD_TRACE_REGION_OMITS call={} token={} at=({:.1},{:.1}) region={region:?}",
+                    i + 1,
+                    e.token,
+                    e.motion.current.x as f64 / eggshell_spike_core::SCALE as f64,
+                    e.motion.current.y as f64 / eggshell_spike_core::SCALE as f64
+                );
+            }
+        }
+        let picture = scene.picture(&p, container, 0)?;
+        for e in p
+            .entities
+            .iter()
+            .filter(|e| watched.get(&e.token).is_some_and(|t| i as i64 - *t <= 40))
+        {
+            let mut without = p.clone();
+            without.entities.retain(|o| o.token != e.token);
+            let other = scene.picture(&without, container, 0)?;
+            let own: Vec<_> = picture
+                .world
+                .iter()
+                .filter(|q| !other.world.contains(q))
+                .map(|q| {
+                    format!(
+                        "{}:{:?}:{:?}:{:?}",
+                        scene
+                            .image_files()
+                            .get(q.image)
+                            .cloned()
+                            .unwrap_or_default(),
+                        q.corners[0],
+                        q.corners[2],
+                        q.color
+                    )
+                })
+                .collect();
+            println!("HELD_TRACE_QUADS call={} {:?}", i + 1, own);
+            println!(
+                "HELD_TRACE call={} code={} token={} visible={} held={} hidden={} status={:?} at=({:.1},{:.1}) animation={:?} frame={:?} quads_for_row={} tongue={}",
+                i + 1,
+                e.code,
+                e.token,
+                e.visible,
+                e.held,
+                e.hidden,
+                e.status,
+                e.motion.current.x as f64 / eggshell_spike_core::SCALE as f64,
+                e.motion.current.y as f64 / eggshell_spike_core::SCALE as f64,
+                e.visual.animation,
+                e.visual.frame,
+                picture.world.len() as i64 - other.world.len() as i64,
+                p.player.tongue.is_some()
+            );
+        }
+    }
+    Ok(())
+}

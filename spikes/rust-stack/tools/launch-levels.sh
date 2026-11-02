@@ -74,6 +74,24 @@ if [[ "${2:-}" == shots ]]; then
         printf 'LEVELS_SHOTS_FAILED %s %s\n' "$file" "$label"
     done < "$ROOT/private-input/level-shots.txt"
   fi
+  # Spit check on the public stride fixture: walk right 110 steps, lick (catch a Shy Guy),
+  # wait 20 steps, spit, then 80 idle steps; a picture every 3 steps.
+  spit_route="$ROOT/data/spit-route.json"
+  {
+    printf '['
+    for ((i = 0; i < 211; i++)); do
+      if ((i > 0)); then printf ','; fi
+      if ((i < 110)); then printf 2; elif ((i == 110 || i == 131)); then printf 8; else printf 0; fi
+    done
+    printf ']\n'
+  } > "$spit_route"
+  mkdir -p "$shots/stride-spit"
+  save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
+  printf 'LEVELS_SHOTS_SPIT\n'
+  player --play --level "$ROOT/private-input/stride.level.json" --collision "$ROOT/private-input/collision_table.json" \
+    --schema "$ROOT/private-input/schema.json" "${pack[@]}" --save-dir "$save" --replay "$spit_route" \
+    --ticks 170 --seconds 30 --frame-digest-every 3 --frame-dump-dir "$shots/stride-spit" --no-pipeline ||
+    printf 'LEVELS_SHOTS_FAILED stride spit\n'
   # Goal menu pictures: the newest earlier autosaves of listed levels (a completed
   # level opens the goal menu at once; others just play 60 steps without input).
   n=0
