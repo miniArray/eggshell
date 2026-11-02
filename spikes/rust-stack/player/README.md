@@ -420,10 +420,13 @@ has no death-start timestamp). The clock retains one finished span for the
 pipelined draw that can still be in flight. No core or snapshot bytes change.
 Full-mouth dry poses select Defeat1; ambiguous wet-action suffixes select
 Defeat0 because the DTO has no separate full-mouth flag. If the chosen Defeat
-entry is absent, the original selected pose remains in use. Die on lava to see
-all five frames; quick restart can also play the animation during its short fade.
+entry is absent, the original selected pose remains in use. This describes the
+second pass; the third pass below replaces lava deaths with Spin.
 
-### Water-surface jump investigation (no behaviour change)
+### Prior water-surface jump investigation (superseded by round three below)
+
+This prior synthetic-pool result did not explain the actual showcase. The third
+pass below finds submerged dry bands in that map and an input-delivery bug.
 
 The intended rule **does allow a surface jump**, but it needs a **fresh Jump
 press**, not a button held while rising from deep water. Release Jump, let
@@ -544,3 +547,66 @@ the latest and previous observed bends are retained for pipelined pictures.
 Host tongue_probe: 240 actual Session steps, 84 tongue/bent steps, exact endpoints
 and identical snapshots before/after observation. Pixel seams and Mali cost still
 need device review; the mesh adds tongue-only quads, no textures or shader passes.
+
+### Water exit: real controller path and actual showcase
+
+**Correction to the prior investigation:** the actual showcase does not have
+full-contact lower water cells like the prior synthetic test. Releasing and
+pressing again is insufficient there. There are also lost jump edges in the old
+player input path. Both were reproduced on the host; no core change was made.
+
+Input bug: SDL button events were counted but gameplay sampled only final held
+A/B once per event batch, then reused that mask for every owed step. A complete
+short tap vanished. Release/repress within one batch (or between two render
+batches with no simulation step) stayed held, so the core never saw a fresh edge.
+The virtual SDL controller probe failed with `release lost ... left: 4 right: 0`
+before the fix. The same real SDL event path now delivers `[4,0,4,4,0]` correctly.
+
+Controls now retain aggregate JUMP transitions from keyboard and all mapped pad
+handles. They consume one transition per simulation call in both sequential and
+pipeline loops. Final SDL held snapshots reconcile dropped events; sampling with
+no step owed does not drain transitions. A/B and duplicate interfaces remain OR
+aliases: pressing B while A is still held deliberately does not make a new edge.
+Pause, menu release gates, restores and replay discard pending live transitions.
+Keyboard Space/Z releases also preserve the other held jump key. Other gameplay
+bits retain their previous held-sampling semantics. Replay masks are unchanged.
+
+The tested actual showcase is the local `rg353m-spike-shake/showcase.level.json`,
+SHA256 `d0b7d5aeeba9ac85fd6b05ff33a08fee9ad36f63e6a26c16df87166ce99bd2d0`.
+Only its startpoint was moved to x800/y384 for the probe. Terrain/objects stayed
+unchanged. The pool occupies columns 22..30, rows 9..11; all 27 water3 cells are
+cell 0. The shipped collision table gives **each** a ten-pixel dry cap. Thus at
+x800 the wet vertical bands are y298..320, y330..352, y362..384. These are actual
+compiled contact gaps, not a renderer or input approximation.
+
+| Real SDL input through Controls into Session | Actual showcase | In-memory comparison, full-contact lower water3 cells (cell 1) |
+| --- | --- | --- |
+| Hold JUMP from pool floor, 180 steps | Feet y358.981, swimming | Feet y328.474, swimming |
+| Release/repress in one event batch, deliver 0 then 4 | No Jump0 pose or dry step for next 120 steps | Exits after 3 jump steps |
+| At rest after test, 50px-above-feet probe | y309.198: still in top wet band | y278.474: above pool |
+
+The player's upward buoyancy stops at an **internal** dry cap near feet y359,
+not the visible top at y298. The 50px probe therefore stays inside the top water
+band; a correctly delivered fresh edge cannot satisfy the core jump condition.
+The reference water rule still matches (`prepare_water` in core water.rs). The
+remaining showcase failure is contact geometry/level authoring, not corrected by
+changing input. A parent-side showcase edit can keep surface cell 0 and use full
+cell 1 in lower rows. The probe makes that comparison only in memory; no external
+map or core file is changed. Cost: it changes the authored lower-row art/contact
+choice and needs picture review. Do not weaken the core surface-jump rule for it.
+
+Reproduce on a host (no game window or device build needed):
+`nix develop . -c cargo run --example input_probe -- SCHEMA.json SHOWCASE.level.json`.
+Without arguments it runs just the real SDL input-edge regression. With arguments
+it expects this known 50x14 showcase layout, and tests its exact pool plus the
+in-memory full-interior comparison. It enumerates host pads but writes only its
+own SDL virtual controller. Device event timing and GPU pictures are not proven.
+
+Third-pass host checks: `nix develop . -c cargo test --lib` passes 145 tests,
+one ignored; `nix develop . -c cargo clippy --lib --all-targets -- -D warnings`
+passes; `nix develop . -c cargo fmt -- --check` passes. Focused death_pose, feel,
+lighting, input and elastic_tongue tests passed during each change. The list CLI
+accepted `--feel /tmp/play3-feel.json`, logged `source=file`, then correctly
+rejected the intentionally incomplete invocation with `--index required`.
+That CLI parse check is not a rendered-list acceptance claim. No device/aka build,
+deploy, push, core change, main update or rust/conversion update was performed.

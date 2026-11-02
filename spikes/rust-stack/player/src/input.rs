@@ -6,12 +6,16 @@ use sdl2::{
     joystick::Joystick,
     keyboard::Keycode,
 };
-use std::path::Path;
+use std::{
+    collections::{BTreeSet, VecDeque},
+    path::Path,
+};
 
 pub struct Controls {
     controllers: Vec<GameController>,
     _joysticks: Vec<Joystick>,
     keyboard: u8,
+    jump: JumpSteps,
     previous_actions: u16,
     layout: ButtonLayout,
     wait_faces: bool,
@@ -70,6 +74,7 @@ impl Controls {
             controllers,
             _joysticks: joysticks,
             keyboard: 0,
+            jump: JumpSteps::default(),
             previous_actions: 0,
             layout: ButtonLayout::default(),
             wait_faces: false,
@@ -83,6 +88,13 @@ impl Controls {
             save: false,
             restore: false,
         })
+    }
+    /// Consume exactly once per simulation call, not once per render/event batch.
+    pub fn step_mask(&mut self, live: u8) -> u8 {
+        self.jump.next_mask(live)
+    }
+    pub fn clear_steps(&mut self) {
+        self.jump.pending.clear();
     }
     pub fn reset_actions(&mut self) {
         self.pause_toggle = false;
@@ -115,7 +127,10 @@ impl Controls {
                     return;
                 }
                 self.events += 1;
-                self.keyboard |= keymask(key);
+                if keymask(key) == JUMP {
+                    self.jump.event(key_source(key), true);
+                }
+                self.keyboard |= keymask(key) & !JUMP;
                 match key {
                     Keycode::Escape => self.exit = true,
                     Keycode::P => self.pause_toggle = !self.pause_toggle,
@@ -131,15 +146,39 @@ impl Controls {
                 keycode: Some(key), ..
             } => {
                 self.events += 1;
+                if keymask(key) == JUMP {
+                    self.jump.event(key_source(key), false);
+                }
                 self.keyboard &= !keymask(key);
             }
-            Event::ControllerButtonDown { .. }
-            | Event::ControllerButtonUp { .. }
-            | Event::ControllerAxisMotion { .. } => self.events += 1,
+            Event::ControllerButtonDown { which, button, .. } => {
+                self.events += 1;
+                if [Button::A, Button::B].contains(&button) {
+                    self.jump.event(pad_source(which, button), true);
+                }
+            }
+            Event::ControllerButtonUp { which, button, .. } => {
+                self.events += 1;
+                if [Button::A, Button::B].contains(&button) {
+                    self.jump.event(pad_source(which, button), false);
+                }
+            }
+            Event::ControllerAxisMotion { .. } => self.events += 1,
             Event::Window {
                 win_event: sdl2::event::WindowEvent::FocusLost,
                 ..
-            } => self.keyboard = 0,
+            } => {
+                self.keyboard = 0;
+                let pads: Vec<_> = self
+                    .jump
+                    .sources
+                    .iter()
+                    .copied()
+                    .filter(|id| *id < (1_u64 << 63))
+                    .collect();
+                self.jump.sample(pads);
+                self.jump.pending.clear();
+            }
             _ => {}
         }
     }
@@ -171,8 +210,34 @@ impl Controls {
         if back && start || pressed(Button::Guide) {
             self.exit = true;
         }
+        // Reconcile dropped events/focus changes atomically with the authoritative
+        // SDL held snapshot, without erasing transitions already captured in order.
+        let mut sources: Vec<u64> = self
+            .controllers
+            .iter()
+            .flat_map(|c| {
+                [Button::A, Button::B]
+                    .into_iter()
+                    .filter(|b| c.button(*b))
+                    .map(|b| pad_source(c.instance_id(), b))
+            })
+            .collect();
+        sources.extend(
+            self.jump
+                .sources
+                .iter()
+                .copied()
+                .filter(|id| *id >= (1_u64 << 63)),
+        );
+        let keyboard = self.keyboard
+            | if sources.iter().any(|id| *id >= (1_u64 << 63)) {
+                JUMP
+            } else {
+                0
+            };
+        self.jump.sample(sources);
         let faces = face_masks(layout, |b| self.controllers.iter().any(|c| c.button(b)));
-        let mut result = self.keyboard;
+        let mut result = keyboard;
         for (held, bit) in [
             (pressed(Button::DPadLeft) || axis(Axis::LeftX, false), LEFT),
             (pressed(Button::DPadRight) || axis(Axis::LeftX, true), RIGHT),
@@ -189,10 +254,10 @@ impl Controls {
         }
         // A and B are separate on the paused page, even though both jump in play.
         self.menu_mask = result & (LEFT | RIGHT | UP | DOWN);
-        if self.keyboard & JUMP != 0 || (!self.wait_faces && faces.1 & JUMP != 0) {
+        if keyboard & JUMP != 0 || (!self.wait_faces && faces.1 & JUMP != 0) {
             self.menu_mask |= JUMP;
         }
-        if self.keyboard & USE != 0 || (!self.wait_faces && faces.1 & USE != 0) {
+        if keyboard & USE != 0 || (!self.wait_faces && faces.1 & USE != 0) {
             self.menu_mask |= USE;
         }
         // Slot chords suppress keyboard throw/lock as the reference global action does.
@@ -244,6 +309,47 @@ impl Controls {
         result
     }
 }
+fn pad_source(id: u32, button: Button) -> u64 {
+    (u64::from(id) << 8) | button as u64
+}
+fn key_source(key: Keycode) -> u64 {
+    (1_u64 << 63) | key.into_i32() as u32 as u64
+}
+
+/// Preserve aggregate jump transitions until a successful simulation call can
+/// consume each one. A/B and duplicate interfaces still form one held action.
+#[derive(Default)]
+struct JumpSteps {
+    sources: BTreeSet<u64>,
+    pending: VecDeque<bool>,
+}
+impl JumpSteps {
+    fn event(&mut self, source: u64, down: bool) {
+        let was = !self.sources.is_empty();
+        if down {
+            self.sources.insert(source);
+        } else {
+            self.sources.remove(&source);
+        }
+        let held = !self.sources.is_empty();
+        if was != held {
+            self.pending.push_back(held);
+        }
+    }
+    fn sample(&mut self, sources: impl IntoIterator<Item = u64>) {
+        let was = !self.sources.is_empty();
+        self.sources = sources.into_iter().collect();
+        let held = !self.sources.is_empty();
+        if was != held {
+            self.pending.push_back(held);
+        }
+    }
+    fn next_mask(&mut self, live: u8) -> u8 {
+        let held = self.pending.pop_front().unwrap_or(!self.sources.is_empty());
+        (live & !JUMP) | if held { JUMP } else { 0 }
+    }
+}
+
 /// Shared label mapping for live gameplay and Feel input. Gameplay deliberately
 /// aliases A/B to jump and X/Y to use, as in the reference; menus keep A/B distinct.
 pub fn face_masks(layout: ButtonLayout, physical: impl Fn(Button) -> bool) -> (u8, u8) {
@@ -305,6 +411,28 @@ mod tests {
         assert_eq!(ButtonLayout::Xbox.button(Button::Y), Button::X);
     }
 
+    #[test]
+    fn releases_and_presses_survive_batches_without_steps_and_aliases_do_not_retrigger() {
+        let mut steps = JumpSteps::default();
+        steps.event(1, true);
+        assert_eq!(steps.next_mask(RIGHT | JUMP), RIGHT | JUMP);
+        steps.event(1, false);
+        steps.event(1, true);
+        steps.sample([1]); // sampling while no step owed must not drain the queue
+        steps.sample([1]);
+        assert_eq!(steps.next_mask(JUMP), 0);
+        assert_eq!(steps.next_mask(JUMP), JUMP);
+        assert_eq!(steps.next_mask(JUMP), JUMP);
+        steps.event(2, true); // B held while A releases: reference OR alias, no new edge
+        steps.event(1, false);
+        assert_eq!(steps.next_mask(JUMP), JUMP);
+        steps.event(2, false);
+        assert_eq!(steps.next_mask(0), 0);
+        steps.event(1, true);
+        steps.event(1, false); // complete quick tap between steps still reaches sim
+        assert_eq!(steps.next_mask(0), JUMP);
+        assert_eq!(steps.next_mask(0), 0);
+    }
     #[test]
     fn input_bits_match_reference_order() {
         assert_eq!(

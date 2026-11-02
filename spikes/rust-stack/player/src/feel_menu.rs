@@ -122,7 +122,7 @@ impl MenuPage for Page<'_> {
         "Feel"
     }
     fn info(&self) -> String {
-        "Paused. Drawing and audio only.".into()
+        "Paused. Presentation and controls.".into()
     }
     fn status(&self) -> &str {
         ""

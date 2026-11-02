@@ -822,6 +822,9 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
         }
         // Do not step until the menu's confirm/back/directions are released.
         let waiting_release = release_gate.blocked(live | controls.menu_mask);
+        if paused || waiting_release || replay.is_some() {
+            controls.clear_steps();
+        }
         if controls.exit {
             break;
         }
@@ -835,6 +838,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             .zoom_steps
             .advance(zoom, controls.zoom_delta);
         if controls.restore && !saves.disabled() {
+            controls.clear_steps();
             if replay.is_some() {
                 return Err("interactive replay restore requires an explicit cursor: restart with --restore and --input-offset".into());
             }
@@ -859,7 +863,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             let masks = (0..steps)
                 .map(|i| {
                     let cursor = crate::call_cursor::index(cursor_start, completed + i)?;
-                    Ok(replay.as_ref().map_or(live, |v| v[cursor]))
+                    Ok(if let Some(v) = &replay {
+                        v[cursor]
+                    } else {
+                        controls.step_mask(live)
+                    })
                 })
                 .collect::<Result<Vec<u8>, String>>()?;
             let current = pending.take().ok_or("pipeline lost its prepared frame")?;
@@ -1018,7 +1026,11 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                 for _ in 0..budget.min(stop - completed) {
                     let saved_tick = session.stats().tick;
                     let cursor = crate::call_cursor::index(cursor_start, completed)?;
-                    let mask = replay.as_ref().map_or(live, |v| v[cursor]);
+                    let mask = if let Some(v) = &replay {
+                        v[cursor]
+                    } else {
+                        controls.step_mask(live)
+                    };
                     let timer = Timer::new();
                     session.advance(mask).map_err(|e| {
                         format!(
@@ -1226,7 +1238,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
         }
     }
     let writes = saves.finish(&session, &mut save)?;
-    let mut summary = serde_json::json!({"purpose":if benchmark_unverified_level{"throwaway-scaling-speed-hint-not-correctness-not-target-A/B"}else{"correctness-verification-only-not-target-A/B"},"level_sha256":raw_hash,"mode":if uncapped{"uncapped-fixed-work"}else{"real-time"},"capture_tainted":capture_tick.is_some(),"audio":audio_label,"wall_ms":active_wall.as_millis(),"expected_ticks":stop,"completed_ticks":completed,"input_offset":cursor_start,"input_call_cursor":cursor_start+completed,"held_saved_frame_calls":held_saved_frame_calls,"require_active_window":require_active_window,"save_call_cadence":60,"saved_tick":session.stats().tick,"swap_calls":swap_calls,"actual_compositor_delivered_frames":feedback.as_ref().map(|f|f.delivered_unique),"wayland_presentation":feedback.as_ref().map(|f|f.summary()),"maximum_debt":clock.max_debt,"ending_debt":clock.owed(),"swap_intervals_over_16_667ms":missed,"swap_return_interval_ns":intervals.summary(),"presentation_feedback":if want_feedback{"wp_presentation requested; inspect actual callback/flags evidence"}else{"not instrumented; swap calls are not compositor-delivered-frame proof"},"quantile_method":"fixed-memory log histogram upper bounds, relative bucket width <=1/512 above512ns; exact maxima","sim":sim.summary(),"draw_submit":draw.summary(),"presentation_copy_and_swap":present.summary(),"gles_pipeline":gpu.pipeline_info(),"snapshot_enqueue":save.summary(),"save_writes":writes,"input_events":controls.events,"ignored_key_repeats":controls.repeat_events,"input_delivery":"one literal mask per successful advance call; explicit restore offset; live state sampled per event batch","memory":memory_kib(),"stats":{"entity_steps":session.stats().entity_steps,"terrain_queries":session.stats().terrain_queries,"nearby_queries":session.stats().nearby_queries,"runtime_spawns":session.stats().runtime_spawns,"collections":session.stats().collections,"damage_events":session.stats().damage_events},"cpu_phases":"nonoverlapping main-thread samples; presentation_copy_and_swap includes fullscreen copy submission and SDL swap; capture-only allocation/copy/readback is outside these timers; asynchronous GPU and save-worker times not attributed to these CPU samples"});
+    let mut summary = serde_json::json!({"purpose":if benchmark_unverified_level{"throwaway-scaling-speed-hint-not-correctness-not-target-A/B"}else{"correctness-verification-only-not-target-A/B"},"level_sha256":raw_hash,"mode":if uncapped{"uncapped-fixed-work"}else{"real-time"},"capture_tainted":capture_tick.is_some(),"audio":audio_label,"wall_ms":active_wall.as_millis(),"expected_ticks":stop,"completed_ticks":completed,"input_offset":cursor_start,"input_call_cursor":cursor_start+completed,"held_saved_frame_calls":held_saved_frame_calls,"require_active_window":require_active_window,"save_call_cadence":60,"saved_tick":session.stats().tick,"swap_calls":swap_calls,"actual_compositor_delivered_frames":feedback.as_ref().map(|f|f.delivered_unique),"wayland_presentation":feedback.as_ref().map(|f|f.summary()),"maximum_debt":clock.max_debt,"ending_debt":clock.owed(),"swap_intervals_over_16_667ms":missed,"swap_return_interval_ns":intervals.summary(),"presentation_feedback":if want_feedback{"wp_presentation requested; inspect actual callback/flags evidence"}else{"not instrumented; swap calls are not compositor-delivered-frame proof"},"quantile_method":"fixed-memory log histogram upper bounds, relative bucket width <=1/512 above512ns; exact maxima","sim":sim.summary(),"draw_submit":draw.summary(),"presentation_copy_and_swap":present.summary(),"gles_pipeline":gpu.pipeline_info(),"snapshot_enqueue":save.summary(),"save_writes":writes,"input_events":controls.events,"ignored_key_repeats":controls.repeat_events,"input_delivery":"one literal mask per successful advance call; explicit restore offset; live held state sampled per event batch; jump transitions delivered per simulation call","memory":memory_kib(),"stats":{"entity_steps":session.stats().entity_steps,"terrain_queries":session.stats().terrain_queries,"nearby_queries":session.stats().nearby_queries,"runtime_spawns":session.stats().runtime_spawns,"collections":session.stats().collections,"damage_events":session.stats().damage_events},"cpu_phases":"nonoverlapping main-thread samples; presentation_copy_and_swap includes fullscreen copy submission and SDL swap; capture-only allocation/copy/readback is outside these timers; asynchronous GPU and save-worker times not attributed to these CPU samples"});
     summary["benchmark_unverified_level"] = benchmark_unverified_level.into();
     summary["picture_invalid"] = benchmark_single_texture.into();
     summary["benchmark_single_texture"] = benchmark_single_texture.into();
