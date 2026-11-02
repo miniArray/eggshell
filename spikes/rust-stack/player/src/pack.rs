@@ -153,10 +153,7 @@ mod tests {
 /// normals: +X right, +Y up, +Z out). Sidecars are local spike art, outside the
 /// pinned original inventory. Main images still require their original hash.
 fn normal_sidecar(root: &Path, file: &str) -> Result<Option<Image>, String> {
-    let Some(stem) = file
-        .strip_suffix(".png")
-        .filter(|_| !file.starts_with(PLACEHOLDER))
-    else {
+    let Some(stem) = file.strip_suffix(".png") else {
         return Ok(None);
     };
     let name = format!("{stem}.normal.png");

@@ -931,12 +931,14 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                         + hud_draw.batches
                         + tint_draw.batches
                         + water_draw.batches
-                        + surface_draw.batches + light_draw.batches;
+                        + surface_draw.batches
+                        + light_draw.batches;
                     let quads = world_draw.quads
                         + hud_draw.quads
                         + tint_draw.quads
                         + water_draw.quads
-                        + surface_draw.quads + light_draw.quads;
+                        + surface_draw.quads
+                        + light_draw.quads;
                     batch_counts.add(batches);
                     batch_total += batches;
                     quad_counts.add(quads);
@@ -1079,12 +1081,14 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                 + hud_draw.batches
                 + tint_draw.batches
                 + water_draw.batches
-                + surface_draw.batches + light_draw.batches;
+                + surface_draw.batches
+                + light_draw.batches;
             let quads = world_draw.quads
                 + hud_draw.quads
                 + tint_draw.quads
                 + water_draw.quads
-                + surface_draw.quads + light_draw.quads;
+                + surface_draw.quads
+                + light_draw.quads;
             batch_counts.add(batches);
             batch_total += batches;
             quad_counts.add(quads);
@@ -1276,7 +1280,7 @@ fn goal_menu(
     scene: &Scene,
     session: &Session,
     events: &mut sdl2::EventPump,
-    zoom: i32,
+    zoom: f64,
     has_next: bool,
     deadline: Instant,
     shot: Option<&Path>,

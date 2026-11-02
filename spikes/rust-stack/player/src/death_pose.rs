@@ -32,7 +32,7 @@ impl DeathPose {
         lifetime: Lifetime,
         pose: &PoseSelection,
         art: &'a Visual,
-        literal: Option<usize>,
+        literal: Option<i64>,
     ) -> Result<&'a Frame, String> {
         if lifetime == Lifetime::Dying {
             let start = self.start.filter(|start| *start <= tick).or_else(|| {
@@ -115,7 +115,9 @@ mod tests {
         );
         clock.observe_step(342, Lifetime::Respawning);
         assert_eq!(
-            clock.frame(342, Lifetime::Respawning, &pose, &art, None).unwrap(),
+            clock
+                .frame(342, Lifetime::Respawning, &pose, &art, None)
+                .unwrap(),
             art.sample(0, "Fall0", 0, None)
         );
         assert_eq!(
@@ -146,7 +148,9 @@ mod tests {
             ..pose
         };
         assert_eq!(
-            clock.frame(100, Lifetime::Dying, &full, &art, None).unwrap(),
+            clock
+                .frame(100, Lifetime::Dying, &full, &art, None)
+                .unwrap(),
             art.sample(0, "Defeat1", 0, None)
         );
     }
@@ -163,12 +167,16 @@ mod tests {
         }
         let art = fixture_art(true);
         assert_eq!(
-            clock.frame(206, Lifetime::Dying, &pose, &art, None).unwrap(),
+            clock
+                .frame(206, Lifetime::Dying, &pose, &art, None)
+                .unwrap(),
             art.sample(6, "Defeat0", 0, None)
         );
         let missing = fixture_art(false);
         assert_eq!(
-            clock.frame(206, Lifetime::Dying, &pose, &missing, None).unwrap(),
+            clock
+                .frame(206, Lifetime::Dying, &pose, &missing, None)
+                .unwrap(),
             missing.sample(300, "Fall0", 0, None)
         );
     }

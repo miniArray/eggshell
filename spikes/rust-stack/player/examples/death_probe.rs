@@ -61,7 +61,7 @@ fn main() {
             poses.insert(pose.name.clone());
             rendered.insert(
                 death
-                    .frame(p.tick, p.player.lifetime, pose, &art)
+                    .frame(p.tick, p.player.lifetime, pose, &art, None)
                     .unwrap()
                     .image,
             );

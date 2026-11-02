@@ -464,3 +464,25 @@ Holding the button too early is consistent with the reported symptom, but cannot
 be established without the actual input trace. Pool layout/contact geometry or
 input delivery on the handheld remain untested causes; this investigation does
 not change them.
+
+## Third playtest rebase
+
+Rebased with merges onto `1cbbc49b379fade1bdf3b0dd6dba6b2078e2bfaf`
+(`rust/conversion`). Conflicts and resolutions:
+
+- `e1e0263`, scene: retained upstream speed-scaled RunClock and spike Shake.
+- `92fd255`, game: retained upstream `--view-at` capture handling plus Feel demo.
+- `b3ee56a`, lib: retained upstream dressing and spike dust modules.
+- `c1ad7d7` water merge, README/feel/feel_menu: restored the original merge's
+  combined water, pickup, splash and goal-music controls and tests; kept both docs.
+- `0ada977` lighting merge, README/feel/feel_menu/game/gles/scene: retained both
+  water and lighting resources, settings, geometry and draw counts. Lit world,
+  water and surface, additive lights, darkness, tint, HUD remain in that order.
+- `dfba51a`, scene: defeat selection wraps the upstream run-clock frame override;
+  normal running still uses the upstream speed-scaled animation.
+
+Post-rebase compile integration: removed a stale placeholder-sidecar filter
+(upstream removed placeholder assets); allowed fractional zoom in upstream goal
+menu; passed the upstream run-clock override through DeathPose and its probe.
+Host checks: 139 library tests passed, one ignored; all-target clippy passed.
+No core edits, device builds, deployment, pushes or other branch updates.
