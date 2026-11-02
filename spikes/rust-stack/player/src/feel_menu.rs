@@ -6,7 +6,7 @@ use crate::{
 };
 use std::time::{Duration, Instant};
 
-pub const ROWS: usize = 12;
+pub const ROWS: usize = 17;
 #[derive(Default)]
 pub struct Model {
     pub focus: usize,
@@ -45,6 +45,11 @@ impl Model {
                 6 => s.dust_amount += delta,
                 7 => s.muffle_enabled = !s.muffle_enabled,
                 8 => s.muffle_strength += delta,
+                9 => s.lights_enabled = !s.lights_enabled,
+                10 => s.light_strength += delta,
+                11 => s.glow_enabled = !s.glow_enabled,
+                12 => s.glow_strength += delta,
+                13 => s.auto_normals = !s.auto_normals,
                 _ => {}
             }
         }
@@ -53,14 +58,17 @@ impl Model {
                 0 => s.shake_enabled = !s.shake_enabled,
                 5 => s.dust_enabled = !s.dust_enabled,
                 7 => s.muffle_enabled = !s.muffle_enabled,
-                9 => return Action::Preview { hit: false },
-                10 => *s = FeelSettings::default(),
-                11 => return Action::Resume,
+                9 => s.lights_enabled = !s.lights_enabled,
+                11 => s.glow_enabled = !s.glow_enabled,
+                13 => s.auto_normals = !s.auto_normals,
+                14 => return Action::Preview { hit: false },
+                15 => *s = FeelSettings::default(),
+                16 => return Action::Resume,
                 _ => {}
             }
         }
         s.clamp();
-        if old != *s && (self.focus <= 4 || self.focus == 10) {
+        if old != *s && (self.focus <= 4 || self.focus == 15) {
             Action::Preview {
                 hit: self.focus == 3 || self.focus == 4,
             }
@@ -103,6 +111,11 @@ impl MenuPage for Page<'_> {
             format!("Dust amount: {}", s.dust_amount),
             format!("Underwater muffle: {}", on(s.muffle_enabled)),
             format!("Muffle strength: {}", s.muffle_strength),
+            format!("Lights: {}", on(s.lights_enabled)),
+            format!("Light strength: {}", s.light_strength),
+            format!("Glow: {}", on(s.glow_enabled)),
+            format!("Glow strength: {}", s.glow_strength),
+            format!("Auto normals: {}", on(s.auto_normals)),
             "Preview shake".into(),
             "Reset to defaults".into(),
             "Resume".into(),
@@ -170,7 +183,7 @@ impl Demo {
             self.undo = Some((now + Duration::from_millis(150), original));
             s.pound_strength_px += if original == 8 { -1 } else { 1 };
             Action::Preview { hit: false }
-        } else if row == 9 {
+        } else if row == 14 {
             Action::Preview { hit: false }
         } else {
             Action::None
@@ -215,7 +228,7 @@ mod tests {
         let mut m = Model::default();
         let mut s = FeelSettings::default();
         m.step(-1);
-        assert_eq!(m.focus, 11);
+        assert_eq!(m.focus, 16);
         m.step(1);
         assert_eq!(m.focus, 0);
         m.input(input::RIGHT, &mut s);
@@ -247,12 +260,40 @@ mod tests {
             }
             assert_eq!(value(&s), lower);
         }
-        m.focus = 10;
+        for (row, read) in [
+            (
+                10,
+                (|s: &FeelSettings| s.light_strength) as fn(&FeelSettings) -> i64,
+            ),
+            (
+                12,
+                (|s: &FeelSettings| s.glow_strength) as fn(&FeelSettings) -> i64,
+            ),
+        ] {
+            m.focus = row;
+            for _ in 0..10 {
+                m.input(input::RIGHT, &mut s);
+            }
+            assert_eq!(read(&s), 3);
+            for _ in 0..10 {
+                m.input(input::LEFT, &mut s);
+            }
+            assert_eq!(read(&s), 0);
+        }
+        for row in [9, 11, 13] {
+            m.focus = row;
+            let old = s;
+            m.input(input::JUMP, &mut s);
+            assert_ne!(s, old);
+            m.input(input::LEFT, &mut s);
+            assert_eq!(s, old);
+        }
+        m.focus = 15;
         m.input(input::JUMP, &mut s);
         assert_eq!(s, FeelSettings::default());
-        m.focus = 9;
+        m.focus = 14;
         assert_eq!(m.input(input::JUMP, &mut s), Action::Preview { hit: false });
-        m.focus = 11;
+        m.focus = 16;
         assert_eq!(m.input(input::JUMP, &mut s), Action::Resume);
         assert_eq!(m.input(input::USE, &mut s), Action::Resume);
     }
@@ -277,6 +318,8 @@ mod tests {
                 settings.hit_steps = 30;
                 settings.dust_amount = 3;
                 settings.muffle_strength = 3;
+                settings.light_strength = 3;
+                settings.glow_strength = 3;
             }
             for size in [
                 [640.0, 480.0],
@@ -332,7 +375,12 @@ mod tests {
         }
         assert_eq!(s, original);
         assert_eq!(
-            d.update(start + Duration::from_millis(4800), 5, &mut m, &mut s),
+            d.update(
+                start + Duration::from_millis(ROWS as u64 * 400),
+                5,
+                &mut m,
+                &mut s
+            ),
             Action::Resume
         );
     }

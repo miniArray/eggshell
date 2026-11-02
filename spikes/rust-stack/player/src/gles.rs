@@ -441,7 +441,9 @@ impl Gles {
         } else {
             None
         };
-        let lighting = unsafe { lighting_backend::Resources::new(&gl)? };
+        let lighting = unsafe {
+            lighting_backend::Resources::new(&gl, pipeline == PipelineConfig::GameOpaqueRgb10)?
+        };
         let mut result = Self {
             _context: context,
             window,

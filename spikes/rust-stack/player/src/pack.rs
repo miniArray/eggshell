@@ -201,6 +201,17 @@ mod normal_tests {
             .unwrap();
         let n = normal_sidecar(&root, "foo.png").unwrap().unwrap();
         assert_eq!(n.rgba, [128, 128, 255, 255]);
+        let pack = Pack {
+            root: root.clone(),
+            manifest: Value::Null,
+            drawing: Value::Null,
+            density: 1,
+            file_hashes: Default::default(),
+        };
+        assert!(pack.normal("foo.png", [2, 1]).is_err());
+        assert!(pack.normal("foo.png", [1, 1]).unwrap().is_some());
+        fs::write(root.join("bad.normal.png"), b"not a PNG").unwrap();
+        assert!(pack.normal("bad.png", [1, 1]).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 }

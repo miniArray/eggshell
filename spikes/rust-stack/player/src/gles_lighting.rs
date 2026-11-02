@@ -67,11 +67,17 @@ pub(super) struct Resources {
     images: std::collections::HashMap<usize, NormalImage>,
 }
 impl Resources {
-    pub(super) unsafe fn new(gl: &glow::Context) -> Result<Self, String> {
+    pub(super) unsafe fn new(gl: &glow::Context, game: bool) -> Result<Self, String> {
         unsafe {
             let radial = compile_sources(gl, VERTEX, LIGHT_FRAGMENT)?;
-            let normal = compile_sources(gl, VERTEX, NORMAL_FRAGMENT)?;
+            let normal = if game {
+                let (v, f) = game_es300_sources_for(NORMAL_FRAGMENT);
+                compile_sources(gl, &v, &f)?
+            } else {
+                compile_sources(gl, VERTEX, NORMAL_FRAGMENT)?
+            };
             let normal_uniforms = [
+                "u_screen_transform",
                 "u_texture",
                 "u_normal",
                 "u_texel",
@@ -87,7 +93,19 @@ impl Resources {
                 "u_count",
             ]
             .into_iter()
-            .map(|n| (n, gl.get_uniform_location(normal, n)))
+            .map(|n| {
+                (
+                    n,
+                    gl.get_uniform_location(
+                        normal,
+                        match n {
+                            "u_keys" => "u_keys[0]",
+                            "u_values" => "u_values[0]",
+                            _ => n,
+                        },
+                    ),
+                )
+            })
             .collect();
             Ok(Self {
                 radial,
@@ -127,7 +145,7 @@ impl Gles {
         quads: &[Quad],
         frame: &crate::lighting::Frame,
     ) -> Result<DrawCounts, String> {
-        if frame.lights.is_empty()
+        if frame.lights.iter().all(|l| l.intensity <= 0.0)
             || (!frame.auto_normals && self.lighting.images.values().all(|n| n.texture.is_none()))
         {
             return self.draw(quads);
@@ -198,6 +216,11 @@ impl Gles {
             let gl = &self.gl;
             let u = &self.lighting.normal_uniforms;
             gl.use_program(Some(self.lighting.normal));
+            gl.uniform_matrix_4_f32_slice(
+                u["u_screen_transform"].as_ref(),
+                false,
+                &game_screen_transform(self.width, self.height),
+            );
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(self.textures[texture]));
             gl.active_texture(glow::TEXTURE1);

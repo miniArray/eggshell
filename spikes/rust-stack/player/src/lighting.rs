@@ -95,6 +95,23 @@ impl Frame {
     pub fn lava(&mut self, at: [f64; 2], tick: i64, plan: &Plan) {
         self.add(at, 72.0, FIRE, 0.65, 0.0, tick, plan);
     }
+    pub fn apply_settings(&mut self, s: crate::feel::FeelSettings) {
+        self.auto_normals = s.auto_normals;
+        let light = if s.lights_enabled {
+            s.light_strength.clamp(0, 3) as f32 / 2.0
+        } else {
+            0.0
+        };
+        let glow = if s.glow_enabled {
+            s.glow_strength.clamp(0, 3) as f32
+        } else {
+            0.0
+        };
+        for l in &mut self.lights {
+            l.intensity *= light;
+            l.glow *= glow;
+        }
+    }
     pub fn budget(&mut self) {
         // Bound total additive energy, including dense coin/lava clusters.
         let sum: f32 = self.lights.iter().map(|l| l.intensity).sum();
@@ -141,8 +158,38 @@ fn dark_tint(dst: f32, channel: f32, alpha: f32) -> f32 {
 mod tests {
     use super::*;
     #[test]
+    fn screenshot_fixture_has_lamps_coins_goal_and_real_lava_layers() {
+        let world = eggshell_spike_core::World::compile(
+            include_str!("../tests/fixtures/lighting.level.json"),
+            include_str!("../../../../src/level/collision_table.json"),
+        )
+        .unwrap();
+        assert_eq!(world.maps.len(), 2);
+        for map in &world.maps {
+            for code in ["d25", "d26", "e16", "o1", "o2", "o5"] {
+                assert!(map.placements.iter().any(|p| p.code == code));
+            }
+            let lava = map
+                .layers
+                .iter()
+                .find(|l| l.hazard == eggshell_spike_core::TerrainHazard::Lava)
+                .unwrap();
+            assert_eq!(lava.cells.iter().filter(|c| **c != -1).count(), 4);
+        }
+        assert_eq!(world.maps[0].darkness_percent, 0);
+        assert_eq!(world.maps[1].darkness_percent, 80);
+    }
+    #[test]
     fn dark_map_lights_never_increase_visible_area() {
-        let frame = Frame::new([640.0, 480.0], 1.0);
+        let world = eggshell_spike_core::World::compile(
+            include_str!("../tests/fixtures/lighting.level.json"),
+            include_str!("../../../../src/level/collision_table.json"),
+        )
+        .unwrap();
+        let frame = Frame::new(
+            [640.0, 480.0],
+            world.maps[1].darkness_percent as f64 / 100.0,
+        );
         assert!(frame.dark_map);
         for darkness in [0.01_f32, 0.5, 1.0] {
             let mut off = 0;
@@ -174,6 +221,35 @@ mod tests {
         for code in ["fire_shot", "e16", "o1", "o2"] {
             assert!(source(code, None, 0, 1.0).is_some());
         }
+    }
+    #[test]
+    fn disabled_zero_strength_and_default_settings() {
+        let plan =
+            crate::screen::plan([640.0, 480.0], [2048.0, 480.0], [320.0, 240.0], 1, 0).unwrap();
+        let mut frame = Frame::new([640.0, 480.0], 0.0);
+        frame.add([320.0, 240.0], 72.0, FIRE, 1.0, 1.0, 5, &plan);
+        let base = frame.lights.clone();
+        frame.apply_settings(Default::default());
+        assert_eq!(frame.lights, base);
+        let mut disabled = frame.clone();
+        disabled.apply_settings(crate::feel::FeelSettings {
+            lights_enabled: false,
+            glow_enabled: false,
+            auto_normals: true,
+            ..Default::default()
+        });
+        assert!(
+            disabled
+                .lights
+                .iter()
+                .all(|l| l.intensity == 0.0 && l.glow == 0.0)
+        );
+        frame.apply_settings(crate::feel::FeelSettings {
+            light_strength: 0,
+            glow_strength: 0,
+            ..Default::default()
+        });
+        assert_eq!(frame.lights, disabled.lights);
     }
     #[test]
     fn goal_is_glow_only_and_glow_energy_is_bounded() {

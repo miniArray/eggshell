@@ -2552,6 +2552,7 @@ impl Scene {
             tint.push(fullscreen_quad(self.solid, container, rgba));
         }
         lights.budget();
+        lights.apply_settings(settings);
         Ok(Picture {
             lights,
             #[cfg(feature = "benchmark-work-counters")]
