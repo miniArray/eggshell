@@ -523,7 +523,7 @@ impl Run {
             copy.slide_total = 30;
             let mut row = Entity::dynamic(
                 serial,
-                Kind::Walker(copy),
+                Kind::Walker(Box::new(copy)),
                 Body {
                     x: position.x,
                     y: position.y,

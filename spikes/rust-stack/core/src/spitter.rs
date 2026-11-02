@@ -297,7 +297,7 @@ impl Run {
         let spike = Actor::new(ActorKind::Spike, 0, 0, Position { x, y });
         let mut row = Entity::dynamic(
             serial,
-            Kind::Walker(spike),
+            Kind::Walker(Box::new(spike)),
             Body {
                 x,
                 y,

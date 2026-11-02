@@ -53,36 +53,36 @@ pub(crate) fn restore_head(
                 "e3" => ActorKind::Flower,
                 _ => ActorKind::Plant,
             };
-            Kind::Walker(Actor::new(
+            Kind::Walker(Box::new(Actor::new(
                 kind,
                 value("variant")?,
                 i64::from(facing > 0),
                 position,
-            ))
+            )))
         }
         // shell_walker.gd enemy_runner: saved fields are restored after the head.
-        "enemy_runner" => Kind::Walker(Actor::new(ActorKind::Runner, 0, 0, position)),
+        "enemy_runner" => Kind::Walker(Box::new(Actor::new(ActorKind::Runner, 0, 0, position))),
         // masked_shooter.gd enemy_pellet: saved fields are restored after the head.
-        "enemy_pellet" => Kind::Walker(Actor::new(ActorKind::Pellet, 0, 0, position)),
+        "enemy_pellet" => Kind::Walker(Box::new(Actor::new(ActorKind::Pellet, 0, 0, position))),
         // petal_stem.gd enemy_petal: saved fields are restored after the head.
-        "enemy_petal" => Kind::Walker(Actor::new(ActorKind::Petal, 0, 0, position)),
+        "enemy_petal" => Kind::Walker(Box::new(Actor::new(ActorKind::Petal, 0, 0, position))),
         // spitting_stem.gd enemy_spike: saved fields are restored after the head.
-        "enemy_spike" => Kind::Walker(Actor::new(ActorKind::Spike, 0, 0, position)),
+        "enemy_spike" => Kind::Walker(Box::new(Actor::new(ActorKind::Spike, 0, 0, position))),
         // soft_giant.gd burst copies: saved fields are restored after the head.
-        "e23" => Kind::Walker(Actor::new(ActorKind::SoftWalker, 0, 0, position)),
+        "e23" => Kind::Walker(Box::new(Actor::new(ActorKind::SoftWalker, 0, 0, position))),
         // mace_ball.gd conjured by an e27: saved fields are restored after the head.
-        "enemy_mace" => Kind::Walker(Actor::new(ActorKind::MaceBall, 0, 0, position)),
+        "enemy_mace" => Kind::Walker(Box::new(Actor::new(ActorKind::MaceBall, 0, 0, position))),
         // launcher_shot.gd: saved fields are restored after the head.
-        "enemy_shot" => Kind::Walker(Actor::new(ActorKind::Shot, 0, 0, position)),
+        "enemy_shot" => Kind::Walker(Box::new(Actor::new(ActorKind::Shot, 0, 0, position))),
         // hop_sprout.gd grown from a drift_spore.gd: saved fields follow the head.
-        "e12" => Kind::Walker(Actor::new(ActorKind::Sprout, 0, 0, position)),
+        "e12" => Kind::Walker(Box::new(Actor::new(ActorKind::Sprout, 0, 0, position))),
         // spike_hopper.gd (a needle_juggler.gd hopper): saved fields follow the head.
-        "e40" => Kind::Walker(Actor::new(
+        "e40" => Kind::Walker(Box::new(Actor::new(
             ActorKind::Hopper,
             value("variant")?,
             0,
             position,
-        )),
+        ))),
         "o1" | "o2" | "o3" => Kind::Pickup(Pickup::new(
             match row.code.as_str() {
                 "o1" => PickupKind::Coin,
@@ -141,7 +141,7 @@ impl Run {
         let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
         let mut row = Entity::dynamic(
             serial,
-            Kind::Walker(actor),
+            Kind::Walker(Box::new(actor)),
             Body {
                 x: position.x,
                 y: position.y,

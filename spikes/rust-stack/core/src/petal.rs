@@ -277,7 +277,7 @@ impl Run {
             petal.slot = slot;
             let mut row = Entity::dynamic(
                 serial,
-                Kind::Walker(petal),
+                Kind::Walker(Box::new(petal)),
                 Body {
                     x: center.x,
                     y: center.y,

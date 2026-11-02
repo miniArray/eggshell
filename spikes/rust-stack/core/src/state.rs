@@ -258,37 +258,43 @@ impl Run {
                         if p.code == "e32" {
                             actor.look = 5;
                         }
-                        Kind::Walker(actor)
+                        Kind::Walker(Box::new(actor))
                     }
-                    "e6" | "e8" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::shell(p)?),
-                    "e7" | "e9" => Kind::Walker(crate::actors::Actor::bare_runner(p)?),
-                    "e11" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::armored(p)?),
-                    "e22" if p.rotation == 0 => Kind::Walker(crate::actors::Actor::spear_guard(p)?),
-                    "e10" => Kind::Walker(crate::actors::Actor::thief(p)?),
-                    "e28" => Kind::Walker(crate::actors::Actor::roller(p)?),
-                    "e31" => Kind::Walker(crate::actors::Actor::shooter(p)?),
-                    "e18" => Kind::Walker(crate::actors::Actor::petal_stem(p)?),
-                    "e41" => Kind::Walker(crate::actors::Actor::spitter(p)?),
-                    "e23" => Kind::Walker(crate::actors::Actor::soft_walker(p)?),
-                    "e24" => Kind::Walker(crate::actors::Actor::soft_giant(p)?),
-                    "e29" => Kind::Walker(crate::actors::Actor::helmet(p)?),
-                    "e19" => Kind::Walker(crate::actors::Actor::bumper(p)?),
-                    "e27" => Kind::Walker(crate::actors::Actor::mace(p)?),
-                    "e30" => Kind::Walker(crate::actors::Actor::wing(p)?),
-                    "e12" => Kind::Walker(crate::actors::Actor::sprout(p)?),
-                    "e40" => Kind::Walker(crate::actors::Actor::hopper(p)?),
-                    "e42" => Kind::Walker(crate::actors::Actor::juggler(p)?),
-                    "e17" => Kind::Walker(crate::actors::Actor::bulk(p)?),
-                    "e33" => Kind::Walker(crate::actors::Actor::gust(p)?),
-                    "e13" => Kind::Walker(crate::actors::Actor::spore(p)?),
-                    "e14" => Kind::Walker(crate::actors::Actor::hang(p)?),
-                    "e25" => Kind::Walker(crate::actors::Actor::spine(p)?),
-                    "e15" => Kind::Walker(crate::actors::Actor::slime(p)?),
-                    "e16" => Kind::Walker(crate::actors::Actor::bubble(p)?),
-                    "e36" => Kind::Walker(crate::actors::Actor::thorn(p)?),
-                    "e43" => Kind::Walker(crate::actors::Actor::bee(p)?),
-                    "e26" => Kind::Walker(crate::actors::Actor::shy(p)?),
-                    "e39" => Kind::Walker(crate::actors::Actor::blind(p)?),
+                    "e6" | "e8" if p.rotation == 0 => {
+                        Kind::Walker(Box::new(crate::actors::Actor::shell(p)?))
+                    }
+                    "e7" | "e9" => Kind::Walker(Box::new(crate::actors::Actor::bare_runner(p)?)),
+                    "e11" if p.rotation == 0 => {
+                        Kind::Walker(Box::new(crate::actors::Actor::armored(p)?))
+                    }
+                    "e22" if p.rotation == 0 => {
+                        Kind::Walker(Box::new(crate::actors::Actor::spear_guard(p)?))
+                    }
+                    "e10" => Kind::Walker(Box::new(crate::actors::Actor::thief(p)?)),
+                    "e28" => Kind::Walker(Box::new(crate::actors::Actor::roller(p)?)),
+                    "e31" => Kind::Walker(Box::new(crate::actors::Actor::shooter(p)?)),
+                    "e18" => Kind::Walker(Box::new(crate::actors::Actor::petal_stem(p)?)),
+                    "e41" => Kind::Walker(Box::new(crate::actors::Actor::spitter(p)?)),
+                    "e23" => Kind::Walker(Box::new(crate::actors::Actor::soft_walker(p)?)),
+                    "e24" => Kind::Walker(Box::new(crate::actors::Actor::soft_giant(p)?)),
+                    "e29" => Kind::Walker(Box::new(crate::actors::Actor::helmet(p)?)),
+                    "e19" => Kind::Walker(Box::new(crate::actors::Actor::bumper(p)?)),
+                    "e27" => Kind::Walker(Box::new(crate::actors::Actor::mace(p)?)),
+                    "e30" => Kind::Walker(Box::new(crate::actors::Actor::wing(p)?)),
+                    "e12" => Kind::Walker(Box::new(crate::actors::Actor::sprout(p)?)),
+                    "e40" => Kind::Walker(Box::new(crate::actors::Actor::hopper(p)?)),
+                    "e42" => Kind::Walker(Box::new(crate::actors::Actor::juggler(p)?)),
+                    "e17" => Kind::Walker(Box::new(crate::actors::Actor::bulk(p)?)),
+                    "e33" => Kind::Walker(Box::new(crate::actors::Actor::gust(p)?)),
+                    "e13" => Kind::Walker(Box::new(crate::actors::Actor::spore(p)?)),
+                    "e14" => Kind::Walker(Box::new(crate::actors::Actor::hang(p)?)),
+                    "e25" => Kind::Walker(Box::new(crate::actors::Actor::spine(p)?)),
+                    "e15" => Kind::Walker(Box::new(crate::actors::Actor::slime(p)?)),
+                    "e16" => Kind::Walker(Box::new(crate::actors::Actor::bubble(p)?)),
+                    "e36" => Kind::Walker(Box::new(crate::actors::Actor::thorn(p)?)),
+                    "e43" => Kind::Walker(Box::new(crate::actors::Actor::bee(p)?)),
+                    "e26" => Kind::Walker(Box::new(crate::actors::Actor::shy(p)?)),
+                    "e39" => Kind::Walker(Box::new(crate::actors::Actor::blind(p)?)),
                     "e38" => Kind::DiscBlock(crate::disc::DiscBlock::new(p)?),
                     "d22" => Kind::SnowTree(crate::snow_tree::SnowTree::new(p)?),
                     // Name the code and form so sweeps can rank what is still missing.

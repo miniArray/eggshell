@@ -46,7 +46,8 @@ pub(crate) enum Kind {
     Star(Star),
     Bridge,
     Pad(Pad),
-    Walker(Actor),
+    /// Boxed: an Actor is about 1.4 KB, the other kinds at most 208 bytes.
+    Walker(Box<Actor>),
     Egg(crate::egg::Egg),
     Cache(crate::clouds::Cache),
     Redirect(crate::clouds::Redirect),
@@ -350,91 +351,91 @@ impl Entity {
             {
                 let kind = match &self.kind {
                     Kind::Walker(a) if a.kind == ActorKind::Shell => {
-                        Kind::Walker(Actor::shell(source)?)
+                        Kind::Walker(Box::new(Actor::shell(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Armored => {
-                        Kind::Walker(Actor::armored(source)?)
+                        Kind::Walker(Box::new(Actor::armored(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spear => {
-                        Kind::Walker(Actor::spear_guard(source)?)
+                        Kind::Walker(Box::new(Actor::spear_guard(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Thief => {
-                        Kind::Walker(Actor::thief(source)?)
+                        Kind::Walker(Box::new(Actor::thief(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Roller => {
-                        Kind::Walker(Actor::roller(source)?)
+                        Kind::Walker(Box::new(Actor::roller(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Shooter => {
-                        Kind::Walker(Actor::shooter(source)?)
+                        Kind::Walker(Box::new(Actor::shooter(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::PetalStem => {
-                        Kind::Walker(Actor::petal_stem(source)?)
+                        Kind::Walker(Box::new(Actor::petal_stem(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spitter => {
-                        Kind::Walker(Actor::spitter(source)?)
+                        Kind::Walker(Box::new(Actor::spitter(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::SoftWalker => {
-                        Kind::Walker(Actor::soft_walker(source)?)
+                        Kind::Walker(Box::new(Actor::soft_walker(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::SoftGiant => {
-                        Kind::Walker(Actor::soft_giant(source)?)
+                        Kind::Walker(Box::new(Actor::soft_giant(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Helmet => {
-                        Kind::Walker(Actor::helmet(source)?)
+                        Kind::Walker(Box::new(Actor::helmet(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Bumper => {
-                        Kind::Walker(Actor::bumper(source)?)
+                        Kind::Walker(Box::new(Actor::bumper(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Mace => {
-                        Kind::Walker(Actor::mace(source)?)
+                        Kind::Walker(Box::new(Actor::mace(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Wing => {
-                        Kind::Walker(Actor::wing(source)?)
+                        Kind::Walker(Box::new(Actor::wing(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Sprout => {
-                        Kind::Walker(Actor::sprout(source)?)
+                        Kind::Walker(Box::new(Actor::sprout(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Hopper => {
-                        Kind::Walker(Actor::hopper(source)?)
+                        Kind::Walker(Box::new(Actor::hopper(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Juggler => {
-                        Kind::Walker(Actor::juggler(source)?)
+                        Kind::Walker(Box::new(Actor::juggler(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Bulk => {
-                        Kind::Walker(Actor::bulk(source)?)
+                        Kind::Walker(Box::new(Actor::bulk(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Gust => {
-                        Kind::Walker(Actor::gust(source)?)
+                        Kind::Walker(Box::new(Actor::gust(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spore => {
-                        Kind::Walker(Actor::spore(source)?)
+                        Kind::Walker(Box::new(Actor::spore(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Slime => {
-                        Kind::Walker(Actor::slime(source)?)
+                        Kind::Walker(Box::new(Actor::slime(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Spine => {
-                        Kind::Walker(Actor::spine(source)?)
+                        Kind::Walker(Box::new(Actor::spine(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Hang => {
-                        Kind::Walker(Actor::hang(source)?)
+                        Kind::Walker(Box::new(Actor::hang(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Bubble => {
-                        Kind::Walker(Actor::bubble(source)?)
+                        Kind::Walker(Box::new(Actor::bubble(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Thorn => {
-                        Kind::Walker(Actor::thorn(source)?)
+                        Kind::Walker(Box::new(Actor::thorn(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Bee => {
-                        Kind::Walker(Actor::bee(source)?)
+                        Kind::Walker(Box::new(Actor::bee(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Runner => {
-                        Kind::Walker(Actor::bare_runner(source)?)
+                        Kind::Walker(Box::new(Actor::bare_runner(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Shy => {
-                        Kind::Walker(Actor::shy(source)?)
+                        Kind::Walker(Box::new(Actor::shy(source)?))
                     }
                     Kind::Walker(a) if a.kind == ActorKind::Blind => {
-                        Kind::Walker(Actor::blind(source)?)
+                        Kind::Walker(Box::new(Actor::blind(source)?))
                     }
                     Kind::Walker(a) => {
                         let look = a.look;
@@ -444,7 +445,7 @@ impl Entity {
                         if a.kind == ActorKind::Stilt {
                             a.height = crate::stilt::height(source)?;
                         }
-                        Kind::Walker(a)
+                        Kind::Walker(Box::new(a))
                     }
                     Kind::Star(_) => Kind::Star(Star::default()),
                     Kind::Egg(_) => Kind::Egg(crate::egg::Egg::new(source.variant)),

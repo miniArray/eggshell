@@ -249,7 +249,7 @@ impl Run {
                 let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
                 let mut row = Entity::dynamic(
                     serial,
-                    Kind::Walker(shot),
+                    Kind::Walker(Box::new(shot)),
                     Body {
                         x: body.x,
                         y: body.y,

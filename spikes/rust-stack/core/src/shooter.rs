@@ -218,7 +218,7 @@ impl Run {
         let pellet = Actor::new(ActorKind::Pellet, 0, 0, at);
         let mut row = Entity::dynamic(
             serial,
-            Kind::Walker(pellet),
+            Kind::Walker(Box::new(pellet)),
             Body {
                 x: at.x,
                 y: at.y,

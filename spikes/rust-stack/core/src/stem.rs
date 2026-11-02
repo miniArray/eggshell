@@ -215,7 +215,7 @@ impl Run {
                 },
             );
             let family = self.entities.iter().filter(|e| e.is_enemy()).count() as i64;
-            let mut row = Entity::dynamic(serial, Kind::Walker(hopper), body, -1, 8);
+            let mut row = Entity::dynamic(serial, Kind::Walker(Box::new(hopper)), body, -1, 8);
             row.family_index = family;
             self.dynamic_serial = serial + 1;
             self.entities.push(row);

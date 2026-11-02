@@ -31,7 +31,7 @@ fn original_inactive_visibility_policy() {
             actor.head_size = 10;
             actor.mode = 2;
         }
-        let mut entity = Entity::dynamic(1, Kind::Walker(actor), Body::default(), -1, 8);
+        let mut entity = Entity::dynamic(1, Kind::Walker(Box::new(actor)), Body::default(), -1, 8);
         entity.origin = if case["source_index"].as_i64().unwrap() >= 0 {
             Origin::Placed(0)
         } else {

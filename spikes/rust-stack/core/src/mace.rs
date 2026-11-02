@@ -416,7 +416,7 @@ impl Run {
         ball.aim = aim;
         let mut row = Entity::dynamic(
             serial,
-            Kind::Walker(ball),
+            Kind::Walker(Box::new(ball)),
             Body {
                 x: at.x,
                 y: at.y,
