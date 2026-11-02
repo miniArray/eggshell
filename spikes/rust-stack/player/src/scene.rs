@@ -1455,10 +1455,15 @@ impl Scene {
     /// Fed once per successful step even when that step is not drawn. Only DTO reads.
     pub fn observe_feel(&self, p: &Presentation) -> Result<(), String> {
         let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
-        self.dust
-            .lock()
-            .map_err(|_| "dust lock poisoned")?
-            .observe(p, settings);
+        self.dust.lock().map_err(|_| "dust lock poisoned")?.observe(
+            p,
+            settings,
+            &self
+                .maps
+                .get(p.map_index.checked_sub(1).ok_or("zero saved map index")?)
+                .ok_or("picture map absent")?
+                .map,
+        );
         Ok(())
     }
     pub fn feel_view(&self) -> crate::menu::View {
