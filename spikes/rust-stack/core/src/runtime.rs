@@ -156,6 +156,9 @@ impl Run {
         Ok(())
     }
     pub(crate) fn compact(&mut self) {
+        // Removing rows shifts indices: drop the derived row lists.
+        self.mace_rows.0 = usize::MAX;
+        self.presser_rows.0 = usize::MAX;
         let captor = self
             .entities
             .iter()

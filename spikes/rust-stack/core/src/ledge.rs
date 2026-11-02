@@ -59,13 +59,31 @@ impl Ledge {
 impl Run {
     /// count_ledge.gd _bodies: enemies, o4 stars, o7 eggs and o17 producers (pads have no
     /// bounds) that are not held, hidden or collected; whether any one's world box, top
-    /// and vertical speed meet `test`. Bodies more than 2048 px away from the ledge
-    /// cannot reach its 64 px area with any type's bounds, so they are skipped before
-    /// their bounds are read (Near.nearby is a region query too).
-    fn ledge_any(&self, index: usize, test: impl Fn([i64; 4], i64, i64) -> bool) -> bool {
+    /// and vertical speed meet `test`. Only rows of a pressing kind are visited (kinds
+    /// never change in place; rows appended since the list was made are visited too),
+    /// and bodies more than 2048 px away, which no type's bounds reach from there, are
+    /// skipped before their bounds are read (Near.nearby is a region query too).
+    fn ledge_any(&mut self, index: usize, test: impl Fn([i64; 4], i64, i64) -> bool) -> bool {
         const REACH: i64 = 2048 * S;
+        let presses = |e: &crate::entity::Entity| {
+            matches!(
+                e.kind,
+                Kind::Walker(_) | Kind::Star(_) | Kind::Egg(_) | Kind::Stem(_) | Kind::Hound(_)
+            )
+        };
+        // Rebuilt after compaction (compact resets it) or a restore (a fresh Run).
+        if self.presser_rows.0 > self.entities.len() {
+            self.presser_rows = (
+                self.entities.len(),
+                (0..self.entities.len())
+                    .filter(|&i| presses(&self.entities[i]))
+                    .collect(),
+            );
+        }
         let at = self.entities[index].body;
-        self.entities.iter().enumerate().any(|(i, o)| {
+        let tail = self.presser_rows.0..self.entities.len();
+        self.presser_rows.1.iter().copied().chain(tail).any(|i| {
+            let o = &self.entities[i];
             if i == index
                 || o.status != 1
                 || o.collected != 0

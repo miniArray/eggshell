@@ -11,6 +11,8 @@ impl Run {
         // The two load steps can already spawn runtime rows (needle_juggler.gd grows its
         // hopper on its first step); the snapshot's own suffix replaces them.
         run.entities.truncate(world.maps[0].placements.len());
+        run.mace_rows.0 = usize::MAX;
+        run.presser_rows.0 = usize::MAX;
         if wire.entities.len() < run.entities.len() {
             return Err(refuse("placed prefix count"));
         }

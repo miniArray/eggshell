@@ -35,6 +35,9 @@ pub(crate) struct Run {
     /// Table length and row indices of the e27 mace walkers, for mace_on_remove
     /// (derived from the table; never saved).
     pub mace_rows: (usize, Vec<usize>),
+    /// Table length and the rows whose kind can press a count ledge (walkers, stars,
+    /// eggs, stems, hounds), for ledge_contact (derived; never saved).
+    pub presser_rows: (usize, Vec<usize>),
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,
 }
@@ -100,6 +103,7 @@ impl Run {
             clock: crate::switch::Clock::default(),
             solid_scratch: crate::solids::Scratch::default(),
             mace_rows: (usize::MAX, Vec::new()),
+            presser_rows: (usize::MAX, Vec::new()),
             #[cfg(test)]
             solid_trace: crate::solids::SolidTrace::default(),
         };
