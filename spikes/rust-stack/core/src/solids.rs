@@ -129,6 +129,14 @@ pub(crate) struct SolidFrame {
     cells: std::collections::HashMap<(i64, i64), Vec<usize>, FastHash>,
     /// Each row's region in CELL units (kept with the region by begin and refresh).
     row_cells: Vec<[i64; 4]>,
+    /// Row tokens (in order) and region cells of the previous step: while the tokens
+    /// repeat, row indices mean the same rows, so the cell lists are kept and only
+    /// rows whose cells changed are listed again (lists stay a superset; `shapes`
+    /// applies the exact cell test).
+    previous_tokens: Vec<i64>,
+    previous_cells: Vec<[i64; 4]>,
+    /// Steps since the cell lists were last rebuilt from scratch (bounds stale entries).
+    kept_steps: u32,
     /// Reused candidate bitset for `shapes` (one bit per row).
     scratch: Vec<u64>,
     /// Row index by entity token, for `refresh` (collision.gd context.by_token).
@@ -211,12 +219,7 @@ impl SolidFrame {
         self.updates.clear();
         self.head_bumped.clear();
         self.head_bumps.clear();
-        // Empty each cell's list but keep it (and the key) for the next step's rows.
-        for list in self.cells.values_mut() {
-            list.clear();
-        }
-        self.wide.clear();
-        self.by_token.clear();
+        std::mem::swap(&mut self.previous_cells, &mut self.row_cells);
         self.row_cells.clear();
         for entity in entities {
             if let Kind::Grow(grow) = &entity.kind {
@@ -826,16 +829,41 @@ impl SolidFrame {
                 });
             }
         }
+        let keep = self.kept_steps < 600
+            && self.previous_tokens.len() == self.rows.len()
+            && self
+                .rows
+                .iter()
+                .zip(&self.previous_tokens)
+                .all(|(row, &token)| row.token == token);
+        if keep {
+            self.kept_steps += 1;
+        } else {
+            // Empty each cell's list but keep it (and the key) for the next rows.
+            for list in self.cells.values_mut() {
+                list.clear();
+            }
+            self.wide.clear();
+            self.by_token.clear();
+            self.previous_tokens.clear();
+            self.previous_tokens
+                .extend(self.rows.iter().map(|row| row.token));
+            self.kept_steps = 0;
+        }
         for index in 0..self.rows.len() {
-            // The first row of a token answers `refresh`, as the old linear search did.
-            self.by_token.entry(self.rows[index].token).or_insert(index);
+            if !keep {
+                // The first row of a token answers `refresh`, as the old linear search did.
+                self.by_token.entry(self.rows[index].token).or_insert(index);
+            }
             // collision.gd _place: the region covers the type's bounds and its boxes.
             let row = &mut self.rows[index];
             row.region = cover(row.region, row.live_box);
             let region = row.region;
-            self.row_cells
-                .push(region.map(|v| floor_div(v, CELL).expect("positive cell size")));
-            self.index_region(index, region);
+            let cells = region.map(|v| floor_div(v, CELL).expect("positive cell size"));
+            self.row_cells.push(cells);
+            if !keep || self.previous_cells.get(index) != Some(&cells) {
+                self.index_region(index, region);
+            }
         }
     }
     pub fn shapes(&mut self, probe: [i64; 4]) -> Vec<Shape> {
