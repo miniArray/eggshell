@@ -71,7 +71,7 @@ impl Model {
                 GLOW_STRENGTH_ROW => s.glow_strength += delta,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 GLOW_STYLE_ROW => s.glow_style.toggle(),
-                ZOOM_STEPS_ROW => s.zoom_steps.toggle(),
+                ZOOM_STEPS_ROW => s.zoom_steps.cycle(delta),
                 _ => {}
             }
         }

@@ -504,3 +504,9 @@ Default `glow_strength` increases from 1 to 2 on the existing 0..3 scale.
 Pixel bands, level-grid alignment and light-energy budgets are unchanged.
 An existing explicit `glow_strength` in feel.json remains the user's choice;
 Reset to defaults adopts 2. Smooth mode also uses the stronger default.
+
+### Zoom steps
+
+`zoom_steps` now cycles `whole` → `half` → `quarter` on the existing Feel row.
+Half advances by 0.5 (1, 1.5, 2, 2.5…). Whole remains the default. Changing mode
+snaps to its nearest step; nearest texture sampling is unchanged.

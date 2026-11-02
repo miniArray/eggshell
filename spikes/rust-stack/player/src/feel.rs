@@ -7,18 +7,24 @@ use std::{io::Write, path::Path};
 pub enum ZoomSteps {
     #[default]
     Whole,
+    Half,
     Quarter,
 }
 impl ZoomSteps {
     pub fn toggle(&mut self) {
         *self = match self {
-            Self::Whole => Self::Quarter,
+            Self::Whole => Self::Half,
+            Self::Half => Self::Quarter,
             Self::Quarter => Self::Whole,
         };
+    }
+    pub fn cycle(&mut self, delta: i64) {
+        for _ in 0..if delta < 0 { 2 } else { 1 } { self.toggle(); }
     }
     pub fn label(self) -> &'static str {
         match self {
             Self::Whole => "whole",
+            Self::Half => "half",
             Self::Quarter => "quarter",
         }
     }
@@ -26,6 +32,7 @@ impl ZoomSteps {
     pub fn advance(self, zoom: f64, delta: i32) -> f64 {
         let step = match self {
             Self::Whole => 1.0,
+            Self::Half => 0.5,
             Self::Quarter => 0.25,
         };
         (zoom / step).round() * step + f64::from(delta) * step
@@ -168,6 +175,23 @@ mod tests {
         assert_eq!(ZoomSteps::Whole.advance(0.25, 0), 0.0);
         assert_eq!(ZoomSteps::Whole.advance(0.0, 1), 1.0);
         assert_eq!(ZoomSteps::Whole.advance(1.0, -1), 0.0);
+    }
+    #[test]
+    fn half_zoom_visits_halves_and_cycles_all_modes() {
+        let mut zoom = 0.0;
+        for expected in [1.5, 2.0, 2.5, 3.0] {
+            zoom = ZoomSteps::Half.advance(zoom, 1);
+            assert_eq!(1.0 + zoom, expected);
+        }
+        assert_eq!(ZoomSteps::Half.advance(0.25, 0), 0.5);
+        assert_eq!(ZoomSteps::Half.advance(0.5, -1), 0.0);
+        let mut mode = ZoomSteps::default();
+        for expected in [ZoomSteps::Half, ZoomSteps::Quarter, ZoomSteps::Whole] {
+            mode.toggle();
+            assert_eq!(mode, expected);
+            let json = serde_json::to_string(&mode).unwrap();
+            assert_eq!(serde_json::from_str::<ZoomSteps>(&json).unwrap(), mode);
+        }
     }
     #[test]
     fn old_settings_get_new_defaults_and_goal_strength_is_clamped() {
