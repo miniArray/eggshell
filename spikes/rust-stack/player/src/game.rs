@@ -129,13 +129,29 @@ fn startup_maps(directory: &Path) -> Result<PathBuf, String> {
     if bytes.is_empty() {
         return Err("startup maps evidence is empty".into());
     }
-    let path = directory.join("startup-process.maps");
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| format!("startup maps evidence {}: {e}", path.display()))?;
+    // Evidence is never overwritten: each start of the same level (the level list
+    // reopens levels) writes the next free name, startup-process.maps, then -2, -3, ...
+    let mut attempt = 1;
+    let (path, mut file) = loop {
+        let name = if attempt == 1 {
+            "startup-process.maps".to_owned()
+        } else {
+            format!("startup-process-{attempt}.maps")
+        };
+        let path = directory.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(file) => break (path, file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 10_000 => {
+                attempt += 1;
+            }
+            Err(e) => return Err(format!("startup maps evidence {}: {e}", path.display())),
+        }
+    };
     file.write_all(&bytes).map_err(|e| e.to_string())?;
     file.flush().map_err(|e| e.to_string())?;
     println!(
@@ -917,7 +933,10 @@ mod tests {
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
-        assert!(startup_maps(&directory).is_err());
+        // A second start writes the next name and leaves the first evidence alone.
+        let second = startup_maps(&directory).unwrap();
+        assert_ne!(second, path);
+        assert!(second.ends_with("startup-process-2.maps"));
         assert_eq!(std::fs::read(&path).unwrap(), first);
         std::fs::remove_dir_all(&directory).unwrap();
     }

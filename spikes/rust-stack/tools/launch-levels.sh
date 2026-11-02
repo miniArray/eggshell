@@ -14,7 +14,11 @@ if [[ -f "$ROOT/locale/en_US.UTF-8/Compose" ]]; then
   export XLOCALEDIR="$ROOT/locale"
   export XCOMPOSEFILE="$ROOT/locale/en_US.UTF-8/Compose"
 fi
-export SDL_VIDEODRIVER=wayland SDL_AUDIODRIVER=dummy SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
+export SDL_VIDEODRIVER=wayland SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
+# Sound as in launch-playtest: SDL tries the PulseAudio protocol (the Pro's sound
+# server), then ALSA; without either the game runs silent and says so.
+unset SDL_AUDIODRIVER
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 seconds=${1:-900}
 [[ "$seconds" =~ ^[1-9][0-9]{0,2}$ && "$seconds" -le 900 ]]
 LEVELS="$ROOT/private-input/levels"
