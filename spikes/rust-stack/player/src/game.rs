@@ -7,32 +7,57 @@ use crate::{
     scene::Scene,
     timing::{Samples, Timer, memory_kib},
 };
-use eggshell_spike_core::Session;
+use eggshell_spike_core::{Lifetime, Session};
 use std::{
     io::Write,
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
 
+enum SaveTask {
+    Snapshot(PathBuf, Vec<u8>),
+    ClearAutosave(PathBuf),
+    Finish,
+}
 struct Writer {
-    send: mpsc::SyncSender<Option<(PathBuf, Vec<u8>)>>,
+    send: mpsc::SyncSender<SaveTask>,
     join: Option<thread::JoinHandle<Result<u64, String>>>,
 }
 impl Writer {
     fn start() -> Self {
-        let (send, receive) = mpsc::sync_channel::<Option<(PathBuf, Vec<u8>)>>(1);
+        let (send, receive) = mpsc::sync_channel::<SaveTask>(1);
         let join = thread::spawn(move || {
             let mut writes = 0;
-            while let Some((path, bytes)) = receive.recv().map_err(|e| e.to_string())? {
-                let temporary = path.with_extension("tmp");
-                let mut f = std::fs::File::create(&temporary).map_err(|e| e.to_string())?;
-                f.write_all(&bytes).map_err(|e| e.to_string())?;
-                f.flush().map_err(|e| e.to_string())?;
-                drop(f);
-                std::fs::rename(temporary, path).map_err(|e| e.to_string())?;
-                writes += 1;
+            loop {
+                match receive.recv().map_err(|e| e.to_string())? {
+                    SaveTask::Snapshot(path, bytes) => {
+                        let temporary = path.with_extension("tmp");
+                        let mut f = std::fs::File::create(&temporary).map_err(|e| e.to_string())?;
+                        f.write_all(&bytes).map_err(|e| e.to_string())?;
+                        f.flush().map_err(|e| e.to_string())?;
+                        drop(f);
+                        std::fs::rename(temporary, path).map_err(|e| e.to_string())?;
+                        writes += 1;
+                    }
+                    SaveTask::ClearAutosave(path) => {
+                        // FIFO: no previously queued snapshot can recreate this save.
+                        match std::fs::remove_file(&path) {
+                            Ok(()) => println!("RUST_AUTOSAVE_CLEARED reason=goal"),
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                println!("RUST_AUTOSAVE_CLEARED reason=goal already_absent=true");
+                            }
+                            Err(e) => eprintln!(
+                                "RUST_AUTOSAVE_CLEAR_FAILED reason=goal path={path:?} error={e}"
+                            ),
+                        }
+                    }
+                    SaveTask::Finish => break,
+                }
             }
             Ok(writes)
         });
@@ -43,11 +68,17 @@ impl Writer {
     }
     fn enqueue(&self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
         self.send
-            .send(Some((path, bytes)))
+            .send(SaveTask::Snapshot(path, bytes))
+            .map_err(|e| e.to_string())
+    }
+    fn clear_autosave(&self, path: PathBuf) -> Result<(), String> {
+        self.send
+            .send(SaveTask::ClearAutosave(path))
             .map_err(|e| e.to_string())
     }
     fn finish(mut self) -> Result<u64, String> {
-        self.send.send(None).map_err(|e| e.to_string())?;
+        // Join even if the worker has failed, so all save I/O has stopped on return.
+        let _ = self.send.send(SaveTask::Finish);
         self.join
             .take()
             .unwrap()
@@ -55,11 +86,38 @@ impl Writer {
             .map_err(|_| "save worker panicked")?
     }
 }
+#[derive(Debug, PartialEq, Eq)]
+enum AutosaveAction {
+    Skip,
+    Write,
+    Clear,
+}
+#[derive(Default)]
+struct AutosavePolicy {
+    // Shared with the scoped simulation worker; completion is sticky across restores.
+    goal_seen: AtomicBool,
+}
+impl AutosavePolicy {
+    fn action(&self, lifetime: Lifetime, life_phase: i64, due: bool) -> AutosaveAction {
+        if lifetime == Lifetime::Goal || matches!(life_phase, 7 | 8) {
+            if self.goal_seen.swap(true, Ordering::Relaxed) {
+                AutosaveAction::Skip
+            } else {
+                AutosaveAction::Clear
+            }
+        } else if due && !self.goal_seen.load(Ordering::Relaxed) {
+            AutosaveAction::Write
+        } else {
+            AutosaveAction::Skip
+        }
+    }
+}
 /// Shared by the real player and AKA host smoke. Disabled mode never constructs
 /// the writer, calls the snapshot codec, or writes a save at any lifecycle hook.
 pub(crate) struct SavePipeline {
     writer: Option<Writer>,
     directory: PathBuf,
+    autosave: AutosavePolicy,
 }
 impl SavePipeline {
     pub(crate) fn start(directory: PathBuf, disabled: bool) -> Self {
@@ -70,6 +128,7 @@ impl SavePipeline {
                 Some(Writer::start())
             },
             directory,
+            autosave: AutosavePolicy::default(),
         }
     }
     fn disabled(&self) -> bool {
@@ -100,13 +159,28 @@ impl SavePipeline {
         cursor: u64,
         samples: &mut Samples,
     ) -> Result<(), String> {
-        if !self.disabled() && crate::call_cursor::autosave_due(cursor, 60) {
-            self.write_snapshot(session, "autosave.v10", samples)?;
+        self.autosave(
+            session,
+            crate::call_cursor::autosave_due(cursor, 60),
+            samples,
+        )
+    }
+    fn autosave(&self, session: &Session, due: bool, samples: &mut Samples) -> Result<(), String> {
+        let Some(writer) = &self.writer else {
+            return Ok(());
+        };
+        let p = session.presentation_region([0; 4]);
+        match self
+            .autosave
+            .action(p.player.lifetime, p.player.life_phase, due)
+        {
+            AutosaveAction::Write => self.write_snapshot(session, "autosave.v10", samples),
+            AutosaveAction::Clear => writer.clear_autosave(self.directory.join("autosave.v10")),
+            AutosaveAction::Skip => Ok(()),
         }
-        Ok(())
     }
     pub(crate) fn finish(self, session: &Session, samples: &mut Samples) -> Result<u64, String> {
-        self.write_snapshot(session, "autosave.v10", samples)?;
+        self.autosave(session, true, samples)?;
         match self.writer {
             Some(writer) => writer.finish(),
             None => Ok(0),
@@ -521,6 +595,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     };
     let saves = SavePipeline::start(save_dir.clone(), benchmark_unverified_level);
     let startup_maps_path = startup_maps(&save_dir)?;
+    // Also clear a restored finished save before the first input call or pause.
+    saves.autosave(&session, false, &mut Samples::default())?;
     let initial_picture = session.presentation();
     scene.observe_feel(&initial_picture)?;
     sound.observe_feel(
@@ -694,6 +770,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
             let data = std::fs::read(save_dir.join("manual.v10")).map_err(|e| e.to_string())?;
             session.restore(&data).map_err(|e| e.to_string())?;
+            saves.autosave(&session, false, &mut save)?;
             sound.replaced();
             let p = session.presentation_region([0; 4]);
             sound.observe_feel(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
@@ -1226,6 +1303,93 @@ fn goal_menu(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn goal_clears_once_even_off_cadence_and_blocks_all_later_autosaves() {
+        for (lifetime, phase) in [
+            (Lifetime::Goal, 0),
+            (Lifetime::Active, 7),
+            (Lifetime::Active, 8),
+        ] {
+            let policy = AutosavePolicy::default();
+            assert_eq!(
+                policy.action(Lifetime::Active, 0, false),
+                AutosaveAction::Skip
+            );
+            assert_eq!(
+                policy.action(Lifetime::Active, 0, true),
+                AutosaveAction::Write
+            );
+            assert_eq!(policy.action(lifetime, phase, false), AutosaveAction::Clear);
+            assert_eq!(policy.action(lifetime, phase, true), AutosaveAction::Skip);
+            // A manual restore cannot re-enable autosave after completion.
+            assert_eq!(
+                policy.action(Lifetime::Active, 0, true),
+                AutosaveAction::Skip
+            );
+        }
+    }
+    #[test]
+    fn non_goal_phases_keep_autosave_cadence() {
+        let policy = AutosavePolicy::default();
+        for lifetime in [
+            Lifetime::Active,
+            Lifetime::Hurt,
+            Lifetime::Separated,
+            Lifetime::Rescuing,
+            Lifetime::Dying,
+            Lifetime::Respawning,
+        ] {
+            for phase in 0..=6 {
+                assert_eq!(policy.action(lifetime, phase, false), AutosaveAction::Skip);
+                assert_eq!(policy.action(lifetime, phase, true), AutosaveAction::Write);
+            }
+        }
+    }
+    #[test]
+    fn goal_worker_removes_queued_autosave_without_touching_manual_slot() {
+        let directory = test_save_directory("goal");
+        let auto = directory.join("autosave.v10");
+        let manual = directory.join("manual.v10");
+        let writer = Writer::start();
+        writer.enqueue(auto.clone(), vec![1, 2]).unwrap();
+        writer.clear_autosave(auto.clone()).unwrap();
+        writer.enqueue(manual.clone(), vec![3, 4]).unwrap();
+        assert_eq!(writer.finish().unwrap(), 2);
+        assert!(!auto.exists());
+        assert!(!auto.with_extension("tmp").exists());
+        assert_eq!(std::fs::read(manual).unwrap(), [3, 4]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn goal_cleanup_is_best_effort_and_manual_writes_still_finish() {
+        let directory = test_save_directory("goal-best-effort");
+        let auto = directory.join("autosave.v10");
+        let writer = Writer::start();
+        writer.clear_autosave(auto.clone()).unwrap(); // Missing is harmless.
+        // A non-file path cannot be removed, but must not kill the worker.
+        let blocked = directory.join("not-a-file");
+        std::fs::create_dir(&blocked).unwrap();
+        writer.clear_autosave(blocked).unwrap();
+        writer
+            .enqueue(directory.join("manual.v10"), vec![5])
+            .unwrap();
+        assert_eq!(writer.finish().unwrap(), 1);
+        assert!(!auto.exists());
+        assert_eq!(std::fs::read(directory.join("manual.v10")).unwrap(), [5]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    fn test_save_directory(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "eggshell-save-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
     #[test]
     fn startup_maps_are_private_nonempty_and_never_overwritten() {
         let nonce = std::time::SystemTime::now()
