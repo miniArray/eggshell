@@ -331,46 +331,85 @@ fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String
         .map(|(from, (to, _, _))| PaletteSwap { from, to })
         .collect())
 }
-/// Yoshi's recent positions (one per step that moved him) and the drawn carried eggs.
-/// YFS Yoshi sheet: egg slot k tweens (0.1 s) to YoshiPos[latest - 10k] - 16 px.
+/// The original game's carried-egg follow (Yoshi event sheet, YoshiPos): every tick
+/// Yoshi's position is pushed onto a history of at most 60 entries; egg k (1-based) is
+/// tweened over 0.1 s toward the entry 10 * k back, 16 px up, once the history is that
+/// long. A standing Yoshi keeps pushing his own position, so the eggs gather at him.
+/// Godot drew no carried eggs; this is drawing only (never saved, never sim).
 #[derive(Default)]
 struct Trail {
-    last_tick: i64,
+    last_tick: Option<i64>,
     path: std::collections::VecDeque<[f64; 2]>,
     eggs: Vec<[f64; 2]>,
 }
 impl Trail {
-    const KEEP: usize = 64;
+    const KEEP: usize = 60;
+    const SPACING: usize = 10;
+    /// One tween step: a 0.1 s (6-tick) tween restarted every tick moves a sixth.
+    const STEP: f64 = 1.0 / 6.0;
     fn update(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
-        if tick != self.last_tick {
-            self.last_tick = tick;
-            if self.path.back() != Some(&at) {
-                self.path.push_back(at);
-                if self.path.len() > Self::KEEP {
-                    self.path.pop_front();
-                }
-            }
-            self.eggs.truncate(count);
-            while self.eggs.len() < count {
-                self.eggs.push([at[0], at[1] - 16.0]);
+        let steps = match self.last_tick {
+            None => 1,
+            Some(last) => (tick - last).clamp(0, Self::KEEP as i64) as usize,
+        };
+        self.last_tick = Some(tick);
+        self.eggs.truncate(count);
+        while self.eggs.len() < count {
+            self.eggs.push([at[0], at[1] - 16.0]);
+        }
+        for _ in 0..steps {
+            self.path.push_back(at);
+            while self.path.len() > Self::KEEP {
+                self.path.pop_front();
             }
             for (k, egg) in self.eggs.iter_mut().enumerate() {
-                let back = 10 * (k + 1);
-                let target = self
+                let back = Self::SPACING * (k + 1);
+                let Some(target) = self
                     .path
                     .len()
-                    .checked_sub(1 + back)
+                    .checked_sub(back)
+                    .filter(|_| self.path.len() > back)
                     .and_then(|i| self.path.get(i))
-                    .or(self.path.front())
-                    .copied()
-                    .unwrap_or(at);
+                else {
+                    continue;
+                };
+                let goal = [target[0], target[1] - 16.0];
                 for i in 0..2 {
-                    let goal = target[i] - if i == 1 { 16.0 } else { 0.0 };
-                    egg[i] += (goal - egg[i]) / 6.0;
+                    egg[i] += (goal[i] - egg[i]) * Self::STEP;
                 }
             }
         }
         self.eggs.clone()
+    }
+}
+#[cfg(test)]
+mod trail_tests {
+    use super::Trail;
+    #[test]
+    fn eggs_gather_at_a_standing_yoshi() {
+        let mut t = Trail::default();
+        for tick in 0..30 {
+            t.update(tick, [tick as f64 * 4.0, 100.0], 2);
+        }
+        // Standing still at x 116 for 90 ticks: the history fills with that spot.
+        let mut eggs = Vec::new();
+        for tick in 30..120 {
+            eggs = t.update(tick, [116.0, 100.0], 2);
+        }
+        for egg in eggs {
+            assert!(
+                (egg[0] - 116.0).abs() < 0.01 && (egg[1] - 84.0).abs() < 0.01,
+                "{egg:?}"
+            );
+        }
+    }
+    #[test]
+    fn short_history_leaves_eggs_where_they_appeared() {
+        let mut t = Trail::default();
+        let eggs = t.update(0, [10.0, 50.0], 1);
+        assert_eq!(eggs, vec![[10.0, 34.0]]);
+        let eggs = t.update(5, [30.0, 50.0], 1);
+        assert_eq!(eggs, vec![[10.0, 34.0]]);
     }
 }
 fn fallback_head_box(
