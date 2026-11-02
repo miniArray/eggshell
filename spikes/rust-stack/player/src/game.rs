@@ -771,7 +771,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     zoom_min = picture.plan.zoom_min;
                     zoom_max = picture.plan.zoom_max;
                     resolved_scale = picture.plan.scale;
-                    let world_draw = gpu.draw(&picture.world)?;
+                    let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
                     gpu.lights(&picture.lights)?;
                     gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
                     let tint_draw = if picture.tint.is_empty() {
@@ -900,7 +900,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             zoom_min = picture.plan.zoom_min;
             zoom_max = picture.plan.zoom_max;
             resolved_scale = picture.plan.scale;
-            let world_draw = gpu.draw(&picture.world)?;
+            let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
             gpu.lights(&picture.lights)?;
             gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
             let tint_draw = if picture.tint.is_empty() {

@@ -257,3 +257,19 @@ view/input files; pinned SDL owning-source capability checks; pinned
 wayland-protocols1.49 `stable/presentation-time/presentation-time.xml` for actual
 presented/discarded/clock/sequence semantics. Device compatibility is not inferred
 from source support. Rust tests and asset counts are not picture evidence.
+
+## Lighting spike (presentation only)
+
+Object emitters come from `Presentation` (`d25`/`d26` `lit:*`, `fire_shot`,
+non-cold/unfrozen `e16`, `o1`/`o2`) and compiled `TerrainHazard::Lava` cells.
+At most 16 visible emitters nearest the camera survive. Total intensity is capped.
+Saved ticks drive flicker. The map darkness overlay is **unchanged**. Dark maps
+use tint-only lighting: RGB can only decrease, so no light can reveal more level.
+
+Optional `foo.normal.png` beside `foo.png` supplies tangent normals (+X right,
++Y up, +Z outward). It must have the same dimensions. Sidecars are unpinned local
+spike art; all original image hash checks remain in force. Missing sidecars retain
+the original shader. The auto-normal option derives an alpha-edge bevel with four
+extra texture taps, with no generated textures. Both paths use one nearby light
+per quad and at most 128 replacement draws per frame, preserving painter order,
+palette swaps and alpha. With lights off, the exact original renderer is used.

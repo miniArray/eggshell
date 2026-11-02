@@ -18,6 +18,7 @@ pub struct Frame {
     pub lights: Vec<Light>,
     pub candidates: usize,
     pub dark_map: bool,
+    pub auto_normals: bool,
     center: [f32; 2],
 }
 impl Frame {
@@ -26,6 +27,7 @@ impl Frame {
             lights: Vec::with_capacity(MAX_LIGHTS),
             candidates: 0,
             dark_map: darkness > 0.0,
+            auto_normals: false,
             center: container.map(|v| v as f32 / 2.0),
         }
     }

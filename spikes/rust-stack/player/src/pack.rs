@@ -148,3 +148,59 @@ mod tests {
         );
     }
 }
+
+/// Optional visual-only sidecars: `foo.png` -> `foo.normal.png` (RGB tangent
+/// normals: +X right, +Y up, +Z out). Sidecars are local spike art, outside the
+/// pinned original inventory. Main images still require their original hash.
+fn normal_sidecar(root: &Path, file: &str) -> Result<Option<Image>, String> {
+    let Some(stem) = file
+        .strip_suffix(".png")
+        .filter(|_| !file.starts_with(PLACEHOLDER))
+    else {
+        return Ok(None);
+    };
+    let name = format!("{stem}.normal.png");
+    // Validate components even for a missing file; safe_file also rejects escaping symlinks.
+    if Path::new(&name)
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_)))
+        || name.contains([':', '\\'])
+    {
+        return Err("unsafe normal sidecar path".into());
+    }
+    match fs::symlink_metadata(root.join(&name)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("normal sidecar: {e}")),
+        Ok(_) => Image::load(&safe_file(root, &name)?).map(Some),
+    }
+}
+impl Pack {
+    pub fn normal(&self, file: &str, size: [u32; 2]) -> Result<Option<Image>, String> {
+        let normal = normal_sidecar(&self.root, file)?;
+        if normal.as_ref().is_some_and(|n| [n.width, n.height] != size) {
+            return Err(format!("normal sidecar dimensions differ from {file}"));
+        }
+        Ok(normal)
+    }
+}
+#[cfg(test)]
+mod normal_tests {
+    use super::*;
+    #[test]
+    fn optional_normal_sidecar_missing_present_and_unsafe() {
+        let root = std::env::temp_dir().join(format!("eggshell-normals-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        assert!(normal_sidecar(&root, "foo.png").unwrap().is_none());
+        assert!(normal_sidecar(&root, "../foo.png").is_err());
+        let file = fs::File::create(root.join("foo.normal.png")).unwrap();
+        let mut png = png::Encoder::new(file, 1, 1);
+        png.set_color(png::ColorType::Rgb);
+        png.write_header()
+            .unwrap()
+            .write_image_data(&[128, 128, 255])
+            .unwrap();
+        let n = normal_sidecar(&root, "foo.png").unwrap().unwrap();
+        assert_eq!(n.rgba, [128, 128, 255, 255]);
+        fs::remove_dir_all(root).unwrap();
+    }
+}

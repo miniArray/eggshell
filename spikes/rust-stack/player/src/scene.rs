@@ -1331,6 +1331,11 @@ impl Scene {
             if gpu.upload(&image)? != id {
                 return Err("GPU image binding identity mismatch".into());
             }
+            gpu.upload_normal(
+                id,
+                pack.normal(file, [image.width, image.height])?.as_ref(),
+                [image.width, image.height],
+            )?;
         }
         // Only the reference's authored fallback pictures: flat white and bubble ring.
         self.solid = gpu.upload(&Image {
