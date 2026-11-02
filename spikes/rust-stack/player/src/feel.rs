@@ -122,6 +122,7 @@ pub struct FeelSettings {
     pub glow_style: GlowStyle,
     pub zoom_steps: ZoomSteps,
     pub button_layout: ButtonLayout,
+    pub elastic_tongue: bool,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -149,6 +150,7 @@ impl Default for FeelSettings {
             glow_style: GlowStyle::Pixel,
             zoom_steps: ZoomSteps::Whole,
             button_layout: ButtonLayout::Snes,
+            elastic_tongue: true,
         }
     }
 }
@@ -272,6 +274,7 @@ mod tests {
         assert_eq!(s.glow_style, GlowStyle::Pixel);
         assert_eq!(s.zoom_steps, ZoomSteps::Whole);
         assert_eq!(s.button_layout, ButtonLayout::Snes);
+        assert!(s.elastic_tongue);
         assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");
         assert_eq!(serde_json::to_value(s).unwrap()["zoom_steps"], "whole");
         assert_eq!(serde_json::to_value(s).unwrap()["glow_style"], "pixel");

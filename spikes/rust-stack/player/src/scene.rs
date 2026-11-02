@@ -162,6 +162,7 @@ pub struct Scene {
     pub paused_offset: [f64; 2],
     dust: std::sync::Mutex<crate::dust::Dust>,
     death_pose: std::sync::Mutex<crate::death_pose::DeathPose>,
+    elastic_tongue: std::sync::Mutex<crate::elastic_tongue::ElasticTongue>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1139,6 +1140,7 @@ impl Scene {
             paused_offset: [0.0; 2],
             dust: std::sync::Mutex::new(crate::dust::Dust::default()),
             death_pose: std::sync::Mutex::new(crate::death_pose::DeathPose::default()),
+            elastic_tongue: std::sync::Mutex::new(crate::elastic_tongue::ElasticTongue::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1477,6 +1479,10 @@ impl Scene {
                     .ok_or("picture map absent")?
                     .map,
             );
+        self.elastic_tongue
+            .lock()
+            .map_err(|_| "elastic tongue lock poisoned")?
+            .observe(p);
         let settings = *self.feel.lock().map_err(|_| "feel lock poisoned")?;
         self.dust.lock().map_err(|_| "dust lock poisoned")?.observe(
             p,
@@ -2358,25 +2364,75 @@ impl Scene {
             } else {
                 &p.player.visual.palette
             };
-            for patch in slices_uniform(size, target, cuts, self.uniform_for(f.image))? {
+            let patches = slices_uniform(size, target, cuts, self.uniform_for(f.image))?;
+            let patches = if settings.elastic_tongue {
+                crate::elastic_tongue::segments(patches, tongue.up, unit)
+            } else {
+                patches
+            };
+            let bend = self
+                .elastic_tongue
+                .lock()
+                .map_err(|_| "elastic tongue lock poisoned")?
+                .bend(p.tick, p.map_index, length * unit);
+            let tip = if tongue.up {
+                [mouth.position[0], mouth.position[1] - length * unit]
+            } else {
+                [
+                    mouth.position[0] + length * unit * p.player.facing as f64,
+                    mouth.position[1],
+                ]
+            };
+            let axis = usize::from(tongue.up);
+            let extent = if tongue.up {
+                target[1].max(cuts.top + cuts.bottom)
+            } else {
+                target[0].max(cuts.left + cuts.right)
+            };
+            let mut corner = corner;
+            if settings.elastic_tongue && (tongue.up || p.player.facing < 0) {
+                corner[axis] = -extent;
+            }
+            for patch in patches {
                 let d = patch.destination;
-                commands.push((
-                    11,
-                    order,
-                    rect_quad(
-                        f.image,
-                        patch.source,
-                        size,
-                        [corner[0] + d[0], corner[1] + d[1], d[2], d[3]],
-                        mouth,
-                        &plan,
-                        [1.0, 1.0, 1.0, p.player.visual.alpha as f32],
-                        palette,
-                    ),
-                ));
+                let local = [corner[0] + d[0], corner[1] + d[1], d[2], d[3]];
+                let mut quad = rect_quad(
+                    f.image,
+                    patch.source,
+                    size,
+                    local,
+                    mouth,
+                    &plan,
+                    [1.0, 1.0, 1.0, p.player.visual.alpha as f32],
+                    palette,
+                );
+                if settings.elastic_tongue && extent > 0.0 {
+                    let points = [
+                        [local[0], local[1]],
+                        [local[0] + local[2], local[1]],
+                        [local[0] + local[2], local[1] + local[3]],
+                        [local[0], local[1] + local[3]],
+                    ];
+                    for (corner, local) in quad.corners.iter_mut().zip(points) {
+                        let t = (local[axis] / extent
+                            * if tongue.up || p.player.facing < 0 {
+                                -1.0
+                            } else {
+                                1.0
+                            })
+                        .clamp(0.0, 1.0);
+                        let mut at = crate::elastic_tongue::point(mouth.position, tip, bend, t);
+                        at[1 - axis] += local[1 - axis] * unit;
+                        *corner = std::array::from_fn(|a| {
+                            (at[a] * plan.scale + screen::godot_round(plan.offset[a])) as f32
+                        });
+                    }
+                }
+                commands.push((11, order, quad));
                 order += 1;
             }
         }
+
         if p.player.visible {
             let pose = &p.player.selected_pose;
             let running = ["Walk0", "Walk1", "Sprint0", "Sprint1"].contains(&pose.name.as_str());

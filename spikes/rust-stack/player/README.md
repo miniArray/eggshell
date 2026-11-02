@@ -524,3 +524,23 @@ face-button menu action, so changing the setting cannot immediately resume.
 Launcher integration: invoke list mode with `--levels ... --feel "$SAVE_ROOT/feel.json"`.
 `--feel PATH` reads that exact file (not the level save directory); omitted,
 missing or invalid files use defaults. Gameplay still reads save-dir/feel.json.
+
+### Elastic tongue (spike deviation)
+
+`elastic_tongue` defaults on; Feel adds Elastic tongue: on/off. The observer reads
+only per-step tongue/velocity data. A quadratic control point trails three steps
+of motion, eases 1/4 toward its target each step, and returns by 3/4 when stopped.
+Lag caps at 24 level pixels per axis and 35% of tongue length. A small downward
+bow (0.4 times horizontal step speed) makes parallel movement visible too.
+
+The original L/R/U nine-patch art is split into <=8-level-pixel segments, with
+continuous source UVs and unchanged palette/layer/alpha. Mouth and tip centerlines
+stay at the presented simulation coordinates. Short tongues compress the minimum
+art margins rather than extending beyond the simulation endpoint. Off retains
+the prior straight drawing path. Observation never changes collision or snapshots.
+Repeated draws/pauses do not advance lag; restore/map changes reset history. Only
+the latest and previous observed bends are retained for pipelined pictures.
+
+Host tongue_probe: 240 actual Session steps, 84 tongue/bent steps, exact endpoints
+and identical snapshots before/after observation. Pixel seams and Mali cost still
+need device review; the mesh adds tongue-only quads, no textures or shader passes.

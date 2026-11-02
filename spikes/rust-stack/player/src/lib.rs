@@ -11,6 +11,7 @@ pub mod diagnosis;
 pub mod dressing;
 pub mod dust;
 pub mod effects;
+pub mod elastic_tongue;
 pub mod feel;
 pub mod feel_menu;
 pub mod game;
