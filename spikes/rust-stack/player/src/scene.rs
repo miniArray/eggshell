@@ -20,6 +20,21 @@ use std::{collections::HashMap, path::Path};
 /// then draws Dressing.placeholder: a square of the code's hue over the body box.
 /// Object-table key of the pack's ShyGuyRollSprite visual.
 const ROLL_SPRITE: &str = "#visual:ShyGuyRollSprite";
+/// Original art for runtime codes the pack has no object entry for: the pack visual
+/// (by source type) or object entry the original game draws for them. Godot drew
+/// placeholders for all of these. enemy_runner and enemy_overlap have no art.
+const PACKLESS_ART: [(&str, &str); 9] = [
+    ("enemy_pellet", "SnifitBullet"),
+    ("enemy_shot", "BulletBill"),
+    ("enemy_petal", "EggoDilPetal"),
+    ("enemy_mace", "Spikeball"),
+    // The Ptooie Plant (e41) spits a Needlenose: the e40 object art.
+    ("enemy_spike", "object:e40"),
+    ("enemy_disc", "RotoDisc"),
+    ("seed_shot", "MelonSeed"),
+    ("fire_shot", "YoshiFireProjectile"),
+    ("ice_shot", "YoshiIceProjectile"),
+];
 pub const PACKLESS_RUNTIME_CODES: [&str; 11] = [
     "enemy_disc",
     "enemy_mace",
@@ -60,7 +75,49 @@ struct Terrain {
     image: usize,
     layer: usize,
     slot: [i64; 2],
+    /// Animated tilesets: the frame images (scene image ids) and their timing.
+    animation: Option<TileAnimation>,
 }
+#[derive(Clone, Debug, PartialEq)]
+struct TileAnimation {
+    frames: Vec<usize>,
+    /// Steps per frame change.
+    period: f64,
+    ping_pong: bool,
+}
+impl TileAnimation {
+    fn frame(&self, tick: i64) -> usize {
+        let n = self.frames.len();
+        if n == 0 {
+            return 0;
+        }
+        let step = (tick.max(0) as f64 / self.period).floor() as usize;
+        let index = if self.ping_pong && n > 1 {
+            let m = step % (2 * n - 2);
+            if m < n { m } else { 2 * n - 2 - m }
+        } else {
+            step % n
+        };
+        self.frames[index]
+    }
+}
+/// The original's animated tilesets (YFS Global Events "Animated Tilesets"): every
+/// period the tilemap loads the next "<prefix><n>.png" image. Tilemap, file prefix,
+/// frame count, seconds per frame, ping-pong (regular water steps 0..3..0 every 0.2 s).
+const TILE_ANIMATIONS: [(&str, &str, usize, f64, bool); 12] = [
+    ("flowWater", "flowwatertm", 4, 0.075, false),
+    ("water2", "sewerwatertm", 4, 0.075, false),
+    ("water", "regularwatertm", 4, 0.2, true),
+    ("water3", "wavywatertm", 12, 0.075, false),
+    ("water4", "icywatertm", 4, 0.125, false),
+    ("water5", "muddywatertm", 12, 0.075, false),
+    ("water6", "transparentwatertm", 4, 0.125, false),
+    ("lava", "lavatm", 4, 0.2, false),
+    ("lava_1", "lava_1tm", 4, 0.2, false),
+    ("lava_2", "lava_2tm", 4, 0.2, false),
+    ("lava_3", "lava_3tm", 4, 0.2, false),
+    ("lava_4", "lava_4tm", 4, 0.2, false),
+];
 struct PreparedMap {
     map: Map,
     background: Background,
@@ -90,6 +147,9 @@ pub struct Scene {
     egg_target: Option<Visual>,
     /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
     trail: std::sync::Mutex<Trail>,
+    /// Animated tileset frames from outside the pack (scene ids after the generated
+    /// images), loaded by `add_animated_tiles`.
+    animated_files: Vec<std::path::PathBuf>,
     /// Walk/Sprint animation phase, advanced at the original's speed-scaled rate.
     run_clock: std::sync::Mutex<RunClock>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
@@ -432,6 +492,22 @@ mod trail_tests {
         }
     }
     #[test]
+    fn tile_animation_frames_and_ping_pong() {
+        let a = super::TileAnimation {
+            frames: vec![10, 11, 12, 13],
+            period: 4.5,
+            ping_pong: false,
+        };
+        assert_eq!([0, 4, 5, 9, 18].map(|t| a.frame(t)), [10, 10, 11, 12, 10]);
+        let b = super::TileAnimation {
+            frames: vec![10, 11, 12, 13],
+            period: 12.0,
+            ping_pong: true,
+        };
+        let seq: Vec<_> = (0..8).map(|k| b.frame(k * 12)).collect();
+        assert_eq!(seq, [10, 11, 12, 13, 12, 11, 10, 11]);
+    }
+    #[test]
     fn run_frames_follow_speed() {
         use super::{RunClock, SCALE};
         let mut c = RunClock::default();
@@ -576,6 +652,7 @@ impl Scene {
                     image,
                     layer: index,
                     slot,
+                    animation: None,
                 });
             }
             terrain.sort_by_key(|t| t.slot);
@@ -632,6 +709,27 @@ impl Scene {
             }
             let Some(entry) = object_entries.get(code) else {
                 if PACKLESS_RUNTIME_CODES.contains(&code) {
+                    let source = PACKLESS_ART
+                        .iter()
+                        .find(|(c, _)| *c == code)
+                        .map(|(_, s)| *s);
+                    let entry = source.and_then(|s| match s.strip_prefix("object:") {
+                        Some(object) => object_entries.get(object),
+                        None => pack
+                            .manifest
+                            .get("visuals")
+                            .and_then(Value::as_object)
+                            .and_then(|v| {
+                                v.values().find(|e| {
+                                    e.get("source_type").and_then(Value::as_str) == Some(s)
+                                })
+                            }),
+                    });
+                    if let Some(entry) = entry {
+                        let mut bound = HashMap::new();
+                        bound.insert(0, catalog.visual(entry, 0, density, false)?);
+                        objects.insert(code.to_owned(), bound);
+                    }
                     continue;
                 }
                 return Err(format!("required admitted object asset absent: {code}"));
@@ -918,6 +1016,7 @@ impl Scene {
             egg_target,
             trail: std::sync::Mutex::new(Trail::default()),
             run_clock: std::sync::Mutex::new(RunClock::default()),
+            animated_files: Vec::new(),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1036,8 +1135,67 @@ impl Scene {
         self.bubble = self.sizes.len();
         self.sizes.push([64.0, 64.0]);
         self.binary.push(true);
+        for path in self.animated_files.clone() {
+            let image = Image::load(&path)?;
+            self.sizes.push([image.width as f64, image.height as f64]);
+            self.binary
+                .push(image.rgba.chunks_exact(4).all(|p| p[3] == 0 || p[3] == 255));
+        }
         self.prepare_art_cull_margin();
         Ok(())
+    }
+    /// The original's animated tilesets: for every terrain layer whose tilemap animates
+    /// and whose frames "<prefix>0.png".. all exist in `dir` at the tile image's size,
+    /// the layer draws those frames in turn. Missing frames keep the static image.
+    /// Call before upload. Returns the number of animated layers.
+    pub fn add_animated_tiles(&mut self, dir: &Path, pack: &Pack) -> Result<usize, String> {
+        if !self.sizes.is_empty() {
+            return Err("animated tiles must be added before upload".into());
+        }
+        let base = self.catalog.files.len() + 2;
+        let mut animated = 0;
+        for prepared in &mut self.maps {
+            for t in &mut prepared.terrain {
+                let name = &prepared.map.layers[t.layer].tilemap;
+                let Some(&(_, prefix, count, seconds, ping_pong)) =
+                    TILE_ANIMATIONS.iter().find(|a| a.0 == name)
+                else {
+                    continue;
+                };
+                let still = pack.png(&self.catalog.files[t.image])?;
+                let mut frames = Vec::new();
+                for n in 0..count {
+                    let path = dir.join(format!("{prefix}{n}.png"));
+                    if !path.is_file() {
+                        break;
+                    }
+                    let image = Image::load(&path)?;
+                    if [image.width, image.height] != [still.width, still.height] {
+                        return Err(format!(
+                            "animated tile frame size differs: {}",
+                            path.display()
+                        ));
+                    }
+                    let id = match self.animated_files.iter().position(|p| *p == path) {
+                        Some(i) => base + i,
+                        None => {
+                            self.animated_files.push(path);
+                            base + self.animated_files.len() - 1
+                        }
+                    };
+                    frames.push(id);
+                }
+                if frames.len() == count {
+                    t.animation = Some(TileAnimation {
+                        frames,
+                        period: seconds * 60.0,
+                        ping_pong,
+                    });
+                    animated += 1;
+                }
+            }
+        }
+        Ok(animated)
     }
     pub fn upload(&mut self, gpu: &mut Gles, pack: &Pack) -> Result<(), String> {
         if !self.sizes.is_empty() {
@@ -1085,6 +1243,16 @@ impl Scene {
         })?;
         self.sizes.push([64.0, 64.0]);
         self.binary.push(true);
+        for path in self.animated_files.clone() {
+            let image = Image::load(&path)?;
+            self.sizes.push([image.width as f64, image.height as f64]);
+            self.binary
+                .push(image.rgba.chunks_exact(4).all(|p| p[3] == 0 || p[3] == 255));
+            bytes += image.rgba.len();
+            if gpu.upload(&image)? != self.sizes.len() - 1 {
+                return Err("GPU animated tile binding identity mismatch".into());
+            }
+        }
         self.prepare_art_cull_margin();
         println!(
             "RUST_SCENE_UPLOAD original_images={} rgba_payload_bytes={bytes} per_frame_asset_reads=0 per_frame_texture_uploads=0 baseline_fallbacks=white-and-bubble-ring",
@@ -1177,7 +1345,7 @@ impl Scene {
         cull_art: bool,
         chunk_layers: bool,
     ) -> Result<Picture, String> {
-        if self.sizes.len() != self.catalog.files.len() + 2 {
+        if self.sizes.len() != self.catalog.files.len() + 2 + self.animated_files.len() {
             return Err("scene textures not uploaded".into());
         }
         // Core's current saved map_index is one-based; maps is a zero-based Vec.
@@ -1274,7 +1442,9 @@ impl Scene {
                 ..Default::default()
             };
             let size = layer.tile_size_pixels as f64;
-            let texture = self.sizes[t.image];
+            // Animated tilesets draw the current frame (same size as the still image).
+            let image = t.animation.as_ref().map_or(t.image, |a| a.frame(p.tick));
+            let texture = self.sizes[image];
             let art = size * self.density as f64;
             let columns = (texture[0] / art) as u32;
             if columns == 0 {
@@ -1318,7 +1488,7 @@ impl Scene {
                         Vec::new()
                     };
                     let mut q = rect_quad(
-                        t.image,
+                        image,
                         source,
                         texture,
                         [x as f64 * size, y as f64 * size, size, size],
@@ -1468,10 +1638,7 @@ impl Scene {
                     )
                 {
                     if !self.placeholder_drawn(entity) {
-                        self.object(
-                            entity.visual.asset_key.as_deref().unwrap_or(&entity.code),
-                            entity.variant,
-                        )?;
+                        self.object(self.art_key(entity), entity.variant)?;
                     }
                     continue;
                 }
@@ -1517,7 +1684,7 @@ impl Scene {
                     entity.variant
                 };
                 let visual = self.object(
-                    entity.visual.asset_key.as_deref().unwrap_or(&entity.code),
+                    self.art_key(entity),
                     if pad.is_some() { 0 } else { binding_variant },
                 )?;
                 let inactive =
@@ -2213,6 +2380,17 @@ impl Scene {
             darkness: map.darkness_percent.clamp(0, 100) as f64 / 100.0,
         })
     }
+    /// The object-table key an entity draws with: its semantic asset key, except that the
+    /// fire and ice shots use their own original art (PACKLESS_ART) instead of the e16
+    /// stand-in when the pack has it.
+    fn art_key<'a>(&self, entity: &'a EntityPicture) -> &'a str {
+        if ["fire_shot", "ice_shot"].contains(&entity.code.as_str())
+            && self.objects.contains_key(&entity.code)
+        {
+            return &entity.code;
+        }
+        entity.visual.asset_key.as_deref().unwrap_or(&entity.code)
+    }
     /// A packless runtime code with no art key draws as its placeholder square.
     fn placeholder_drawn(&self, entity: &EntityPicture) -> bool {
         entity.visual.asset_key.is_none()
@@ -2482,7 +2660,7 @@ mod tests {
             scene.prepare_headless_assets(&pack).unwrap();
             for code in eggshell_spike_core::RUNTIME_CODES {
                 assert!(
-                    scene.objects.contains_key(code) != PACKLESS_RUNTIME_CODES.contains(&code),
+                    scene.objects.contains_key(code) || PACKLESS_RUNTIME_CODES.contains(&code),
                     "{name}: runtime code {code} has no binding (or a binding and a placeholder)"
                 );
             }

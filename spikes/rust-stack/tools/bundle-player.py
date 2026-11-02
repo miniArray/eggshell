@@ -322,6 +322,19 @@ if presentation_bundle:
         sources["target.input.json"] = (
             Path.home() / "eggshell-remote/artifacts/full-rust-ab/core/target.input.json"
         )
+        # The original's animated tileset frames (private, from the original game files;
+        # never in Git): the player swaps them like the original when present.
+        original = Path.home() / ".local/share/eggshell-run/parity/original"
+        frames = sorted(original.glob("*tm[0-9]*.png")) if original.is_dir() else []
+        if frames:
+            tiles = bundle / "private-animated-tiles"
+            tiles.mkdir(mode=0o700)
+            provenance["animated_tiles"] = {}
+            for path in frames:
+                target = tiles / path.name
+                shutil.copyfile(path, target)
+                target.chmod(0o600)
+                provenance["animated_tiles"][path.name] = digest(target)
         launcher = bundle / "launch-playtest"
         shutil.copyfile("spikes/rust-stack/tools/launch-playtest.sh", launcher)
         launcher.chmod(0o755)

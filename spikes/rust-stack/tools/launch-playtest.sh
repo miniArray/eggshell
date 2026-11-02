@@ -29,8 +29,11 @@ play() {
     --level "$ROOT/private-input/$level.level.json" --collision "$ROOT/private-input/collision_table.json" \
     --schema "$ROOT/private-input/schema.json" --pack-root "$ROOT/private-pack" \
     --pack-inventory "$ROOT/private-pack/pack-files.sha256.json" --view-metrics "$ROOT/private-input/view-metrics.json" \
-    --ticks $((seconds * 60)) --seconds $((seconds + 15)) --save-dir "$save" --presentation-feedback "$@"
+    --ticks $((seconds * 60)) --seconds $((seconds + 15)) --save-dir "$save" --presentation-feedback "${tiles[@]}" "$@"
 }
+# The original's animated tileset frames, when the bundle has them.
+tiles=()
+if [[ -d "$ROOT/private-animated-tiles" ]]; then tiles=(--animated-tiles "$ROOT/private-animated-tiles"); fi
 if [[ "${3:-}" == shots ]]; then
   # Unattended pictures: frame PNGs every 150 steps from the start of the recorded route,
   # then every 100 idle steps from the newest hands-on autosave (if any). Saves aside.

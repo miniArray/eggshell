@@ -38,8 +38,11 @@ play() {
   ((bound <= 900)) || bound=900
   player --play --level "$LEVELS/$file" --collision "$ROOT/private-input/collision_table.json" \
     --schema "$ROOT/private-input/schema.json" "${pack[@]}" \
-    --ticks $((left * 60)) --seconds "$bound" --save-dir "$save" "$@"
+    --ticks $((left * 60)) --seconds "$bound" --save-dir "$save" "${tiles[@]}" "$@"
 }
+# The original's animated tileset frames, when the bundle has them.
+tiles=()
+if [[ -d "$ROOT/private-animated-tiles" ]]; then tiles=(--animated-tiles "$ROOT/private-animated-tiles"); fi
 # The target keeps the save folder of launch-playtest, so autosaves carry across both.
 save_dir() {
   if [[ $1 == "$TARGET_FILE" ]]; then
@@ -89,9 +92,19 @@ if [[ "${2:-}" == shots ]]; then
   save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
   printf 'LEVELS_SHOTS_SPIT\n'
   player --play --level "$ROOT/private-input/stride.level.json" --collision "$ROOT/private-input/collision_table.json" \
-    --schema "$ROOT/private-input/schema.json" "${pack[@]}" --save-dir "$save" --replay "$spit_route" \
+    --schema "$ROOT/private-input/schema.json" "${pack[@]}" --save-dir "$save" "${tiles[@]}" --replay "$spit_route" \
     --ticks 170 --seconds 30 --frame-digest-every 3 --frame-dump-dir "$shots/stride-spit" --no-pipeline ||
     printf 'LEVELS_SHOTS_FAILED stride spit\n'
+  # Animated tilesets: Toxic Tunnel (flowing water) idle, a picture every 3 steps.
+  toxic=6a01fef0729b503561e9de41.json
+  if [[ -f "$LEVELS/$toxic" ]]; then
+    mkdir -p "$shots/${toxic%.*}-water"
+    save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
+    printf 'LEVELS_SHOTS_WATER %s\n' "$toxic"
+    play "$toxic" "$save" 5 --replay "$ROOT/private-input/idle-600.input.json" --ticks 30 \
+      --frame-digest-every 3 --frame-dump-dir "$shots/${toxic%.*}-water" --no-pipeline ||
+      printf 'LEVELS_SHOTS_FAILED %s water\n' "$toxic"
+  fi
   # Goal menu pictures: the newest earlier autosaves of listed levels (a completed
   # level opens the goal menu at once; others just play 60 steps without input).
   n=0

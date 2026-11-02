@@ -220,7 +220,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         match key.as_str() {
             "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
             | "--view-metrics" | "--replay" | "--restore" | "--save-dir" | "--capture"
-            | "--result" => {
+            | "--result" | "--animated-tiles" => {
                 files.insert(key, args.next().ok_or("missing argument value")?);
             }
             "--input-offset" => {
@@ -430,6 +430,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     }
     let save_dir = required("--save-dir")?;
     std::fs::create_dir_all(&save_dir).map_err(|e| e.to_string())?;
+    // The original's animated tilesets, from frames shipped beside the pack (bundle
+    // private-animated-tiles); without them the tiles stay still.
+    if let Some(dir) = files
+        .get("--animated-tiles")
+        .map(PathBuf::from)
+        .filter(|d| d.is_dir())
+    {
+        let layers = scene.add_animated_tiles(&dir, &pack)?;
+        println!("RUST_ANIMATED_TILES dir={dir:?} layers={layers}");
+    }
     let mut gpu = Gles::open_game(fullscreen, !uncapped)?;
     if atlas {
         gpu.begin_atlas()?;
