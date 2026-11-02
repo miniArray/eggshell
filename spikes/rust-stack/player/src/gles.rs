@@ -1,5 +1,7 @@
 //! Explicit owned-GLES backend. Never a fallback from SDL_Renderer.
 //! SDL2 owns the Wayland window/context; this Rust module owns shaders and draws.
+#[path = "water_gles.rs"]
+mod water_gles;
 use crate::pack::Image;
 use eggshell_spike_core::PaletteSwap;
 use glow::HasContext;
@@ -271,6 +273,7 @@ pub struct Gles {
     diagnostic_targets: Vec<DiagnosticTarget>,
     diagnostic_copy: Option<CopyResources>,
     game_target: Option<GameTarget>,
+    water_resources: Option<water_gles::WaterResources>,
     target_allocations: u64,
     last_capture_pipeline: Option<serde_json::Value>,
     normal_copy_draws: u64,
@@ -464,6 +467,7 @@ impl Gles {
             diagnostic_targets: Vec::new(),
             diagnostic_copy: None,
             game_target: None,
+            water_resources: None,
             target_allocations: 0,
             last_capture_pipeline: None,
             normal_copy_draws: 0,
@@ -474,6 +478,7 @@ impl Gles {
         };
         if pipeline == PipelineConfig::GameOpaqueRgb10 {
             result.prepare_copy_resources()?;
+            result.prepare_water_resources()?;
             result.allocate_game_target()?;
         }
         Ok(result)
@@ -1417,6 +1422,7 @@ unsafe fn compile_sources(
 }
 impl Drop for Gles {
     fn drop(&mut self) {
+        self.delete_water_resources();
         unsafe {
             if let Some(copy) = &self.diagnostic_copy {
                 self.gl.delete_program(copy.program);

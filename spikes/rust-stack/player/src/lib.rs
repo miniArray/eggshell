@@ -30,3 +30,4 @@ pub mod scene;
 pub mod screen;
 pub mod shake;
 pub mod timing;
+pub mod water_fx;

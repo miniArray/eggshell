@@ -6,7 +6,12 @@ use crate::{
 };
 use std::time::{Duration, Instant};
 
-pub const ROWS: usize = 16;
+const WATER_ROW: usize = 13;
+const WATER_STRENGTH_ROW: usize = 14;
+const PREVIEW_ROW: usize = 15;
+const RESET_ROW: usize = 16;
+const RESUME_ROW: usize = 17;
+pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
     pub focus: usize,
@@ -49,6 +54,8 @@ impl Model {
                 10 => s.splash_enabled = !s.splash_enabled,
                 11 => s.goal_music_enabled = !s.goal_music_enabled,
                 12 => s.goal_music_strength += delta,
+                WATER_ROW => s.water_fx_enabled = !s.water_fx_enabled,
+                WATER_STRENGTH_ROW => s.water_fx_strength += delta,
                 _ => {}
             }
         }
@@ -60,14 +67,15 @@ impl Model {
                 9 => s.sparkle_enabled = !s.sparkle_enabled,
                 10 => s.splash_enabled = !s.splash_enabled,
                 11 => s.goal_music_enabled = !s.goal_music_enabled,
-                13 => return Action::Preview { hit: false },
-                14 => *s = FeelSettings::default(),
-                15 => return Action::Resume,
+                WATER_ROW => s.water_fx_enabled = !s.water_fx_enabled,
+                PREVIEW_ROW => return Action::Preview { hit: false },
+                RESET_ROW => *s = FeelSettings::default(),
+                RESUME_ROW => return Action::Resume,
                 _ => {}
             }
         }
         s.clamp();
-        if old != *s && (self.focus <= 4 || self.focus == 14) {
+        if old != *s && (self.focus <= 4 || self.focus == RESET_ROW) {
             Action::Preview {
                 hit: self.focus == 3 || self.focus == 4,
             }
@@ -114,6 +122,8 @@ impl MenuPage for Page<'_> {
             format!("Water splashes: {}", on(s.splash_enabled)),
             format!("Goal music: {}", on(s.goal_music_enabled)),
             format!("Goal music strength: {}", s.goal_music_strength),
+            format!("Water FX: {}", on(s.water_fx_enabled)),
+            format!("Water FX strength: {}", s.water_fx_strength),
             "Preview shake".into(),
             "Reset to defaults".into(),
             "Resume".into(),
@@ -181,7 +191,7 @@ impl Demo {
             self.undo = Some((now + Duration::from_millis(150), original));
             s.pound_strength_px += if original == 8 { -1 } else { 1 };
             Action::Preview { hit: false }
-        } else if row == 13 {
+        } else if row == PREVIEW_ROW {
             Action::Preview { hit: false }
         } else {
             Action::None
@@ -249,7 +259,7 @@ mod tests {
         let mut m = Model::default();
         let mut s = FeelSettings::default();
         m.step(-1);
-        assert_eq!(m.focus, 15);
+        assert_eq!(m.focus, RESUME_ROW);
         m.step(1);
         assert_eq!(m.focus, 0);
         m.input(input::RIGHT, &mut s);
@@ -270,6 +280,7 @@ mod tests {
             (6, 0, 3),
             (8, 0, 3),
             (12, 0, 3),
+            (WATER_STRENGTH_ROW, 0, 3),
         ] {
             m.focus = row;
             for _ in 0..40 {
@@ -281,7 +292,8 @@ mod tests {
                 4 => s.hit_steps,
                 6 => s.dust_amount,
                 8 => s.muffle_strength,
-                _ => s.goal_music_strength,
+                12 => s.goal_music_strength,
+                _ => s.water_fx_strength,
             };
             assert_eq!(value(&s), upper);
             for _ in 0..40 {
@@ -289,14 +301,43 @@ mod tests {
             }
             assert_eq!(value(&s), lower);
         }
-        m.focus = 14;
+        m.focus = RESET_ROW;
         m.input(input::JUMP, &mut s);
         assert_eq!(s, FeelSettings::default());
-        m.focus = 13;
+        m.focus = PREVIEW_ROW;
         assert_eq!(m.input(input::JUMP, &mut s), Action::Preview { hit: false });
-        m.focus = 15;
+        m.focus = RESUME_ROW;
         assert_eq!(m.input(input::JUMP, &mut s), Action::Resume);
         assert_eq!(m.input(input::USE, &mut s), Action::Resume);
+    }
+    #[test]
+    fn water_rows_follow_muffle_and_do_not_preview_shake() {
+        let mut m = Model { focus: WATER_ROW };
+        let mut s = FeelSettings::default();
+        assert_eq!(m.input(input::JUMP, &mut s), Action::None);
+        assert!(!s.water_fx_enabled);
+        assert_eq!(m.input(input::RIGHT, &mut s), Action::None);
+        assert!(s.water_fx_enabled);
+        m.focus = WATER_STRENGTH_ROW;
+        assert_eq!(m.input(input::RIGHT, &mut s), Action::None);
+        assert_eq!(s.water_fx_strength, 3);
+        let labels: Vec<_> = Page {
+            model: &m,
+            settings: &s,
+        }
+        .items()
+        .into_iter()
+        .map(|item| item.label)
+        .collect();
+        assert_eq!(
+            &labels[12..16],
+            &[
+                "Goal music strength: 2",
+                "Water FX: on",
+                "Water FX strength: 3",
+                "Preview shake"
+            ]
+        );
     }
     #[test]
     fn real_menu_renderer_keeps_each_focus_visible_at_player_scale() {
@@ -320,6 +361,7 @@ mod tests {
                 settings.dust_amount = 3;
                 settings.muffle_strength = 3;
                 settings.goal_music_strength = 3;
+                settings.water_fx_strength = 3;
             }
             for size in [
                 [640.0, 480.0],

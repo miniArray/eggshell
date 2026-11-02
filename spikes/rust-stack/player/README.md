@@ -294,3 +294,40 @@ Host-only read-only integration probe (needs an existing v10 schema extract):
 `nix develop . -c cargo run --example feel_probe -- /path/to/schema.json`.
 It runs 400 actual collection steps and 400 Lagoon steps with effects on/off,
 checks pickup/water signals, and compares literal snapshot bytes every step.
+
+## Throwaway water feel pass
+
+`water_fx_enabled` (default `true`) and `water_fx_strength` (0..3, default 2)
+are local `feel.json` preferences. Missing keys retain defaults. The Feel page
+places both rows after Muffle strength. Off or strength zero emits no water
+quads, scene copies or water draws; the original world/lighting/HUD path remains.
+
+`water_fx.rs` prepares disjoint rectangles from compiled `TileLayer.water`
+contacts, not tilemap names. Empty/disabled contacts and decorative layer3 do not
+participate. The existing table's rectangular water contacts include water3/5's
+10-pixel dry cap and Tiled transforms. Non-rectangular custom water contacts are
+an explicit preparation error rather than an inaccurate bounding-box effect.
+Surface adjacency uses occupied water tiles across layers, so an inset contact
+does not create a highlight on every submerged tile row. Overlapping layers do
+not apply the effect twice. Geometry never feeds back into core contact rules.
+
+The public `tests/fixtures/lagoon.level.json` exercises water3 at world
+x=1024..1792, top y=330. Its repeated inset cells produce four clipped water
+strips; only the first has a surface highlight. The CPU tests compile this real
+level with minimal collision facts matching its two tile families.
+
+The order is world, water refraction/caustics, surface, darkness, tint, HUD.
+Animation reads only saved `Presentation.tick` (360-tick cycle), so pausing
+freezes it and drawing a replay tick repeats its phase. The surface uses existing
+white art and whole-pixel steps. `water_gles.rs` owns separate shaders/resources
+from lighting. The combined caustics/refraction shader visits only visible water
+rectangles and samples a separate nearest-filtered RGB10_A2 snapshot, displaced
+horizontally by at most two framebuffer pixels and clamped to each water region.
+
+The snapshot is persistent (640x480: 1,228,800 bytes), allocated on the first wet
+frame or resize. Each wet frame copies only the visible water bounding envelope.
+There is one shader draw per visible disjoint rectangle and one batched surface
+draw. No per-frame texture/shader allocations or asset reads occur in steady
+state. A tile-based GPU can still resolve more than the copied area: Mali p99 and
+pixel comparison with water disabled must be checked on hardware. Host tests and
+GLSL validation do not establish that GPU cost or visual quality.

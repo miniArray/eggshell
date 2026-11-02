@@ -772,6 +772,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     zoom_max = picture.plan.zoom_max;
                     resolved_scale = picture.plan.scale;
                     let world_draw = gpu.draw(&picture.world)?;
+                    let water_draw = gpu.water_fx(&picture.water)?;
+                    let surface_draw = gpu.draw(&picture.water_surface)?;
                     gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
                     let tint_draw = if picture.tint.is_empty() {
                         crate::gles::DrawCounts::default()
@@ -789,8 +791,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         feel_view.emit(&page, container, scene.solid, &mut overlay)?;
                         gpu.draw(&overlay)?;
                     }
-                    let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
-                    let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
+                    let batches = world_draw.batches
+                        + hud_draw.batches
+                        + tint_draw.batches
+                        + water_draw.batches
+                        + surface_draw.batches;
+                    let quads = world_draw.quads
+                        + hud_draw.quads
+                        + tint_draw.quads
+                        + water_draw.quads
+                        + surface_draw.quads;
                     batch_counts.add(batches);
                     batch_total += batches;
                     quad_counts.add(quads);
@@ -900,6 +910,8 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             zoom_max = picture.plan.zoom_max;
             resolved_scale = picture.plan.scale;
             let world_draw = gpu.draw(&picture.world)?;
+            let water_draw = gpu.water_fx(&picture.water)?;
+            let surface_draw = gpu.draw(&picture.water_surface)?;
             gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
             let tint_draw = if picture.tint.is_empty() {
                 crate::gles::DrawCounts::default()
@@ -917,8 +929,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 feel_view.emit(&page, container.map(f64::from), scene.solid, &mut overlay)?;
                 gpu.draw(&overlay)?;
             }
-            let batches = world_draw.batches + hud_draw.batches + tint_draw.batches;
-            let quads = world_draw.quads + hud_draw.quads + tint_draw.quads;
+            let batches = world_draw.batches
+                + hud_draw.batches
+                + tint_draw.batches
+                + water_draw.batches
+                + surface_draw.batches;
+            let quads = world_draw.quads
+                + hud_draw.quads
+                + tint_draw.quads
+                + water_draw.quads
+                + surface_draw.quads;
             batch_counts.add(batches);
             batch_total += batches;
             quad_counts.add(quads);

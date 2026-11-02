@@ -18,6 +18,8 @@ pub struct FeelSettings {
     pub splash_enabled: bool,
     pub goal_music_enabled: bool,
     pub goal_music_strength: i64,
+    pub water_fx_enabled: bool,
+    pub water_fx_strength: i64,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -35,6 +37,8 @@ impl Default for FeelSettings {
             splash_enabled: true,
             goal_music_enabled: true,
             goal_music_strength: 2,
+            water_fx_enabled: true,
+            water_fx_strength: 2,
         }
     }
 }
@@ -47,6 +51,7 @@ impl FeelSettings {
         self.dust_amount = self.dust_amount.clamp(0, 3);
         self.muffle_strength = self.muffle_strength.clamp(0, 3);
         self.goal_music_strength = self.goal_music_strength.clamp(0, 3);
+        self.water_fx_strength = self.water_fx_strength.clamp(0, 3);
     }
     pub fn load(directory: &Path) -> Self {
         let path = directory.join("feel.json");
@@ -91,6 +96,25 @@ mod tests {
             s.clamp();
             assert_eq!(s.goal_music_strength, expected);
         }
+    }
+    #[test]
+    fn old_feel_json_gets_water_defaults_and_new_values_clamp() {
+        let old = r#"{"shake_enabled":false,"pound_strength_px":3,"pound_steps":14,"hit_strength_px":2,"hit_steps":10,"dust_enabled":false,"dust_amount":1,"muffle_enabled":false,"muffle_strength":1}"#;
+        let mut s: FeelSettings = serde_json::from_str(old).unwrap();
+        assert!(s.water_fx_enabled);
+        assert_eq!(s.water_fx_strength, 2);
+        assert!(!s.shake_enabled);
+        s.water_fx_strength = -10;
+        s.clamp();
+        assert_eq!(s.water_fx_strength, 0);
+        s.water_fx_strength = 99;
+        s.clamp();
+        assert_eq!(s.water_fx_strength, 3);
+        s.water_fx_enabled = false;
+        assert_eq!(
+            serde_json::from_slice::<FeelSettings>(&serde_json::to_vec(&s).unwrap()).unwrap(),
+            s
+        );
     }
     #[test]
     fn load_defaults_invalid_partial_clamped_and_atomic_round_trip() {
