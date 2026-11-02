@@ -36,7 +36,12 @@ pub fn plan(
         .max(container[1] / (level[1] * d))
         .ceil() as i32)
         .max(1);
-    k = k.max(fit);
+    // Spike deviation: tolerate small clear-colour bands instead of doubling the
+    // default zoom when every short axis already covers at least 90% of its container.
+    let near_full = (0..2).all(|i| level[i] * d * k as f64 >= container[i] * 0.9);
+    if !near_full {
+        k = k.max(fit);
+    }
     // Deviation from the Godot camera (user request on the Pro): the closest zoom still
     // shows at least 320x224 level pixels (Godot allowed 208x112, 3x on the Pro).
     let closest = (container[0] / (320.0 * d))
@@ -44,7 +49,7 @@ pub fn plan(
         .floor() as i32;
     let largest = k.max(closest);
     // Deviation from the Godot camera (user request on the Pro): zooming out may go below
-    // `fit` down to 1x. The default (zoom 0) is unchanged. A view larger than the level
+    // `fit` down to 1x. A view larger than the level
     // centres the level on that axis; the bands outside it show the clear colour.
     let smallest = 1;
     let multiple = k.saturating_add(zoom).clamp(smallest, largest);
@@ -81,11 +86,12 @@ pub fn godot_round(x: f64) -> f64 {
 mod tests {
     use super::*;
     #[test]
-    fn pro_reference_camera() {
+    fn pro_default_deliberately_keeps_near_full_height_at_one_to_one() {
         let p = plan([640.0, 480.0], [15040.0, 448.0], [416.0, 224.0], 1, 0).unwrap();
-        assert_eq!(p.scale, 2.0);
-        assert_eq!(p.visible, [320.0, 240.0]);
-        assert_eq!(p.offset, [-512.0, -208.0]);
+        // Spike deviation: 448/480 exceeds 90%; accept 16-pixel clear bands.
+        assert_eq!(p.scale, 1.0);
+        assert_eq!(p.visible, [640.0, 480.0]);
+        assert_eq!(p.offset, [-96.0, 16.0]);
     }
     #[test]
     fn container_ladder_remains_bounded() {
@@ -99,8 +105,15 @@ mod tests {
         ] {
             let p = plan(s, [15040.0, 448.0], [0.0, 0.0], 1, 0).unwrap();
             for i in 0..2 {
-                assert!(p.visible[i] <= [15040.0, 448.0][i]);
-                assert!(p.center[i] >= p.visible[i] / 2.0);
+                let level = [15040.0, 448.0][i];
+                if p.visible[i] > level {
+                    // The spike accepts short axes only at >=90% default coverage.
+                    assert!(level / p.visible[i] >= 0.9);
+                    assert_eq!(p.center[i], level / 2.0);
+                } else {
+                    assert!(p.center[i] >= p.visible[i] / 2.0);
+                    assert!(p.center[i] <= level - p.visible[i] / 2.0);
+                }
             }
         }
     }
@@ -108,16 +121,35 @@ mod tests {
     fn stress_zoom_clamps_extreme_initial_values() {
         let low = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MIN).unwrap();
         let high = plan([640.0, 480.0], [1536.0, 448.0], [416.0, 224.0], 1, i32::MAX).unwrap();
-        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (-1, -1, 0));
-        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (0, -1, 0));
+        assert_eq!((low.zoom, low.zoom_min, low.zoom_max), (0, 0, 1));
+        assert_eq!((high.zoom, high.zoom_min, high.zoom_max), (1, 0, 1));
     }
     #[test]
-    fn zoom_out_reaches_one_to_one_and_centres_a_short_level() {
-        let p = plan([640.0, 480.0], [15040.0, 448.0], [416.0, 224.0], 1, -1).unwrap();
+    fn zoom_out_still_reaches_one_to_one_when_default_requires_fit() {
+        let p = plan([640.0, 480.0], [15040.0, 400.0], [416.0, 224.0], 1, -1).unwrap();
         assert_eq!(p.scale, 1.0);
         assert_eq!(p.visible, [640.0, 480.0]);
-        assert_eq!(p.center, [416.0, 224.0]);
-        assert_eq!(p.offset, [-96.0, 16.0]);
+        assert_eq!(p.center, [416.0, 200.0]);
+        assert_eq!(p.offset, [-96.0, 40.0]);
+    }
+    #[test]
+    fn default_tolerance_requires_ninety_percent_on_both_axes() {
+        for level in [[576.0, 432.0], [575.0, 432.0], [576.0, 431.0]] {
+            let p = plan([640.0, 480.0], level, [0.0; 2], 1, 0).unwrap();
+            assert_eq!(p.scale, if level == [576.0, 432.0] { 1.0 } else { 2.0 });
+        }
+        // Density changes the pixel scale, not the tolerance or the zoom steps.
+        let p = plan([1280.0, 960.0], [15040.0, 448.0], [416.0, 224.0], 2, 0).unwrap();
+        assert_eq!(p.scale, 2.0);
+        assert_eq!(p.offset, [-192.0, 32.0]);
+    }
+    #[test]
+    fn zoom_in_reaches_closest_limit_from_new_default() {
+        let p = plan([640.0, 480.0], [15040.0, 448.0], [416.0, 224.0], 1, 1).unwrap();
+        assert_eq!(p.scale, 2.0);
+        assert_eq!(p.visible, [320.0, 240.0]);
+        assert_eq!(p.offset, [-512.0, -208.0]);
+        assert_eq!(p.zoom, p.zoom_max);
     }
     #[test]
     fn godot_half_away_from_zero() {

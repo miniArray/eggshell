@@ -419,6 +419,24 @@ mod tests {
         );
     }
     #[test]
+    fn gradients_use_new_default_plan_with_centered_short_axis() {
+        let container = [640.0, 480.0];
+        let p = crate::screen::plan(container, [15040.0, 448.0], [416.0, 224.0], 1, 0).unwrap();
+        let custom = CustomGradient::prepare("2|0|448|0,0,0_255,255,255").unwrap();
+        let mut out = Vec::new();
+        custom.emit(&p, container, 0, &mut out);
+        assert_eq!(out[0].corners[0], [0.0, 16.0]);
+        assert_eq!(out[1].corners[2], [640.0, 465.0]);
+        out.clear();
+        let manifest = serde_json::json!({"gradients":{"sky":{"reference":[416,224],"scroll":[1,1],
+            "strips":[{"color":[0,0,0],"height":0},{"color":[255,255,255],"height":448}]}}});
+        let strips = StripGradient::prepare(&manifest, "sky", 1);
+        strips.emit(&p, container, 0, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].corners[0], [0.0, 16.0]);
+        assert_eq!(out[0].corners[2], [640.0, 464.0]);
+    }
+    #[test]
     fn godot_number_parsers() {
         assert_eq!(leading_float("12xy3"), 12.0);
         assert_eq!(leading_float("-1.5e2z"), -150.0);
