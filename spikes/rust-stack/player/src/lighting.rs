@@ -278,7 +278,11 @@ mod tests {
         frame.add([320.0, 240.0], 72.0, FIRE, 1.0, 1.0, 5, &plan);
         let base = frame.lights.clone();
         frame.apply_settings(Default::default());
-        assert_eq!(frame.lights, base);
+        assert_eq!(frame.lights.len(), base.len());
+        for (light, base) in frame.lights.iter().zip(&base) {
+            assert_eq!(light.intensity, base.intensity);
+            assert_eq!(light.glow, base.glow * 2.0);
+        }
         let mut disabled = frame.clone();
         disabled.apply_settings(crate::feel::FeelSettings {
             lights_enabled: false,

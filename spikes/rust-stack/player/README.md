@@ -497,3 +497,10 @@ Defeat frames at 24 fps, non-looping. The every-step observer retains the episod
 for the pipelined previous frame. No simulation state or visibility changes.
 Host death_probe advanced 310 real Session steps and sampled all six Spin frames
 through death phases 2 and 3. Visual/device acceptance remains untested.
+
+### Stronger default pixel glow
+
+Default `glow_strength` increases from 1 to 2 on the existing 0..3 scale.
+Pixel bands, level-grid alignment and light-energy budgets are unchanged.
+An existing explicit `glow_strength` in feel.json remains the user's choice;
+Reset to defaults adopts 2. Smooth mode also uses the stronger default.

@@ -101,7 +101,7 @@ impl Default for FeelSettings {
             lights_enabled: true,
             light_strength: 2,
             glow_enabled: true,
-            glow_strength: 1,
+            glow_strength: 2,
             auto_normals: false,
             glow_style: GlowStyle::Pixel,
             zoom_steps: ZoomSteps::Whole,
@@ -219,7 +219,7 @@ mod tests {
                 s.glow_strength,
                 s.auto_normals
             ),
-            (true, 2, true, 1, false)
+            (true, 2, true, 2, false)
         );
         let mut invalid: FeelSettings =
             serde_json::from_str(r#"{"light_strength":99,"glow_strength":-2}"#).unwrap();
@@ -262,7 +262,7 @@ mod tests {
                 s.glow_strength,
                 s.auto_normals
             ),
-            (true, 2, true, 1, false)
+            (true, 2, true, 2, false)
         );
         s.save(&dir).unwrap();
         assert_eq!(FeelSettings::load(&dir), s);
