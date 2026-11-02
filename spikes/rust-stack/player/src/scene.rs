@@ -1321,6 +1321,20 @@ impl Scene {
             #[cfg(feature = "benchmark-work-counters")]
             work.tile_layers.push(tile_work);
         }
+        // The tongue tip, while the tongue is out. A caught enemy rides it back into the
+        // mouth (the original pulls it in; Godot hid it at the catch).
+        let tongue_tip = p.player.tongue.as_ref().map(|t| {
+            let length = t.length;
+            let (dx, dy) = if t.up {
+                (0, -length)
+            } else {
+                (p.player.facing * length, 0)
+            };
+            eggshell_spike_core::Position {
+                x: p.player.motion.current.x + t.mouth[0] + dx,
+                y: p.player.motion.current.y + t.mouth[1] + dy,
+            }
+        });
         // Match Godot creation categories only for equal-z painter order. This
         // never groups or changes core dispatch, Session rows or activation.
         for category in 0..4 {
@@ -1356,6 +1370,27 @@ impl Scene {
                     work.entities_selected += 1;
                     work.entity_layers.entry(work_layer).or_default().selected += 1;
                 }
+                let pulled;
+                let entity = match tongue_tip {
+                    Some(tip) if entity.held && !entity.hidden && entity.code.starts_with('e') => {
+                        let b = entity.body_bounds;
+                        let at = eggshell_spike_core::Position {
+                            x: tip.x - (b[0] + b[2]) / 2,
+                            y: tip.y - (b[1] + b[3]) / 2,
+                        };
+                        pulled = EntityPicture {
+                            motion: eggshell_spike_core::Motion {
+                                previous: at,
+                                current: at,
+                            },
+                            visible: true,
+                            held: false,
+                            ..entity.clone()
+                        };
+                        &pulled
+                    }
+                    _ => entity,
+                };
                 if !entity.visible || entity.held || entity.hidden {
                     continue;
                 }
