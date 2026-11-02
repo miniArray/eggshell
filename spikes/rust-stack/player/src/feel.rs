@@ -20,6 +20,11 @@ pub struct FeelSettings {
     pub goal_music_strength: i64,
     pub water_fx_enabled: bool,
     pub water_fx_strength: i64,
+    pub lights_enabled: bool,
+    pub light_strength: i64,
+    pub glow_enabled: bool,
+    pub glow_strength: i64,
+    pub auto_normals: bool,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -39,6 +44,11 @@ impl Default for FeelSettings {
             goal_music_strength: 2,
             water_fx_enabled: true,
             water_fx_strength: 2,
+            lights_enabled: true,
+            light_strength: 2,
+            glow_enabled: true,
+            glow_strength: 1,
+            auto_normals: false,
         }
     }
 }
@@ -52,6 +62,8 @@ impl FeelSettings {
         self.muffle_strength = self.muffle_strength.clamp(0, 3);
         self.goal_music_strength = self.goal_music_strength.clamp(0, 3);
         self.water_fx_strength = self.water_fx_strength.clamp(0, 3);
+        self.light_strength = self.light_strength.clamp(0, 3);
+        self.glow_strength = self.glow_strength.clamp(0, 3);
     }
     pub fn load(directory: &Path) -> Self {
         let path = directory.join("feel.json");
@@ -117,6 +129,27 @@ mod tests {
         );
     }
     #[test]
+    fn old_feel_json_gets_lighting_defaults() {
+        let old = r#"{"shake_enabled":false,"muffle_strength":3}"#;
+        let s: FeelSettings = serde_json::from_str(old).unwrap();
+        assert!(!s.shake_enabled);
+        assert_eq!(s.muffle_strength, 3);
+        assert_eq!(
+            (
+                s.lights_enabled,
+                s.light_strength,
+                s.glow_enabled,
+                s.glow_strength,
+                s.auto_normals
+            ),
+            (true, 2, true, 1, false)
+        );
+        let mut invalid: FeelSettings =
+            serde_json::from_str(r#"{"light_strength":99,"glow_strength":-2}"#).unwrap();
+        invalid.clamp();
+        assert_eq!((invalid.light_strength, invalid.glow_strength), (3, 0));
+    }
+    #[test]
     fn load_defaults_invalid_partial_clamped_and_atomic_round_trip() {
         let dir = std::env::temp_dir().join(format!(
             "eggshell-feel-{}-{}",
@@ -144,6 +177,16 @@ mod tests {
             (8, 0, 6, 30, 3, 0)
         );
         assert!(s.shake_enabled);
+        assert_eq!(
+            (
+                s.lights_enabled,
+                s.light_strength,
+                s.glow_enabled,
+                s.glow_strength,
+                s.auto_normals
+            ),
+            (true, 2, true, 1, false)
+        );
         s.save(&dir).unwrap();
         assert_eq!(FeelSettings::load(&dir), s);
         assert!(!dir.join("feel.json.tmp").exists());

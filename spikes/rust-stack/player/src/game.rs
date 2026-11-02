@@ -771,9 +771,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     zoom_min = picture.plan.zoom_min;
                     zoom_max = picture.plan.zoom_max;
                     resolved_scale = picture.plan.scale;
-                    let world_draw = gpu.draw(&picture.world)?;
+                    let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
                     let water_draw = gpu.water_fx(&picture.water)?;
                     let surface_draw = gpu.draw(&picture.water_surface)?;
+                    let light_draw = gpu.lights(&picture.lights)?;
                     gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
                     let tint_draw = if picture.tint.is_empty() {
                         crate::gles::DrawCounts::default()
@@ -795,17 +796,22 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                         + hud_draw.batches
                         + tint_draw.batches
                         + water_draw.batches
-                        + surface_draw.batches;
+                        + surface_draw.batches + light_draw.batches;
                     let quads = world_draw.quads
                         + hud_draw.quads
                         + tint_draw.quads
                         + water_draw.quads
-                        + surface_draw.quads;
+                        + surface_draw.quads + light_draw.quads;
                     batch_counts.add(batches);
                     batch_total += batches;
                     quad_counts.add(quads);
                     quad_total += quads;
-                    vertex_counts.add(world_draw.vertices + hud_draw.vertices + tint_draw.vertices);
+                    vertex_counts.add(
+                        world_draw.vertices
+                            + hud_draw.vertices
+                            + tint_draw.vertices
+                            + light_draw.vertices,
+                    );
                     entity_view_counts.add(picture.entity_bounds_in_view);
                     if let Some(f) = &mut feedback {
                         f.request(swap_calls + 1, p.tick as u64)?;
@@ -909,9 +915,10 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             zoom_min = picture.plan.zoom_min;
             zoom_max = picture.plan.zoom_max;
             resolved_scale = picture.plan.scale;
-            let world_draw = gpu.draw(&picture.world)?;
+            let world_draw = gpu.draw_lit_world(&picture.world, &picture.lights)?;
             let water_draw = gpu.water_fx(&picture.water)?;
             let surface_draw = gpu.draw(&picture.water_surface)?;
+            let light_draw = gpu.lights(&picture.lights)?;
             gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
             let tint_draw = if picture.tint.is_empty() {
                 crate::gles::DrawCounts::default()
@@ -933,17 +940,19 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 + hud_draw.batches
                 + tint_draw.batches
                 + water_draw.batches
-                + surface_draw.batches;
+                + surface_draw.batches + light_draw.batches;
             let quads = world_draw.quads
                 + hud_draw.quads
                 + tint_draw.quads
                 + water_draw.quads
-                + surface_draw.quads;
+                + surface_draw.quads + light_draw.quads;
             batch_counts.add(batches);
             batch_total += batches;
             quad_counts.add(quads);
             quad_total += quads;
-            vertex_counts.add(world_draw.vertices + hud_draw.vertices + tint_draw.vertices);
+            vertex_counts.add(
+                world_draw.vertices + hud_draw.vertices + tint_draw.vertices + light_draw.vertices,
+            );
             entity_view_counts.add(picture.entity_bounds_in_view);
             if let Some(f) = &mut feedback {
                 f.request(swap_calls + 1, p.tick as u64)?;

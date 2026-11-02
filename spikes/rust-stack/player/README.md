@@ -331,3 +331,49 @@ draw. No per-frame texture/shader allocations or asset reads occur in steady
 state. A tile-based GPU can still resolve more than the copied area: Mali p99 and
 pixel comparison with water disabled must be checked on hardware. Host tests and
 GLSL validation do not establish that GPU cost or visual quality.
+
+## Lighting spike (presentation only)
+
+Object emitters come from `Presentation` (`d25`/`d26` `lit:*`, `fire_shot`,
+non-cold/unfrozen `e16`, `o1`/`o2`) and compiled `TerrainHazard::Lava` cells.
+At most 16 visible emitters nearest the camera survive. Total intensity is capped.
+Saved ticks drive flicker. The map darkness overlay is **unchanged**. Dark maps
+use tint-only lighting: RGB can only decrease, so no light can reveal more level.
+
+Optional `foo.normal.png` beside `foo.png` supplies tangent normals (+X right,
++Y up, +Z outward). It must have the same dimensions. Sidecars are unpinned local
+spike art; all original image hash checks remain in force. Missing sidecars retain
+the original shader. The auto-normal option derives an alpha-edge bevel with four
+extra texture taps, with no generated textures. Both paths use one nearby light
+per quad and at most 128 replacement draws per frame, preserving painter order,
+palette swaps and alpha. With lights off, the exact original renderer is used.
+
+Glow uses the same soft radial sprite kernel at 45% light radius for fire,
+coins, goals and lit lamps. The light and glow sprites share one additive batch;
+there is no full-screen bright-pass, blur target, readback or extra texture.
+Dark-map glow follows the same tint-only fairness rule. Each frame caps total
+light and glow energy separately, so a dense coin row cannot wash out the screen.
+
+Feel adds Lights (on), Light strength (2), Glow (on), Glow strength (1), and
+Auto normals (off), after Muffle strength. Strengths are 0..3. Old `feel.json`
+files use these defaults. Turn both Lights and Glow off for the original pixels;
+Auto normals has no effect while Lights is off.
+
+Screenshot fixture: `tests/fixtures/lighting.level.json` (use the existing
+`--benchmark-unverified-level` path, **not** strict gameplay admission). Map1 has
+lit/unlit fire lamps at x184/232, a lit ice lamp at x280, coins at x144..208,
+cold/burning bubbles at x352/384, four lava cells at x384..512, and a goal at
+x576. The fire melon at x112 supplies breath after swallowing. Capture near tick
+30 for bubbles. Enable Auto normals to see sprite-edge shading without sidecars;
+compare with it off at the same saved tick. Map2 has identical objects with 80%
+darkness; change `startpoint.map` to 2 in a temporary copy for the fairness image.
+The original core `elements_target.level.json` also has lamps, bubbles and fire
+melons; `collections.level.json` has coins. The new fixture's compiled terrain
+and object bindings are covered by a unit test; GPU screenshots remain device
+validation, not a host-test claim.
+
+Cost limits: 16 emitters, at most 32 radial quads in one batch, no FBOs or new
+full-screen passes, zero fallback-normal texture memory. Normal maps add their
+own RGBA textures. Auto normals adds four alpha taps and up to 128 replacement
+draws (not extra geometry passes). This cap trades coverage in dense scenes for
+bounded work. Mali timings must be measured; no sustained-60 claim is made.

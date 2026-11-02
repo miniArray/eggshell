@@ -2,6 +2,9 @@
 //! SDL2 owns the Wayland window/context; this Rust module owns shaders and draws.
 #[path = "water_gles.rs"]
 mod water_gles;
+
+#[path = "gles_lighting.rs"]
+mod lighting_backend;
 use crate::pack::Image;
 use eggshell_spike_core::PaletteSwap;
 use glow::HasContext;
@@ -251,6 +254,7 @@ pub struct Gles {
     pub sdl: sdl2::Sdl,
     pub video: sdl2::VideoSubsystem,
     gl: glow::Context,
+    lighting: lighting_backend::Resources,
     program: glow::Program,
     uniforms: Uniforms,
     /// PLAIN_FRAGMENT program (game pipeline) with its viewport and screen transform.
@@ -441,12 +445,16 @@ impl Gles {
         } else {
             None
         };
+        let lighting = unsafe {
+            lighting_backend::Resources::new(&gl, pipeline == PipelineConfig::GameOpaqueRgb10)?
+        };
         let mut result = Self {
             _context: context,
             window,
             sdl,
             video,
             gl,
+            lighting,
             program,
             uniforms,
             plain,
@@ -1436,6 +1444,7 @@ impl Drop for Gles {
             for &texture in &self.textures {
                 self.gl.delete_texture(texture);
             }
+            self.lighting.delete(&self.gl);
             self.gl.delete_buffer(self.buffer);
             self.gl.delete_program(self.program);
             if let Some(plain) = &self.plain {

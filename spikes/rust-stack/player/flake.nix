@@ -41,6 +41,7 @@
                 ./Cargo.toml
                 ./Cargo.lock
                 ./src
+                ./tests/fixtures/lighting.level.json
                 ./native
                 ./build.rs
                 ../core/Cargo.toml

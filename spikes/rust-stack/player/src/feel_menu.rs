@@ -8,9 +8,14 @@ use std::time::{Duration, Instant};
 
 const WATER_ROW: usize = 13;
 const WATER_STRENGTH_ROW: usize = 14;
-const PREVIEW_ROW: usize = 15;
-const RESET_ROW: usize = 16;
-const RESUME_ROW: usize = 17;
+const LIGHTS_ROW: usize = 15;
+const LIGHT_STRENGTH_ROW: usize = 16;
+const GLOW_ROW: usize = 17;
+const GLOW_STRENGTH_ROW: usize = 18;
+const AUTO_NORMALS_ROW: usize = 19;
+const PREVIEW_ROW: usize = 20;
+const RESET_ROW: usize = 21;
+const RESUME_ROW: usize = 22;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -56,6 +61,11 @@ impl Model {
                 12 => s.goal_music_strength += delta,
                 WATER_ROW => s.water_fx_enabled = !s.water_fx_enabled,
                 WATER_STRENGTH_ROW => s.water_fx_strength += delta,
+                LIGHTS_ROW => s.lights_enabled = !s.lights_enabled,
+                LIGHT_STRENGTH_ROW => s.light_strength += delta,
+                GLOW_ROW => s.glow_enabled = !s.glow_enabled,
+                GLOW_STRENGTH_ROW => s.glow_strength += delta,
+                AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 _ => {}
             }
         }
@@ -68,6 +78,9 @@ impl Model {
                 10 => s.splash_enabled = !s.splash_enabled,
                 11 => s.goal_music_enabled = !s.goal_music_enabled,
                 WATER_ROW => s.water_fx_enabled = !s.water_fx_enabled,
+                LIGHTS_ROW => s.lights_enabled = !s.lights_enabled,
+                GLOW_ROW => s.glow_enabled = !s.glow_enabled,
+                AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESET_ROW => *s = FeelSettings::default(),
                 RESUME_ROW => return Action::Resume,
@@ -124,6 +137,11 @@ impl MenuPage for Page<'_> {
             format!("Goal music strength: {}", s.goal_music_strength),
             format!("Water FX: {}", on(s.water_fx_enabled)),
             format!("Water FX strength: {}", s.water_fx_strength),
+            format!("Lights: {}", on(s.lights_enabled)),
+            format!("Light strength: {}", s.light_strength),
+            format!("Glow: {}", on(s.glow_enabled)),
+            format!("Glow strength: {}", s.glow_strength),
+            format!("Auto normals: {}", on(s.auto_normals)),
             "Preview shake".into(),
             "Reset to defaults".into(),
             "Resume".into(),
@@ -301,6 +319,34 @@ mod tests {
             }
             assert_eq!(value(&s), lower);
         }
+        for (row, read) in [
+            (
+                LIGHT_STRENGTH_ROW,
+                (|s: &FeelSettings| s.light_strength) as fn(&FeelSettings) -> i64,
+            ),
+            (
+                GLOW_STRENGTH_ROW,
+                (|s: &FeelSettings| s.glow_strength) as fn(&FeelSettings) -> i64,
+            ),
+        ] {
+            m.focus = row;
+            for _ in 0..10 {
+                m.input(input::RIGHT, &mut s);
+            }
+            assert_eq!(read(&s), 3);
+            for _ in 0..10 {
+                m.input(input::LEFT, &mut s);
+            }
+            assert_eq!(read(&s), 0);
+        }
+        for row in [LIGHTS_ROW, GLOW_ROW, AUTO_NORMALS_ROW] {
+            m.focus = row;
+            let old = s;
+            m.input(input::JUMP, &mut s);
+            assert_ne!(s, old);
+            m.input(input::LEFT, &mut s);
+            assert_eq!(s, old);
+        }
         m.focus = RESET_ROW;
         m.input(input::JUMP, &mut s);
         assert_eq!(s, FeelSettings::default());
@@ -335,7 +381,7 @@ mod tests {
                 "Goal music strength: 2",
                 "Water FX: on",
                 "Water FX strength: 3",
-                "Preview shake"
+                "Lights: on"
             ]
         );
     }
@@ -362,6 +408,8 @@ mod tests {
                 settings.muffle_strength = 3;
                 settings.goal_music_strength = 3;
                 settings.water_fx_strength = 3;
+                settings.light_strength = 3;
+                settings.glow_strength = 3;
             }
             for size in [
                 [640.0, 480.0],

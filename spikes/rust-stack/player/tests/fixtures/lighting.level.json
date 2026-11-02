@@ -1,0 +1,170 @@
+{
+  "version": "1",
+  "name": "Rust lighting feel preview",
+  "desc": "Throwaway screenshot fixture. Same objects in bright map1 and 80 percent dark map2. Not gameplay admission or a benchmark.",
+  "author": "Eggshell",
+  "startpoint": {
+    "map": 1,
+    "X": 64,
+    "Y": 384
+  },
+  "flowers": 0,
+  "redcoins": 1,
+  "maps": {
+    "map1": {
+      "width": 640,
+      "height": 480,
+      "objects": {
+        "lit_fire_lamp": {
+          "A": "d25",
+          "X": 184,
+          "Y": 356
+        },
+        "unlit_fire_lamp": {
+          "A": "d25",
+          "X": 232,
+          "Y": 356,
+          "F": 2
+        },
+        "lit_ice_lamp": {
+          "A": "d26",
+          "X": 280,
+          "Y": 356
+        },
+        "fire_bubble": {
+          "A": "e16",
+          "X": 384,
+          "Y": 356,
+          "F": 0,
+          "R": 270,
+          "E1": "1",
+          "E2": "0",
+          "E3": "0.5",
+          "E4": "0"
+        },
+        "cold_bubble": {
+          "A": "e16",
+          "X": 352,
+          "Y": 356,
+          "F": 3,
+          "R": 270,
+          "E1": "1",
+          "E2": "0",
+          "E3": "0.5",
+          "E4": "0"
+        },
+        "fire_melon": {
+          "A": "o25",
+          "X": 112,
+          "Y": 384,
+          "F": 4
+        },
+        "coin": {
+          "A": "o1",
+          "X": 144,
+          "Y": 320
+        },
+        "coin_2": {
+          "A": "o1",
+          "X": 176,
+          "Y": 304
+        },
+        "red_coin": {
+          "A": "o2",
+          "X": 208,
+          "Y": 320
+        },
+        "goal": {
+          "A": "o5",
+          "X": 576,
+          "Y": 356
+        }
+      },
+      "layer1": {
+        "castle32": "{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"260x-1,40x0\"}"
+      },
+      "layer2": {
+        "lava": "{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"252x-1,4x0,44x-1\"}"
+      },
+      "bgcolor": "43,49,62"
+    },
+    "map2": {
+      "width": 640,
+      "height": 480,
+      "objects": {
+        "lit_fire_lamp": {
+          "A": "d25",
+          "X": 184,
+          "Y": 356
+        },
+        "unlit_fire_lamp": {
+          "A": "d25",
+          "X": 232,
+          "Y": 356,
+          "F": 2
+        },
+        "lit_ice_lamp": {
+          "A": "d26",
+          "X": 280,
+          "Y": 356
+        },
+        "fire_bubble": {
+          "A": "e16",
+          "X": 384,
+          "Y": 356,
+          "F": 0,
+          "R": 270,
+          "E1": "1",
+          "E2": "0",
+          "E3": "0.5",
+          "E4": "0"
+        },
+        "cold_bubble": {
+          "A": "e16",
+          "X": 352,
+          "Y": 356,
+          "F": 3,
+          "R": 270,
+          "E1": "1",
+          "E2": "0",
+          "E3": "0.5",
+          "E4": "0"
+        },
+        "fire_melon": {
+          "A": "o25",
+          "X": 112,
+          "Y": 384,
+          "F": 4
+        },
+        "coin": {
+          "A": "o1",
+          "X": 144,
+          "Y": 320
+        },
+        "coin_2": {
+          "A": "o1",
+          "X": 176,
+          "Y": 304
+        },
+        "red_coin": {
+          "A": "o2",
+          "X": 208,
+          "Y": 320
+        },
+        "goal": {
+          "A": "o5",
+          "X": 576,
+          "Y": 356
+        }
+      },
+      "layer1": {
+        "castle32": "{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"260x-1,40x0\"}"
+      },
+      "layer2": {
+        "lava": "{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"252x-1,4x0,44x-1\"}"
+      },
+      "bgcolor": "43,49,62",
+      "darkness": 80
+    }
+  }
+}
