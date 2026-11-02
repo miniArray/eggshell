@@ -771,13 +771,7 @@ impl Actor {
             crate::elements::Frozen::Free => {}
             crate::elements::Frozen::Done => return Ok(After::Nothing),
             crate::elements::Frozen::Lava => {
-                if self.kind == ActorKind::Plant && step.player.captured_by != 0 {
-                    return Err(Error::Unsupported {
-                        requirements: vec![
-                            "frozen plant in lava while a plant holds the player".into()
-                        ],
-                    });
-                }
+                // A capturing plant's release runs in Run::entities_step (on_remove).
                 self.remove(status, can_respawn);
                 return Ok(After::Nothing);
             }

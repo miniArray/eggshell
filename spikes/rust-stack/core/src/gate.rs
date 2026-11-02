@@ -110,8 +110,10 @@ impl Run {
         }
         if !found {
             found = self.entities.iter().any(|o| {
+                // one_way_gate.gd _body_boxes: registry enemies (an e33 gust flyer is a
+                // walker body but not an enemy), o4, o7, o14 and moving pickups.
                 let actor = match &o.kind {
-                    Kind::Walker(w) => w.held == 0,
+                    Kind::Walker(w) => w.held == 0 && o.is_enemy(),
                     Kind::Star(p) => p.held == 0,
                     Kind::Egg(_) => true,
                     Kind::Pickup(p) => p.held == 0 && p.moving != 0,

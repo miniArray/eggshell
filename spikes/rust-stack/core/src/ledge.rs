@@ -90,7 +90,8 @@ impl Run {
                 || (o.body.x - at.x).abs() > REACH
                 || (o.body.y - at.y).abs() > REACH
                 || !match &o.kind {
-                    Kind::Walker(w) => w.held == 0 && w.hidden == 0,
+                    // count_ledge.gd _bodies: registry enemies only (e33 is not one).
+                    Kind::Walker(w) => w.held == 0 && w.hidden == 0 && o.is_enemy(),
                     Kind::Star(p) => p.held == 0,
                     Kind::Egg(_) | Kind::Stem(_) | Kind::Hound(_) => true,
                     _ => false,

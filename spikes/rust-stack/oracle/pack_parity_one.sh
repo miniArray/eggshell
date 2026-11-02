@@ -3,6 +3,7 @@
 # aka only. Usage: pack_parity_one.sh CORPUS_ID [TICKS]
 # Reruns pack_parity.sh's export and every-tick test for one corpus level, in the same
 # per-tree output directory; writes the route input when the tree has none.
+# PACK_TIMEOUT: seconds allowed for the Godot export (default 900).
 set -euo pipefail
 [[ $(hostname) == aka ]]
 [[ "$NIX_CONFIG" == *'builders ='* ]]
@@ -26,7 +27,7 @@ print(json.dumps((cycle * (n // len(cycle) + 1))[:n]))
 " "$ticks" > "$input"
 fi
 rm -rf "$dir"
-timeout 900 "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
+timeout "${PACK_TIMEOUT:-900}" "$GODOT" --headless --path . --script spikes/rust-stack/oracle/export.gd -- "$corpus/$id.json" "$input" "$dir" >"$out/$id.export.log" 2>&1 || true
 if ! grep -q 'ORACLE_DONE' "$out/$id.export.log" || grep -qE 'SCRIPT ERROR|ERROR:|ORACLE_FAILED' "$out/$id.export.log"; then
   printf 'PACK_PARITY id=%s result=export-failed\n' "$id"
   exit 1

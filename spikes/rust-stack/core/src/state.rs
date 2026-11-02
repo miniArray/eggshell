@@ -688,14 +688,37 @@ impl Run {
                         player: &mut self.player,
                         rng: &mut self.rng,
                     };
-                    w.advance(
+                    let before = e.status;
+                    let after = w.advance(
                         token,
                         &mut e.body,
                         &mut e.facing,
                         &mut e.status,
                         &mut e.can_respawn,
                         &mut context,
-                    )?
+                    )?;
+                    // enemy_body.gd remove runs actor.gd on_remove: an e5 removed in its own
+                    // step (lava, a roll, a spit) lets go of the player it holds.
+                    if before != 3 && e.status == 3 && w.kind == crate::actors::ActorKind::Plant {
+                        let (facing, family) = (e.facing, e.family_index);
+                        if self.player.captured_by == family + 1 {
+                            if self.player.life.separated == 0 {
+                                self.player.separate(-facing * 400 * 60, true);
+                            }
+                            w.mode = 5;
+                            w.timer = 30;
+                            let p = &mut self.player;
+                            p.captured_by = 0;
+                            p.life.invulnerable = 121;
+                            p.life.hurt = 38;
+                            p.life.hurt_phase = 1;
+                            p.life.hurt_deceleration = 648;
+                            p.body.vx = facing * 400 * 60;
+                            p.body.vy = -384 * 60;
+                            p.on_floor = 0;
+                        }
+                    }
+                    after
                 }
                 _ => unreachable!("phase 0 members"),
             };
