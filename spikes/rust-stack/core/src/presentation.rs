@@ -1264,6 +1264,8 @@ pub(crate) fn sample_rows(
                             }
                             // enemy_overlap.gd view_state
                             Kind::Overlap(_) => false,
+                            // editor_blank.gd view_state: never drawn.
+                            Kind::Blank => false,
                             _ => true,
                         },
                 held: matches!(&e.kind,Kind::Walker(w)if w.held!=0),
