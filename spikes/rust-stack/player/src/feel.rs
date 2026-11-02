@@ -14,6 +14,10 @@ pub struct FeelSettings {
     pub dust_amount: i64,
     pub muffle_enabled: bool,
     pub muffle_strength: i64,
+    pub sparkle_enabled: bool,
+    pub splash_enabled: bool,
+    pub goal_music_enabled: bool,
+    pub goal_music_strength: i64,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -27,6 +31,10 @@ impl Default for FeelSettings {
             dust_amount: 2,
             muffle_enabled: true,
             muffle_strength: 2,
+            sparkle_enabled: true,
+            splash_enabled: true,
+            goal_music_enabled: true,
+            goal_music_strength: 2,
         }
     }
 }
@@ -38,6 +46,7 @@ impl FeelSettings {
         self.hit_steps = self.hit_steps.clamp(6, 30);
         self.dust_amount = self.dust_amount.clamp(0, 3);
         self.muffle_strength = self.muffle_strength.clamp(0, 3);
+        self.goal_music_strength = self.goal_music_strength.clamp(0, 3);
     }
     pub fn load(directory: &Path) -> Self {
         let path = directory.join("feel.json");
@@ -70,6 +79,19 @@ impl FeelSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_settings_get_new_defaults_and_goal_strength_is_clamped() {
+        let old = r#"{"shake_enabled":false,"pound_strength_px":4,"pound_steps":12,"hit_strength_px":1,"hit_steps":8,"dust_enabled":false,"dust_amount":1,"muffle_enabled":false,"muffle_strength":1}"#;
+        let mut s: FeelSettings = serde_json::from_str(old).unwrap();
+        assert!(!s.shake_enabled && !s.dust_enabled && !s.muffle_enabled);
+        assert!(s.sparkle_enabled && s.splash_enabled && s.goal_music_enabled);
+        assert_eq!(s.goal_music_strength, 2);
+        for (input, expected) in [(-1, 0), (0, 0), (2, 2), (99, 3)] {
+            s.goal_music_strength = input;
+            s.clamp();
+            assert_eq!(s.goal_music_strength, expected);
+        }
+    }
     #[test]
     fn load_defaults_invalid_partial_clamped_and_atomic_round_trip() {
         let dir = std::env::temp_dir().join(format!(
