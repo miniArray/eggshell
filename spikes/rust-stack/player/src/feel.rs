@@ -2,6 +2,28 @@
 use serde::{Deserialize, Serialize};
 use std::{io::Write, path::Path};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GlowStyle {
+    #[default]
+    Pixel,
+    Smooth,
+}
+impl GlowStyle {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Pixel => Self::Smooth,
+            Self::Smooth => Self::Pixel,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pixel => "pixel",
+            Self::Smooth => "smooth",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeelSettings {
@@ -25,6 +47,7 @@ pub struct FeelSettings {
     pub glow_enabled: bool,
     pub glow_strength: i64,
     pub auto_normals: bool,
+    pub glow_style: GlowStyle,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -49,6 +72,7 @@ impl Default for FeelSettings {
             glow_enabled: true,
             glow_strength: 1,
             auto_normals: false,
+            glow_style: GlowStyle::Pixel,
         }
     }
 }
@@ -133,6 +157,8 @@ mod tests {
         let old = r#"{"shake_enabled":false,"muffle_strength":3}"#;
         let s: FeelSettings = serde_json::from_str(old).unwrap();
         assert!(!s.shake_enabled);
+        assert_eq!(s.glow_style, GlowStyle::Pixel);
+        assert_eq!(serde_json::to_value(s).unwrap()["glow_style"], "pixel");
         assert_eq!(s.muffle_strength, 3);
         assert_eq!(
             (

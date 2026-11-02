@@ -348,7 +348,11 @@ extra texture taps, with no generated textures. Both paths use one nearby light
 per quad and at most 128 replacement draws per frame, preserving painter order,
 palette swaps and alpha. With lights off, the exact original renderer is used.
 
-Glow uses the same soft radial sprite kernel at 45% light radius for fire,
+Glow defaults to four hard brightness bands on the level-pixel grid, with a
+4x4 Bayer dither only at band boundaries and 85% of the old radius. Warm
+lights use the same bands, including normal-bearing draws. `glow_style` is
+`"pixel"` by default; Feel → Glow style selects the old `"smooth"` kernel.
+Both styles keep glow at 45% light radius for fire,
 coins, goals and lit lamps. The light and glow sprites share one additive batch;
 there is no full-screen bright-pass, blur target, readback or extra texture.
 Dark-map glow follows the same tint-only fairness rule. Each frame caps total

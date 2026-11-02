@@ -13,10 +13,11 @@ const LIGHT_STRENGTH_ROW: usize = 16;
 const GLOW_ROW: usize = 17;
 const GLOW_STRENGTH_ROW: usize = 18;
 const AUTO_NORMALS_ROW: usize = 19;
-const PREVIEW_ROW: usize = 20;
-const RESTART_ROW: usize = 21;
-const RESET_ROW: usize = 22;
-const RESUME_ROW: usize = 23;
+const GLOW_STYLE_ROW: usize = 20;
+const PREVIEW_ROW: usize = 21;
+const RESTART_ROW: usize = 22;
+const RESET_ROW: usize = 23;
+const RESUME_ROW: usize = 24;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -68,6 +69,7 @@ impl Model {
                 GLOW_ROW => s.glow_enabled = !s.glow_enabled,
                 GLOW_STRENGTH_ROW => s.glow_strength += delta,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
+                GLOW_STYLE_ROW => s.glow_style.toggle(),
                 _ => {}
             }
         }
@@ -83,6 +85,7 @@ impl Model {
                 LIGHTS_ROW => s.lights_enabled = !s.lights_enabled,
                 GLOW_ROW => s.glow_enabled = !s.glow_enabled,
                 AUTO_NORMALS_ROW => s.auto_normals = !s.auto_normals,
+                GLOW_STYLE_ROW => s.glow_style.toggle(),
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESTART_ROW => return Action::Restart,
                 RESET_ROW => *s = FeelSettings::default(),
@@ -145,6 +148,7 @@ impl MenuPage for Page<'_> {
             format!("Glow: {}", on(s.glow_enabled)),
             format!("Glow strength: {}", s.glow_strength),
             format!("Auto normals: {}", on(s.auto_normals)),
+            format!("Glow style: {}", s.glow_style.label()),
             "Preview shake".into(),
             "Restart level".into(),
             "Reset to defaults".into(),
@@ -372,7 +376,7 @@ mod tests {
             }
             assert_eq!(read(&s), 0);
         }
-        for row in [LIGHTS_ROW, GLOW_ROW, AUTO_NORMALS_ROW] {
+        for row in [LIGHTS_ROW, GLOW_ROW, AUTO_NORMALS_ROW, GLOW_STYLE_ROW] {
             m.focus = row;
             let old = s;
             m.input(input::JUMP, &mut s);

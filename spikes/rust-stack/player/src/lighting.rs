@@ -20,6 +20,9 @@ pub struct Frame {
     pub candidates: usize,
     pub dark_map: bool,
     pub auto_normals: bool,
+    pub style: crate::feel::GlowStyle,
+    /// Screen offset and level-pixel scale, including camera shake.
+    pub grid: [f32; 3],
     center: [f32; 2],
 }
 impl Frame {
@@ -29,6 +32,8 @@ impl Frame {
             candidates: 0,
             dark_map: darkness > 0.0,
             auto_normals: false,
+            style: crate::feel::GlowStyle::Pixel,
+            grid: [0.0, 0.0, 1.0],
             center: container.map(|v| v as f32 / 2.0),
         }
     }
@@ -43,6 +48,11 @@ impl Frame {
         tick: i64,
         plan: &Plan,
     ) {
+        self.grid = [
+            plan.offset[0] as f32,
+            plan.offset[1] as f32,
+            plan.scale as f32,
+        ];
         let phase = at[0] as f32 * 0.071 + at[1] as f32 * 0.037;
         let at = [
             at[0] * plan.scale + plan.offset[0],
@@ -97,6 +107,7 @@ impl Frame {
     }
     pub fn apply_settings(&mut self, s: crate::feel::FeelSettings) {
         self.auto_normals = s.auto_normals;
+        self.style = s.glow_style;
         let light = if s.lights_enabled {
             s.light_strength.clamp(0, 3) as f32 / 2.0
         } else {
@@ -157,6 +168,39 @@ fn dark_tint(dst: f32, channel: f32, alpha: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Reference evaluator for the shader's four-band brightness contract.
+    fn pixel_band(brightness: f32, x: usize, y: usize) -> f32 {
+        const BAYER: [[f32; 4]; 4] = [
+            [0.0, 8.0, 2.0, 10.0],
+            [12.0, 4.0, 14.0, 6.0],
+            [3.0, 11.0, 1.0, 9.0],
+            [15.0, 7.0, 13.0, 5.0],
+        ];
+        let edge = ((BAYER[y % 4][x % 4] + 0.5) / 16.0 - 0.5) * 0.12;
+        ((brightness * 4.0 + 0.5 + edge).floor() / 4.0).clamp(0.0, 1.0)
+    }
+    #[test]
+    fn pixel_bands_are_discrete_and_dither_only_near_edges() {
+        for y in 0..4 {
+            for x in 0..4 {
+                for v in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                    assert_eq!(pixel_band(v, x, y), v);
+                }
+                for n in 0..1000 {
+                    let band = pixel_band(n as f32 / 999.0, x, y);
+                    assert!([0.0, 0.25, 0.5, 0.75, 1.0].contains(&band));
+                }
+            }
+        }
+        let edge: Vec<_> = (0..4)
+            .flat_map(|y| (0..4).map(move |x| pixel_band(0.375, x, y)))
+            .collect();
+        assert_eq!(edge.iter().filter(|v| **v == 0.25).count(), 8);
+        assert_eq!(edge.iter().filter(|v| **v == 0.5).count(), 8);
+        for v in [0.35, 0.4] {
+            assert!((0..4).all(|y| (0..4).all(|x| pixel_band(v, x, y) == pixel_band(v, 0, 0))));
+        }
+    }
     #[test]
     fn screenshot_fixture_has_lamps_coins_goal_and_real_lava_layers() {
         let world = eggshell_spike_core::World::compile(
@@ -202,7 +246,11 @@ mod tests {
                     let baseline = 0.7 * (1.0 - darkness * d * d * (3.0 - 2.0 * d));
                     let mut lit = baseline;
                     for n in 0..MAX_LIGHTS {
-                        lit = dark_tint(lit, FIRE[n % 3], n as f32 / MAX_LIGHTS as f32);
+                        lit = dark_tint(
+                            lit,
+                            FIRE[n % 3],
+                            pixel_band(n as f32 / MAX_LIGHTS as f32, x, y),
+                        );
                     }
                     assert!(lit <= baseline + 1e-6);
                     off += usize::from(baseline > 0.01);

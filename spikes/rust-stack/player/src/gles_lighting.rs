@@ -1,14 +1,54 @@
 //! Isolated game-feel shader programs; no changes to baseline/water shaders.
 use super::*;
-const LIGHT_FRAGMENT: &str = r#"
-precision highp float;
-varying vec2 v_uv;
+// UV slots carry a constant level-space emitter centre. Radius is constant over
+// the quad, so the whole pass stays batched without derivatives or ES3 features.
+const LIGHT_VERTEX: &str = r#"
+attribute vec2 a_position;
+attribute vec2 a_uv;
+attribute vec4 a_color;
+uniform vec2 u_viewport;
+uniform vec3 u_grid;
+varying vec2 v_level;
+varying vec2 v_center;
+varying float v_radius;
 varying vec4 v_color;
 void main() {
-  float d=length(v_uv*2.0-1.0);
-  float falloff=1.0-smoothstep(0.0,1.0,d);
-  float alpha=v_color.a*falloff*falloff;
+  gl_Position=vec4(a_position.x/u_viewport.x*2.0-1.0,1.0-a_position.y/u_viewport.y*2.0,0.0,1.0);
+  v_level=(a_position-u_grid.xy)/u_grid.z;
+  v_center=a_uv;
+  v_radius=length(v_level-v_center)*0.70710678118;
+  v_color=a_color;
+}
+"#;
+const LIGHT_FRAGMENT: &str = r#"
+precision highp float;
+uniform int u_pixel;
+varying vec2 v_level;
+varying vec2 v_center;
+varying float v_radius;
+varying vec4 v_color;
+// FALLOFF
+void main() {
+  vec2 p=u_pixel!=0 ? floor(v_level)+0.5 : v_level;
+  float alpha=v_color.a*light_falloff(length(p-v_center)/v_radius,p);
   gl_FragColor=vec4(v_color.rgb*alpha,alpha);
+}
+"#;
+// Four positive bands plus transparent outside. Dither changes only the narrow
+// neighbourhood of each boundary (0.03 of full brightness), not the band interiors.
+const FALLOFF: &str = r#"
+float bayer(vec2 p) {
+  vec2 q=mod(floor(p),4.0);
+  vec2 low=mod(q,2.0), high=floor(q/2.0);
+  float a=2.0*low.x+3.0*low.y-4.0*low.x*low.y;
+  float b=2.0*high.x+3.0*high.y-4.0*high.x*high.y;
+  return (4.0*a+b+0.5)/16.0-0.5;
+}
+float light_falloff(float d,vec2 p) {
+  float f=1.0-smoothstep(0.0,1.0,u_pixel!=0 ? d/0.85 : d);
+  f*=f;
+  if(u_pixel!=0) f=clamp(floor(f*4.0+0.5+bayer(p)*0.12)/4.0,0.0,1.0);
+  return f;
 }
 "#;
 // The baseline shader is untouched. This program replaces a base draw only on
@@ -21,6 +61,8 @@ uniform vec2 u_texel;
 uniform vec4 u_uv_bounds;
 uniform int u_auto;
 uniform int u_dark;
+uniform int u_pixel;
+uniform vec3 u_grid;
 uniform vec2 u_viewport;
 uniform vec4 u_light;
 uniform vec4 u_light_color;
@@ -30,6 +72,7 @@ uniform vec3 u_values[8];
 uniform int u_count;
 varying vec2 v_uv;
 varying vec4 v_color;
+// FALLOFF
 float alpha_at(vec2 uv) { return texture2D(u_texture,clamp(uv,u_uv_bounds.xy,u_uv_bounds.zw)).a; }
 void main() {
   vec4 pixel=texture2D(u_texture,v_uv);
@@ -41,11 +84,13 @@ void main() {
     n=normalize(vec3(-dx,dy,1.0));
   } else { n=normalize(texture2D(u_normal,v_uv).xyz*2.0-1.0); }
   vec2 p=vec2(gl_FragCoord.x,u_viewport.y-gl_FragCoord.y);
+  vec2 level=(p-u_grid.xy)/u_grid.z;
+  if(u_pixel!=0) p=(floor(level)+0.5)*u_grid.z+u_grid.xy;
   vec2 delta=u_light.xy-p;
-  float falloff=1.0-smoothstep(0.0,u_light.z,length(delta));
+  float falloff=light_falloff(length(delta)/u_light.z,level);
   n=vec3(u_basis*n.xy,n.z);
   float diffuse=max(dot(n,normalize(vec3(delta,u_light.z*0.35))),0.0);
-  float gain=falloff*falloff*diffuse*u_light_color.a;
+  float gain=falloff*diffuse*u_light_color.a;
   for(int i=0;i<8;i++) {
     if(i<u_count && all(lessThan(abs(pixel.rgb-u_keys[i]),vec3(0.5/255.0)))) pixel.rgb=u_values[i];
   }
@@ -62,6 +107,8 @@ struct NormalImage {
 pub(super) struct Resources {
     radial: glow::Program,
     radial_viewport: Option<glow::UniformLocation>,
+    radial_grid: Option<glow::UniformLocation>,
+    radial_pixel: Option<glow::UniformLocation>,
     normal: glow::Program,
     normal_uniforms: std::collections::HashMap<&'static str, Option<glow::UniformLocation>>,
     images: std::collections::HashMap<usize, NormalImage>,
@@ -69,12 +116,17 @@ pub(super) struct Resources {
 impl Resources {
     pub(super) unsafe fn new(gl: &glow::Context, game: bool) -> Result<Self, String> {
         unsafe {
-            let radial = compile_sources(gl, VERTEX, LIGHT_FRAGMENT)?;
+            let radial = compile_sources(
+                gl,
+                LIGHT_VERTEX,
+                &LIGHT_FRAGMENT.replace("// FALLOFF", FALLOFF),
+            )?;
+            let normal_fragment = NORMAL_FRAGMENT.replace("// FALLOFF", FALLOFF);
             let normal = if game {
-                let (v, f) = game_es300_sources_for(NORMAL_FRAGMENT);
+                let (v, f) = game_es300_sources_for(&normal_fragment);
                 compile_sources(gl, &v, &f)?
             } else {
-                compile_sources(gl, VERTEX, NORMAL_FRAGMENT)?
+                compile_sources(gl, VERTEX, &normal_fragment)?
             };
             let normal_uniforms = [
                 "u_screen_transform",
@@ -84,6 +136,8 @@ impl Resources {
                 "u_uv_bounds",
                 "u_auto",
                 "u_dark",
+                "u_pixel",
+                "u_grid",
                 "u_viewport",
                 "u_light",
                 "u_light_color",
@@ -110,6 +164,8 @@ impl Resources {
             Ok(Self {
                 radial,
                 radial_viewport: gl.get_uniform_location(radial, "u_viewport"),
+                radial_grid: gl.get_uniform_location(radial, "u_grid"),
+                radial_pixel: gl.get_uniform_location(radial, "u_pixel"),
                 normal,
                 normal_uniforms,
                 images: Default::default(),
@@ -169,7 +225,7 @@ impl Gles {
             counts.quads += c.quads;
             counts.batches += c.batches;
             counts.vertices += c.vertices;
-            self.draw_normal(q, light, frame.dark_map)?;
+            self.draw_normal(q, light, frame)?;
             counts.quads += 1;
             counts.batches += 1;
             counts.vertices += 6;
@@ -186,7 +242,7 @@ impl Gles {
         &mut self,
         q: &Quad,
         light: &crate::lighting::Light,
-        dark: bool,
+        frame: &crate::lighting::Frame,
     ) -> Result<(), String> {
         let image = &self.lighting.images[&q.image];
         let normal = image.texture;
@@ -231,7 +287,12 @@ impl Gles {
             gl.uniform_1_i32(u["u_texture"].as_ref(), 0);
             gl.uniform_1_i32(u["u_normal"].as_ref(), 1);
             gl.uniform_1_i32(u["u_auto"].as_ref(), i32::from(normal.is_none()));
-            gl.uniform_1_i32(u["u_dark"].as_ref(), i32::from(dark));
+            gl.uniform_1_i32(u["u_dark"].as_ref(), i32::from(frame.dark_map));
+            gl.uniform_1_i32(
+                u["u_pixel"].as_ref(),
+                i32::from(frame.style == crate::feel::GlowStyle::Pixel),
+            );
+            gl.uniform_3_f32_slice(u["u_grid"].as_ref(), &frame.grid);
             gl.uniform_2_f32(
                 u["u_texel"].as_ref(),
                 1.0 / size[0] as f32,
@@ -308,8 +369,8 @@ impl Gles {
                     self.vertices.extend_from_slice(&[
                         corners[i][0],
                         corners[i][1],
-                        crate::geometry::UNIT_UV[i][0],
-                        crate::geometry::UNIT_UV[i][1],
+                        (x - frame.grid[0]) / frame.grid[2],
+                        (y - frame.grid[1]) / frame.grid[2],
                         l.color[0],
                         l.color[1],
                         l.color[2],
@@ -327,6 +388,12 @@ impl Gles {
                 self.lighting.radial_viewport.as_ref(),
                 self.width as f32,
                 self.height as f32,
+            );
+            self.gl
+                .uniform_3_f32_slice(self.lighting.radial_grid.as_ref(), &frame.grid);
+            self.gl.uniform_1_i32(
+                self.lighting.radial_pixel.as_ref(),
+                i32::from(frame.style == crate::feel::GlowStyle::Pixel),
             );
             self.fx_blend(frame.dark_map);
             self.submit();
