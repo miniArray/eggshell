@@ -422,3 +422,45 @@ Full-mouth dry poses select Defeat1; ambiguous wet-action suffixes select
 Defeat0 because the DTO has no separate full-mouth flag. If the chosen Defeat
 entry is absent, the original selected pose remains in use. Die on lava to see
 all five frames; quick restart can also play the animation during its short fade.
+
+### Water-surface jump investigation (no behaviour change)
+
+The intended rule **does allow a surface jump**, but it needs a **fresh Jump
+press**, not a button held while rising from deep water. Release Jump, let
+buoyancy bring the player to the surface, then press again. Holding it for the
+initial ascent gives full height; release cuts upward speed to one quarter.
+No Up input is required. Down changes swimming posture; it is not the surface
+jump trigger. The ordinary six-step ground jump buffer does not trigger while
+swimming.
+
+| Rule | Rust core | Root GDScript reference |
+| --- | --- | --- |
+| Fresh edge, downward speed below `96*60`, point 50 px above feet outside water | `src/water.rs:95-99` | `src/sim/water.gd:90-98` |
+| Delayed automatic rise in deep water, surface bob | `src/water.rs:59-77,92-94` | `src/sim/water.gd:63-89` |
+| Start full jump at `-776*60` (776 px/s upward) | `src/player.rs:226-235,381-386` | `src/sim/moves.gd:213-221,393-404` |
+| Release cuts rising speed after water rules | `src/player.rs:381-386` | `src/sim/moves.gd:218-221` |
+| Ground jump buffer requires not swimming | `src/player.rs:416-425,621-629` | `src/sim/moves.gd:231-242,353-364` |
+| Clear swimming only after the body leaves water | `src/water.rs:104-108` | `src/sim/water.gd:114-135` |
+
+Rust paths in the table are relative to `spikes/rust-stack/core`. Rust computes
+press edges from current versus previous input (`src/state.rs:773-775`). The
+surface-jump conditions and execution match the reference. No water-rule porting
+bug was found, and no core file was changed.
+
+Verified with `cargo run --example water_probe -- SCHEMA.json`: a synthetic pool
+12 tiles wide, 3 tiles deep, flat ground, no walls, using the shipped collision
+table. This is not a recording of the user's exact showcase level.
+
+| Input sequence | Full water cells | Water3 cap + full lower cells |
+| --- | --- | --- |
+| Hold Jump for 180 steps from deep water | Still floating, feet y317.914 | Still floating, feet y328.474 |
+| Release one step, fresh press and hold | Leaves water after 3 jump steps, feet y279.964 | Leaves after 3 steps, feet y290.524 |
+| Idle 180 steps, fresh one-step tap | Leaves after 7 jump steps | Leaves after 8 steps |
+
+The root GDScript `tests/moves.gd:638-660` also explicitly tests a fresh surface
+jump, persistence on the next held step, release damping, and no retrigger on a
+held button. Host Godot 4.7.2 ran that file: **965 checks, zero failures**.
+Holding the button too early is consistent with the reported symptom, but cannot
+be established without the actual input trace. Pool layout/contact geometry or
+input delivery on the handheld remain untested causes; this investigation does
+not change them.
