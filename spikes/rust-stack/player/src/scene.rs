@@ -88,6 +88,8 @@ pub struct Scene {
     egg_target: Option<Visual>,
     /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
     trail: std::sync::Mutex<Trail>,
+    /// Walk/Sprint animation phase, advanced at the original's speed-scaled rate.
+    run_clock: std::sync::Mutex<RunClock>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -382,6 +384,30 @@ impl Trail {
         self.eggs.clone()
     }
 }
+/// The original game's walk and run animation rate (YFS Yoshi sheet): while Yoshi moves
+/// on the ground in Walk or Sprint (Sprint from 320 px/s), the animation speed is
+/// |vx| / 8 frames per second. Godot used the pack's fixed 8 fps, so a run at speed
+/// cycled its two Sprint frames slowly. Drawing only.
+#[derive(Default)]
+struct RunClock {
+    last_tick: Option<i64>,
+    phase: f64,
+}
+impl RunClock {
+    /// Advances by the steps since the last drawn tick at `vx` (units per step) and
+    /// returns the frame index for an animation of `frames` frames.
+    fn frame(&mut self, tick: i64, vx: i64, frames: usize) -> i64 {
+        let steps = self.last_tick.map_or(0, |last| (tick - last).clamp(0, 600));
+        self.last_tick = Some(tick);
+        // px/s = |vx| / SCALE * 60; frames per step = px/s / 8 / 60.
+        self.phase += steps as f64 * vx.unsigned_abs() as f64 / (SCALE as f64 * 8.0);
+        if frames == 0 {
+            return 0;
+        }
+        self.phase = self.phase.rem_euclid(frames as f64);
+        self.phase.floor() as i64
+    }
+}
 #[cfg(test)]
 mod trail_tests {
     use super::Trail;
@@ -402,6 +428,20 @@ mod trail_tests {
                 "{egg:?}"
             );
         }
+    }
+    #[test]
+    fn run_frames_follow_speed() {
+        use super::{RunClock, SCALE};
+        let mut c = RunClock::default();
+        assert_eq!(c.frame(0, 0, 10), 0);
+        // 240 px/s = 30 frames/s: one frame every 2 steps.
+        let vx = 4 * SCALE;
+        assert_eq!(c.frame(2, vx, 10), 1);
+        assert_eq!(c.frame(20, vx, 10), 0);
+        // 480 px/s on a two-frame Sprint: 60 frames/s, one per step.
+        let vx = -8 * SCALE;
+        assert_eq!(c.frame(21, vx, 2), 1);
+        assert_eq!(c.frame(22, vx, 2), 0);
     }
     #[test]
     fn short_history_leaves_eggs_where_they_appeared() {
@@ -858,6 +898,7 @@ impl Scene {
             decor_caps,
             egg_target,
             trail: std::sync::Mutex::new(Trail::default()),
+            run_clock: std::sync::Mutex::new(RunClock::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1889,9 +1930,26 @@ impl Scene {
         }
         if p.player.visible {
             let pose = &p.player.selected_pose;
+            let running = ["Walk0", "Walk1", "Sprint0", "Sprint1"].contains(&pose.name.as_str());
+            let literal = if running {
+                let frames = self
+                    .player
+                    .animations
+                    .iter()
+                    .find(|(n, _)| *n == pose.name)
+                    .map_or(0, |(_, a)| a.frames.len());
+                Some(
+                    self.run_clock
+                        .lock()
+                        .map_err(|_| "run clock lock poisoned")?
+                        .frame(p.tick, p.player.velocity.x, frames),
+                )
+            } else {
+                None
+            };
             let f = self
                 .player
-                .sample_required(pose.tick, &pose.name, pose.frame, None)?;
+                .sample_required(pose.tick, &pose.name, pose.frame, literal)?;
             let mut t = Transform {
                 position: pixel(p.player.motion.current),
                 scale: [
