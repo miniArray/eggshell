@@ -1022,6 +1022,18 @@ impl Scene {
     }
     /// The clear colour of a one-based map index: map_effects.gd _base, which takes the
     /// last custom gradient colour when the map has one, else the map `bgcolor`.
+    /// A menu drawn with the HUD bitmap font and this scene's uploaded images.
+    pub fn menu_view(&self) -> Result<crate::menu::View, String> {
+        let font = self.hud.font().clone();
+        let size = *self
+            .sizes
+            .get(font.image())
+            .ok_or("scene textures not uploaded")?;
+        Ok(crate::menu::View::new(font, size, self.density > 1))
+    }
+    pub fn solid_image(&self) -> usize {
+        self.solid
+    }
     pub fn clear_color(&self, map_index: usize) -> Result<[u8; 3], String> {
         let prepared = self
             .maps

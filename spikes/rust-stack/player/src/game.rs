@@ -211,13 +211,16 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let mut input_offset = None;
     let mut require_active_window = false;
     let mut initial_zoom = 0_i32;
+    // Level list runs: the goal menu (game.gd) offers "Next level" when this is set.
+    let mut has_next = false;
     // Shots only: centre the view on this level pixel instead of the game camera.
     let mut view_at: Option<eggshell_spike_core::Position> = None;
     let mut mute = false;
     while let Some(key) = args.next() {
         match key.as_str() {
             "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
-            | "--view-metrics" | "--replay" | "--restore" | "--save-dir" | "--capture" => {
+            | "--view-metrics" | "--replay" | "--restore" | "--save-dir" | "--capture"
+            | "--result" => {
                 files.insert(key, args.next().ok_or("missing argument value")?);
             }
             "--input-offset" => {
@@ -250,6 +253,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                     y: pixel(y)?,
                 });
             }
+            "--has-next" => has_next = true,
             "--require-active-window" => require_active_window = true,
             "--ticks" => {
                 ticks = Some(
@@ -552,6 +556,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     } else {
         None
     };
+    let mut goal_choice: Option<&str> = None;
     while completed < stop && ready.elapsed() < Duration::from_secs(seconds) {
         controls.reset_actions();
         for event in events.poll_iter() {
@@ -841,6 +846,27 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         if paused || (!uncapped && clock.owed() == 0) {
             thread::sleep(Duration::from_millis(1));
         }
+        // game.gd: on the goal the simulation stops and the goal menu opens. Replays
+        // keep the plain completed picture.
+        if let Some(path) = files.get("--result").filter(|_| replay.is_none())
+            && session.saved_field("goal_reached") == Some(1)
+        {
+            let deadline = ready + Duration::from_secs(seconds);
+            let choice = goal_menu(
+                &mut gpu,
+                &scene,
+                &session,
+                &mut events,
+                zoom,
+                has_next,
+                deadline,
+                digest_dump.as_deref(),
+            )?;
+            std::fs::write(path, choice).map_err(|e| e.to_string())?;
+            println!("RUST_GAME_GOAL completed={completed} choice={choice}");
+            goal_choice = Some(choice);
+            break;
+        }
     }
     if !uncapped {
         clock.observe(Instant::now(), paused);
@@ -897,7 +923,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     );
     println!("RUST_GAME_SUMMARY {summary}");
     flush()?;
-    if controls.exit {
+    if controls.exit || goal_choice.is_some() {
         println!("RUST_GAME_EXIT user_requested=true completed={completed} expected={stop}");
         return Ok(());
     }
@@ -909,6 +935,110 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     );
     flush()?;
     Ok(())
+}
+
+/// game.gd _summary.
+fn goal_summary(p: &eggshell_spike_core::Presentation) -> String {
+    format!(
+        "Score {}. Time {}. Hurt {}, deaths {}.",
+        p.hud.score,
+        crate::hud::clock_text(p.hud.total_play_ticks),
+        p.hud.hits,
+        p.hud.deaths
+    )
+}
+
+/// The goal menu over the completed picture (game.gd open_menu after goal_reached).
+/// Returns "next", "restart", "levels" or "quit" for the level list launcher.
+#[allow(clippy::too_many_arguments)]
+fn goal_menu(
+    gpu: &mut Gles,
+    scene: &Scene,
+    session: &Session,
+    events: &mut sdl2::EventPump,
+    zoom: i32,
+    has_next: bool,
+    deadline: Instant,
+    shot: Option<&Path>,
+) -> Result<&'static str, String> {
+    use crate::{
+        menu::{Model, Request},
+        picker::{Command, Pad},
+    };
+    let p = session.presentation();
+    let mut model = Model::goal(goal_summary(&p), has_next);
+    let mut view = scene.menu_view()?;
+    let mut pad = Pad::open(&gpu.sdl)?;
+    let mut menu = Vec::new();
+    let mut commands = Vec::new();
+    // A button still held from play does not confirm at once.
+    let opened = Instant::now();
+    let mut frames = 0u64;
+    println!(
+        "RUST_GAME_GOAL_MENU summary={:?} has_next={has_next}",
+        goal_summary(&p)
+    );
+    while Instant::now() < deadline {
+        commands.clear();
+        for event in events.poll_iter() {
+            match event {
+                sdl2::event::Event::Quit { .. } => commands.push(Command::Quit),
+                sdl2::event::Event::KeyDown {
+                    keycode: Some(key), ..
+                } => commands.extend(crate::picker::key_command(key)),
+                _ => {}
+            }
+        }
+        pad.commands(Instant::now(), &mut commands);
+        if opened.elapsed() < Duration::from_millis(250) {
+            commands.clear();
+        }
+        for command in commands.drain(..) {
+            let request = match command {
+                Command::Up => {
+                    model.step(-1);
+                    Request::None
+                }
+                Command::Down => {
+                    model.step(1);
+                    Request::None
+                }
+                Command::Confirm => model.confirm(),
+                Command::Back => model.back(),
+                Command::Quit => Request::LevelList,
+                Command::PageUp | Command::PageDown => Request::None,
+            };
+            match request {
+                Request::Next => return Ok("next"),
+                Request::Restart => return Ok("restart"),
+                Request::LevelList => return Ok("levels"),
+                Request::Quit => return Ok("quit"),
+                _ => {}
+            }
+        }
+        let container = gpu.begin(scene.clear_color(p.map_index)?)?;
+        let container = [container[0] as f64, container[1] as f64];
+        let picture = scene.picture(&p, container, zoom)?;
+        gpu.draw(&picture.world)?;
+        gpu.darkness(picture.light_origin, picture.light_radius, picture.darkness)?;
+        if !picture.tint.is_empty() {
+            gpu.draw(&picture.tint)?;
+        }
+        gpu.draw(&picture.hud)?;
+        menu.clear();
+        view.emit(&model, container, scene.solid_image(), &mut menu)?;
+        gpu.draw(&menu)?;
+        frames += 1;
+        // Shots runs: one picture of the menu, then back to the list.
+        if let Some(dir) = shot
+            && frames == 30
+        {
+            gpu.frame_digest(Some(&dir.join("goal-menu.png")))?;
+            return Ok("levels");
+        }
+        gpu.present()?;
+    }
+    Ok("levels")
 }
 
 #[cfg(test)]

@@ -74,6 +74,24 @@ if [[ "${2:-}" == shots ]]; then
         printf 'LEVELS_SHOTS_FAILED %s %s\n' "$file" "$label"
     done < "$ROOT/private-input/level-shots.txt"
   fi
+  # Goal menu pictures: the newest earlier autosaves of listed levels (a completed
+  # level opens the goal menu at once; others just play 60 steps without input).
+  n=0
+  while IFS= read -r saved && ((n < 4)); do
+    dir=$(basename "$(dirname "$saved")")
+    file="${dir#playtest-}.json"
+    [[ "$file" =~ ^[A-Za-z0-9_.-]+$ && -f "$LEVELS/$file" ]] || continue
+    n=$((n + 1))
+    out="$shots/${file%.*}-goal"
+    mkdir -p "$out"
+    save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
+    cp "$saved" "$save/from-autosave.v10"
+    printf 'LEVELS_SHOTS_GOAL %s from=%s\n' "$file" "$saved"
+    play "$file" "$save" 2 --restore "$save/from-autosave.v10" --ticks 60 --result "$save/goal-result" \
+      --frame-dump-dir "$out" --no-pipeline || printf 'LEVELS_SHOTS_FAILED %s goal\n' "$file"
+    printf 'LEVELS_SHOTS_GOAL_RESULT %s %s\n' "$file" "$(cat "$save/goal-result" 2>/dev/null || echo none)"
+  done < <(find /tmp -maxdepth 4 -path '/tmp/eggshell-full-rust-owned-*/data/playtest-*/autosave.v10' -printf '%T@ %p\n' 2>/dev/null |
+    sort -rn | cut -d' ' -f2-)
   printf 'LEVELS_SHOTS_DONE dir=%s\n' "$shots"
   exit 0
 fi
@@ -84,12 +102,18 @@ now() { date +%s; }
 deadline=$(($(now) + seconds))
 focus=()
 status=()
+next=
 printf 'LEVELS_BEGIN seconds=%s\n' "$seconds"
 while left=$((deadline - $(now))); ((left > 2)); do
-  choice=$(mktemp "$ROOT/data/choice-XXXXXX")
-  player --levels --index "$INDEX" --choice "$choice" "${pack[@]}" --seconds "$left" "${focus[@]}" "${status[@]}"
-  file=$(cat "$choice")
-  rm -f "$choice"
+  if [[ -n "$next" ]]; then
+    file=$next
+    next=
+  else
+    choice=$(mktemp "$ROOT/data/choice-XXXXXX")
+    player --levels --index "$INDEX" --choice "$choice" "${pack[@]}" --seconds "$left" "${focus[@]}" "${status[@]}"
+    file=$(cat "$choice")
+    rm -f "$choice"
+  fi
   [[ -n "$file" ]] || break
   focus=(--focus "$file")
   status=()
@@ -101,19 +125,36 @@ while left=$((deadline - $(now))); ((left > 2)); do
   ((left > 1)) || break
   save=$(save_dir "$file")
   mkdir -p "$save"
+  # The goal menu (game.gd) writes next, restart, levels or quit here.
+  result="$save/goal-result"
+  rm -f "$result"
+  after=$(player --next-level "$INDEX" "$file")
+  goal=(--result "$result")
+  if [[ -n "$after" ]]; then goal+=(--has-next); fi
   printf 'LEVELS_PLAY file=%s seconds=%s\n' "$file" "$left"
   if [[ -f "$save/autosave.v10" ]]; then
     cp "$save/autosave.v10" "$save/continue.v10"
-    if ! play "$file" "$save" "$left" --presentation-feedback --restore "$save/continue.v10"; then
+    if ! play "$file" "$save" "$left" --presentation-feedback "${goal[@]}" --restore "$save/continue.v10"; then
       mv "$save/continue.v10" "$save/autosave.v10.refused"
       printf 'LEVELS_CONTINUE_REFUSED file=%s starting_fresh=true\n' "$file"
       left=$((deadline - $(now)))
       ((left > 1)) || break
-      play "$file" "$save" "$left" --presentation-feedback ||
+      play "$file" "$save" "$left" --presentation-feedback "${goal[@]}" ||
         status=(--status "Cannot play $file: the game stopped with an error")
     fi
-  elif ! play "$file" "$save" "$left" --presentation-feedback; then
+  elif ! play "$file" "$save" "$left" --presentation-feedback "${goal[@]}"; then
     status=(--status "Cannot play $file: the game stopped with an error")
   fi
+  outcome=$(cat "$result" 2>/dev/null || true)
+  printf 'LEVELS_GOAL file=%s choice=%s\n' "$file" "${outcome:-none}"
+  case "$outcome" in
+    next) next=$after ;;
+    restart)
+      # A fresh start: the completed autosave would reopen the goal menu.
+      rm -f "$save/autosave.v10"
+      next=$file
+      ;;
+    quit) break ;;
+  esac
 done
 printf 'LEVELS_DONE\n'

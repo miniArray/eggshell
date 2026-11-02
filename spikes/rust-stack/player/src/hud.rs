@@ -191,6 +191,10 @@ impl Font {
     }
 }
 impl Hud {
+    /// The HUD bitmap font, also used by the menus.
+    pub(crate) fn font(&self) -> &Font {
+        &self.font
+    }
     pub fn prepare(
         manifest: &Value,
         catalog: &mut Catalog,

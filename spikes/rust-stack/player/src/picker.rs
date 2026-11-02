@@ -27,7 +27,7 @@ const REPEAT_EVERY: Duration = Duration::from_millis(60);
 const SCRIPT_FRAMES: u64 = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Command {
+pub(crate) enum Command {
     Up,
     Down,
     PageUp,
@@ -49,9 +49,49 @@ fn parse_command(text: &str) -> Result<Command, String> {
     })
 }
 
+/// The menu command of a host key: arrows, Page Up/Down, Enter, Backspace, Escape.
+pub(crate) fn key_command(key: Keycode) -> Option<Command> {
+    Some(match key {
+        Keycode::Up => Command::Up,
+        Keycode::Down => Command::Down,
+        Keycode::PageUp => Command::PageUp,
+        Keycode::PageDown => Command::PageDown,
+        Keycode::Return | Keycode::KpEnter | Keycode::Space => Command::Confirm,
+        Keycode::Backspace => Command::Back,
+        Keycode::Escape => Command::Quit,
+        _ => return None,
+    })
+}
+
+/// `--next-level INDEX FILE`: prints the next playable file after FILE in the index
+/// (level_list.gd next_index over playable entries), or nothing at the end.
+pub fn next_level(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    let args: Vec<String> = arguments.collect();
+    if args.len() != 2 {
+        return Err("--next-level INDEX FILE".into());
+    }
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&args[0]).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let levels: Vec<Entry> = serde_json::from_value(parsed["levels"].clone())
+        .map_err(|e| format!("level index: {e}"))?;
+    if let Some(next) = next_playable(&levels, &args[1]) {
+        println!("{next}");
+    }
+    Ok(())
+}
+/// The next playable entry after `file`; None when `file` is unlisted or last.
+pub fn next_playable<'a>(levels: &'a [Entry], file: &str) -> Option<&'a str> {
+    let at = levels.iter().position(|e| e.file == file)?;
+    levels[at + 1..]
+        .iter()
+        .find(|e| e.ok)
+        .map(|e| e.file.as_str())
+}
+
 /// Controller buttons sampled as held states across every opened handle, so a pad
 /// reported through two interfaces gives one command per press.
-struct Pad {
+pub(crate) struct Pad {
     controllers: Vec<sdl2::controller::GameController>,
     held: [bool; 8],
     since: [Option<Instant>; 2],
@@ -69,7 +109,7 @@ const PAD_BUTTONS: [Button; 8] = [
     Button::Guide,
 ];
 impl Pad {
-    fn open(sdl: &sdl2::Sdl) -> Result<Self, String> {
+    pub(crate) fn open(sdl: &sdl2::Sdl) -> Result<Self, String> {
         let js = sdl.joystick()?;
         let gc = sdl.game_controller()?;
         let mut controllers = Vec::new();
@@ -87,7 +127,7 @@ impl Pad {
             chord: false,
         })
     }
-    fn commands(&mut self, now: Instant, out: &mut Vec<Command>) {
+    pub(crate) fn commands(&mut self, now: Instant, out: &mut Vec<Command>) {
         let pressed = |b: Button| self.controllers.iter().any(|c| c.button(b));
         let back_held = pressed(Button::Back);
         let state: [bool; 8] = PAD_BUTTONS.map(pressed);
@@ -233,16 +273,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 Event::Quit { .. } => commands.push(Command::Quit),
                 Event::KeyDown {
                     keycode: Some(key), ..
-                } => commands.extend(match key {
-                    Keycode::Up => Some(Command::Up),
-                    Keycode::Down => Some(Command::Down),
-                    Keycode::PageUp => Some(Command::PageUp),
-                    Keycode::PageDown => Some(Command::PageDown),
-                    Keycode::Return | Keycode::KpEnter | Keycode::Space => Some(Command::Confirm),
-                    Keycode::Backspace => Some(Command::Back),
-                    Keycode::Escape => Some(Command::Quit),
-                    _ => None,
-                }),
+                } => commands.extend(key_command(key)),
                 _ => {}
             }
         }
@@ -265,12 +296,14 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
                 Command::Down => model.step(1),
                 Command::PageUp => model.page_step(-1, view.visible_rows),
                 Command::PageDown => model.page_step(1, view.visible_rows),
-                Command::Back => model.back(),
+                Command::Back => {
+                    model.back();
+                }
                 Command::Quit => quit = true,
                 Command::Confirm => match model.confirm() {
                     Request::Open(i) => chosen = Some(model.levels[i].file.clone()),
                     Request::Quit => quit = true,
-                    Request::None => {}
+                    _ => {}
                 },
             }
             println!("RUST_LEVELS_COMMAND {command:?} focus={}", model.focused());

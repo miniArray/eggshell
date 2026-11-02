@@ -375,3 +375,44 @@ pub fn fill_host(arguments: impl Iterator<Item = String>) -> Result<(), String> 
     );
     Ok(())
 }
+
+/// `--save-info LEVEL COLLISION SCHEMA SAVE`: a few saved fields of a snapshot (host).
+pub fn save_info(arguments: impl Iterator<Item = String>) -> Result<(), String> {
+    let args: Vec<_> = arguments.collect();
+    if args.len() != 4 {
+        return Err("save-info LEVEL COLLISION SCHEMA SAVE".into());
+    }
+    let read = |i: usize| std::fs::read_to_string(&args[i]).map_err(|e| e.to_string());
+    let mut session = Session::load(&read(0)?, &read(1)?, &read(2)?).map_err(|e| e.to_string())?;
+    session
+        .restore(&std::fs::read(&args[3]).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    let p = session.presentation();
+    let fields = ["goal_reached", "life_phase", "life_ticks", "frame"];
+    let values: Vec<_> = fields
+        .iter()
+        .map(|f| format!("{f}={:?}", session.saved_field(f)))
+        .collect();
+    println!(
+        "SAVE_INFO {} player_px=({:.1},{:.1}) status={:?} tick={}",
+        values.join(" "),
+        p.player.motion.current.x as f64 / eggshell_spike_core::SCALE as f64,
+        p.player.motion.current.y as f64 / eggshell_spike_core::SCALE as f64,
+        p.hud.status,
+        p.tick
+    );
+    for step in 0..120 {
+        session
+            .advance(0)
+            .map_err(|e| format!("step {step}: {e}"))?;
+    }
+    let q = session.presentation();
+    println!(
+        "SAVE_INFO_AFTER_120 tick={} player_px=({:.1},{:.1}) status={:?}",
+        q.tick,
+        q.player.motion.current.x as f64 / eggshell_spike_core::SCALE as f64,
+        q.player.motion.current.y as f64 / eggshell_spike_core::SCALE as f64,
+        q.hud.status
+    );
+    Ok(())
+}

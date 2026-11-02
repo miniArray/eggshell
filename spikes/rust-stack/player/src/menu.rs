@@ -26,12 +26,18 @@ pub const SCROLLBAR: f64 = 4.0;
 pub enum Page {
     Start,
     Levels,
+    /// menu_model.gd MAIN with a goal: "Level complete" and the score summary.
+    Goal,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Request {
     None,
     Open(usize),
     Quit,
+    /// Goal page: play the next playable level, play this one again, or go to the list.
+    Next,
+    Restart,
+    LevelList,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item {
@@ -45,14 +51,20 @@ enum ItemKind {
     Levels,
     Quit,
     Level(usize),
+    Next,
+    Restart,
+    LevelList,
 }
 
 /// menu_model.gd without an open level. Settings are not part of the Rust player yet.
 pub struct Model {
     pub levels: Vec<Entry>,
     pages: Vec<Page>,
-    focus: [usize; 2],
+    focus: [usize; 3],
     pub status: String,
+    /// Goal page: game.gd _summary and whether a next level exists.
+    summary: String,
+    has_next: bool,
 }
 impl Model {
     /// Opens on the level list (above the start page) when there are levels, with the
@@ -69,8 +81,23 @@ impl Model {
         Self {
             levels,
             pages,
-            focus: [0, focus],
+            focus: [0, focus, 0],
             status: String::new(),
+            summary: String::new(),
+            has_next: false,
+        }
+    }
+    /// The menu game.gd opens when the goal is reached (menu_model.gd MAIN, goal true):
+    /// Next level (when there is one), Restart level, Levels, Quit. Save, load and
+    /// settings are not part of the Rust player.
+    pub fn goal(summary: String, has_next: bool) -> Self {
+        Self {
+            levels: Vec::new(),
+            pages: vec![Page::Goal],
+            focus: [0; 3],
+            status: String::new(),
+            summary,
+            has_next,
         }
     }
     pub fn page(&self) -> Page {
@@ -80,12 +107,14 @@ impl Model {
         match self.page() {
             Page::Start => 0,
             Page::Levels => 1,
+            Page::Goal => 2,
         }
     }
     pub fn title(&self) -> &'static str {
         match self.page() {
             Page::Start => "Eggshell",
             Page::Levels => "Levels",
+            Page::Goal => "Level complete",
         }
     }
     pub fn playable(&self) -> usize {
@@ -94,6 +123,7 @@ impl Model {
     pub fn info(&self) -> String {
         match self.page() {
             Page::Start => "No level is open.".into(),
+            Page::Goal => self.summary.clone(),
             Page::Levels => {
                 let count = self.levels.len();
                 format!(
@@ -109,6 +139,7 @@ impl Model {
         match self.page() {
             Page::Start => "A: select. Select+Start: quit.",
             Page::Levels => "A: play. L1/R1: page. B: back. Select+Start: quit.",
+            Page::Goal => "A: select. B: levels.",
         }
     }
     pub fn items(&self) -> Vec<Item> {
@@ -118,6 +149,16 @@ impl Model {
                 if !self.levels.is_empty() {
                     items.push(item("Levels", ItemKind::Levels));
                 }
+                items.push(item("Quit", ItemKind::Quit));
+                items
+            }
+            Page::Goal => {
+                let mut items = Vec::new();
+                if self.has_next {
+                    items.push(item("Next level", ItemKind::Next));
+                }
+                items.push(item("Restart level", ItemKind::Restart));
+                items.push(item("Levels", ItemKind::LevelList));
                 items.push(item("Quit", ItemKind::Quit));
                 items
             }
@@ -146,6 +187,7 @@ impl Model {
         match self.page() {
             Page::Start => 1 + usize::from(!self.levels.is_empty()),
             Page::Levels => self.levels.len(),
+            Page::Goal => 3 + usize::from(self.has_next),
         }
     }
     pub fn focused(&self) -> usize {
@@ -180,6 +222,9 @@ impl Model {
                 Request::None
             }
             ItemKind::Quit => Request::Quit,
+            ItemKind::Next => Request::Next,
+            ItemKind::Restart => Request::Restart,
+            ItemKind::LevelList => Request::LevelList,
             ItemKind::Level(index) => {
                 if item.enabled {
                     Request::Open(index)
@@ -191,11 +236,17 @@ impl Model {
         }
     }
     /// Go back one page. Without an open level there is nothing to resume at the root.
-    pub fn back(&mut self) {
+    /// Go back one page. On the goal page (no level page below it) this asks for the
+    /// level list.
+    pub fn back(&mut self) -> Request {
+        if self.page() == Page::Goal {
+            return Request::LevelList;
+        }
         if self.pages.len() > 1 {
             self.pages.pop();
             self.status.clear();
         }
+        Request::None
     }
 }
 fn item(label: &str, kind: ItemKind) -> Item {
@@ -690,20 +741,37 @@ mod tests {
         assert_eq!(m.confirm(), Request::Open(2));
         assert_eq!(m.info(), "3 levels, 2 playable");
         assert_eq!(m.items()[0].detail, "by Ann");
-        m.back();
+        let _ = m.back();
         assert_eq!(m.page(), Page::Start);
         assert!(m.status.is_empty());
-        m.back();
+        let _ = m.back();
         assert_eq!(m.page(), Page::Start);
         assert_eq!(m.confirm(), Request::None);
         assert_eq!(m.page(), Page::Levels);
-        m.back();
+        let _ = m.back();
         m.step(1);
         assert_eq!(m.confirm(), Request::Quit);
         let mut empty = Model::open(Vec::new(), None);
         assert_eq!(empty.page(), Page::Start);
         assert_eq!(empty.items().len(), 1);
         assert_eq!(empty.confirm(), Request::Quit);
+    }
+    #[test]
+    fn goal_page_follows_menu_model_main_with_a_goal() {
+        let mut m = Model::goal("Score 10. Time 00:01:00.00. Hurt 0, deaths 1.".into(), true);
+        assert_eq!(m.title(), "Level complete");
+        assert_eq!(m.info(), "Score 10. Time 00:01:00.00. Hurt 0, deaths 1.");
+        let labels: Vec<_> = m.items().into_iter().map(|i| i.label).collect();
+        assert_eq!(labels, ["Next level", "Restart level", "Levels", "Quit"]);
+        assert_eq!(m.confirm(), Request::Next);
+        m.step(1);
+        assert_eq!(m.confirm(), Request::Restart);
+        m.step(-2);
+        assert_eq!(m.confirm(), Request::Quit);
+        assert_eq!(m.back(), Request::LevelList);
+        let m = Model::goal(String::new(), false);
+        assert_eq!(m.items().len(), 3);
+        assert_eq!(m.items()[0].label, "Restart level");
     }
     #[test]
     fn wrap_breaks_words_and_long_words() {
