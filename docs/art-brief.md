@@ -1,5 +1,7 @@
 # Art brief: Verdigris
 
+> These documents were written for the Godot game. Paths such as `src/view/*.gd` name its sources at tag `godot-final`; the Rust game reads the same level and pack formats.
+
 This brief is decided with the user before any art is made. Agents follow it
 for every picture in the Verdigris graphics pack. It replaces Pantry as the
 direction for the original game. Pantry stays in the repository until

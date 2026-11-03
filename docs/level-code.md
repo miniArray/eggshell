@@ -1,5 +1,7 @@
 # Level codes
 
+> These documents were written for the Godot game. Paths such as `src/view/*.gd` name its sources at tag `godot-final`; the Rust game reads the same level and pack formats.
+
 The reader accepts JSON level codes, preserves unknown fields and validates
 size limits before expanding tile grids. It performs no file or network access.
 

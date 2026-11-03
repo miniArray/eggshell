@@ -1,5 +1,7 @@
 # Graphics packs
 
+> These documents were written for the Godot game. Paths such as `src/view/*.gd` name its sources at tag `godot-final`; the Rust game reads the same level and pack formats.
+
 Pantry is the built-in version 3 graphics pack at `res://packs/pantry`.
 It draws bread terrain (`garden64`, `garden32` and their variants), the
 egg-carton level end (`levelEnd`), water (`water3`), the chick player, 24
@@ -12,7 +14,7 @@ Select an external pack with `--pack=/absolute/path` after `--`, or with the
 logs the problem and uses placeholders. `--placeholder` bypasses pack loading.
 Graphics never select or supply the level. Pass `--level-code=PATH` or
 `--levels=DIR` separately. Packs do not style the pause menu or the play timer;
-they use the default font. See [menus](ui.md).
+they use the default font.
 
 `tools/device.py pack PATH` uploads either supported manifest version, including
 dense packs. The remote directory stays `/tmp/eggshell/packs/external-v2` for
