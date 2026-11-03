@@ -152,7 +152,7 @@ impl Run {
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
             }
-            run.tick2();
+            run.tick2(&map)?;
             run.compact();
             run.player.finish(&map, 0);
             #[cfg(test)]
@@ -487,16 +487,19 @@ impl Run {
     }
     /// registry.gd after_step: tick2 runs after every regular sheet, Life included, and
     /// before table compaction.
-    fn tick2(&mut self) {
+    fn tick2(&mut self, map: &crate::body::Probe) -> Result<(), Error> {
         self.knock_tick2();
+        self.giant_tick2(map)
     }
     fn entities_step(
         &mut self,
         map: &crate::body::Probe,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
-        // registry.gd advance: the pretick handlers run once before any body moves.
+        // registry.gd advance: the pretick handlers run once before any body moves:
+        // armored_walker.gd ticks the knockback rows, soft_giant.gd drains the squash starts.
         self.knock_advance();
+        self.soft_squash_ordinal = 0;
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
         // mace_walker.gd on_remove runs inside every removal; with an e27 placed, each
         // step ends by dropping the balls of walkers it removed.
@@ -1705,7 +1708,7 @@ impl Run {
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
         }
-        self.tick2();
+        self.tick2(&map)?;
         self.compact();
         self.camera = Position {
             x: self.player.body.x,
@@ -2384,6 +2387,36 @@ impl Run {
             || births.windows(2).any(|w| w[0] == w[1])
         {
             return Err(unsupported("birth serial outside the issued unique range"));
+        }
+        // soft_giant.gd valid_state: every squash registration is allocated and unique.
+        let mut squashes = Vec::new();
+        for e in &self.entities {
+            let Kind::Walker(w) = &e.kind else {
+                continue;
+            };
+            if w.kind != crate::actors::ActorKind::SoftGiant || w.squash_batch == 0 {
+                continue;
+            }
+            if w.squash_batch > self.soft_squash_batch
+                || w.squash_batch == self.soft_squash_batch
+                    && self.soft_squash_ordinal > 0
+                    && w.squash_ordinal > self.soft_squash_ordinal
+            {
+                return Err(unsupported(
+                    "squash registration outside the allocated batches",
+                ));
+            }
+            squashes.push((w.squash_batch, w.squash_ordinal));
+        }
+        squashes.sort_unstable();
+        if squashes.windows(2).any(|w| w[0] == w[1])
+            || self.soft_squash_ordinal > 0 && self.soft_squash_batch == 0
+            || self.soft_squash_batch > crate::soft::MAX_SCHEDULE
+            || self.soft_squash_ordinal > crate::soft::MAX_SCHEDULE
+        {
+            return Err(unsupported(
+                "squash registrations repeat or exceed their batch",
+            ));
         }
         Ok(())
     }

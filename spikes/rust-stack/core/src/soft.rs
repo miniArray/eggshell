@@ -34,6 +34,8 @@ const WAIT_TICKS: i64 = 5;
 const PAUSE_TICKS: i64 = 30;
 const GIANT_SQUASH_TICKS: i64 = 15;
 pub(crate) const GIANT_BOX: [i64; 4] = [-24 * S, -56 * S, 24 * S, 0];
+/// soft_giant.gd MAX_SCHEDULE: the last squash batch or ordinal that can be allocated.
+pub(crate) const MAX_SCHEDULE: i64 = 0x7fff_ffff_ffff_fffe;
 /// soft_giant.gd COPIES: offset from the feet, speed and launch velocity (px, px/s).
 const COPIES: [[i64; 4]; 4] = [
     [-32, -16, -320, -416],
@@ -111,9 +113,18 @@ impl Actor {
             && self.slides_valid()
     }
     pub fn soft_giant_valid(&self) -> bool {
+        let limit = if self.mode == GIANT_SQUASH {
+            GIANT_SQUASH_TICKS
+        } else {
+            PAUSE_TICKS
+        };
         self.variant == 0
             && (GIANT_WAIT..=GIANT_SQUASH).contains(&self.mode)
-            && (0..=PAUSE_TICKS).contains(&self.timer)
+            && (0..=limit).contains(&self.timer)
+            && (0..=MAX_SCHEDULE).contains(&self.squash_batch)
+            && (0..=MAX_SCHEDULE).contains(&self.squash_ordinal)
+            && (self.squash_batch > 0 && self.squash_ordinal > 0) == (self.mode == GIANT_SQUASH)
+            && (self.squash_batch == 0) == (self.squash_ordinal == 0)
             && self.pin_dx.abs() <= 32 * S
             && self.slides_valid()
     }
@@ -451,12 +462,10 @@ impl Run {
         };
         let body = &mut e.body;
         if w.mode == GIANT_SQUASH {
+            // Timer zero is the saved natural-completion queue; tick2 bursts it.
             body.vx = 0;
-            w.timer -= 1;
+            w.timer = (w.timer - 1).max(0);
             Self::giant_pin(w, *body, player);
-            if w.timer <= 0 {
-                return self.giant_burst(index, map);
-            }
             return Ok(());
         }
         if [GIANT_WAIT, GIANT_PAUSE].contains(&w.mode) {
@@ -507,6 +516,31 @@ impl Run {
         player.body.vx = 0;
         player.body.vy = 0;
         player.on_floor = 1;
+    }
+    /// soft_giant.gd after_step (tick2): the natural completions burst in removal-queue
+    /// order, newer batches first, each in start order.
+    pub(crate) fn giant_tick2(&mut self, map: &Probe) -> Result<(), Error> {
+        let mut pending: Vec<(i64, i64, usize)> = self
+            .entities
+            .iter()
+            .enumerate()
+            .filter_map(|(index, e)| match &e.kind {
+                Kind::Walker(w)
+                    if w.kind == ActorKind::SoftGiant
+                        && e.status == 1
+                        && w.mode == GIANT_SQUASH
+                        && w.timer == 0 =>
+                {
+                    Some((-w.squash_batch, w.squash_ordinal, index))
+                }
+                _ => None,
+            })
+            .collect();
+        pending.sort_unstable();
+        for (_, _, index) in pending {
+            self.giant_burst(index, map)?;
+        }
+        Ok(())
     }
     /// soft_giant.gd burst: removed, then four tumbling e23 copies (registry.gd
     /// spawn_dynamic with soft_walker.gd tumble_options).
@@ -568,6 +602,7 @@ impl Run {
             return;
         };
         if w.mode == GIANT_SQUASH {
+            Self::giant_pin(w, e.body, &mut self.player);
             return;
         }
         let touching = !(w.hidden != 0 || w.held != 0 || w.spat != 0 || e.status != 1 || captured)
@@ -575,6 +610,19 @@ impl Run {
         let mut hurt = false;
         if touching && w.contact == 0 && e.body.y > p.y + 24 * S {
             if pounding {
+                // soft_giant.gd contact: ScheduleTimeline registers the squash in the
+                // batch the next pretick drains.
+                if self.soft_squash_ordinal == MAX_SCHEDULE
+                    || self.soft_squash_ordinal == 0 && self.soft_squash_batch == MAX_SCHEDULE
+                {
+                    return;
+                }
+                if self.soft_squash_ordinal == 0 {
+                    self.soft_squash_batch += 1;
+                }
+                self.soft_squash_ordinal += 1;
+                w.squash_batch = self.soft_squash_batch;
+                w.squash_ordinal = self.soft_squash_ordinal;
                 w.mode = GIANT_SQUASH;
                 w.timer = GIANT_SQUASH_TICKS;
                 e.body.vx = 0;
