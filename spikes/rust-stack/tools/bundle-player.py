@@ -336,26 +336,26 @@ if presentation_bundle:
                 target.chmod(0o600)
                 provenance["animated_tiles"][path.name] = digest(target)
         # Private copies of maps' remote music links (fetch-custom-music.py; never in
-        # Git): the player plays a map's {src, dat} music from them when present.
+        # Git). The bundle carries only their index, which pins each file's SHA-256; the
+        # tracks stay once on the device (sync-custom-music.py) and the launcher links
+        # them in. A missing or changed track leaves that level silent.
         music = Path.home() / ".local/share/eggshell-run/custom-music"
         if (music / "index.json").is_file():
             music_index = json.loads((music / "index.json").read_text())
             custom = bundle / "private-custom-music"
-            (custom / "tracks").mkdir(mode=0o700, parents=True)
+            custom.mkdir(mode=0o700)
             kept = {}
             for url, entry in sorted(music_index.get("tracks", {}).items()):
                 name = Path(entry["file"])
                 assert name.parent == Path("tracks") and name.suffix == ".ogg", name
-                target = custom / name
-                shutil.copyfile(music / name, target)
-                target.chmod(0o600)
-                assert digest(target) == entry["sha256"], f"custom music mismatch: {name}"
+                assert digest(music / name) == entry["sha256"], f"custom music mismatch: {name}"
                 kept[url] = {"file": str(name), "sha256": entry["sha256"]}
             (custom / "index.json").write_text(json.dumps({"tracks": kept}, sort_keys=True))
             (custom / "index.json").chmod(0o600)
             provenance["custom_music"] = {
                 "tracks": len(kept),
                 "index": digest(custom / "index.json"),
+                "tracks_on_device": "~/.local/share/eggshell/custom-music/tracks",
             }
         launcher = bundle / "launch-playtest"
         shutil.copyfile("spikes/rust-stack/tools/launch-playtest.sh", launcher)

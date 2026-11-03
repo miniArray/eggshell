@@ -44,7 +44,19 @@ play() {
 tiles=()
 if [[ -d "$ROOT/private-animated-tiles" ]]; then tiles=(--animated-tiles "$ROOT/private-animated-tiles"); fi
 # Private copies of remote level music, when the bundle has them.
-if [[ -d "$ROOT/private-custom-music" ]]; then tiles+=(--custom-music "$ROOT/private-custom-music"); fi
+if [[ -d "$ROOT/private-custom-music" ]]; then
+  # The tracks live once on the device; the bundle's index pins their hashes.
+  # The player user's real home from /etc/passwd: the device unit points HOME at the
+  # bundle.
+  shared=""
+  while IFS=: read -r _ _ uid _ _ home _; do
+    if [[ $uid == "$UID" ]]; then shared="$home/.local/share/eggshell/custom-music/tracks"; fi
+  done </etc/passwd
+  if [[ -n "$shared" && -d "$shared" && ! -e "$ROOT/private-custom-music/tracks" ]]; then
+    ln -s "$shared" "$ROOT/private-custom-music/tracks"
+  fi
+  tiles+=(--custom-music "$ROOT/private-custom-music")
+fi
 # The target keeps the save folder of launch-playtest, so autosaves carry across both.
 save_dir() {
   if [[ $1 == "$TARGET_FILE" ]]; then
