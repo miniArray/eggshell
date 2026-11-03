@@ -295,6 +295,13 @@ Host-only read-only integration probe (needs an existing v10 schema extract):
 It runs 400 actual collection steps and 400 Lagoon steps with effects on/off,
 checks pickup/water signals, and compares literal snapshot bytes every step.
 
+Streaming/SDL host probe (private pack required):
+`SDL_AUDIODRIVER=dummy nix develop . -c cargo run --example audio_probe -- SCHEMA.json PACK_ROOT PACK_INVENTORY.json`.
+It checks nonzero decoded music samples, SDL callback/music-start counters and
+zero decoder errors. It drives 400 saved steps each in Collections and Lagoon,
+logs goal lift and underwater muffle, and compares on/off save bytes each step.
+The dummy backend proves the callback path, not physical speaker output.
+
 ## Throwaway water feel pass
 
 `water_fx_enabled` (default `true`) and `water_fx_strength` (0..3, default 2)

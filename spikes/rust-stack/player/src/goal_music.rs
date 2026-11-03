@@ -98,10 +98,9 @@ impl Lift {
         for frame in music.chunks_exact_mut(2) {
             self.amount += (self.target - self.amount).clamp(-slew, slew);
             let gain = gain(self.amount);
-            for ch in 0..2 {
-                self.low[ch] += alpha * (frame[ch] - self.low[ch]);
-                frame[ch] =
-                    gain * (frame[ch] + (frame[ch] - self.low[ch]) * 0.12 * self.amount);
+            for (sample, low) in frame.iter_mut().zip(&mut self.low) {
+                *low += alpha * (*sample - *low);
+                *sample = gain * (*sample + (*sample - *low) * 0.12 * self.amount);
             }
         }
     }

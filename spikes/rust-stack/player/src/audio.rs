@@ -5,9 +5,9 @@
 //! one after each simulation step and never writes state. A restored state, a frame that
 //! does not advance or a gap of more than four frames resynchronizes without cues, so a
 //! restore never replays old sounds. `Mixer` plays the cues in SDL's audio thread: eight
-//! effect voices, one base music voice and an optional aligned stem. Effects are decoded
-//! once on a loader thread; music
-//! is decoded while it plays and kept, so loops and restarts are exact.
+//! effect voices and one streaming music bus. Effects decode once on a loader thread;
+//! music decodes on a separate thread into a bounded queue. Goal lift processes only
+//! the music bus; underwater muffle processes the final music/effect mix.
 use crate::{feel::FeelSettings, goal_music, pack::Pack};
 use eggshell_spike_core::{Presentation, PropertyValue, Session, World};
 use serde_json::Value;
@@ -712,7 +712,7 @@ fn settings_number(text: &str) -> f64 {
 }
 
 /// audio_player.gd `level_track`: None when the map asks for silence, for an unknown
-/// track or for remote music.
+/// track or for remote music without an admitted private copy.
 pub fn level_track(world: &World, map_index: i64, audio: &AudioMap) -> Option<LevelTrack> {
     let map = usize::try_from(map_index - 1)
         .ok()
@@ -791,11 +791,7 @@ pub fn decode(bytes: Arc<[u8]>) -> Result<Pcm, String> {
 /// Decodes every pack track and effect and reports frames and decode time per file.
 pub fn decode_check(pack: &Pack) -> Result<(), String> {
     let map = AudioMap::parse(&pack.manifest);
-    let mut files: Vec<_> = map
-        .music
-        .values()
-        .chain(map.effects.values())
-        .collect();
+    let mut files: Vec<_> = map.music.values().chain(map.effects.values()).collect();
     files.sort();
     files.dedup();
     let (mut seconds, mut decode_ms) = (0.0, 0.0);
@@ -2499,10 +2495,12 @@ mod tests {
         let (send, receive) = mpsc::channel();
         let mut mixer = Mixer::new(receive, Arc::default());
         let (packets, receive_packets) = mpsc::sync_channel(STREAM_PACKETS);
-        packets.send(Packet::Samples {
-            channels: 2,
-            samples: (0..4000).flat_map(|_| [4000, 0]).collect(),
-        }).unwrap();
+        packets
+            .send(Packet::Samples {
+                channels: 2,
+                samples: (0..4000).flat_map(|_| [4000, 0]).collect(),
+            })
+            .unwrap();
         send.send(Command::Music {
             stream: MusicStream {
                 packets: receive_packets,
@@ -2511,7 +2509,8 @@ mod tests {
                 offset: 0,
             },
             gain: 1.0,
-        }).unwrap();
+        })
+        .unwrap();
         send.send(Command::Effect {
             event: "effect",
             clip: Arc::new(Pcm {
@@ -2532,8 +2531,51 @@ mod tests {
         mixer.mix(&mut out);
         assert!(out.iter().all(|&v| v == 0.0));
         assert!(mixer.music.is_none());
-
     }
+    #[test]
+    fn muffle_filters_streaming_music_and_effects_after_they_mix() {
+        let (send, receive) = mpsc::channel();
+        let mut mixer = Mixer::new(receive, Arc::default());
+        let (packets, receive_packets) = mpsc::sync_channel(STREAM_PACKETS);
+        // Identical high-frequency signal: music in left, effect in right.
+        let wave: Vec<i16> = (0..16_000)
+            .map(|i| if i % 2 == 0 { 4000 } else { -4000 })
+            .collect();
+        packets
+            .send(Packet::Samples {
+                channels: 2,
+                samples: wave.iter().flat_map(|&v| [v, 0]).collect(),
+            })
+            .unwrap();
+        send.send(Command::Music {
+            stream: MusicStream {
+                packets: receive_packets,
+                current: Vec::new(),
+                channels: 2,
+                offset: 0,
+            },
+            gain: 1.0,
+        })
+        .unwrap();
+        send.send(Command::Effect {
+            event: "effect",
+            clip: Arc::new(Pcm {
+                channels: 2,
+                samples: wave.iter().flat_map(|&v| [0, v]).collect(),
+            }),
+            from_frame: 0,
+            gain: 1.0,
+        })
+        .unwrap();
+        send.send(Command::Muffle { strength: 2 }).unwrap();
+        let mut out = vec![0.0; 32_000];
+        mixer.mix(&mut out);
+        for frame in out[24_000..].chunks_exact(2) {
+            assert_eq!(frame[0], frame[1], "muffle did not filter the whole mix");
+            assert!(frame[0].abs() < 4000.0 / 32768.0 * 0.1);
+        }
+    }
+
     #[test]
     fn music_loops_back_to_its_loop_start() {
         // 20 frames in packets of 4, looping from frame 6 (inside the second packet).
