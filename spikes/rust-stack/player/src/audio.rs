@@ -826,13 +826,8 @@ pub enum Command {
     StopEvent(&'static str),
     StopVoices,
     PauseEvent(&'static str, bool),
-    Music {
-        key: String,
-        bytes: Arc<[u8]>,
-        looping: bool,
-        loop_start_frame: usize,
-        gain: f32,
-    },
+    /// A track that streams from its decoder thread (MusicStream::start).
+    Music { stream: MusicStream, gain: f32 },
     StopMusic,
 }
 
@@ -856,16 +851,196 @@ struct Voice {
     order: u64,
 }
 
-/// A music file decoded while it plays. Samples stay decoded for loops and restarts.
-struct Track {
-    reader: Option<Reader>,
-    pcm: Pcm,
+/// One decoded music packet, or what ended the stream.
+enum Packet {
+    Samples { channels: usize, samples: Vec<i16> },
+    /// A decode error; the stream continues as if the file ended there.
+    Error,
+    End,
 }
-struct MusicVoice {
-    key: String,
-    position: usize,
+/// Decoded packets a music source yields from its start.
+trait Packets: Send {
+    fn channels(&self) -> usize;
+    fn next(&mut self) -> Result<Option<Vec<i16>>, String>;
+}
+impl Packets for Reader {
+    fn channels(&self) -> usize {
+        usize::from(self.ident_hdr.audio_channels)
+    }
+    fn next(&mut self) -> Result<Option<Vec<i16>>, String> {
+        self.read_dec_packet_itl()
+            .map_err(|e| format!("Ogg Vorbis packet: {e:?}"))
+    }
+}
+type Opener = Box<dyn Fn() -> Result<Box<dyn Packets>, String> + Send>;
+/// About 1.4 s of decoded music at most between the decoder thread and the mixer
+/// (64 packets of up to 1,024 frames). Memory stays flat whatever the track length.
+const STREAM_PACKETS: usize = 64;
+
+/// A music track that streams: a decoder thread reads the Ogg file packet by packet into
+/// a short bounded queue, and the mixer plays from it. Only the compressed file stays in
+/// memory. At the end of a looping track the thread continues from a second reader that
+/// it has already advanced to the loop start, decoding from the file start and counting
+/// frames, so the loop point is the same frame as before. It advances that reader while
+/// the queue is full, so a loop never waits.
+pub struct MusicStream {
+    packets: mpsc::Receiver<Packet>,
+    current: Vec<i16>,
+    channels: usize,
+    offset: usize,
+}
+impl MusicStream {
+    pub fn start(bytes: Arc<[u8]>, looping: bool, loop_start: usize) -> Result<Self, String> {
+        let first = reader(bytes.clone())?;
+        let open: Opener = Box::new(move || {
+            reader(bytes.clone()).map(|r| Box::new(r) as Box<dyn Packets>)
+        });
+        Self::spawn(Box::new(first), open, looping, loop_start)
+    }
+    fn spawn(
+        first: Box<dyn Packets>,
+        open: Opener,
+        looping: bool,
+        loop_start: usize,
+    ) -> Result<Self, String> {
+        let (sender, packets) = mpsc::sync_channel(STREAM_PACKETS);
+        std::thread::Builder::new()
+            .name("music-decoder".into())
+            .spawn(move || decode_stream(first, open, looping, loop_start, sender))
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            packets,
+            current: Vec::new(),
+            channels: 2,
+            offset: 0,
+        })
+    }
+}
+/// A second reader on its way to the loop start: frames decoded so far, and the samples
+/// from the loop start on once it got there.
+struct Spare {
+    source: Option<Box<dyn Packets>>,
+    decoded: usize,
+    head: Option<Vec<i16>>,
+    failed: bool,
+}
+impl Spare {
+    fn new() -> Self {
+        Self {
+            source: None,
+            decoded: 0,
+            head: None,
+            failed: false,
+        }
+    }
+    /// One packet of work toward the loop start; false when there is nothing left to do.
+    fn advance(&mut self, open: &Opener, target: usize) -> bool {
+        if self.head.is_some() || self.failed {
+            return false;
+        }
+        if self.source.is_none() {
+            match open() {
+                Ok(source) => self.source = Some(source),
+                Err(_) => {
+                    self.failed = true;
+                    return true;
+                }
+            }
+        }
+        let Some(source) = self.source.as_mut() else {
+            return false;
+        };
+        let channels = source.channels();
+        match source.next() {
+            Ok(Some(packet)) => {
+                let frames = packet.len() / channels;
+                if self.decoded + frames > target {
+                    self.head = Some(packet[(target - self.decoded) * channels..].to_vec());
+                }
+                self.decoded += frames;
+            }
+            // The loop start is at or past the end (or unreadable): the track ends.
+            _ => self.failed = true,
+        }
+        true
+    }
+}
+fn decode_stream(
+    mut source: Box<dyn Packets>,
+    open: Opener,
     looping: bool,
     loop_start: usize,
+    out: mpsc::SyncSender<Packet>,
+) {
+    let mut spare = Spare::new();
+    // Sends one packet; while the queue is full, prepares the loop instead of waiting.
+    let send = |packet: Packet, spare: &mut Spare| -> bool {
+        let mut packet = packet;
+        loop {
+            match out.try_send(packet) {
+                Ok(()) => return true,
+                Err(mpsc::TrySendError::Disconnected(_)) => return false,
+                Err(mpsc::TrySendError::Full(p)) => {
+                    packet = p;
+                    if !(looping && spare.advance(&open, loop_start)) {
+                        return out.send(packet).is_ok();
+                    }
+                }
+            }
+        }
+    };
+    loop {
+        let channels = source.channels();
+        let ended = match source.next() {
+            Ok(Some(samples)) => {
+                if !samples.is_empty()
+                    && !send(Packet::Samples { channels, samples }, &mut spare)
+                {
+                    return;
+                }
+                false
+            }
+            Ok(None) => true,
+            Err(_) => {
+                if !send(Packet::Error, &mut spare) {
+                    return;
+                }
+                true
+            }
+        };
+        if !ended {
+            continue;
+        }
+        if looping {
+            while spare.advance(&open, loop_start) {}
+        }
+        match (looping, spare.head.take(), spare.source.take()) {
+            (true, Some(head), Some(next)) => {
+                let channels = next.channels();
+                source = next;
+                spare = Spare::new();
+                if !head.is_empty()
+                    && !send(
+                        Packet::Samples {
+                            channels,
+                            samples: head,
+                        },
+                        &mut spare,
+                    )
+                {
+                    return;
+                }
+            }
+            _ => {
+                // A one-shot role ends; the observer keeps its role until it changes.
+                let _ = out.send(Packet::End);
+                return;
+            }
+        }
+    }
+}
+struct MusicVoice {
+    stream: MusicStream,
     gain: f32,
 }
 
@@ -874,7 +1049,6 @@ pub struct Mixer {
     commands: mpsc::Receiver<Command>,
     voices: [Voice; VOICES],
     order: u64,
-    tracks: HashMap<String, Track>,
     music: Option<MusicVoice>,
     stats: Arc<MixerStats>,
 }
@@ -884,7 +1058,6 @@ impl Mixer {
             commands,
             voices: Default::default(),
             order: 0,
-            tracks: HashMap::new(),
             music: None,
             stats,
         }
@@ -938,42 +1111,8 @@ impl Mixer {
                     voice.paused = paused;
                 }
             }
-            Command::Music {
-                key,
-                bytes,
-                looping,
-                loop_start_frame,
-                gain,
-            } => {
-                if !self.tracks.contains_key(&key) {
-                    match reader(bytes) {
-                        Ok(reader) => {
-                            let channels = usize::from(reader.ident_hdr.audio_channels);
-                            self.tracks.insert(
-                                key.clone(),
-                                Track {
-                                    reader: Some(reader),
-                                    pcm: Pcm {
-                                        channels,
-                                        samples: Vec::new(),
-                                    },
-                                },
-                            );
-                        }
-                        Err(_) => {
-                            self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
-                            self.music = None;
-                            return;
-                        }
-                    }
-                }
-                self.music = Some(MusicVoice {
-                    key,
-                    position: 0,
-                    looping,
-                    loop_start: loop_start_frame,
-                    gain,
-                });
+            Command::Music { stream, gain } => {
+                self.music = Some(MusicVoice { stream, gain });
                 self.stats.music_started.fetch_add(1, Ordering::Relaxed);
             }
             Command::StopMusic => self.music = None,
@@ -1013,41 +1152,39 @@ impl Mixer {
         let mut written = 0;
         while written < frames {
             let Some(music) = &mut self.music else { return };
-            let Some(track) = self.tracks.get_mut(&music.key) else {
-                self.music = None;
-                return;
-            };
-            // Decode until this block is covered or the file ends.
-            while track.reader.is_some() && track.pcm.frames() < music.position + frames - written {
-                match track.reader.as_mut().map(|r| r.read_dec_packet_itl()) {
-                    Some(Ok(Some(packet))) => track.pcm.samples.extend_from_slice(&packet),
-                    Some(Ok(None)) => track.reader = None,
-                    _ => {
-                        self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
-                        track.reader = None;
+            let stream = &mut music.stream;
+            if stream.offset >= stream.current.len() {
+                match stream.packets.try_recv() {
+                    Ok(Packet::Samples { channels, samples }) => {
+                        stream.channels = channels;
+                        stream.current = samples;
+                        stream.offset = 0;
                     }
+                    Ok(Packet::Error) => {
+                        self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Ok(Packet::End) | Err(mpsc::TryRecvError::Disconnected) => {
+                        self.music = None;
+                        return;
+                    }
+                    // The decoder is behind (only at a track start): silence for now.
+                    Err(mpsc::TryRecvError::Empty) => return,
                 }
+                continue;
             }
-            let available = track.pcm.frames().saturating_sub(music.position);
+            let channels = stream.channels;
+            let available = (stream.current.len() - stream.offset) / channels;
             let count = available.min(frames - written);
             add(
                 &mut out[written * 2..],
-                &track.pcm.samples,
-                track.pcm.channels,
-                music.position,
+                &stream.current,
+                channels,
+                stream.offset / channels,
                 count,
                 music.gain,
             );
-            music.position += count;
+            stream.offset += count * channels;
             written += count;
-            if track.reader.is_none() && music.position >= track.pcm.frames() {
-                if music.looping && music.loop_start < track.pcm.frames() {
-                    music.position = music.loop_start;
-                } else {
-                    // A one-shot role ends; the observer keeps its role until it changes.
-                    self.music = None;
-                }
-            }
         }
     }
 }
@@ -1266,6 +1403,17 @@ impl Observer {
             self.timer_paused = paused;
         }
     }
+    /// Starts a track's decoder thread here (not in the audio callback) and hands the
+    /// stream to the mixer. A file whose header does not decode plays nothing.
+    fn start_music(&self, bytes: Arc<[u8]>, looping: bool, loop_start: usize, gain: f32) {
+        if self.out.is_none() {
+            return;
+        }
+        match MusicStream::start(bytes, looping, loop_start) {
+            Ok(stream) => self.send(Command::Music { stream, gain }),
+            Err(e) => eprintln!("RUST_AUDIO_ERROR music {e}"),
+        }
+    }
     fn send(&self, command: Command) {
         if let Some(out) = &self.out {
             // A closed device only means no more sound.
@@ -1316,13 +1464,12 @@ impl Observer {
         let Some(bytes) = self.music_bytes.get(&track.key).cloned() else {
             return;
         };
-        self.send(Command::Music {
-            key: track.key.clone(),
+        self.start_music(
             bytes,
-            looping: true,
-            loop_start_frame: (track.loop_start * f64::from(RATE)).round() as usize,
-            gain: gain * db_gain(track.volume_db),
-        });
+            true,
+            (track.loop_start * f64::from(RATE)).round() as usize,
+            gain * db_gain(track.volume_db),
+        );
         println!("EGGSHELL_MUSIC {}", track.key);
     }
     /// True when it started the switch timer.
@@ -1354,13 +1501,12 @@ impl Observer {
         else {
             return;
         };
-        self.send(Command::Music {
-            key: key.clone(),
+        self.start_music(
             bytes,
-            looping: false,
-            loop_start_frame: 0,
-            gain: gain * db_gain(self.map.settings_for(&key).volume_db),
-        });
+            false,
+            0,
+            gain * db_gain(self.map.settings_for(&key).volume_db),
+        );
         println!("EGGSHELL_MUSIC {key}");
     }
     fn play_effect(&mut self, event: &'static str, from_seconds: f64) -> bool {
@@ -2059,29 +2205,132 @@ mod tests {
         assert!((out[0] - 8.0 * 1000.0 / 32768.0).abs() < 1e-6);
     }
 
+    /// A fake source: `packets` packets of `size` stereo frames whose left sample is the
+    /// frame number (mod 32768) from the file start.
+    struct Counting {
+        packets: usize,
+        size: usize,
+        sent: usize,
+    }
+    impl Packets for Counting {
+        fn channels(&self) -> usize {
+            2
+        }
+        fn next(&mut self) -> Result<Option<Vec<i16>>, String> {
+            if self.sent == self.packets {
+                return Ok(None);
+            }
+            let first = self.sent * self.size;
+            self.sent += 1;
+            Ok(Some(
+                (first..first + self.size)
+                    .flat_map(|f| [(f % 32768) as i16, 0])
+                    .collect(),
+            ))
+        }
+    }
+    fn counting_stream(packets: usize, size: usize, looping: bool, loop_start: usize) -> MusicStream {
+        let source = move || Counting {
+            packets,
+            size,
+            sent: 0,
+        };
+        let open: Opener = Box::new(move || Ok(Box::new(source()) as Box<dyn Packets>));
+        MusicStream::spawn(Box::new(source()), open, looping, loop_start).unwrap()
+    }
+    /// The left samples the stream delivers, in order, until it ends or `frames` arrived.
+    fn left_samples(stream: &MusicStream, frames: usize) -> (Vec<i64>, bool) {
+        let mut left = Vec::new();
+        while left.len() < frames {
+            match stream.packets.recv() {
+                Ok(Packet::Samples { samples, .. }) => {
+                    left.extend(samples.iter().step_by(2).map(|v| i64::from(*v)))
+                }
+                Ok(Packet::Error) => {}
+                Ok(Packet::End) | Err(_) => return (left, true),
+            }
+        }
+        (left, false)
+    }
+
     #[test]
     fn music_loops_back_to_its_loop_start() {
+        // 20 frames in packets of 4, looping from frame 6 (inside the second packet).
+        let (left, ended) = left_samples(&counting_stream(5, 4, true, 6), 48);
+        let mut want: Vec<i64> = (0..20).collect();
+        want.extend(6..20);
+        want.extend(6..20);
+        assert!(!ended);
+        assert_eq!(left[..48], want[..48]);
+    }
+
+    #[test]
+    fn the_mixer_plays_the_stream_at_its_gain() {
         let mut mixer = Mixer::new(mpsc::channel().1, Arc::default());
-        mixer.tracks.insert(
-            "t".into(),
-            Track {
-                reader: None,
-                pcm: Pcm {
-                    channels: 2,
-                    samples: (0..20).collect(),
-                },
-            },
-        );
         mixer.music = Some(MusicVoice {
-            key: "t".into(),
-            position: 0,
-            looping: true,
-            loop_start: 6,
+            stream: counting_stream(5, 4, true, 6),
             gain: 32768.0,
         });
-        let mut out = vec![0.0; 2 * 14];
-        mixer.mix(&mut out);
-        let left: Vec<i64> = out.iter().step_by(2).map(|v| *v as i64).collect();
-        assert_eq!(left, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 12, 14, 16, 18]);
+        let mut left = Vec::new();
+        for _ in 0..2000 {
+            let mut out = vec![0.0; 2 * 3];
+            mixer.mix(&mut out);
+            left.extend(out.iter().step_by(2).map(|v| *v as i64));
+            if left.iter().filter(|v| **v == 19).count() == 2 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        // Silence while the decoder starts, then frames 1..19, then the loop from 6.
+        let heard: Vec<i64> = left.into_iter().skip_while(|v| *v == 0).collect();
+        let mut want: Vec<i64> = (1..20).collect();
+        want.extend(6..20);
+        assert_eq!(heard[..want.len()], want[..]);
     }
+
+    #[test]
+    fn a_one_shot_track_ends_and_a_loop_start_past_the_end_stops() {
+        let (left, ended) = left_samples(&counting_stream(3, 4, false, 0), 100);
+        assert!(ended && left == (0..12).collect::<Vec<_>>());
+        let (left, ended) = left_samples(&counting_stream(3, 4, true, 12), 100);
+        assert!(ended && left.len() == 12);
+    }
+
+    #[test]
+    fn a_long_track_loops_exactly_with_a_short_queue() {
+        // A 21-minute track (60,000 packets of 1,024 frames) looping from packet 59,990
+        // plus 100 frames. Nothing holds more than one packet outside the bounded queue.
+        let size = 1024;
+        let total = 60_000 * size;
+        let start = size * 59_990 + 100;
+        let stream = counting_stream(60_000, size, true, start);
+        let wrap = |f: usize| (f % 32768) as i64;
+        let (mut frame, mut around) = (0usize, Vec::new());
+        while frame < total + 3 {
+            match stream.packets.recv().unwrap() {
+                Packet::Samples { samples, .. } => {
+                    assert!(samples.len() <= 2 * size);
+                    for v in samples.iter().step_by(2) {
+                        if frame + 3 >= total && frame < total + 3 {
+                            around.push(i64::from(*v));
+                        }
+                        frame += 1;
+                    }
+                }
+                _ => panic!("the looping stream ended"),
+            }
+        }
+        assert_eq!(
+            around,
+            [
+                wrap(total - 3),
+                wrap(total - 2),
+                wrap(total - 1),
+                wrap(start),
+                wrap(start + 1),
+                wrap(start + 2)
+            ]
+        );
+    }
+
 }
