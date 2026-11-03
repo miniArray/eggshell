@@ -152,6 +152,7 @@ impl Run {
             if run.player.after_life(&map, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
             }
+            run.tick2();
             run.compact();
             run.player.finish(&map, 0);
             #[cfg(test)]
@@ -484,11 +485,18 @@ impl Run {
         self.player.finish(map, action);
         Ok(())
     }
+    /// registry.gd after_step: tick2 runs after every regular sheet, Life included, and
+    /// before table compaction.
+    fn tick2(&mut self) {
+        self.knock_tick2();
+    }
     fn entities_step(
         &mut self,
         map: &crate::body::Probe,
         stats: &mut crate::Stats,
     ) -> Result<(), Error> {
+        // registry.gd advance: the pretick handlers run once before any body moves.
+        self.knock_advance();
         let centre = screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
         // mace_walker.gd on_remove runs inside every removal; with an e27 placed, each
         // step ends by dropping the balls of walkers it removed.
@@ -928,6 +936,8 @@ impl Run {
         // dispatch_loops.gd: the phase-0 family events run after every body of the phase
         // (actor.gd after_advance first, in registry order).
         self.fish_finish_advance(map);
+        self.armored_after_advance(map);
+        self.soft_after_advance();
         // Captures skip phase 1 exactly as DispatchLoops.advance does.
         if self.player.captured_by != 0 {
             return Ok(());
@@ -1695,6 +1705,7 @@ impl Run {
         if self.player.after_life(&map, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
         }
+        self.tick2();
         self.compact();
         self.camera = Position {
             x: self.player.body.x,

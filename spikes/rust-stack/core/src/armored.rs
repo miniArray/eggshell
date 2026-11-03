@@ -52,6 +52,7 @@ impl Actor {
     }
     /// armored_walker.gd start_roll
     pub(crate) fn armored_roll(&mut self, body: &mut Body, direction: i64) {
+        self.knock_active = 0;
         self.mode = ROLL;
         self.timer = 90;
         self.roll_direction = direction;
@@ -76,10 +77,20 @@ impl Actor {
     }
     /// armored_walker.gd tongue: the tongue pushes it back and is blocked (2).
     pub(crate) fn armored_tongue(&mut self, body: &mut Body, facing: &mut i64, player_facing: i64) {
+        self.knock_active = 0;
         self.mode = PUSH;
         self.timer = 30;
         body.vx = player_facing * 128 * 60;
         *facing = -player_facing;
+    }
+    /// armored_walker.gd knockback (Godot eab5a95): a nearby soft burst knocks the body
+    /// away, independent of its jumping animation and queued jump.
+    pub(crate) fn armored_knockback(&mut self, body: Body, status: i64, from_x: i64) {
+        if self.held != 0 || self.spat != 0 || self.hidden != 0 || self.frozen != 0 || status != 1 {
+            return;
+        }
+        self.roll_direction = if body.x > from_x { 1 } else { -1 };
+        self.knock_start(self.roll_direction * 448 * 60, 60);
     }
     /// armored_walker.gd view_state animation.
     pub fn armored_animation(&self) -> String {
@@ -145,6 +156,9 @@ impl Run {
         let body = &mut e.body;
         let facing = &mut e.facing;
         let grounded = body.floor(map, BOX) != 0;
+        // The family event assigned this step's knock speed after the previous move.
+        let knocked = w.knock_active == 1 && !w.knock_deferred();
+        let old_vx = body.vx;
         match w.mode {
             ROLL => {
                 body.vx = w.roll_direction * 256 * 60 * w.timer * w.timer / 8100;
@@ -160,11 +174,7 @@ impl Run {
             }
             PREPARE => {
                 body.vx = 0;
-                w.timer -= 1;
-                if w.timer == 0 {
-                    w.mode = AIR;
-                    body.vy = -536 * 60;
-                }
+                w.timer = (w.timer - 1).max(0);
             }
             WALK => {
                 let wet = i64::from(map.water_overlaps(world_box(*body, BOX)));
@@ -180,6 +190,9 @@ impl Run {
                 }
             }
             _ => body.vx = 0,
+        }
+        if knocked {
+            body.vx = old_vx;
         }
         let distance = body.vx;
         let (actual, started) = if body.prepare(map, BOX) {
@@ -215,11 +228,55 @@ impl Run {
         } else if [RECOVER, PUSH].contains(&w.mode) && w.timer == 0 {
             w.mode = if w.variant % 2 == 1 { AIR } else { WALK };
         }
-        if w.variant % 2 == 1 && w.mode == AIR && landed {
+        if w.mode == PREPARE && w.timer == 0 && landed {
+            // The animation queues a jump; the event launches only when standing.
+            w.mode = AIR;
+            e.body.vy = -536 * 60;
+        } else if w.variant % 2 == 1 && w.mode == AIR && landed {
             w.mode = PREPARE;
             w.timer = 5;
         }
         Ok(())
+    }
+    /// armored_walker.gd after_advance (Godot eab5a95, 024d409): after every body of the
+    /// movement phase, each eligible armor reads its knock speed; a fast first-born
+    /// knock against a wall rebounds it, and a fast knock hops it off the floor.
+    pub(crate) fn armored_after_advance(&mut self, map: &Probe) {
+        let first_speed = self.first_knock_velocity();
+        for index in 0..self.entities.len() {
+            let e = &mut self.entities[index];
+            let Kind::Walker(w) = &mut e.kind else {
+                continue;
+            };
+            if w.kind != ActorKind::Armored
+                || e.status != 1
+                || !w.knockback_active()
+                || w.held != 0
+                || w.spat != 0
+                || w.hidden != 0
+                || w.frozen != 0
+            {
+                continue;
+            }
+            e.body.vx = w.knock_value();
+            let mut speed = e.body.vx.abs();
+            // The native wall probe tests 2 px (plus one unit) sideways, then 3 px up.
+            let wall = first_speed.signum();
+            if first_speed.abs() > 64 * 60
+                && e.body.overlaps(map, BOX, wall * (2 * S + 1), 0)
+                && e.body.overlaps(map, BOX, wall * (2 * S + 1), -3 * S)
+            {
+                w.roll_direction = -wall;
+                e.facing = w.roll_direction;
+                w.knock_stop();
+                w.knock_start(w.roll_direction * 48 * 60, 90);
+                speed = 48 * 60;
+            }
+            if speed > 24 * 60 && e.body.floor(map, BOX) != 0 {
+                e.body.vy = -speed / 2 - 160 * 60;
+            }
+            self.refresh_block_solid(index, map);
+        }
     }
     /// armored_walker.gd contact: touching it hurts.
     pub(crate) fn armored_contact(&mut self, index: usize) {

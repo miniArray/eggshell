@@ -137,7 +137,7 @@ impl Actor {
     }
     /// soft_walker.gd _hop
     fn soft_hop(&self, body: &mut Body, landed: bool) {
-        let speed = (self.slide_from * self.slide_ticks / self.slide_total).abs();
+        let speed = self.knock_value().abs();
         if landed && speed > 24 * 60 {
             body.vy = -(speed / 2 + 160 * 60);
         }
@@ -259,7 +259,7 @@ impl Run {
         }
         let b = w.soft_bounds();
         // A body knocked in this step's earlier burst still takes its own step now.
-        let pending = w.mode == KNOCKED && w.timer > 0 && w.slide_ticks > 0;
+        let pending = w.mode == KNOCKED && w.knock_active == 1 && w.knock_deferred();
         if w.mode == KNOCKED && !pending {
             Self::soft_knocked(w, body, &mut e.facing, player.body.x, map, b);
             return Ok(());
@@ -309,7 +309,7 @@ impl Run {
         map: &Probe,
         b: [i64; 4],
     ) {
-        if w.slide_ticks == 0 {
+        if w.knock_active == 0 {
             body.vx = 0;
             body.gravity(map, b, false);
             w.timer -= 1;
@@ -322,28 +322,24 @@ impl Run {
             }
             return;
         }
-        let speed = w.slide_from * w.slide_ticks / w.slide_total;
-        w.slide_ticks -= 1;
-        body.vx = speed;
+        // Body motion consumes the velocity the preceding family event assigned.
+        let speed = body.vx;
         let mut started = false;
         if speed != 0 {
             let (actual, on_floor) = move_horizontal(body, map, b, speed);
             started = on_floor;
             if actual != speed && speed.abs() > 64 * 60 {
                 *facing = -speed.signum();
-                w.slide_from = *facing * 48 * 60;
-                w.slide_total = 90;
-                w.slide_ticks = 89;
+                w.knock_stop();
+                w.knock_start(*facing * 48 * 60, 90);
             }
         }
         let landed = body.gravity(map, b, started);
         w.soft_hop(body, landed);
-        if w.slide_ticks == 0 {
-            w.timer = KNOCK_PAUSE;
-        }
     }
-    /// soft_walker.gd burst: knocks soft walkers within 128 px aside, then removes the
-    /// body.
+    /// soft_walker.gd burst: bodies within 128 px are reached. Soft walkers are knocked
+    /// aside (vx -448 left of it, +448 right of it); other kinds opt in through a
+    /// knockback hook (armored_walker.gd). Then the body is removed.
     fn soft_burst(&mut self, index: usize, map: &Probe) -> Result<(), Error> {
         let at = self.entities[index].body;
         for other in 0..self.entities.len() {
@@ -355,6 +351,12 @@ impl Run {
             let Kind::Walker(ow) = &mut o.kind else {
                 continue;
             };
+            if o.body.x == at.x
+                || (o.body.y - at.y).abs() >= KNOCK_RANGE * S
+                || (o.body.x - at.x).abs() >= KNOCK_RANGE * S
+            {
+                continue;
+            }
             // soft_walker.gd _knockable
             if !(ow.kind == ActorKind::SoftWalker
                 && o.status == 1
@@ -363,21 +365,28 @@ impl Run {
                 && ow.spat == 0
                 && ow.hidden == 0
                 && ow.frozen == 0)
-                || o.body.x == at.x
-                || (o.body.y - at.y).abs() >= KNOCK_RANGE * S
-                || (o.body.x - at.x).abs() >= KNOCK_RANGE * S
             {
+                if ow.kind == ActorKind::Armored {
+                    ow.armored_knockback(o.body, o.status, at.x);
+                    self.refresh_block_solid(other, map);
+                }
                 continue;
             }
             ow.mode = KNOCKED;
-            ow.slide_from = KNOCK_SPEED * if o.body.x > at.x { 1 } else { -1 };
-            ow.slide_total = KNOCK_TICKS;
-            ow.slide_ticks = KNOCK_TICKS;
+            // The copy's tumble slide is separate from all same-tag knockback tweens.
+            ow.slide_from = 0;
+            ow.slide_total = 0;
+            ow.slide_ticks = 0;
+            ow.knock_start(
+                KNOCK_SPEED * if o.body.x > at.x { 1 } else { -1 },
+                KNOCK_TICKS,
+            );
             ow.timer = i64::from(later);
             if !later {
                 let grounded = o.body.floor(map, ow.soft_bounds()) != 0;
                 ow.soft_hop(&mut o.body, grounded);
             }
+            self.refresh_block_solid(other, map);
         }
         let e = &mut self.entities[index];
         if let Kind::Walker(w) = &mut e.kind {
@@ -661,5 +670,47 @@ fn soft_box(w: &Actor) -> [i64; 4] {
         GIANT_BOX
     } else {
         w.soft_bounds()
+    }
+}
+
+impl Run {
+    /// soft_walker.gd after_advance: after the movement phase each knocked body takes the
+    /// knock speed its next move consumes.
+    pub(crate) fn soft_after_advance(&mut self) {
+        for e in &mut self.entities {
+            let Kind::Walker(w) = &mut e.kind else {
+                continue;
+            };
+            if w.kind == ActorKind::SoftWalker
+                && e.status == 1
+                && w.knockback_active()
+                && w.held == 0
+                && w.spat == 0
+                && w.hidden == 0
+                && w.frozen == 0
+            {
+                e.body.vx = w.knock_value();
+            }
+        }
+    }
+    /// registry.gd after_step (tick2, after Life.after_step, in registry order):
+    /// armored_walker.gd then soft_walker.gd release their finished knockback tweens; a
+    /// small soft walker whose knock ended stands for KNOCK_PAUSE.
+    pub(crate) fn knock_tick2(&mut self) {
+        for kind in [ActorKind::Armored, ActorKind::SoftWalker] {
+            for e in &mut self.entities {
+                let Kind::Walker(w) = &mut e.kind else {
+                    continue;
+                };
+                if w.kind != kind {
+                    continue;
+                }
+                let ended = w.knock_pending();
+                w.knock_finish(e.status);
+                if kind == ActorKind::SoftWalker && ended && w.mode == KNOCKED {
+                    w.timer = KNOCK_PAUSE;
+                }
+            }
+        }
     }
 }
