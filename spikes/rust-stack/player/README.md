@@ -694,6 +694,13 @@ all four flight frames, and byte-identical snapshots before/after drawing.
 
 ### Carried egg states (current)
 
+Feel **Standing eggs: spaced / close up** stores `standing_eggs` (default
+`"spaced"`, SNES). `"close_up"` selects the web-game's every-step history, so all
+six eggs converge behind a standing Yoshi. Both drawing histories observe each
+saved step; switching while paused applies immediately without changing a snapshot.
+The close-up mode does not apply the spaced mode's six-still-step height override.
+Movement, held/throw, pickups and overflow retain the same rules below.
+
 The trail is not a fixed-distance chain or a spring. It has these distinct paths:
 
 | State / transition | Position rule and ownership |
@@ -701,7 +708,7 @@ The trail is not a fixed-distance chain or a spring. It has these distinct paths
 | Loose / block-created | Core-owned o7 body. A block launches a loose egg; it does not fly directly into an inventory slot. Ground contacts, bounces and pickup belong to the core. |
 | Joining | Preserve the acquired egg's world position. The first follow target is scheduled on the next step, so movement starts one step later. |
 | Following / catching up | Keep up to 60 body positions, recorded only on steps where the body moved (the Rust line's rule). One-based order k uses entry `len - 1 - 10*k` (the oldest entry while the history is short), shifted up 16 level pixels. Restart a 0.1-second linear tween each step; a target scheduled on one step is applied on the next. |
-| Settling / idle | No position is recorded while the body stands, so the eggs keep their spacing. After six still steps their target height drops to the body's feet level minus 16. There is no random idle force or standing hop. The reference's event rule records every step and closes the line up on a standing body; the Rust line keeps standing eggs spaced instead. |
+| Settling / idle | No position is recorded while the body stands, so the eggs keep their spacing. After six still steps their target height drops to the body's feet level minus 16. There is no random idle force or standing hop. The reference's event rule records every step and closes the line up on a standing body; the SNES default keeps standing eggs spaced instead. Feel close up selects the reference every-step rule. |
 | Jump / flutter / fall / landing | Follow the recorded body arc with 10-step per-egg delays and tween lag. No separate carried-egg gravity, landing impulse or collision with the floor. The delayed vertical arc can look like a hop after the player lands. |
 | Turning | Keep world-space history; do not mirror or teleport the line. Old direction samples pass through each delay before the new direction arrives. |
 | Aiming / held | Remove the first core inventory slot from the following line and draw it at the player's pack-authored per-frame egg image point, in front of the body. The first grab uses GrabEgg frame 0. Remaining eggs close their delays to orders 1..N-1. |
@@ -725,7 +732,7 @@ presentation packet omits that laying fact. Runtime pickup matching uses observe
 o7 status transitions, limited to the inventory growth plus `egg_pops` replacements
 of that step. No snapshot or gameplay state is written.
 
-Host checks cover steady running, standing spacing and feet level, all six delays,
+Host checks cover steady running, both standing modes (spacing/feet level and six-egg convergence), all six delays,
 pickup hold, capacity replacement and the falling front egg, laying offset, held/throw/cancel transitions, rewind and
 multi-step pipeline retention. `egg_trace_probe PRIVATE_INPUT PRIVATE_OUTPUT`
 runs the same position adapter on neutral trace rows. The pack-backed ignored

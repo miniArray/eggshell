@@ -3,11 +3,12 @@
 //! Follow rule (original Egg Following group): a history of at most 60 Yoshi positions;
 //! one-based egg order k tweens over 0.1 s (a sixth per step) toward history entry
 //! `len - 1 - 10*k`, 16 px up. The original pushes every tick, so eggs close up on a
-//! standing Yoshi. The Rust line's chosen rule (user's play of the original) differs:
+//! standing Yoshi (Feel `close_up`). The default SNES `spaced` rule differs:
 //! a position is recorded only when Yoshi moved, and after six still steps the eggs
 //! drop to his feet level and keep their spacing. Overflow: when a full queue pushes
 //! an egg out (core `PlayerPicture::egg_pops`), the front egg falls off screen with
 //! the egg platform's gravity (1600 px/s², cap 576 px/s).
+use crate::feel::StandingEggs;
 use eggshell_spike_core::{EntityStatus, Presentation, SCALE, Session};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
@@ -56,6 +57,7 @@ pub struct TrailFrame {
 }
 #[derive(Default)]
 pub struct EggTrail {
+    standing: StandingEggs,
     last: Option<(i64, usize)>,
     path: VecDeque<[f64; 2]>,
     /// Steps since Yoshi last moved.
@@ -71,6 +73,12 @@ pub struct EggTrail {
     digest: i64,
 }
 impl EggTrail {
+    pub fn new(standing: StandingEggs) -> Self {
+        Self {
+            standing,
+            ..Self::default()
+        }
+    }
     const KEEP: usize = 60;
     const SPACING: usize = 10;
     const LIFT: f64 = 16.0;
@@ -138,7 +146,7 @@ impl EggTrail {
             .last
             .is_some_and(|(last, old)| old != map || tick < last || tick > last + 1)
         {
-            *self = Self::default();
+            *self = Self::new(self.standing);
         }
     }
     pub fn advance(&mut self, s: &TrailStep) -> Vec<[f64; 2]> {
@@ -168,6 +176,8 @@ impl EggTrail {
             self.still += 1;
         } else {
             self.still = 0;
+        }
+        if self.standing == StandingEggs::CloseUp || self.still == 0 {
             self.path.push_back(s.player);
             while self.path.len() > Self::KEEP {
                 self.path.pop_front();
@@ -259,7 +269,7 @@ impl EggTrail {
             .copied()
             .unwrap_or(now);
         let mut goal = [at[0], at[1] - Self::LIFT];
-        if self.still >= Self::STILL_TICKS {
+        if self.standing == StandingEggs::Spaced && self.still >= Self::STILL_TICKS {
             goal[1] = now[1] - Self::LIFT;
         }
         if let Some((born, facing)) = laid {
@@ -416,6 +426,38 @@ mod tests {
             assert!((e[0] - x).abs() < 0.001, "{eggs:?}");
             assert!((e[1] - 84.0).abs() < 1e-9);
         }
+    }
+    #[test]
+    fn close_up_records_still_steps_and_converges_all_six_without_changing_walk() {
+        let mut spaced = EggTrail::default();
+        let mut close = EggTrail::new(StandingEggs::CloseUp);
+        for tick in 0..180 {
+            let s = step(tick, 6);
+            assert_eq!(spaced.advance(&s), close.advance(&s));
+        }
+        for tick in 180..420 {
+            let mut s = step(tick, 6);
+            s.player = [716.0, 100.0];
+            spaced.advance(&s);
+            let eggs = close.advance(&s);
+            if tick == 419 {
+                for egg in eggs {
+                    assert!((egg[0] - 716.0).abs() < 0.0005, "{egg:?}");
+                    assert!((egg[1] - 84.0).abs() < 1e-9);
+                }
+                assert!(spaced.eggs[0].at[0] < 700.0);
+            }
+        }
+        // A rewind/map switch clears history but keeps the selected mode.
+        let mut s = step(0, 6);
+        s.map = 2;
+        close.advance(&s);
+        assert_eq!(close.standing, StandingEggs::CloseUp);
+        for tick in 1..80 {
+            s.tick = tick;
+            close.advance(&s);
+        }
+        assert_eq!(close.path.len(), 60);
     }
     #[test]
     fn standing_eggs_stay_spaced_and_drop_to_yoshi_level() {

@@ -140,6 +140,34 @@ impl LavaDeath {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StandingEggs {
+    #[default]
+    Spaced,
+    CloseUp,
+}
+impl StandingEggs {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Spaced => Self::CloseUp,
+            Self::CloseUp => Self::Spaced,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Spaced => "spaced",
+            Self::CloseUp => "close up",
+        }
+    }
+    pub fn index(self) -> usize {
+        match self {
+            Self::Spaced => 0,
+            Self::CloseUp => 1,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeelSettings {
@@ -170,6 +198,7 @@ pub struct FeelSettings {
     pub throw_mode: ThrowMode,
     pub lava_death: LavaDeath,
     pub worried_yoshi: bool,
+    pub standing_eggs: StandingEggs,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -201,6 +230,7 @@ impl Default for FeelSettings {
             throw_mode: ThrowMode::Patient,
             lava_death: LavaDeath::Spin,
             worried_yoshi: true,
+            standing_eggs: StandingEggs::Spaced,
         }
     }
 }
@@ -328,6 +358,8 @@ mod tests {
         assert_eq!(s.throw_mode, ThrowMode::Patient);
         assert_eq!(s.lava_death, LavaDeath::Spin);
         assert!(s.worried_yoshi);
+        assert_eq!(s.standing_eggs, StandingEggs::Spaced);
+        assert_eq!(serde_json::to_value(s).unwrap()["standing_eggs"], "spaced");
         assert_eq!(serde_json::to_value(s).unwrap()["lava_death"], "spin");
         assert_eq!(serde_json::to_value(s).unwrap()["throw_mode"], "patient");
         assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");

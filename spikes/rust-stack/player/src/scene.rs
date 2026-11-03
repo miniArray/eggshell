@@ -153,7 +153,8 @@ pub struct Scene {
     /// The original's aim cursor (hud EggTarget), when the pack has it.
     egg_target: Option<Visual>,
     /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
-    trail: std::sync::Mutex<crate::egg_trail::EggTrail>,
+    // Keep both drawing histories warm so a paused Feel toggle applies immediately.
+    trail: std::sync::Mutex<[crate::egg_trail::EggTrail; 2]>,
     /// Animated tileset frames from outside the pack (scene ids after the generated
     /// images), loaded by `add_animated_tiles`.
     animated_files: Vec<std::path::PathBuf>,
@@ -961,7 +962,10 @@ impl Scene {
             stilt_palettes,
             decor_caps,
             egg_target,
-            trail: std::sync::Mutex::new(crate::egg_trail::EggTrail::default()),
+            trail: std::sync::Mutex::new([
+                crate::egg_trail::EggTrail::default(),
+                crate::egg_trail::EggTrail::new(crate::feel::StandingEggs::CloseUp),
+            ]),
             run_clock: std::sync::Mutex::new(RunClock::default()),
             animated_files: Vec::new(),
             shake: std::sync::Mutex::new(crate::shake::Shake::default()),
@@ -1341,10 +1345,14 @@ impl Scene {
         } else {
             [0.0; 2]
         };
-        self.trail
+        for trail in self
+            .trail
             .lock()
             .map_err(|_| "egg trail lock poisoned")?
-            .observe(p, session, hand, grab);
+            .iter_mut()
+        {
+            trail.observe(p, session, hand, grab);
+        }
         self.held_melons
             .lock()
             .map_err(|_| "held melon lock poisoned")?
@@ -2386,11 +2394,9 @@ impl Scene {
             };
             // Carried eggs trail behind Yoshi (drawn first, so Yoshi covers them).
             let body = pixel(p.player.motion.current);
-            let trail = self
-                .trail
-                .lock()
-                .map_err(|_| "egg trail lock poisoned")?
-                .positions(p.tick, p.map_index, body, p.player.eggs.len());
+            let trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?
+                [settings.standing_eggs.index()]
+            .positions(p.tick, p.map_index, body, p.player.eggs.len());
             if let Ok(egg_art) = self.object("o7", 0) {
                 // Front eggs pushed out of a full queue fall behind the line.
                 for (colour, at) in &trail.falling {
@@ -3206,24 +3212,32 @@ mod tests {
             for scene in &scenes {
                 scene.observe_feel(&p, &session).unwrap();
             }
-            let dense = scenes[0].picture(&p, [640.0, 480.0], 0).unwrap();
-            if step % 9 == 0 {
-                let sparse = scenes[1].picture(&p, [640.0, 480.0], 0).unwrap();
-                let egg_quads = |picture: &Picture| {
-                    picture
-                        .world
-                        .iter()
-                        .filter(|q| egg_images.contains(&q.image))
-                        .map(|q| (q.image, q.corners))
-                        .collect::<Vec<_>>()
-                };
-                assert_eq!(egg_quads(&dense), egg_quads(&sparse));
-                assert_eq!(egg_quads(&dense).len(), 6);
-                compared += 1;
+            for mode in [
+                crate::feel::StandingEggs::Spaced,
+                crate::feel::StandingEggs::CloseUp,
+            ] {
+                for scene in &scenes {
+                    scene.feel.lock().unwrap().standing_eggs = mode;
+                }
+                let dense = scenes[0].picture(&p, [640.0, 480.0], 0).unwrap();
+                if step % 9 == 0 {
+                    let sparse = scenes[1].picture(&p, [640.0, 480.0], 0).unwrap();
+                    let egg_quads = |picture: &Picture| {
+                        picture
+                            .world
+                            .iter()
+                            .filter(|q| egg_images.contains(&q.image))
+                            .map(|q| (q.image, q.corners))
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(egg_quads(&dense), egg_quads(&sparse));
+                    assert_eq!(egg_quads(&dense).len(), 6);
+                    compared += 1;
+                }
             }
             assert_eq!(session.snapshot().unwrap(), before);
         }
-        assert_eq!(compared, 20);
+        assert_eq!(compared, 40);
         println!(
             "TRAIL_SCENE_PROBE steps=180 sparse_dense_pairs={compared} six_eggs=true snapshots_unchanged=true"
         );
@@ -3556,24 +3570,79 @@ mod tests {
                 let p = session.presentation();
                 let before = session.snapshot().unwrap();
                 scene.observe_feel(&p, &session).unwrap();
-                let positions = scene
-                    .trail
-                    .lock()
-                    .unwrap()
-                    .positions(
-                        p.tick,
-                        p.map_index,
-                        pixel(p.player.motion.current),
-                        p.player.eggs.len(),
-                    )
-                    .carried;
+                let positions = scene.trail.lock().unwrap()
+                    [crate::feel::StandingEggs::Spaced.index()]
+                .positions(
+                    p.tick,
+                    p.map_index,
+                    pixel(p.player.motion.current),
+                    p.player.eggs.len(),
+                )
+                .carried;
                 assert_eq!(positions.len(), p.player.eggs.len());
                 assert!(positions.iter().flatten().all(|v| v.is_finite()));
                 carrying += usize::from(!positions.is_empty());
                 aiming += usize::from(p.player.aim_degrees.is_some());
-                scene.picture(&p, [640.0, 480.0], 0).unwrap();
-                assert_eq!(session.snapshot().unwrap(), before);
-                out.push(serde_json::json!({"tick":p.tick,"mask":mask,"player":pixel(p.player.motion.current),"eggs":positions,"aim":p.player.aim_degrees,"swimming":p.player.swimming,"egg_pops":p.player.egg_pops,"loose":p.entities.iter().filter(|e| e.code=="o7" && e.status==EntityStatus::Active).map(|e| pixel(e.motion.current)).collect::<Vec<_>>()}));
+                let close_positions = scene.trail.lock().unwrap()
+                    [crate::feel::StandingEggs::CloseUp.index()]
+                .positions(
+                    p.tick,
+                    p.map_index,
+                    pixel(p.player.motion.current),
+                    p.player.eggs.len(),
+                )
+                .carried;
+                assert_eq!(close_positions.len(), positions.len());
+                assert!(close_positions.iter().flatten().all(|v| v.is_finite()));
+                let mut mode_worlds = Vec::new();
+                for mode in [
+                    crate::feel::StandingEggs::Spaced,
+                    crate::feel::StandingEggs::CloseUp,
+                ] {
+                    scene.feel.lock().unwrap().standing_eggs = mode;
+                    let picture = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+                    assert_eq!(
+                        picture.world,
+                        scene.picture(&p, [640.0, 480.0], 0).unwrap().world
+                    );
+                    assert_eq!(session.snapshot().unwrap(), before);
+                    mode_worlds.push(picture.world);
+                }
+                if t == 559
+                    && [
+                        "walk", "run", "turn", "fall", "collect", "platform", "throw", "cancel",
+                    ]
+                    .contains(&name)
+                {
+                    assert_ne!(
+                        mode_worlds[0], mode_worlds[1],
+                        "{name}: Feel must select the corresponding drawn egg history"
+                    );
+                }
+                out.push(serde_json::json!({"tick":p.tick,"mask":mask,"player":pixel(p.player.motion.current),"eggs":positions,"close_eggs":close_positions,"aim":p.player.aim_degrees,"swimming":p.player.swimming,"egg_pops":p.player.egg_pops,"loose":p.entities.iter().filter(|e| e.code=="o7" && e.status==EntityStatus::Active).map(|e| pixel(e.motion.current)).collect::<Vec<_>>()}));
+            }
+            let last = out.last().unwrap();
+            let player_x = last["player"][0].as_f64().unwrap();
+            for egg in last["close_eggs"].as_array().unwrap() {
+                assert!(
+                    (egg[0].as_f64().unwrap() - player_x).abs() < 0.0005,
+                    "{name}: {last}"
+                );
+            }
+            if [
+                "walk", "run", "turn", "fall", "collect", "platform", "throw", "cancel",
+            ]
+            .contains(&name)
+            {
+                let xs = last["eggs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|egg| egg[0].as_f64().unwrap())
+                    .collect::<Vec<_>>();
+                let spread = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+                    - xs.iter().copied().fold(f64::INFINITY, f64::min);
+                assert!(spread > 1.0, "{name}: spaced mode closed up: {last}");
             }
             std::fs::write(
                 Path::new(&dir).join(format!("egg-{name}-session.json")),
@@ -3592,7 +3661,7 @@ mod tests {
                 assert!(aiming > 30);
             }
             println!(
-                "EGG_SCENE_PROBE case={name} steps=560 carrying_steps={carrying} aiming_steps={aiming} snapshots_unchanged=true"
+                "EGG_SCENE_PROBE case={name} steps=560 modes=spaced,close_up carrying_steps={carrying} aiming_steps={aiming} snapshots_unchanged=true"
             );
         }
     }

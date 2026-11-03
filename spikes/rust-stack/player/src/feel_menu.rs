@@ -20,10 +20,11 @@ const ELASTIC_TONGUE_ROW: usize = 23;
 const THROW_MODE_ROW: usize = 24;
 const LAVA_DEATH_ROW: usize = 25;
 const WORRIED_YOSHI_ROW: usize = 26;
-const PREVIEW_ROW: usize = 27;
-const RESTART_ROW: usize = 28;
-const RESET_ROW: usize = 29;
-const RESUME_ROW: usize = 30;
+const STANDING_EGGS_ROW: usize = 27;
+const PREVIEW_ROW: usize = 28;
+const RESTART_ROW: usize = 29;
+const RESET_ROW: usize = 30;
+const RESUME_ROW: usize = 31;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -81,6 +82,7 @@ impl Model {
                 THROW_MODE_ROW => s.throw_mode.toggle(),
                 LAVA_DEATH_ROW => s.lava_death.toggle(),
                 WORRIED_YOSHI_ROW => s.worried_yoshi = !s.worried_yoshi,
+                STANDING_EGGS_ROW => s.standing_eggs.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.cycle(delta),
                 _ => {}
             }
@@ -103,6 +105,7 @@ impl Model {
                 THROW_MODE_ROW => s.throw_mode.toggle(),
                 LAVA_DEATH_ROW => s.lava_death.toggle(),
                 WORRIED_YOSHI_ROW => s.worried_yoshi = !s.worried_yoshi,
+                STANDING_EGGS_ROW => s.standing_eggs.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.toggle(),
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESTART_ROW => return Action::Restart,
@@ -180,6 +183,7 @@ impl MenuPage for Page<'_> {
             format!("Egg throw: {}", s.throw_mode.label()),
             format!("Lava death: {}", s.lava_death.label()),
             format!("Worried Yoshi: {}", on(s.worried_yoshi)),
+            format!("Standing eggs: {}", s.standing_eggs.label()),
             "Preview shake".into(),
             "Restart level".into(),
             "Reset to defaults".into(),
@@ -278,6 +282,40 @@ impl ReleaseGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn standing_eggs_row_toggles_serializes_and_resets_without_preview() {
+        use crate::feel::StandingEggs;
+        let mut s = FeelSettings::default();
+        let mut model = Model {
+            focus: STANDING_EGGS_ROW,
+        };
+        assert_eq!(model.input(input::RIGHT, &mut s), Action::None);
+        assert_eq!(s.standing_eggs, StandingEggs::CloseUp);
+        assert_eq!(
+            serde_json::to_value(s).unwrap()["standing_eggs"],
+            "close_up"
+        );
+        assert_eq!(
+            serde_json::from_value::<FeelSettings>(serde_json::to_value(s).unwrap()).unwrap(),
+            s
+        );
+        assert_eq!(
+            Page {
+                model: &model,
+                settings: &s
+            }
+            .items()[STANDING_EGGS_ROW]
+                .label,
+            "Standing eggs: close up"
+        );
+        model.input(input::JUMP, &mut s);
+        assert_eq!(s.standing_eggs, StandingEggs::Spaced);
+        model.input(input::LEFT, &mut s);
+        assert_eq!(s.standing_eggs, StandingEggs::CloseUp);
+        model.focus = RESET_ROW;
+        model.input(input::JUMP, &mut s);
+        assert_eq!(s.standing_eggs, StandingEggs::Spaced);
+    }
     #[test]
     fn worried_row_toggles_and_reset_restores_default() {
         let mut s = FeelSettings::default();
