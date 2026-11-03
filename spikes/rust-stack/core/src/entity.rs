@@ -307,6 +307,31 @@ impl Entity {
             }
         }
     }
+    /// entity_lifecycle.gd created: only e2, e20, e21 (actor.gd creation_cull), e11 and
+    /// e23 (CREATION_CULL) are culled at birth when their origin is outside the despawn
+    /// radius of the screen centre. Waiting motion never repeats this check.
+    pub(crate) fn creation_cull(&mut self, centre: crate::Position) {
+        let opted_in = matches!(
+            &self.kind,
+            Kind::Walker(a) if matches!(
+                a.kind,
+                ActorKind::Flyer
+                    | ActorKind::Fish
+                    | ActorKind::LandFish
+                    | ActorKind::Armored
+                    | ActorKind::SoftWalker
+            )
+        );
+        if !opted_in || self.can_despawn == 0 {
+            return;
+        }
+        if (self.body.x - centre.x).abs() > self.despawn_radius
+            || (self.body.y - centre.y).abs() > self.despawn_radius
+        {
+            self.status = if self.origin.placed().is_some() { 2 } else { 3 };
+            self.offscreen = 0;
+        }
+    }
     pub(crate) fn lifecycle(
         &mut self,
         map: &crate::body::Probe,
@@ -475,6 +500,7 @@ impl Entity {
                 fresh.collected = self.collected;
                 fresh.checkpoint_collected = self.checkpoint_collected;
                 *self = fresh;
+                self.creation_cull(centre);
             }
         }
         if self.status == 0 {
@@ -574,5 +600,55 @@ impl Entity {
         };
         *target = value;
         true
+    }
+}
+
+#[cfg(test)]
+mod creation_cull_tests {
+    use crate::{state::Run, Stats, World};
+
+    #[test]
+    fn entity_lifecycle_created_culls_only_opted_in_codes_outside_the_despawn_radius() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"creation cull", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":8192, "height":2048, "objects":{
+                "a":{"A":"e2", "X":4000, "Y":128},
+                "b":{"A":"e11", "X":4000, "Y":128},
+                "c":{"A":"e23", "X":4000, "Y":128},
+                "d":{"A":"e1", "X":4000, "Y":128},
+                "e":{"A":"e2", "X":1200, "Y":128}
+            }}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let run = Run::create(&world, &mut Stats::default()).unwrap();
+        let rows: Vec<(&str, i64, i64, i64)> = run
+            .entities
+            .iter()
+            .map(|e| {
+                (
+                    e.code(&world),
+                    e.body.x / crate::SCALE,
+                    e.status,
+                    e.offscreen,
+                )
+            })
+            .collect();
+        // Culled placed rows queue for respawn and are off screen after the two
+        // level-start steps; the far e1 and the e2 inside 832 px keep waiting.
+        assert!(rows.contains(&("e2", 4000, 2, 1)), "{rows:?}");
+        assert!(rows.contains(&("e11", 4000, 2, 1)), "{rows:?}");
+        assert!(rows.contains(&("e23", 4000, 2, 1)), "{rows:?}");
+        assert!(rows.contains(&("e1", 4000, 0, 0)), "{rows:?}");
+        assert!(
+            rows.iter()
+                .any(|r| r.0 == "e2" && (1100..1300).contains(&r.1) && r.2 != 2),
+            "{rows:?}"
+        );
     }
 }

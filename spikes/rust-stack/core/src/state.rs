@@ -73,7 +73,14 @@ impl Run {
         world: &World,
         stats: &mut crate::Stats,
     ) -> Result<Self, Error> {
-        let entities = Self::spawn_rows(world)?;
+        // play_state.gd: the camera is set before spawn_map runs the birth hooks.
+        let entities = Self::spawn_map(
+            world,
+            Position {
+                x: world.spawn.x,
+                y: world.spawn.y - 28 * S,
+            },
+        )?;
         let player = Player::new(
             Body {
                 x: world.spawn.x,
@@ -146,6 +153,17 @@ impl Run {
             y: run.player.body.y - 28 * S,
         };
         Ok(run)
+    }
+    /// registry.gd spawn_map: every placed row is created, then entity_lifecycle.gd
+    /// created applies the opt-in birth cull around the given camera.
+    fn spawn_map(world: &World, camera: Position) -> Result<Vec<Entity>, Error> {
+        let map = &world.maps[0];
+        let centre = screen_centre(camera, map.width_pixels * S, map.height_pixels * S);
+        let mut rows = Self::spawn_rows(world)?;
+        for row in &mut rows {
+            row.creation_cull(centre);
+        }
+        Ok(rows)
     }
     fn spawn_rows(world: &World) -> Result<Vec<Entity>, Error> {
         let mut next_family = 0;
@@ -342,16 +360,24 @@ impl Run {
             .take(world.maps[0].placements.len())
             .map(|e| e.checkpoint_collected)
             .collect();
-        self.entities = Self::spawn_rows(world)?;
-        for (entity, flag) in self.entities.iter_mut().zip(flags) {
-            entity.collected = flag;
-            entity.checkpoint_collected = flag;
-        }
         let spawn = if self.checkpoint.id != 0 {
             self.checkpoint.position
         } else {
             world.spawn
         };
+        // life.gd _respawn: creation culling uses the respawn destination, not the old
+        // death camera.
+        self.entities = Self::spawn_map(
+            world,
+            Position {
+                x: spawn.x,
+                y: spawn.y - 28 * S,
+            },
+        )?;
+        for (entity, flag) in self.entities.iter_mut().zip(flags) {
+            entity.collected = flag;
+            entity.checkpoint_collected = flag;
+        }
         // item_egg/seed/element reset_map run in spawn_map, before Moves.reset clears
         // the request history, so they keep the serial from before the reset.
         self.consumers.reset_map(self.player.food.requests.serial());

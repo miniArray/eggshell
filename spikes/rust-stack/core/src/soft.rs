@@ -448,7 +448,7 @@ impl Run {
             w.timer -= 1;
             Self::giant_pin(w, *body, player);
             if w.timer <= 0 {
-                return self.giant_burst(index);
+                return self.giant_burst(index, map);
             }
             return Ok(());
         }
@@ -503,7 +503,9 @@ impl Run {
     }
     /// soft_giant.gd burst: removed, then four tumbling e23 copies (registry.gd
     /// spawn_dynamic with soft_walker.gd tumble_options).
-    fn giant_burst(&mut self, index: usize) -> Result<(), Error> {
+    fn giant_burst(&mut self, index: usize, map: &Probe) -> Result<(), Error> {
+        let centre =
+            crate::math::screen_centre(self.camera, map.width_pixels * S, map.height_pixels * S);
         let e = &mut self.entities[index];
         let at = e.body;
         if let Kind::Walker(w) = &mut e.kind {
@@ -534,6 +536,7 @@ impl Run {
                 8,
             );
             row.family_index = family;
+            row.creation_cull(centre);
             self.dynamic_serial = serial + 1;
             self.entities.push(row);
         }
