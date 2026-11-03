@@ -290,13 +290,13 @@ Independent streaming queues can drift on underruns; joint lockstep decoding
 needs a separate contract. The current pinned pack has no stems, so it uses
 the same gain/presence lift as before. No asset admission checks are relaxed.
 
-Host-only read-only integration probe (needs an existing v10 schema extract):
-`nix develop . -c cargo run --example feel_probe -- /path/to/schema.json`.
+Host-only read-only integration probe (removed from the repository when the feel work landed; it lives in the spike history):
+`nix develop . -c cargo run --example feel_probe -- /path/to/schema.json` (probe removed at landing).
 It runs 400 actual collection steps and 400 Lagoon steps with effects on/off,
 checks pickup/water signals, and compares literal snapshot bytes every step.
 
-Streaming/SDL host probe (private pack required):
-`SDL_AUDIODRIVER=dummy nix develop . -c cargo run --example audio_probe -- SCHEMA.json PACK_ROOT PACK_INVENTORY.json`.
+Streaming/SDL host probe (private pack required; removed at landing, see spike history):
+`SDL_AUDIODRIVER=dummy nix develop . -c cargo run --example audio_probe -- SCHEMA.json PACK_ROOT PACK_INVENTORY.json` (probe removed at landing).
 It checks nonzero decoded music samples, SDL callback/music-start counters and
 zero decoder errors. It drives 400 saved steps each in Collections and Lagoon,
 logs goal lift and underwater muffle, and compares on/off save bytes each step.
@@ -404,7 +404,7 @@ pixel widths are intentional. HUD scale still uses the integer base scale.
 
 ### Death animation playtest (presentation deviation)
 
-Verified with `cargo run --example death_probe -- SCHEMA.json PACK_MANIFEST.json`
+Verified with `cargo run --example death_probe -- SCHEMA.json PACK_MANIFEST.json` (probe removed at landing)
 on the public lighting fixture, starting at x400 above its lava. At call 7 the
 core reports `Dying`, phase 2, visible, alpha 1, selected `Fall0` tick 7; at call
 247 it reports phase 3 and still `Fall0` tick 247. The same frame resolves without
@@ -460,7 +460,7 @@ press edges from current versus previous input (`src/state.rs:773-775`). The
 surface-jump conditions and execution match the reference. No water-rule porting
 bug was found, and no core file was changed.
 
-Verified with `cargo run --example water_probe -- SCHEMA.json`: a synthetic pool
+Verified with `cargo run --example water_probe -- SCHEMA.json` (probe removed at landing): a synthetic pool
 12 tiles wide, 3 tiles deep, flat ground, no walls, using the shipped collision
 table. This is not a recording of the user's exact showcase level.
 
@@ -619,7 +619,7 @@ map or core file is changed. Cost: it changes the authored lower-row art/contact
 choice and needs picture review. Do not weaken the core surface-jump rule for it.
 
 Reproduce on a host (no game window or device build needed):
-`nix develop . -c cargo run --example input_probe -- SCHEMA.json SHOWCASE.level.json`.
+`nix develop . -c cargo run --example input_probe -- SCHEMA.json SHOWCASE.level.json` (probe removed at landing).
 Without arguments it runs just the real SDL input-edge regression. With arguments
 it expects this known 50x14 showcase layout, and tests its exact pool plus the
 in-memory full-interior comparison. It enumerates host pads but writes only its
@@ -741,8 +741,8 @@ of that step. No snapshot or gameplay state is written.
 
 Host checks cover steady running, both standing modes (spacing/feet level and six-egg convergence), all six delays,
 pickup hold, capacity replacement and the falling front egg, laying offset, held/throw/cancel transitions, rewind and
-multi-step pipeline retention. `egg_trace_probe PRIVATE_INPUT PRIVATE_OUTPUT`
-runs the same position adapter on neutral trace rows. The pack-backed ignored
+multi-step pipeline retention. The removed `egg_trace_probe`
+ran the same position adapter on neutral trace rows. The pack-backed ignored
 `egg_states_through_real_session_and_scene` test runs real Session → observer →
 Scene paths with unchanged snapshots. Private inputs and outputs are not fixtures
 in this repository. Position-adapter comparisons are not whole-simulation parity.
