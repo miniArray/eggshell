@@ -39,3 +39,5 @@ pub mod water_fx;
 pub mod captors;
 
 pub mod egg_trail;
+
+pub mod rider;

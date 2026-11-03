@@ -230,6 +230,13 @@ fn pixels(p: eggshell_spike_core::Position) -> [f64; 2] {
 pub struct HandPoints(HashMap<usize, [f64; 2]>);
 impl HandPoints {
     pub fn prepare(manifest: &serde_json::Value, catalog: &crate::binding::Catalog) -> Self {
+        Self::prepare_named(manifest, catalog, "Egg")
+    }
+    pub fn prepare_named(
+        manifest: &serde_json::Value,
+        catalog: &crate::binding::Catalog,
+        name: &str,
+    ) -> Self {
         let mut points = HashMap::new();
         if let Some(animations) = manifest
             .get("player")
@@ -245,7 +252,7 @@ impl HandPoints {
                     let Some(point) = frame
                         .get("image_points")
                         .and_then(serde_json::Value::as_array)
-                        .and_then(|ps| ps.iter().find(|p| p[0].as_str() == Some("Egg")))
+                        .and_then(|ps| ps.iter().find(|p| p[0].as_str() == Some(name)))
                     else {
                         continue;
                     };

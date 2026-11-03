@@ -748,3 +748,9 @@ in this repository. Position-adapter comparisons are not whole-simulation parity
 - A host block course exposes a simulation difference: its loose egg remains on
   the block in the core instead of following the checked lateral launch and later
   pickup. The adapter does not alter that core body to make the trail test pass.
+
+Mounted rider art is separate from the body. It follows the current drawn
+frame's `Saddle` image point, including grab, walking aim and toss frames;
+separated rider motion remains core-owned. Mounted duck/look-up and movement
+select the pack's corresponding rider pictures. The core still provides only a
+fixed mounted offset and idle/cry selection; no gameplay position is changed.

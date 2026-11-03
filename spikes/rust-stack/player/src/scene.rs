@@ -139,6 +139,7 @@ pub struct Scene {
     objects: HashMap<String, HashMap<i64, Visual>>,
     player: Visual,
     egg_hands: crate::egg_trail::HandPoints,
+    saddle: crate::egg_trail::HandPoints,
     companions: [Option<Visual>; 3],
     captors: std::sync::Mutex<crate::captors::Captors>,
     /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
@@ -944,10 +945,13 @@ impl Scene {
                 .collect()
         };
         let egg_hands = crate::egg_trail::HandPoints::prepare(&pack.manifest, &catalog);
+        let saddle =
+            crate::egg_trail::HandPoints::prepare_named(&pack.manifest, &catalog, "Saddle");
         Ok(Self {
             catalog,
             maps,
             objects,
+            saddle,
             egg_hands,
             player,
             companions,
@@ -2288,6 +2292,7 @@ impl Scene {
             }
         }
 
+        let mut rider_position = None;
         if p.player.visible {
             let pose = &p.player.selected_pose;
             let running = ["Walk0", "Walk1", "Sprint0", "Sprint1"].contains(&pose.name.as_str());
@@ -2312,6 +2317,14 @@ impl Scene {
                 .lock()
                 .map_err(|_| "death pose lock poisoned")?
                 .frame(p.tick, p.player.lifetime, pose, &self.player, literal)?;
+            if p.companions.mode == 0 {
+                rider_position = self.saddle.at(
+                    f.image,
+                    pixel(p.player.motion.current),
+                    p.player.facing,
+                    self.density,
+                );
+            }
             let mut t = Transform {
                 position: pixel(p.player.motion.current),
                 scale: [
@@ -2419,7 +2432,11 @@ impl Scene {
                 } else {
                     aux.tick
                 };
-                let f = art.sample(tick, &aux.animation, 0, aux.visual.frame);
+                let f = if index == 0 && p.companions.mode == 0 {
+                    crate::rider::frame(p, art)?
+                } else {
+                    art.sample(tick, &aux.animation, 0, aux.visual.frame)
+                };
                 (
                     f.image,
                     f.origin,
@@ -2438,14 +2455,22 @@ impl Scene {
             let generated = self.companions[index].is_none() && index != 1;
             let t = if generated {
                 Transform {
-                    position: pixel(aux.motion.current),
+                    position: if index == 0 {
+                        rider_position.unwrap_or(pixel(aux.motion.current))
+                    } else {
+                        pixel(aux.motion.current)
+                    },
                     scale,
                     origin: [origin[0] / scale[0], origin[1] / scale[1]],
                     ..Transform::default()
                 }
             } else {
                 Transform {
-                    position: pixel(aux.motion.current),
+                    position: if index == 0 {
+                        rider_position.unwrap_or(pixel(aux.motion.current))
+                    } else {
+                        pixel(aux.motion.current)
+                    },
                     scale,
                     origin,
                     ..Transform::default()
@@ -2757,6 +2782,109 @@ mod tests {
         assert_eq!(fallback_head_box(hint, &[aux.clone()]), None);
         aux.picture.visible = false;
         assert_eq!(fallback_head_box(hint, &[aux]), None);
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
+    fn mounted_rider_follows_actual_aim_and_toss_frames() {
+        let env = |name: &str| std::env::var(name).unwrap();
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let mut level: Value = serde_json::from_str(include_str!(
+            "../../core/tests/fixtures/collections.level.json"
+        ))
+        .unwrap();
+        level["startpoint"]["X"] = 64.into();
+        level["startpoint"]["Y"] = 384.into();
+        level["maps"]["map1"]["objects"] =
+            serde_json::json!({"0":{"A":"o7","X":64,"Y":368},"1":{"A":"o7","X":64,"Y":368}});
+        let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let mut scene = Scene::prepare(
+            session.world(),
+            &session.admission_report().admitted_codes,
+            &pack,
+            Path::new(&env("PLAYER_METRICS")),
+        )
+        .unwrap();
+        scene.prepare_headless_assets(&pack).unwrap();
+        let mut poses = std::collections::BTreeSet::new();
+        for step in 0..180 {
+            session
+                .advance(if [30, 60, 100, 130].contains(&step) {
+                    64
+                } else if (100..130).contains(&step) {
+                    2
+                } else {
+                    0
+                })
+                .unwrap();
+            let p = session.presentation();
+            let before = session.snapshot().unwrap();
+            scene.observe_feel(&p, &session).unwrap();
+            let picture = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+            if p.player.selected_pose.name.starts_with("GrabEgg")
+                || p.player.selected_pose.name.starts_with("EggToss")
+                || p.player.selected_pose.name.starts_with("WalkAim")
+            {
+                poses.insert(p.player.selected_pose.name.clone());
+                let pose = &p.player.selected_pose;
+                let body = scene
+                    .player
+                    .sample_required(pose.tick, &pose.name, pose.frame, None)
+                    .unwrap();
+                let position = scene
+                    .saddle
+                    .at(
+                        body.image,
+                        pixel(p.player.motion.current),
+                        p.player.facing,
+                        scene.density,
+                    )
+                    .unwrap();
+                let art = scene.companions[0].as_ref().unwrap();
+                let f = crate::rider::frame(&p, art).unwrap();
+                let quad = picture.world.iter().find(|q| q.image == f.image).unwrap();
+                let map = &session.world().maps[p.map_index - 1];
+                let plan = screen::plan(
+                    [640.0, 480.0],
+                    [map.width_pixels as f64, map.height_pixels as f64],
+                    pixel(p.follow.current),
+                    scene.density,
+                    0.0,
+                )
+                .unwrap();
+                let expected = sprite_quad(
+                    f.image,
+                    scene.sizes[f.image],
+                    Transform {
+                        position,
+                        scale: [
+                            p.player.facing as f64 / scene.density as f64,
+                            1.0 / scene.density as f64,
+                        ],
+                        origin: f.origin,
+                        ..Transform::default()
+                    },
+                    &plan,
+                    [1.0; 4],
+                    &[],
+                );
+                assert_eq!(quad.corners, expected.corners);
+            }
+            assert_eq!(session.snapshot().unwrap(), before);
+        }
+        assert!(poses.iter().any(|p| p.starts_with("GrabEgg")));
+        assert!(poses.iter().any(|p| p.starts_with("EggToss")));
+        assert!(poses.iter().any(|p| p.starts_with("WalkAim")));
+        println!("RIDER_SCENE poses={poses:?} snapshots_unchanged=true");
     }
     #[test]
     fn packless_runtime_codes_are_runtime_codes_and_take_godot_placeholder_hues() {
