@@ -530,11 +530,12 @@ missing or invalid files use defaults. Gameplay still reads save-dir/feel.json.
 
 ### Elastic tongue (spike deviation)
 
-`elastic_tongue` defaults on; Feel adds Elastic tongue: on/off. The observer reads
-only per-step tongue/velocity data. A quadratic control point trails three steps
+`elastic_tongue` defaults on; Feel adds Elastic tongue: on/off. It bends only
+while airborne (user playtest request): grounded tongues go straight out and back,
+and swimming tongues stay rigid. The observer reads only per-step tongue/velocity data. A quadratic control point trails three steps
 of motion, eases 1/4 toward its target each step, and returns by 3/4 when stopped.
-Lag caps at 24 level pixels per axis and 35% of tongue length. A small downward
-bow (0.4 times horizontal step speed) makes parallel movement visible too.
+Lag caps at 24 level pixels per axis and 35% of tongue length. Vertical motion
+drives the bend (3 steps of lag); horizontal motion adds only 0.75 steps of sway.
 
 The original L/R/U nine-patch art is split into <=8-level-pixel segments, with
 continuous source UVs and unchanged palette/layer/alpha. Mouth and tip centerlines

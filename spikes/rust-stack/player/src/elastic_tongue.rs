@@ -18,7 +18,9 @@ impl ElasticTongue {
         self.step(
             p.tick,
             p.map_index,
-            p.player.tongue.is_some() && p.player.on_floor && !p.player.swimming,
+            // Spike feel (user request): straight on the ground, elastic only while
+            // airborne, where vertical motion bends the body. Swimming stays rigid.
+            p.player.tongue.is_some() && !p.player.on_floor && !p.player.swimming,
             [
                 p.player.velocity.x as f64 / SCALE as f64,
                 p.player.velocity.y as f64 / SCALE as f64,
@@ -32,12 +34,9 @@ impl ElasticTongue {
         let old = self.current.filter(|s| s.map == map && s.tick + 1 == tick);
         let mut lag = [0.0; 2];
         if out {
-            // Three steps of trailing motion, eased by 1/4 each simulation step.
-            // A small downward bow also makes motion along the tongue visible.
-            let target = [
-                -velocity[0] * 3.0,
-                -velocity[1] * 3.0 + velocity[0].abs() * 0.4,
-            ];
+            // The body trails the mouth's vertical motion (three steps), eased by 1/4
+            // each simulation step. Horizontal motion only adds a little sway.
+            let target = [-velocity[0] * 0.75, -velocity[1] * 3.0];
             for axis in 0..2 {
                 let from = old.map_or(0.0, |s| s.lag[axis]);
                 lag[axis] = from + (target[axis].clamp(-24.0, 24.0) - from) * 0.25;
@@ -95,10 +94,10 @@ mod tests {
     fn endpoints_exact_lag_eases_and_repeated_draws_do_not_advance() {
         let mut clock = ElasticTongue::default();
         for tick in 1..=8 {
-            clock.step(tick, 1, true, [4.0, -2.0]);
+            clock.step(tick, 1, true, [4.0, -4.0]);
         }
         let bend = clock.bend(8, 1, 100.0);
-        assert!(bend[0] < -10.0 && bend[1] > 6.0);
+        assert!(bend[0] < -2.0 && bend[1] > 10.0);
         for (mouth, tip) in [
             ([50.0, 50.0], [150.0, 50.0]),
             ([50.0, 50.0], [-50.0, 50.0]),
@@ -122,15 +121,20 @@ mod tests {
         assert_eq!(clock.bend(3, 2, 100.0), [0.0; 2]);
     }
     #[test]
-    fn leaving_ground_discards_the_bend_instead_of_dragging_air_tongues() {
+    fn vertical_motion_bends_and_landing_straightens() {
         let mut clock = ElasticTongue::default();
-        clock.step(1, 1, true, [4.0, 0.0]);
-        assert_ne!(clock.bend(1, 1, 100.0), [0.0; 2]);
-        // The observer gates deformation to a grounded, non-swimming tongue.
-        for (tick, velocity) in [(2, [4.0, -12.0]), (3, [4.0, 12.0]), (4, [4.0, -1.0])] {
-            clock.step(tick, 1, false, velocity);
-            assert_eq!(clock.bend(tick, 1, 100.0), [0.0; 2]);
+        // Rising: the body trails below the mouth-to-tip line.
+        clock.step(1, 1, true, [0.0, -8.0]);
+        let rising = clock.bend(1, 1, 100.0);
+        assert!(rising[1] > 0.0 && rising[0] == 0.0);
+        // Falling flips the bend upward.
+        for tick in 2..10 {
+            clock.step(tick, 1, true, [0.0, 8.0]);
         }
+        assert!(clock.bend(9, 1, 100.0)[1] < 0.0);
+        // Grounded (the observer passes out=false): straight at once.
+        clock.step(10, 1, false, [4.0, 0.0]);
+        assert_eq!(clock.bend(10, 1, 100.0), [0.0; 2]);
     }
     #[test]
     fn segmented_art_keeps_source_coverage_and_shared_edges() {
