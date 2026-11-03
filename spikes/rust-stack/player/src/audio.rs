@@ -827,7 +827,10 @@ pub enum Command {
     StopVoices,
     PauseEvent(&'static str, bool),
     /// A track that streams from its decoder thread (MusicStream::start).
-    Music { stream: MusicStream, gain: f32 },
+    Music {
+        stream: MusicStream,
+        gain: f32,
+    },
     StopMusic,
 }
 
@@ -853,7 +856,10 @@ struct Voice {
 
 /// One decoded music packet, or what ended the stream.
 enum Packet {
-    Samples { channels: usize, samples: Vec<i16> },
+    Samples {
+        channels: usize,
+        samples: Vec<i16>,
+    },
     /// A decode error; the stream continues as if the file ended there.
     Error,
     End,
@@ -892,9 +898,8 @@ pub struct MusicStream {
 impl MusicStream {
     pub fn start(bytes: Arc<[u8]>, looping: bool, loop_start: usize) -> Result<Self, String> {
         let first = reader(bytes.clone())?;
-        let open: Opener = Box::new(move || {
-            reader(bytes.clone()).map(|r| Box::new(r) as Box<dyn Packets>)
-        });
+        let open: Opener =
+            Box::new(move || reader(bytes.clone()).map(|r| Box::new(r) as Box<dyn Packets>));
         Self::spawn(Box::new(first), open, looping, loop_start)
     }
     fn spawn(
@@ -993,9 +998,7 @@ fn decode_stream(
         let channels = source.channels();
         let ended = match source.next() {
             Ok(Some(samples)) => {
-                if !samples.is_empty()
-                    && !send(Packet::Samples { channels, samples }, &mut spare)
-                {
+                if !samples.is_empty() && !send(Packet::Samples { channels, samples }, &mut spare) {
                     return;
                 }
                 false
@@ -2105,7 +2108,10 @@ mod tests {
         // A changed copy is refused by its digest.
         std::fs::write(dir.join("tracks/a.ogg"), b"changed").unwrap();
         let pack_less = audio.custom.get("https://example.invalid/a.mp3").unwrap();
-        assert_ne!(crate::pack::hash(&std::fs::read(&pack_less.0).unwrap()), pack_less.1);
+        assert_ne!(
+            crate::pack::hash(&std::fs::read(&pack_less.0).unwrap()),
+            pack_less.1
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2229,7 +2235,12 @@ mod tests {
             ))
         }
     }
-    fn counting_stream(packets: usize, size: usize, looping: bool, loop_start: usize) -> MusicStream {
+    fn counting_stream(
+        packets: usize,
+        size: usize,
+        looping: bool,
+        loop_start: usize,
+    ) -> MusicStream {
         let source = move || Counting {
             packets,
             size,
@@ -2332,5 +2343,4 @@ mod tests {
             ]
         );
     }
-
 }
