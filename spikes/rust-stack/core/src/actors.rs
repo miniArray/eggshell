@@ -778,7 +778,7 @@ impl Actor {
         }
         if self.kind != ActorKind::Stilt {
             if action == Hold::Released {
-                self.on_spit_release(body, facing, step.player.facing);
+                self.on_spit_release(body, facing, step.player.facing, step.player.body.vx);
             }
             if self.roll != 0 {
                 return Ok(self.roll_step(body, facing, status, can_respawn, step));

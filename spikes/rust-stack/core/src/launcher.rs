@@ -322,9 +322,7 @@ impl Run {
         }
         let body = &mut e.body;
         if action == Hold::Released {
-            w.spat = 0;
-            w.falling = 0;
-            w.heading = if e.facing > 0 { 0 } else { 180_000 };
+            w.on_spit_release(body, &mut e.facing, 0, 0);
         }
         if w.falling != 0 {
             body.vy = (body.vy + GRAVITY).min(FALL_CAP);

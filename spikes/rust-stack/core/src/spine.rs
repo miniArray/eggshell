@@ -124,7 +124,7 @@ impl Actor {
         self.from_h = self.spine_h;
     }
     /// spine_walker.gd _reset
-    fn spine_reset(&mut self) {
+    pub(crate) fn spine_reset(&mut self) {
         self.mode = WALK;
         self.timer = 0;
         self.spine_w = SMALL[0];
@@ -185,7 +185,7 @@ impl Run {
             });
         }
         if action == Hold::Released {
-            w.spine_reset();
+            w.on_spit_release(&mut e.body, &mut e.facing, 0, 0);
         }
         if let Some(after) = w.spit_step(
             &mut e.body,

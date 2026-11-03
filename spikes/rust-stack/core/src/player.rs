@@ -261,7 +261,8 @@ impl Player {
             self.set_action(0, sound);
         }
     }
-    fn flutter(&mut self, input: u8, sound: &mut Sound) -> bool {
+    /// move_flutter.gd step; a frozen step starts and clamps but does not damp or count.
+    fn flutter(&mut self, input: u8, frozen: bool, sound: &mut Sound) -> bool {
         if self.water.swimming != 0 || [1, 2, 3].contains(&self.action) {
             return false;
         }
@@ -289,6 +290,10 @@ impl Player {
         if self.flutter_remaining == 0 {
             return false;
         }
+        self.body.vx = self.body.vx.clamp(-256 * 60, 256 * 60);
+        if frozen {
+            return false;
+        }
         self.body.vy += ((if self.boosted_flutter != 0 {
             -424
         } else {
@@ -297,7 +302,6 @@ impl Player {
             - self.body.vy)
             * 37649
             / 1_000_000;
-        self.body.vx = self.body.vx.clamp(-256 * 60, 256 * 60);
         self.flutter_remaining -= 1;
         if self.flutter_remaining == 0 {
             self.flutter_cooldown = 17;
@@ -339,7 +343,7 @@ impl Player {
                 if self.flutter_cooldown == 1 {
                     self.flutter_cooldown = 0;
                 }
-                self.flutter(input, sound);
+                self.flutter(input, false, sound);
             }
             if self.flutter_remaining != 0 {
                 self.bounce = 2;
@@ -364,24 +368,34 @@ impl Player {
         released: u8,
         frame: i64,
         rng: &mut crate::math::Rng,
+        frozen: bool,
         sound: &mut Sound,
     ) {
-        self.pound_delay = (self.pound_delay - 1).max(0);
-        self.flutter_cooldown = (self.flutter_cooldown - 1).max(0);
-        self.tick_action(input, rng, sound);
-        self.turn_ticks = (self.turn_ticks - 1).max(0);
-        if self.turn_ticks == 0 {
-            self.turn = 0;
+        // moves.gd advance: a catch freeze stops elapsed time, not the player's event
+        // rules. The same rules run in order, without ticking timers, carrying supports
+        // or integrating motion.
+        if !frozen {
+            self.pound_delay = (self.pound_delay - 1).max(0);
+            self.flutter_cooldown = (self.flutter_cooldown - 1).max(0);
+            self.tick_action(input, rng, sound);
+            self.turn_ticks = (self.turn_ticks - 1).max(0);
+            if self.turn_ticks == 0 {
+                self.turn = 0;
+            }
         }
         self.tick_pound(input, sound);
         if self.life.hurt != 0 {
             self.interrupt();
         }
         let bounds = self.bounds();
-        map.carry_player(&mut self.body, bounds, self.on_floor);
-        let can_move = self.body.prepare(map, bounds);
-        let mut support = self.body.track(map, bounds, false);
-        self.on_floor = i64::from(support != 0 && self.body.vy == 0);
+        let mut can_move = false;
+        let mut support = 0;
+        if !frozen {
+            map.carry_player(&mut self.body, bounds, self.on_floor);
+            can_move = self.body.prepare(map, bounds);
+            support = self.body.track(map, bounds, false);
+            self.on_floor = i64::from(support != 0 && self.body.vy == 0);
+        }
         let was_grounded = self.on_floor != 0;
         let carried = self.jump_carry != 0;
         self.jump_carry = 0;
@@ -397,7 +411,7 @@ impl Player {
         );
         let flow_x = self.body.x;
         let pounding = [1, 2].contains(&self.action);
-        let flow = self.flow(map, bounds, pressed, pounding);
+        let flow = self.flow(map, bounds, pressed, pounding, frozen);
         if self.body.x != flow_x {
             // The move starts from where the flow pushed the body.
             support = self.body.floor(map, bounds);
@@ -407,11 +421,11 @@ impl Player {
             self.jump(sound);
             self.body.vx = flow * 400 * 60;
         }
-        self.jump_buffer = if pressed & 4 != 0 {
-            6
-        } else {
-            (self.jump_buffer - 1).max(0)
-        };
+        if pressed & 4 != 0 {
+            self.jump_buffer = 6;
+        } else if !frozen {
+            self.jump_buffer = (self.jump_buffer - 1).max(0);
+        }
         if frame <= 1 {
             self.flutter_ready = 1;
         }
@@ -427,7 +441,7 @@ impl Player {
             self.flutter_ready = 1;
             self.boosted_flutter = 0;
         }
-        let (bob, water_jump) = self.prepare_water(map, input, pressed);
+        let (bob, water_jump) = self.prepare_water(map, input, pressed, frozen);
         if released & 4 != 0 && self.body.vy < 0 {
             self.body.vy /= 4;
         }
@@ -457,9 +471,9 @@ impl Player {
             self.facing = -1;
         }
         if self.life.hurt == 0 {
-            self.actions(map, input, pressed, false, rng, sound);
+            self.actions(map, input, pressed, frozen, rng, sound);
         }
-        self.update_posture(map, input, sound);
+        self.update_posture(map, input, frozen, sound);
         let mut bounds = self.bounds();
         let mut jumping = carried;
         if self.water.swimming == 0
@@ -473,12 +487,12 @@ impl Player {
             jumping = true;
             bounds = self.bounds();
         }
-        let lift = if self.bounce == 2 {
+        let lift = if !frozen && self.bounce == 2 {
             self.bounce = 1;
             false
         } else {
-            let lift = self.flutter(input, sound);
-            if self.bounce == 1 {
+            let lift = self.flutter(input, frozen, sound);
+            if !frozen && self.bounce == 1 {
                 self.cancel_flutter();
                 self.bounce = 0;
             }
@@ -495,6 +509,9 @@ impl Player {
             self.flutter_cooldown = 17;
             self.gravity_tick = 0;
             self.boosted_flutter = 0;
+        }
+        if frozen {
+            return;
         }
         let direction = if self.duck != 0 || [1, 2, 3].contains(&self.action) {
             0

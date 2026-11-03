@@ -12,7 +12,13 @@ impl Player {
         }
     }
     /// moves.gd _posture
-    pub(crate) fn update_posture(&mut self, map: &Probe, input: u8, sound: &mut Sound) {
+    pub(crate) fn update_posture(
+        &mut self,
+        map: &Probe,
+        input: u8,
+        frozen: bool,
+        sound: &mut Sound,
+    ) {
         let previous = (self.duck, self.look);
         let down = input & 32 != 0;
         let mut duck = self.on_floor != 0
@@ -45,10 +51,12 @@ impl Player {
         if self.look != 0 && self.action != 0 {
             self.set_action(0, sound);
         }
-        self.posture_tick = if previous == (self.duck, self.look) && (duck || self.look != 0) {
-            (self.posture_tick + 1).min(9)
+        if previous == (self.duck, self.look) && (duck || self.look != 0) {
+            if !frozen {
+                self.posture_tick = (self.posture_tick + 1).min(9);
+            }
         } else {
-            0
-        };
+            self.posture_tick = 0;
+        }
     }
 }

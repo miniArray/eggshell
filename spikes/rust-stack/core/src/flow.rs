@@ -100,7 +100,15 @@ impl Player {
     }
     /// water_flow.gd apply. Returns -1 or 1 when a jump press leaves a sloped flow that
     /// way, else 0.
-    pub(crate) fn flow(&mut self, map: &Probe, b: [i64; 4], pressed: u8, pounding: bool) -> i64 {
+    /// A frozen step reads the flow kinds and the jump press but does not push the body.
+    pub(crate) fn flow(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        pressed: u8,
+        pounding: bool,
+        frozen: bool,
+    ) -> i64 {
         let p = self.body;
         let box_ = [p.x + b[0], p.y + b[1], p.x + b[2], p.y + b[3]];
         let touching = kinds(map, box_);
@@ -108,13 +116,13 @@ impl Player {
         if touching | below == 0 {
             return 0;
         }
-        if touching & DOWN != 0 && !pounding && self.on_floor == 0 {
+        if !frozen && touching & DOWN != 0 && !pounding && self.on_floor == 0 {
             self.body.vy += 384;
         }
-        if touching & LEFT != 0 && !self.by_wall(map, b, -1) {
+        if !frozen && touching & LEFT != 0 && !self.by_wall(map, b, -1) {
             self.body.x -= PUSH;
         }
-        if touching & RIGHT != 0 && !self.by_wall(map, b, 1) {
+        if !frozen && touching & RIGHT != 0 && !self.by_wall(map, b, 1) {
             self.body.x += PUSH;
         }
         let mut jump = 0;
@@ -124,14 +132,14 @@ impl Player {
                 continue;
             }
             let way = if kind == LEFT_DOWN { -1 } else { 1 };
-            if self.body.vx * way < 0 {
+            if !frozen && self.body.vx * way < 0 {
                 // Moving against the slope loses half the speed.
                 self.body.x -= self.body.vx / 2;
             }
             if pressed & 4 != 0 {
                 jump = way;
             }
-            if !self.by_wall(map, b, way) {
+            if !frozen && !self.by_wall(map, b, way) {
                 self.body.x += way * SLOPE_PUSH;
             }
             if self.body.vy >= 0 {

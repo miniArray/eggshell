@@ -179,10 +179,7 @@ impl Run {
             }
         }
         if action == Hold::Released {
-            // Released from the mouth, it flees the way the player faces.
-            w.spat = 0;
-            w.mode = FLEE;
-            e.facing = if player_facing != 0 { player_facing } else { 1 };
+            w.on_spit_release(body, &mut e.facing, player_facing, 0);
         }
         if w.mode != HANG {
             w.flap = (w.flap + 1) % 20;

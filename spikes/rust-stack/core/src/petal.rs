@@ -368,18 +368,7 @@ impl Run {
             });
         }
         if action == Hold::Released {
-            // Mouth release is the same plain throw as the spiked hopper.
-            let upward = e.body.vx == 0;
-            let direction = if upward {
-                step.player.facing
-            } else {
-                e.body.vx.signum()
-            };
-            w.spat = 0;
-            w.mode = THROWN;
-            e.facing = direction;
-            e.body.vx = direction * if upward { 200 } else { 320 } * 60;
-            e.body.vy = if upward { -768 } else { -256 } * 60;
+            w.on_spit_release(&mut e.body, &mut e.facing, step.player.facing, 0);
         }
         w.age = (w.age + 1).min(RADIUS_TICKS);
         let mode = w.mode;

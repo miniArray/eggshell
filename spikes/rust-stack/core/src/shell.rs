@@ -242,14 +242,8 @@ impl Run {
         if fresh {
             w.flight_direction = e.facing;
         }
-        if action == Hold::Released && !bare(w.mode) {
-            if e.body.vx == 0 {
-                w.mode = UP_SPIT;
-            } else {
-                let direction = e.body.vx.signum();
-                w.spin(&mut e.body, &mut e.facing, direction);
-                w.spat = 0;
-            }
+        if action == Hold::Released {
+            w.on_spit_release(&mut e.body, &mut e.facing, 0, 0);
         }
         let mut step = ActorStep {
             map,

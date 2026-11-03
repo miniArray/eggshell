@@ -12,6 +12,47 @@ use crate::{
 };
 
 impl Run {
+    /// Runs a released body's on_spit_release hook with the player's facing and speed.
+    pub(crate) fn spit_release(&mut self, index: usize) {
+        let (player_facing, player_vx) = (self.player.facing, self.player.body.vx);
+        let e = &mut self.entities[index];
+        let Kind::Walker(w) = &mut e.kind else {
+            return;
+        };
+        if let Some(direction) =
+            w.on_spit_release(&mut e.body, &mut e.facing, player_facing, player_vx)
+        {
+            self.mace_roll(index, direction, -256 * 60);
+        }
+    }
+    /// dispatch_loops.gd consume_frozen_requests (Godot fa1f543, 4c2b73a, b9fb8d9): during
+    /// a catch freeze every held body consumes its requests at once, without AI, timers,
+    /// travel or contacts, so later frozen input cannot expire them; a spit release runs
+    /// its hook at input time.
+    pub(crate) fn consume_frozen_requests(&mut self, map: &crate::body::Probe) {
+        for index in 0..self.entities.len() {
+            let e = &mut self.entities[index];
+            let token = e.origin.token();
+            let Kind::Walker(w) = &mut e.kind else {
+                continue;
+            };
+            if w.held == 0 {
+                continue;
+            }
+            let released = w.consume_requests(
+                token,
+                &mut e.body,
+                &mut e.facing,
+                &mut e.status,
+                &mut e.can_respawn,
+                &self.player.food.requests,
+            );
+            if released {
+                self.spit_release(index);
+            }
+            self.refresh_block_solid(index, map);
+        }
+    }
     /// stilt_walker.gd unseat: the rider becomes a dynamic e1 and the stilt is removed.
     pub(crate) fn unseat_stilt(&mut self, index: usize) -> Result<(), Error> {
         let e = &mut self.entities[index];
@@ -231,8 +272,43 @@ impl Actor {
         can_respawn: &mut i64,
         step: &ActorStep,
     ) -> Hold {
+        let released = self.consume_requests(
+            token,
+            body,
+            facing,
+            status,
+            can_respawn,
+            &step.player.food.requests,
+        );
+        if *status == 3 {
+            return Hold::Gone;
+        }
+        if self.held != 0 {
+            let p = &step.player;
+            body.x = p.body.x + p.facing * 24 * S;
+            body.y = p.body.y - 24 * S;
+            body.vx = 0;
+            body.vy = 0;
+            return Hold::Held;
+        }
+        if released {
+            Hold::Released
+        } else {
+            Hold::Free
+        }
+    }
+    /// enemy_body.gd consume_requests: apply saved input consequences (consume, spit)
+    /// without initializing or moving the body. True when a spit released it.
+    pub(crate) fn consume_requests(
+        &mut self,
+        token: i64,
+        body: &mut Body,
+        facing: &mut i64,
+        status: &mut i64,
+        can_respawn: &mut i64,
+        requests: &crate::food::Requests,
+    ) -> bool {
         let mut released = false;
-        let requests = &step.player.food.requests;
         if let Since::Requests(list) = requests.since(self.request_cursor) {
             for r in list {
                 if r.item != token {
@@ -258,22 +334,7 @@ impl Actor {
             }
         }
         self.request_cursor = requests.serial();
-        if *status == 3 {
-            return Hold::Gone;
-        }
-        if self.held != 0 {
-            let p = &step.player;
-            body.x = p.body.x + p.facing * 24 * S;
-            body.y = p.body.y - 24 * S;
-            body.vx = 0;
-            body.vy = 0;
-            return Hold::Held;
-        }
-        if released {
-            Hold::Released
-        } else {
-            Hold::Free
-        }
+        released
     }
     /// actor.gd start_roll
     pub(crate) fn start_roll(
@@ -294,19 +355,111 @@ impl Actor {
         body.vx = if upward { 0 } else { direction * 432 * 60 };
         body.vy = vy;
     }
-    /// actor.gd on_spit_release: e1/e2 roll off; others keep flying as spat food.
+    /// The types' on_spit_release hooks (Godot b9fb8d9): the state a mouth release sets,
+    /// run in the body's own step or, during a catch freeze, at input time. Returns the
+    /// roll direction when a mace walker must roll (mace_walker.gd roll drops its ball,
+    /// which the run does).
     pub(crate) fn on_spit_release(
         &mut self,
         body: &mut Body,
         facing: &mut i64,
         player_facing: i64,
-    ) {
-        if ![ActorKind::Walker, ActorKind::Flyer].contains(&self.kind) {
-            return;
+        player_vx: i64,
+    ) -> Option<i64> {
+        match self.kind {
+            // actor.gd (e1, e2; lantern_walker.gd as e1): roll off.
+            ActorKind::Walker | ActorKind::Flyer => {
+                let (vy, upward) = (body.vy, body.vx == 0);
+                self.start_roll(body, facing, player_facing, vy, upward);
+                self.spat = 0;
+            }
+            // shell_walker.gd (bare_runner.gd shares it).
+            ActorKind::Shell | ActorKind::Runner if !crate::shell::bare(self.mode) => {
+                if body.vx == 0 {
+                    self.mode = crate::shell::UP_SPIT;
+                } else {
+                    let direction = body.vx.signum();
+                    self.spin(body, facing, direction);
+                    self.spat = 0;
+                }
+            }
+            // gust_flyer.gd: it flies on level in the direction it was spat.
+            ActorKind::Gust => {
+                self.spat = 0;
+                self.heading = if *facing > 0 { 0 } else { 180_000 };
+                body.vy = 0;
+            }
+            // hang_flyer.gd: it flees the way the player faces.
+            ActorKind::Hang => {
+                self.spat = 0;
+                self.mode = crate::hang::FLEE;
+                *facing = if player_facing != 0 { player_facing } else { 1 };
+            }
+            // spike_hopper.gd: a plain throw replaces the generic spit bounce.
+            ActorKind::Hopper => {
+                self.carrier = 0;
+                self.intangible = 0;
+                let upward = body.vx == 0;
+                let direction = if upward {
+                    player_facing
+                } else {
+                    body.vx.signum()
+                };
+                self.spat = 0;
+                self.thrown = 1;
+                *facing = direction;
+                body.vx = direction * if upward { 200 } else { 320 } * 60;
+                body.vy = if upward { -768 } else { -256 } * 60;
+            }
+            // stem_petal.gd: the same plain throw as the spiked hopper.
+            ActorKind::Petal => {
+                let upward = body.vx == 0;
+                let direction = if upward {
+                    player_facing
+                } else {
+                    body.vx.signum()
+                };
+                self.spat = 0;
+                self.mode = crate::petal::THROWN;
+                *facing = direction;
+                body.vx = direction * if upward { 200 } else { 320 } * 60;
+                body.vy = if upward { -768 } else { -256 } * 60;
+            }
+            // launcher_shot.gd
+            ActorKind::Shot => {
+                self.spat = 0;
+                self.falling = 0;
+                self.heading = if *facing > 0 { 0 } else { 180_000 };
+            }
+            // mace_walker.gd: spat upward it lofts in a high arc; otherwise it rolls.
+            ActorKind::Mace => {
+                self.spat = 0;
+                let direction = if player_facing != 0 { player_facing } else { 1 };
+                if body.vx == 0 {
+                    self.mode = crate::mace::LOFT;
+                    *facing = direction;
+                    body.vx = direction * (256 * 60 + player_vx.abs());
+                    body.vy = -768 * 60;
+                    self.grounded = 0;
+                } else {
+                    return Some(direction);
+                }
+            }
+            // spine_walker.gd
+            ActorKind::Spine => self.spine_reset(),
+            // bee_flyer.gd
+            ActorKind::Bee => {
+                self.spat = 0;
+                body.vy = 0;
+            }
+            // wing_drifter.gd
+            ActorKind::Wing => {
+                self.mode = crate::wing::ANGRY;
+                self.timer = 0;
+            }
+            _ => {}
         }
-        let (vy, upward) = (body.vy, body.vx == 0);
-        self.start_roll(body, facing, player_facing, vy, upward);
-        self.spat = 0;
+        None
     }
     fn hazards(
         &mut self,

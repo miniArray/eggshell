@@ -142,10 +142,7 @@ impl Run {
         }
         let body = &mut e.body;
         if action == Hold::Released {
-            // Spat out, it flies on level in the direction it was spat.
-            w.spat = 0;
-            w.heading = if e.facing > 0 { 0 } else { 180_000 };
-            body.vy = 0;
+            w.on_spit_release(body, &mut e.facing, 0, 0);
         }
         w.ramp = (w.ramp + 1).min(RAMP_TICKS);
         let speed = TOP_SPEED * 60 * w.ramp / RAMP_TICKS;

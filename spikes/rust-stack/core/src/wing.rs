@@ -204,8 +204,7 @@ impl Run {
             });
         }
         if action == Hold::Released {
-            w.mode = ANGRY;
-            w.timer = 0;
+            w.on_spit_release(&mut e.body, &mut e.facing, 0, 0);
         }
         if let Some(after) = w.spit_step(
             &mut e.body,

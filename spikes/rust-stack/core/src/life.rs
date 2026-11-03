@@ -674,7 +674,7 @@ impl Player {
         } else {
             0
         };
-        self.advance(map, steer, 0, 0, frame, rng, sound);
+        self.advance(map, steer, 0, 0, frame, rng, false, sound);
         if steer == 0 && self.on_floor == 0 && self.previous_input & 3 != 0 {
             self.body.vx = approach(self.body.vx, 0, 1296);
         }

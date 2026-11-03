@@ -221,8 +221,7 @@ impl Run {
             unreachable!()
         };
         if action == Hold::Released {
-            w.spat = 0;
-            e.body.vy = 0;
+            w.on_spit_release(&mut e.body, &mut e.facing, 0, 0);
         }
         e.body.vx = e.facing * w.speed * 60;
         e.body.x += e.body.vx;

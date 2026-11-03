@@ -180,18 +180,7 @@ impl Run {
             unreachable!()
         };
         if action == Hold::Released {
-            // Mouth release replaces the generic spit bounce with a plain throw.
-            let upward = e.body.vx == 0;
-            let direction = if upward {
-                player_facing
-            } else {
-                e.body.vx.signum()
-            };
-            w.spat = 0;
-            w.thrown = 1;
-            e.facing = direction;
-            e.body.vx = direction * if upward { 200 } else { 320 } * 60;
-            e.body.vy = if upward { -768 } else { -256 } * 60;
+            w.on_spit_release(&mut e.body, &mut e.facing, player_facing, 0);
         }
         if map.lava_overlaps(world_box(e.body, HOPPER_BOX)) {
             w.remove(&mut e.status, &mut e.can_respawn);

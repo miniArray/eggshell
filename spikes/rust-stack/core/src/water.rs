@@ -37,7 +37,14 @@ impl Player {
             self.body.y + b[3],
         ])
     }
-    pub fn prepare_water(&mut self, map: &Probe, input: u8, pressed: u8) -> (i64, bool) {
+    /// water.gd prepare; a frozen step keeps the water timers, gravity and bob still.
+    pub fn prepare_water(
+        &mut self,
+        map: &Probe,
+        input: u8,
+        pressed: u8,
+        frozen: bool,
+    ) -> (i64, bool) {
         let (x, y) = (self.body.x, self.body.y);
         let w = &mut self.water;
         if w.swimming == 0
@@ -62,13 +69,14 @@ impl Player {
                 self.body.vy = 0;
                 w.wait = 16;
             }
-            if w.wait != 0 {
+            if frozen {
+            } else if w.wait != 0 {
                 w.wait -= 1;
             } else {
                 self.body.vy -= 384;
             }
         } else {
-            if !map.water_at(x, y - 28 * S) {
+            if !frozen && !map.water_at(x, y - 28 * S) {
                 self.body.vy += 256;
             }
             if self.body.vy < 0 && w.jump == 0 {
@@ -82,7 +90,7 @@ impl Player {
             if dive != w.dive {
                 w.dive = dive;
                 w.transition = 9;
-            } else {
+            } else if !frozen {
                 w.transition = (w.transition - 1).max(0);
             }
             if dive != 0 && self.body.vx != 0 && w.transition <= 3 {
@@ -90,8 +98,12 @@ impl Player {
             }
         }
         let phase = w.phase;
-        w.phase = (phase + 1) % 60;
-        let delta = bob(phase + 1) - bob(phase);
+        let delta = if frozen {
+            0
+        } else {
+            w.phase = (phase + 1) % 60;
+            bob(phase + 1) - bob(phase)
+        };
         let jump = pressed & 4 != 0 && self.body.vy < 96 * 60 && !map.water_at(x, y - 50 * S);
         if jump {
             w.jump = 1;

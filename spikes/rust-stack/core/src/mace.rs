@@ -204,7 +204,7 @@ impl Run {
         }
     }
     /// mace_walker.gd roll
-    fn mace_roll(&mut self, index: usize, direction: i64, vy: i64) {
+    pub(crate) fn mace_roll(&mut self, index: usize, direction: i64, vy: i64) {
         self.mace_drop_ball(index);
         let e = &mut self.entities[index];
         let Kind::Walker(w) = &mut e.kind else {
@@ -277,26 +277,7 @@ impl Run {
             return Ok(());
         }
         if action == Hold::Released {
-            let e = &mut self.entities[index];
-            let Kind::Walker(w) = &mut e.kind else {
-                unreachable!()
-            };
-            w.spat = 0;
-            let direction = if self.player.facing != 0 {
-                self.player.facing
-            } else {
-                1
-            };
-            if e.body.vx == 0 {
-                // Spat upward: a high arc that knocks over what it meets.
-                w.mode = LOFT;
-                e.facing = direction;
-                e.body.vx = direction * (256 * 60 + self.player.body.vx.abs());
-                e.body.vy = -768 * 60;
-                w.grounded = 0;
-            } else {
-                self.mace_roll(index, direction, -256 * 60);
-            }
+            self.spit_release(index);
         }
         // enemy_body.gd hazards
         let e = &mut self.entities[index];

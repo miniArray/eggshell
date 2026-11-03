@@ -125,7 +125,7 @@ impl Run {
             solids.borrow_mut().begin(&run.entities);
             run.entities_step(&map, stats)?;
             run.player
-                .advance(&map, 0, 0, 0, 0, &mut run.rng, &mut run.sound);
+                .advance(&map, 0, 0, 0, 0, &mut run.rng, false, &mut run.sound);
             run.apply_post_updates(map.post_updates())?;
             // step.gd begin_level: the registry's request consumers, Life.after_step and
             // the compaction run in both level-start steps too.
@@ -419,6 +419,46 @@ impl Run {
             x: spawn.x,
             y: spawn.y - 28 * S,
         };
+        Ok(())
+    }
+    /// step.gd _catch_events (Godot d9513bf): a companion catch (REJOIN) blocks world and
+    /// body motion, not the player's input events. They run frozen, and any requests they
+    /// emit are consumed at once so the saved request history cannot overflow.
+    fn catch_events(&mut self, input: u8, map: &crate::body::Probe) -> Result<(), Error> {
+        let pressed = input & !(self.player.previous_input as u8);
+        let released = self.player.previous_input as u8 & !input;
+        self.player.previous_input = input as i64;
+        if self.player.captured_by != 0 {
+            return Ok(());
+        }
+        let locked = self.player.locks_input();
+        let action = if locked { 0 } else { input };
+        let (pressed, released) = if locked { (0, 0) } else { (pressed, released) };
+        let serial = self.player.food.requests.serial();
+        self.player.advance(
+            map,
+            action,
+            pressed,
+            released,
+            self.frame,
+            &mut self.rng,
+            true,
+            &mut self.sound,
+        );
+        if self.player.food.requests.serial() != serial {
+            // registry.gd consume_requests(frozen): held bodies, level consumers, then
+            // entity consumers.
+            self.consume_frozen_requests(map);
+            self.block_level_requests();
+            for action in self
+                .consumers
+                .run(&self.player.food.requests, self.player.food.eggs)?
+            {
+                self.apply_consumer(action)?;
+            }
+            self.consume_item_requests();
+        }
+        self.player.finish(map, action);
         Ok(())
     }
     fn entities_step(
@@ -982,6 +1022,9 @@ impl Run {
         // The frozen world still receives callbacks from its moving dead player body.
         self.apply_post_updates(map.post_updates())?;
         if self.player.blocks_step() {
+            if self.player.life_phase == 1 {
+                self.catch_events(input, &map)?;
+            }
             stats.terrain_queries += map.terrain_queries.get();
             return Ok(());
         }
@@ -1006,6 +1049,7 @@ impl Run {
                 released,
                 self.frame,
                 &mut self.rng,
+                false,
                 &mut self.sound,
             );
             self.apply_post_updates(map.post_updates())?;
@@ -2272,4 +2316,42 @@ fields! {
 "move_duck"=>duck,"move_look"=>look,"move_posture_tick"=>posture_tick,"move_impact"=>impact,"move_impact_x"=>impact_x,"move_impact_y"=>impact_y,
 "move_action"=>action,"move_action_tick"=>action_tick,"move_turn"=>turn,"move_turn_ticks"=>turn_ticks,"move_push"=>push,"move_pound_delay"=>pound_delay,"move_gravity_tick"=>gravity_tick,"move_bounce"=>bounce,"move_brake_vx"=>brake_vx,"move_snow"=>snow,"move_jump_carry"=>jump_carry,
 "life_phase"=>life_phase,"life_ticks"=>life_ticks,"recovery_x"=>recovery_x,"recovery_y"=>recovery_y,"goal_from_x"=>goal_from_x,"goal_from_y"=>goal_from_y,"goal_x"=>goal_x,"goal_y"=>goal_y
+}
+
+#[cfg(test)]
+mod catch_event_tests {
+    use super::*;
+
+    #[test]
+    fn step_catch_events_read_input_during_the_rejoin_freeze() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"rejoin", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{}}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let mut stats = crate::Stats::default();
+        let mut run = Run::create(&world, &mut stats).unwrap();
+        run.player.life_phase = 1;
+        run.player.life_ticks = 51;
+        run.player.body.vy = -400 * 60;
+        run.player.on_floor = 0;
+        let (x, y) = (run.player.body.x, run.player.body.y);
+        // A jump press is buffered without elapsed time; the body does not move.
+        run.advance(4, &world, &mut stats).unwrap();
+        assert_eq!(run.player.previous_input, 4);
+        assert_eq!(run.player.jump_buffer, 6);
+        assert_eq!((run.player.body.x, run.player.body.y), (x, y));
+        // Releasing jump while rising still cuts the rise, and the buffer does not count down.
+        run.advance(0, &world, &mut stats).unwrap();
+        assert_eq!(run.player.previous_input, 0);
+        assert_eq!(run.player.body.vy, -100 * 60);
+        assert_eq!(run.player.jump_buffer, 6);
+        assert_eq!(run.player.life_phase, 1);
+    }
 }
