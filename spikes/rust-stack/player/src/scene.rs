@@ -2622,6 +2622,18 @@ impl Scene {
                 &mut hud,
             )?;
         }
+        let fade = self
+            .death_pose
+            .lock()
+            .map_err(|_| "death pose lock poisoned")?
+            .fade(p.tick, p.player.lifetime);
+        if fade > 0.0 {
+            hud.push(fullscreen_quad(
+                self.solid,
+                container,
+                [0.0, 0.0, 0.0, fade],
+            ));
+        }
         let player = pixel(p.player.motion.current);
         let light_origin = [
             plan.offset[0] + player[0] * plan.scale,

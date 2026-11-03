@@ -82,15 +82,9 @@ fn main() {
         }
     }
     assert_eq!(phases, BTreeSet::from([2, 3]));
-    assert_eq!(
-        rendered.len(),
-        manifest["player"]["Spin"]["frames"]
-            .as_array()
-            .unwrap()
-            .len()
-    );
+    assert_eq!(rendered.len(), 2);
     println!(
-        "DEATH_PROBE rendered_spin_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
+        "DEATH_PROBE rendered_hurt_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
         rendered.len()
     );
 }

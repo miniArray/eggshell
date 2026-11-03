@@ -1,6 +1,4 @@
-//! Spike presentation deviation: core and player_pose.gd do not select death art.
-//! Lava contact at the first Dying step selects looping Spin; other deaths use Defeat.
-//! This invented clock never changes core state, camera, collision or visibility.
+//! Drawing-only death poses and fade, observed on successful saved steps.
 use crate::binding::{Frame, Visual};
 use eggshell_spike_core::{Lifetime, Map, PoseSelection, Presentation, SCALE, TerrainHazard};
 
@@ -31,6 +29,21 @@ impl DeathPose {
         }
         self.last_tick = Some(tick);
     }
+    fn episode(&self, tick: i64) -> Option<(i64, bool)> {
+        self.start.filter(|(start, _)| *start <= tick).or_else(|| {
+            self.finished
+                .filter(|(start, end, _)| (*start..*end).contains(&tick))
+                .map(|(start, _, lava)| (start, lava))
+        })
+    }
+    pub fn fade(&self, tick: i64, lifetime: Lifetime) -> f32 {
+        if lifetime != Lifetime::Dying {
+            return 0.0;
+        }
+        self.episode(tick).map_or(0.0, |(start, _)| {
+            ((tick - start - 240) as f32 / 60.0).clamp(0.0, 1.0)
+        })
+    }
     pub fn frame<'a>(
         &self,
         tick: i64,
@@ -40,24 +53,28 @@ impl DeathPose {
         literal: Option<i64>,
     ) -> Result<&'a Frame, String> {
         if lifetime == Lifetime::Dying {
-            let start = self.start.filter(|(start, _)| *start <= tick).or_else(|| {
-                self.finished
-                    .filter(|(start, end, _)| (*start..*end).contains(&tick))
-                    .map(|(start, _, lava)| (start, lava))
-            });
+            let start = self.episode(tick);
+            if let Some((start, true)) = start {
+                let age = tick.saturating_sub(start);
+                // The launch has a short hold, a rising frame, then a falling frame.
+                // Position stays core-owned; this adapter only selects the picture.
+                let frame = i64::from((15..48).contains(&age));
+                let name = if pose.name.ends_with('1') {
+                    "Hurt1"
+                } else {
+                    "Hurt0"
+                };
+                if art.animations.iter().any(|(bound, _)| bound == name) {
+                    return art.sample_required(0, name, 0, Some(frame));
+                }
+            }
             // For wet actions the suffix denotes water, not a full mouth. The DTO
             // has no separate full-mouth flag; use Defeat0 in those ambiguous poses.
             let full = pose.name.ends_with('1')
                 && !["Tongue", "Spit", "Spew"]
                     .iter()
                     .any(|prefix| pose.name.starts_with(prefix));
-            let name = if start.is_some_and(|(_, lava)| lava) {
-                "Spin"
-            } else if full {
-                "Defeat1"
-            } else {
-                "Defeat0"
-            };
+            let name = if full { "Defeat1" } else { "Defeat0" };
             if let Some((start, _)) = start
                 && art.animations.iter().any(|(bound, _)| bound == name)
             {
@@ -119,7 +136,7 @@ mod tests {
             .unwrap()
     }
     #[test]
-    fn lava_uses_compiled_cells_and_spin_is_locked_for_the_episode() {
+    fn lava_uses_hurt_frames_not_spin_and_fades_at_the_end() {
         let world = eggshell_spike_core::World::compile(
             include_str!("../tests/fixtures/lighting.level.json"),
             include_str!("../../../../src/level/collision_table.json"),
@@ -139,10 +156,17 @@ mod tests {
             [x, y - 50 * SCALE, x + 10 * SCALE, y - 1],
             map
         ));
-        let art = Catalog::default().visual(&serde_json::json!({"animations":{
-            "Spin":{"fps":24,"loop":true,"frames":[{"file":"0.png"},{"file":"1.png"},{"file":"2.png"},{"file":"3.png"},{"file":"4.png"},{"file":"5.png"}]},
-            "Defeat0":{"fps":24,"loop":false,"frames":[{"file":"defeat.png"}]}
-        }}),0,1,false).unwrap();
+        let art = Catalog::default()
+            .visual(
+                &serde_json::json!({"animations":{
+                    "Hurt0":{"fps":0,"frames":[{"file":"hurt0.png"},{"file":"hurt1.png"}]},
+                    "Defeat0":{"fps":24,"loop":false,"frames":[{"file":"defeat.png"}]}
+                }}),
+                0,
+                1,
+                false,
+            )
+            .unwrap();
         let pose = PoseSelection {
             name: "Fall0".into(),
             tick: 100,
@@ -150,27 +174,31 @@ mod tests {
         };
         let mut clock = DeathPose::default();
         clock.observe_step(100, Lifetime::Dying, true);
-        for age in 0..60 {
+        for age in 0..=300 {
             clock.observe_step(100 + age, Lifetime::Dying, false);
+            assert_eq!(
+                clock.fade(100 + age, Lifetime::Dying),
+                ((age - 240) as f32 / 60.0).clamp(0.0, 1.0)
+            );
             assert_eq!(
                 clock
                     .frame(100 + age, Lifetime::Dying, &pose, &art, None)
                     .unwrap(),
-                art.sample(age, "Spin", 0, None)
+                art.sample(0, "Hurt0", 0, Some(i64::from((15..48).contains(&age))))
             );
         }
-        clock.observe_step(160, Lifetime::Respawning, false);
+        clock.observe_step(401, Lifetime::Respawning, false);
         assert_eq!(
             clock
-                .frame(159, Lifetime::Dying, &pose, &art, None)
+                .frame(399, Lifetime::Dying, &pose, &art, None)
                 .unwrap(),
-            art.sample(59, "Spin", 0, None)
+            art.sample(0, "Hurt0", 0, Some(0))
         );
-        clock.observe_step(170, Lifetime::Dying, false);
-        clock.observe_step(171, Lifetime::Dying, true);
+        clock.observe_step(410, Lifetime::Dying, false);
+        clock.observe_step(411, Lifetime::Dying, true);
         assert_eq!(
             clock
-                .frame(171, Lifetime::Dying, &pose, &art, None)
+                .frame(411, Lifetime::Dying, &pose, &art, None)
                 .unwrap(),
             art.sample(1, "Defeat0", 0, None)
         );
