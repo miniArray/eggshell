@@ -1,7 +1,7 @@
 # Eggshell
 
 <p align="center">
-  <img src="art/logo/eggshell-logo.jpg" alt="Eggshell: the title in chunky crayon letters over pastel hills, with a chick in a cracked eggshell" width="800">
+  <img src="art/logo/eggshell-logo.jpg" alt="Eggshell: the title in chunky orange pixel letters over an island with a lighthouse and pastel hills" width="640">
 </p>
 
 Eggshell is a Godot platform-level player for Linux. It uses a fixed 60 Hz
