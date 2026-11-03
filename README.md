@@ -3,15 +3,15 @@
 </p>
 
 <p align="center">
-  <b>Play YFS levels natively on a Linux handheld.</b>
+  <b>Play community-made levels natively on a Linux handheld.</b>
 </p>
 
-Eggshell is backwards compatible with YFS (Yoshi's Fabrication Station). It reads
-the JSON level codes that the YFS editor exports and that the community shares.
+Eggshell is backwards compatible with community-made JSON level codes. It reads
+the level codes that the level editor exports and that the community shares.
 You do not convert anything. Put the level files in the level folder and pick
 one from the level list.
 
-If you have played YFS, you already know how Eggshell plays.
+If you have played these levels in the editor, you already know how Eggshell plays.
 
 ## Compatibility
 
@@ -19,7 +19,7 @@ Measured on 2026-11-03:
 
 | Result | Check |
 | ---: | --- |
-| 858&nbsp;of&nbsp;858 | Community YFS levels in the test set that load and match the reference build on every tick of a 15-second route |
+| 858&nbsp;of&nbsp;858 | Community-made levels in the test set that load and match the reference build on every tick of a 15-second route |
 | 849&nbsp;of&nbsp;854 | Measured levels that hold 60 frames per second on the Anbernic RG35XX Pro |
 
 The game runs a fixed 60 Hz simulation, so a level plays the same on every
@@ -46,8 +46,8 @@ does not start, and the error names the object code.
 
 ## Art, music and screenshots
 
-This repository has no art, music, fonts or levels from YFS or from any other
-game. That is also why this page has no screenshots.
+This repository has no art, music, fonts or levels from the level editor or from any
+other game. That is also why this page has no screenshots.
 
 Eggshell draws with a graphics pack. The repository has one original pack,
 Pantry: a chick riding in half an eggshell through a kitchen, at insect scale.
@@ -55,7 +55,7 @@ Bread is the ground, and an egg carton is the goal. Pantry draws only part of
 the game so far.
 The pack format is in [docs/graphics.md](docs/graphics.md).
 
-Levels come from you: the YFS level codes that you made, or that their authors
+Levels come from you: the level codes that you made, or that their authors
 shared.
 
 ## Controls
@@ -80,7 +80,7 @@ the menu offers Next level, Restart level, Levels and Quit.
 
 - Levels whose music is a web link play no music (275 of 858).
 - Five levels drop frames on the RG35XX Pro. The slowest one holds 336 of 600 frames.
-- No level editor. Make levels in YFS, then play them here.
+- No level editor. Make levels in the level editor that exports them, then play them here.
 
 ## For developers
 
