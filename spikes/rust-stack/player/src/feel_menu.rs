@@ -323,10 +323,10 @@ mod tests {
             focus: WORRIED_YOSHI_ROW,
         };
         assert_eq!(model.input(input::RIGHT, &mut s), Action::None);
-        assert!(!s.worried_yoshi);
-        assert_eq!(serde_json::to_value(s).unwrap()["worried_yoshi"], false);
-        model.input(input::JUMP, &mut s);
         assert!(s.worried_yoshi);
+        assert_eq!(serde_json::to_value(s).unwrap()["worried_yoshi"], true);
+        model.input(input::JUMP, &mut s);
+        assert!(!s.worried_yoshi);
     }
     #[test]
     fn lava_row_toggles_original_and_back_without_preview() {

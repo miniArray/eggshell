@@ -229,7 +229,7 @@ impl Default for FeelSettings {
             elastic_tongue: true,
             throw_mode: ThrowMode::Patient,
             lava_death: LavaDeath::Spin,
-            worried_yoshi: true,
+            worried_yoshi: false,
             standing_eggs: StandingEggs::Spaced,
         }
     }
@@ -357,7 +357,7 @@ mod tests {
         assert!(s.elastic_tongue);
         assert_eq!(s.throw_mode, ThrowMode::Patient);
         assert_eq!(s.lava_death, LavaDeath::Spin);
-        assert!(s.worried_yoshi);
+        assert!(!s.worried_yoshi);
         assert_eq!(s.standing_eggs, StandingEggs::Spaced);
         assert_eq!(serde_json::to_value(s).unwrap()["standing_eggs"], "spaced");
         assert_eq!(serde_json::to_value(s).unwrap()["lava_death"], "spin");

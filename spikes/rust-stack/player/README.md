@@ -787,7 +787,7 @@ the missing core launch/fall physics.
 
 ### Worried Yoshi (spike deviation)
 
-Feel **Worried Yoshi: on/off** stores `worried_yoshi` (default `true`). While the
+Feel **Worried Yoshi: on/off** stores `worried_yoshi` (default `false`: the user judged it unshippable without custom sprite art, and no image model is available). While the
 rider is lost, the saved-step observer selects an eight-step Hurt flinch,
 then alternates LookAround/IdleTurn every 18 steps while idle. Idle art advances
 every two steps and trembles one level pixel every three steps. Walk/Sprint
