@@ -193,7 +193,7 @@ pub struct PlayerPicture {
     /// The extended tongue while it is out or blocked (moves.gd TONGUE_OUT/BLOCKED).
     pub tongue: Option<TonguePicture>,
     /// Carried egg colours, first slot first (0 green, 1 yellow, 2 red, 3 purple). The
-    /// original draws them trailing Yoshi; the Godot port drew none.
+    /// original draws them trailing the player; the Godot port drew none.
     pub eggs: Vec<i64>,
     /// Running count of eggs pushed out of a full queue (Run::egg_pops, drawing only).
     /// When it rises, the original drops the front trail egg off screen.
@@ -202,7 +202,8 @@ pub struct PlayerPicture {
     pub aim_degrees: Option<f64>,
 }
 /// Where the tongue leaves the mouth, relative to the player body position, and how far
-/// it reaches. The Godot port never drew it; the pack has YoshiTongueL/R/U nine-patches.
+/// it reaches. The Godot port never drew it; the pack has left, right and up tongue
+/// nine-patches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TonguePicture {
     pub up: bool,

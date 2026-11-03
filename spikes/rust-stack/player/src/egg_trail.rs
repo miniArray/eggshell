@@ -1,11 +1,11 @@
 //! Drawing-only carried eggs. Core inventory, loose-egg physics and throws stay authoritative.
 //!
-//! Follow rule (original Egg Following group): a history of at most 60 Yoshi positions;
+//! Follow rule (original Egg Following group): a history of at most 60 player positions;
 //! one-based egg order k tweens over 0.1 s (a sixth per step) toward history entry
 //! `len - 1 - 10*k`, 16 px up. The original pushes every tick, so eggs close up on a
-//! standing Yoshi (Feel `close_up`). The default SNES `spaced` rule differs:
-//! a position is recorded only when Yoshi moved, and after six still steps the eggs
-//! drop to his feet level and keep their spacing. Overflow: when a full queue pushes
+//! standing player (Feel `close_up`). The default SNES `spaced` rule differs:
+//! a position is recorded only when the player moved, and after six still steps the eggs
+//! drop to its feet level and keep their spacing. Overflow: when a full queue pushes
 //! an egg out (core `PlayerPicture::egg_pops`), the front egg falls off screen with
 //! the egg platform's gravity (1600 px/s², cap 576 px/s).
 use crate::feel::StandingEggs;
@@ -60,7 +60,7 @@ pub struct EggTrail {
     standing: StandingEggs,
     last: Option<(i64, usize)>,
     path: VecDeque<[f64; 2]>,
-    /// Steps since Yoshi last moved.
+    /// Steps since the player last moved.
     still: i64,
     eggs: Vec<Egg>,
     falling: Vec<FallingEgg>,
@@ -82,7 +82,7 @@ impl EggTrail {
     const KEEP: usize = 60;
     const SPACING: usize = 10;
     const LIFT: f64 = 16.0;
-    /// Steps without movement before the eggs drop to Yoshi's feet level.
+    /// Steps without movement before the eggs drop to the player's feet level.
     const STILL_TICKS: i64 = 6;
     /// Egg platform gravity and fall cap in px per step (1600 px/s², 576 px/s at 60 Hz).
     const GRAVITY: f64 = 1600.0 / 3600.0;
@@ -258,7 +258,7 @@ impl EggTrail {
         positions
     }
     /// Target of a following egg: history entry `len - 1 - 10*delay` (the oldest entry
-    /// while the history is short), 16 px up; at Yoshi's feet level once he stands.
+    /// while the history is short), 16 px up; at the player's feet level once it stands.
     fn goal(&self, delay: usize, laid: Option<(i64, i64)>, tick: i64, now: [f64; 2]) -> [f64; 2] {
         let at = self
             .path
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(close.path.len(), 60);
     }
     #[test]
-    fn standing_eggs_stay_spaced_and_drop_to_yoshi_level() {
+    fn standing_eggs_stay_spaced_and_drop_to_player_level() {
         let mut t = EggTrail::default();
         // Walk right 2 px a step on y 100, jump the last 20 steps (y 80), then land.
         for tick in 0..60 {
@@ -474,7 +474,7 @@ mod tests {
             s.player = [118.0, 100.0];
             eggs = t.advance(&s);
         }
-        // Spaced by 10 recorded positions (20 px) behind Yoshi (the landing adds one
+        // Spaced by 10 recorded positions (20 px) behind the player (the landing adds one
         // record at x 118), all at his feet level - 16.
         for (k, egg) in eggs.iter().enumerate() {
             let x = 120.0 - 20.0 * (k + 1) as f64;
@@ -492,7 +492,7 @@ mod tests {
         s.colours = vec![1, 0, 0, 0, 0, 2];
         let before = t.advance(&s);
         // Made at six: the front (yellow) egg falls, the rest move up one place and
-        // the new egg appears at Yoshi.
+        // the new egg appears at the player.
         s.tick = 1;
         s.popped = 1;
         s.colours = vec![0, 0, 0, 0, 2, 0];

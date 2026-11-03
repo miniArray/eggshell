@@ -1,4 +1,4 @@
-//! Private presentation assets only. Nothing here constructs or changes gameplay.
+//! Private presentation assets only. Nothing here creates or changes gameplay.
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{

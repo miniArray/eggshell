@@ -111,7 +111,7 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
 
 /// Level list order: by shown title (natural, case-insensitive), then by file name.
 /// Eggshell order, not level_list.gd's file order: titles put fan series in sequence
-/// ("1-1 …", "1-2 …"), while corpus file names are Level Share Square IDs.
+/// ("1-1 …", "1-2 …"), while corpus file names are numeric level IDs.
 pub fn sort_by_title(levels: &mut [Entry]) {
     levels
         .sort_by(|a, b| natural_cmp(&a.name, &b.name).then_with(|| natural_cmp(&a.file, &b.file)));

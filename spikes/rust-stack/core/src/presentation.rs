@@ -254,7 +254,7 @@ fn actor_visual(
             }
         }
         // shell_walker.gd view_state. The pack's Shell animation is four frames at 0 fps
-        // (Godot drew one); the original (YFS Enemies sheet, KoopaTroopa) plays it at
+        // (Godot drew one); the original shelled walker plays it at
         // 12 fps while the shell spins, so a spinning shell steps through its frames.
         ActorKind::Shell | ActorKind::Runner => {
             if let Some(spin) = w.shell_spin_frame(frame) {
@@ -458,7 +458,7 @@ fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryP
         ),
     ]
 }
-/// The plant head as the original draws it (Enemies sheet, PiranhaPlantHead): the 64x54 head
+/// The plant head as the original draws it (the pack's plant head art): the 64x54 head
 /// art pivots at its origin (2,20) on the stem top, turned toward its aim (head_dx/dy), scaled
 /// by head_size, and flipped vertically when facing right so it never turns upside down.
 /// The saved head_box hull (Godot's view, used by the oracle) stays in visual.head_box.

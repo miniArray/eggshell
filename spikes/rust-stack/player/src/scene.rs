@@ -104,7 +104,7 @@ impl TileAnimation {
         self.frames[index]
     }
 }
-/// The original's animated tilesets (YFS Global Events "Animated Tilesets"): every
+/// The original's animated tilesets: every
 /// period the tilemap loads the next "<prefix><n>.png" image. Tilemap, file prefix,
 /// frame count, seconds per frame, ping-pong (regular water steps 0..3..0 every 0.2 s).
 const TILE_ANIMATIONS: [(&str, &str, usize, f64, bool); 12] = [
@@ -152,7 +152,7 @@ pub struct Scene {
     decor_caps: HashMap<(String, i64), String>,
     /// The original's aim cursor (hud EggTarget), when the pack has it.
     egg_target: Option<Visual>,
-    /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
+    /// Drawing-only trail of player positions for carried eggs (never saved, never sim).
     // Keep both drawing histories warm so a paused Feel toggle applies immediately.
     trail: std::sync::Mutex<[crate::egg_trail::EggTrail; 2]>,
     /// Animated tileset frames from outside the pack (scene ids after the generated
@@ -352,8 +352,8 @@ fn auxiliary_transform(
     }
     t.ratio(aux.visual.scale)
 }
-/// Colour pairs that turn shy-guy variant 0 art into variant `variant`, read from the pack's
-/// pre-coloured e1 Walk and Idle frames, most-used first, at most eight.
+/// Colour pairs that turn masked walker (e1) variant 0 art into variant `variant`, read
+/// from the pack's pre-coloured e1 Walk and Idle frames, most-used first, at most eight.
 fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String> {
     let animations = pack
         .manifest
@@ -415,7 +415,7 @@ fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String
         .map(|(from, (to, _, _))| PaletteSwap { from, to })
         .collect())
 }
-/// The original game's walk and run animation rate (YFS Yoshi sheet): while Yoshi moves
+/// The original game's walk and run animation rate: while the player moves
 /// on the ground in Walk or Sprint (Sprint from 320 px/s), the animation speed is
 /// |vx| / 8 frames per second. Godot used the pack's fixed 8 fps, so a run at speed
 /// cycled its two Sprint frames slowly. Drawing only.
@@ -1959,7 +1959,7 @@ impl Scene {
                     (entity.code.as_str(), visual.slices, state.size_pixels[1])
                 {
                     // Nine-patches grown to the entity's height from its bottom centre.
-                    // e35: StiltGuyTop, a fixed 48-pixel head over a tiled pole strip.
+                    // e35: the stilt top, a fixed 48-pixel head over a tiled pole strip.
                     // o23: Post<colour> / SpikedPost<colour>, a cap over a tiled shaft.
                     // The Godot port stretched e35 and drew o23 with the pack's fully
                     // transparent PostCollision box, so its posts were invisible walls.
@@ -2206,7 +2206,7 @@ impl Scene {
         if p.player.visible
             && let (Some(tongue), Some(art)) = (p.player.tongue, &self.tongue)
         {
-            // Drawn under Yoshi, from the mouth: R/L grow sideways, U grows upward.
+            // Drawn under the player, from the mouth: R/L grow sideways, U grows upward.
             let visual = &art[if tongue.up {
                 2
             } else if p.player.facing < 0 {
@@ -2392,7 +2392,7 @@ impl Scene {
             } else {
                 &p.player.visual.palette
             };
-            // Carried eggs trail behind Yoshi (drawn first, so Yoshi covers them).
+            // Carried eggs trail behind the player (drawn first, so the player covers them).
             let body = pixel(p.player.motion.current);
             let trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?
                 [settings.standing_eggs.index()]
@@ -2468,7 +2468,7 @@ impl Scene {
                 }
             }
             // The aim cursor: 144 px from the egg's start point (x, y-32) along the throw
-            // direction (YFS EggTargetObj: origin 160 px below its 32 px target).
+            // direction (the original cursor: origin 160 px below its 32 px target).
             if let (Some(angle), Some(target)) = (p.player.aim_degrees, &self.egg_target) {
                 let tf = target.sample(p.tick, "", 0, None);
                 let (s, c) = angle.to_radians().sin_cos();

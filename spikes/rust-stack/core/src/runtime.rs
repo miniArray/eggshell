@@ -1,4 +1,4 @@
-//! Runtime suffix reconstruction and stable token/family compaction.
+//! Runtime suffix rebuild and stable token/family compaction.
 use crate::{
     actors::{Actor, ActorKind},
     body::Body,

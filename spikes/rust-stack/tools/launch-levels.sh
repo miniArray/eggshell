@@ -91,7 +91,7 @@ if [[ "${2:-}" == shots ]]; then
         printf 'LEVELS_SHOTS_FAILED %s %s\n' "$file" "$label"
     done < "$ROOT/private-input/level-shots.txt"
   fi
-  # Spit check on the public stride fixture: walk right 110 steps, lick (catch a Shy Guy),
+  # Spit check on the public stride fixture: walk right 110 steps, lick (catch a masked walker),
   # wait 20 steps, spit, then 80 idle steps; a picture every 3 steps.
   spit_route="$ROOT/data/spit-route.json"
   {
@@ -110,8 +110,8 @@ if [[ "${2:-}" == shots ]]; then
     --ticks 170 --seconds 30 --frame-digest-every 3 --frame-dump-dir "$shots/stride-spit" --no-pipeline ||
     printf 'LEVELS_SHOTS_FAILED stride spit\n'
   # The hands-on check level (PLAYER_EXTRA_LEVELS 0-check.json), one host-checked route:
-  # walk and lick the Shy Guys (USE), lay each egg (DOWN), stand 2 s with 4 eggs (calls
-  # 540-660), hop past the shell Koopa (its runner), stop at x ~1960 facing the Snifit
+  # walk and lick the masked walkers (USE), lay each egg (DOWN), stand 2 s with 4 eggs (calls
+  # 540-660), hop past the shelled walker (its runner), stop at x ~1960 facing the Snifit
   # and stand while it shoots (pellets visible from call ~900).
   if [[ -f "$LEVELS/0-check.json" ]]; then
     route="$ROOT/data/check-route.json"

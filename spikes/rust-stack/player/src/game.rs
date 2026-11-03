@@ -112,7 +112,7 @@ impl AutosavePolicy {
         }
     }
 }
-/// Shared by the real player and AKA host smoke. Disabled mode never constructs
+/// Shared by the real player and AKA host smoke. Disabled mode never creates
 /// the writer, calls the snapshot codec, or writes a save at any lifecycle hook.
 pub(crate) struct SavePipeline {
     writer: Option<Writer>,

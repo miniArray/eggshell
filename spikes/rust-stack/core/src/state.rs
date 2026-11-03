@@ -42,8 +42,8 @@ pub(crate) struct Run {
     /// eggs, stems, hounds), for ledge_contact (derived; never saved).
     pub presser_rows: (usize, Vec<usize>),
     /// Eggs pushed out of a full six-egg queue so far (made or picked up at six). Drawing
-    /// only: the original drops the front egg of the trail off screen (YFS Yoshi 487-490,
-    /// Objects 185-188). No game state; never saved, and a restore starts it again at 0.
+    /// only: the original drops the front egg of the trail off screen. No game
+    /// state; never saved, and a restore starts it again at 0.
     pub egg_pops: u64,
     #[cfg(test)]
     pub solid_trace: crate::solids::SolidTrace,

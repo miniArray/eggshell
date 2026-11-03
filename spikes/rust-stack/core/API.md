@@ -102,7 +102,7 @@ scenery has its actual no-step/no-contact rules. Other actions, requests, captur
 and the unchanged 204-placement target remain unsupported.
 An unsupported step returns an error without changing state or accepted-tick count.
 
-Snapshots reconstruct the literal complete v10 payload from this typed state.
+Snapshots rebuild the literal complete v10 payload from this typed state.
 Unused declarations retain their original defaults at the codec boundary;
 restore rejects non-default fields whose semantics are not implemented. This is
 narrow fixture interoperability, not validation/admission of every original state.
@@ -141,7 +141,7 @@ suffix. Runtime ids are canonical `+serial`; tokens are `1_000_000 + serial`.
 Creation consumes original RNG and appends in table order. Contact dispatch
 visits appended rows in the same phase, then compacts defeated runtime rows only
 after contacts and lifetime work. Stable token history preserves interpolation
-when rows are born or compacted. Restore reconstructs typed rows and checks the
+when rows are born or compacted. Restore rebuilds typed rows and checks the
 whole v10 payload; it does not retain opaque fields.
 
 The authored `stilts_target` course uses target F4/E1=82 and 114. Its normal
@@ -163,7 +163,7 @@ selected target.
 The shared table retains typed o6 respawn coordinates and health bonus. Contact
 in phase2 latches checkpoint coordinates, counts, level time and collection
 flags. Phase6 freezes normal gameplay while it awards health and waits. Death
-reconstructs the placed prefix from checkpoint flags, removes runtime rows,
+rebuilds the placed prefix from checkpoint flags, removes runtime rows,
 keeps the runtime serial, and restores checkpoint position/counts/health/time.
 It keeps total time and ordinary coins, as the original does. o6 visibility is
 sampled from the original placed-node collected rule. The existing numeric

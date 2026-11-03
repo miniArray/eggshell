@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # aka only, in the player dev shell. Usage: try-route.sh LEVEL ROUTE.json
-# Prints HELD_TRACE_PLAYER (Yoshi position, carried eggs, health, visible Snifit shots)
+# Prints HELD_TRACE_PLAYER (player position, carried eggs, health, visible Snifit shots)
 # for every call of a replayed route on LEVEL.
 set -euo pipefail
 C="$HOME/eggshell-remote/artifacts/full-rust-ab/core"

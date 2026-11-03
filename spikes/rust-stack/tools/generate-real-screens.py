@@ -1,7 +1,7 @@
 #!/usr/bin/env nix-shell
 #! nix-shell -i python3 -p python3
 # ruff: noqa: EXE005
-"""AKA-only, private real-position reconstruction; never writes corpus or Git."""
+"""AKA-only, private real-position rebuild; never writes corpus or Git."""
 
 import copy
 import hashlib

@@ -145,9 +145,9 @@ Actual376b76c GPU matrix passed all4new A/B full-frame pairs at0pixels/0channels
 all4legacy controls stayed unchanged. This proves the combined language/highp-output
 and RGB10 path for this primitive, not output precision independently.
 
-Game mode now selects an explicit separate Gles constructor: ESSL300/highp renderer,
+Game mode now selects an explicit separate Gles builder: ESSL300/highp renderer,
 persistent opaque RGB10_A2 target, persistent full-screen shader-copy resources and
-RGBA8 window swap. Legacy probe construction remains ESSL100/default-target.
+RGBA8 window swap. Legacy probe creation remains ESSL100/default-target.
 Only startup/real resize allocates the game target. Screenshot requests allocate
 and release a temporary RGBA8 copy/readback target outside clean CPU timers.
 The normal presentation copy runs every presented frame and is INSIDE the
@@ -167,8 +167,8 @@ CPU matrix projection alone did not fix this device/control.
 
 Next single-axis candidate retains that matrix and changes GAME rect submission
 order ONLY. Quad corners are TL,TR,BR,BL; Godot vertex_base TL,BL,BR,TR,TL,BR maps
-to indices[0,3,2,1,0,2]. The old[0,1,2,0,2,3] remains explicit for legacy probe
-construction. Same diagonal, corners, UVs, textures, samplers, fragments and nativeY
+to indices[0,3,2,1,0,2]. The old[0,1,2,0,2,3] remains explicit for legacy
+probes. Same diagonal, corners, UVs, textures, samplers, fragments and nativeY
 reflection. Copy-effect quad/order remains unchanged. No UV bias/exclusion.
 Source-backed, not yet a verified cause/fix. All5full state/picture cases remain
 mandatory. This is not a performance result, actor8fa merge or target204 admission. JSON records actual GL framebuffer
@@ -703,7 +703,7 @@ all four flight frames, and byte-identical snapshots before/after drawing.
 
 Feel **Standing eggs: spaced / close up** stores `standing_eggs` (default
 `"spaced"`, SNES). `"close_up"` selects the web-game's every-step history, so all
-six eggs converge behind a standing Yoshi. Both drawing histories observe each
+six eggs converge behind a standing player. Both drawing histories observe each
 saved step; switching while paused applies immediately without changing a snapshot.
 The close-up mode does not apply the spaced mode's six-still-step height override.
 Movement, held/throw, pickups and overflow retain the same rules below.

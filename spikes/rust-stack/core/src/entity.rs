@@ -293,7 +293,7 @@ impl Entity {
                 Kind::Egg(_) => "o7",
                 Kind::Seed(_) => "seed_shot",
                 Kind::Overlap(_) => "enemy_overlap",
-                _ => unreachable!("runtime constructors admit only dynamic types"),
+                _ => unreachable!("runtime builders admit only dynamic types"),
             }
         }
     }

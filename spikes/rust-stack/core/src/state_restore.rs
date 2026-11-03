@@ -289,7 +289,7 @@ impl Run {
             }
         }
         run.validate(world)?;
-        // Compare the entire declared payload after typed reconstruction. This catches
+        // Compare the entire declared payload after the typed rebuild. This catches
         // constants, unsupported unused fields and cross-field assumptions in one seam.
         if let Some(diff) = wire.first_difference(&run.wire(world, schema), schema) {
             return Err(refuse(&format!("{}:{}", diff.scope, diff.field)));

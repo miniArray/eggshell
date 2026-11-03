@@ -315,7 +315,7 @@ if presentation_bundle:
         ]:
             sources[path.name] = path
         provenance["faithful_real_level"] = False
-        provenance["real_screen_reconstruction_benchmark_only"] = True
+        provenance["real_screen_rebuild_benchmark_only"] = True
     if os.environ.get("PLAYER_PLAYTEST_BUNDLE") == "1":
         # Godot-matched 7200-step route on the target (oracle/target_route.py).
         sources["target.input.json"] = (
