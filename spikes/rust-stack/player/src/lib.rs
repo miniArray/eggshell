@@ -42,4 +42,4 @@ pub mod egg_trail;
 
 pub mod rider;
 
-pub mod worried_yoshi;
+pub mod worried_player;

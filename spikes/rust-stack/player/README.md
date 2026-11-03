@@ -785,9 +785,9 @@ spike deviation from reference lava art. Both choices keep the existing black
 fade and core respawn timing. “Original” restores the checked hurt poses, not
 the missing core launch/fall physics.
 
-### Worried Yoshi (spike deviation)
+### Worried player (spike deviation)
 
-Feel **Worried Yoshi: on/off** stores `worried_yoshi` (default `false`: the user judged it unshippable without custom sprite art, and no image model is available). While the
+Feel **Worried player: on/off** stores `worried_player` (default `false`: the user judged it unshippable without custom sprite art, and no image model is available). Settings saved under the option's earlier key are not read; that value returns to the default `false`. While the
 rider is lost, the saved-step observer selects an eight-step Hurt flinch,
 then alternates LookAround/IdleTurn every 18 steps while idle. Idle art advances
 every two steps and trembles one level pixel every three steps. Walk/Sprint

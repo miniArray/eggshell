@@ -166,7 +166,7 @@ pub struct Scene {
     pub paused_offset: [f64; 2],
     dust: std::sync::Mutex<crate::dust::Dust>,
     death_pose: std::sync::Mutex<crate::death_pose::DeathPose>,
-    worried_yoshi: std::sync::Mutex<crate::worried_yoshi::WorriedYoshi>,
+    worried_player: std::sync::Mutex<crate::worried_player::WorriedPlayer>,
     elastic_tongue: std::sync::Mutex<crate::elastic_tongue::ElasticTongue>,
     held_melons: std::sync::Mutex<crate::held_melons::HeldMelons>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
@@ -973,7 +973,7 @@ impl Scene {
             paused_offset: [0.0; 2],
             dust: std::sync::Mutex::new(crate::dust::Dust::default()),
             death_pose: std::sync::Mutex::new(crate::death_pose::DeathPose::default()),
-            worried_yoshi: std::sync::Mutex::new(crate::worried_yoshi::WorriedYoshi::default()),
+            worried_player: std::sync::Mutex::new(crate::worried_player::WorriedPlayer::default()),
             elastic_tongue: std::sync::Mutex::new(crate::elastic_tongue::ElasticTongue::default()),
             held_melons: std::sync::Mutex::new(crate::held_melons::HeldMelons::default()),
             uniform: HashMap::new(),
@@ -1311,9 +1311,9 @@ impl Scene {
         p: &Presentation,
         session: &eggshell_spike_core::Session,
     ) -> Result<(), String> {
-        self.worried_yoshi
+        self.worried_player
             .lock()
-            .map_err(|_| "worried yoshi lock poisoned")?
+            .map_err(|_| "worried player lock poisoned")?
             .observe(p);
         self.captors
             .lock()
@@ -2316,11 +2316,11 @@ impl Scene {
                 .feel
                 .lock()
                 .map_err(|_| "feel lock poisoned")?
-                .worried_yoshi
+                .worried_player
             {
-                self.worried_yoshi
+                self.worried_player
                     .lock()
-                    .map_err(|_| "worried yoshi lock poisoned")?
+                    .map_err(|_| "worried player lock poisoned")?
                     .sample(p)
             } else {
                 None
@@ -2861,7 +2861,7 @@ mod tests {
     }
     #[test]
     #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
-    fn worried_yoshi_real_separation_pictures_and_sparse_draws() {
+    fn worried_player_real_separation_pictures_and_sparse_draws() {
         let env = |name: &str| std::env::var(name).unwrap();
         let pack = Pack::open(
             Path::new(&env("PLAYER_PACK_ROOT")),
@@ -2917,7 +2917,7 @@ mod tests {
                 scene.observe_feel(&p, &session).unwrap();
             }
             let picture = scene.picture(&p, [640.0, 480.0], 0).unwrap();
-            let Some(sample) = scene.worried_yoshi.lock().unwrap().sample(&p) else {
+            let Some(sample) = scene.worried_player.lock().unwrap().sample(&p) else {
                 continue;
             };
             separated.get_or_insert(step);
@@ -2951,9 +2951,9 @@ mod tests {
                 if !p.player.visible {
                     continue;
                 }
-                scene.feel.lock().unwrap().worried_yoshi = false;
+                scene.feel.lock().unwrap().worried_player = false;
                 let ordinary = scene.picture(&p, [640.0, 480.0], 0).unwrap();
-                scene.feel.lock().unwrap().worried_yoshi = true;
+                scene.feel.lock().unwrap().worried_player = true;
                 assert_ne!(picture.world, ordinary.world);
                 assert_eq!(
                     picture.world,
@@ -3015,14 +3015,14 @@ mod tests {
             scene.observe_feel(&p, &rescue).unwrap();
             if p.companions.mode == 3 {
                 caught = true;
-                assert!(scene.worried_yoshi.lock().unwrap().sample(&p).is_none());
+                assert!(scene.worried_player.lock().unwrap().sample(&p).is_none());
                 let normal = scene.picture(&p, [640.0, 480.0], 0).unwrap();
-                scene.feel.lock().unwrap().worried_yoshi = false;
+                scene.feel.lock().unwrap().worried_player = false;
                 assert_eq!(
                     normal.world,
                     scene.picture(&p, [640.0, 480.0], 0).unwrap().world
                 );
-                scene.feel.lock().unwrap().worried_yoshi = true;
+                scene.feel.lock().unwrap().worried_player = true;
             }
             if caught && p.companions.mode == 0 {
                 returned = true;

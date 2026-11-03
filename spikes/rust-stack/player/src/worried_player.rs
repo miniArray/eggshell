@@ -21,7 +21,7 @@ pub struct Sample {
     phase: f64,
 }
 #[derive(Default)]
-pub struct WorriedYoshi {
+pub struct WorriedPlayer {
     last: Option<(i64, usize)>,
     start: Option<i64>,
     phase: f64,
@@ -35,7 +35,7 @@ fn lost(mode: i64, lifetime: Lifetime) -> bool {
             Lifetime::Hurt | Lifetime::Separated | Lifetime::Active
         )
 }
-impl WorriedYoshi {
+impl WorriedPlayer {
     pub fn observe(&mut self, p: &Presentation) {
         self.step(
             p.tick,
@@ -324,7 +324,7 @@ mod tests {
     }
     #[test]
     fn saved_steps_not_draws_drive_episode_and_panicky_cadence() {
-        let mut clock = WorriedYoshi::default();
+        let mut clock = WorriedPlayer::default();
         for t in 0..100 {
             clock.step(t, 1, true, 4 * SCALE);
         }

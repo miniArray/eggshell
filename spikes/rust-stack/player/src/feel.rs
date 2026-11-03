@@ -197,7 +197,7 @@ pub struct FeelSettings {
     pub elastic_tongue: bool,
     pub throw_mode: ThrowMode,
     pub lava_death: LavaDeath,
-    pub worried_yoshi: bool,
+    pub worried_player: bool,
     pub standing_eggs: StandingEggs,
 }
 impl Default for FeelSettings {
@@ -229,7 +229,7 @@ impl Default for FeelSettings {
             elastic_tongue: true,
             throw_mode: ThrowMode::Patient,
             lava_death: LavaDeath::Spin,
-            worried_yoshi: false,
+            worried_player: false,
             standing_eggs: StandingEggs::Spaced,
         }
     }
@@ -347,6 +347,15 @@ mod tests {
         );
     }
     #[test]
+    fn renamed_or_retired_keys_are_ignored_and_keep_defaults() {
+        // A key this build does not know (for example an option saved under an earlier
+        // name) is skipped; the rest of the file still loads.
+        let old = r#"{"retired_option":true,"shake_enabled":false}"#;
+        let s: FeelSettings = serde_json::from_str(old).unwrap();
+        assert!(!s.shake_enabled);
+        assert!(!s.worried_player);
+    }
+    #[test]
     fn old_feel_json_gets_lighting_defaults() {
         let old = r#"{"shake_enabled":false,"muffle_strength":3}"#;
         let s: FeelSettings = serde_json::from_str(old).unwrap();
@@ -357,7 +366,7 @@ mod tests {
         assert!(s.elastic_tongue);
         assert_eq!(s.throw_mode, ThrowMode::Patient);
         assert_eq!(s.lava_death, LavaDeath::Spin);
-        assert!(!s.worried_yoshi);
+        assert!(!s.worried_player);
         assert_eq!(s.standing_eggs, StandingEggs::Spaced);
         assert_eq!(serde_json::to_value(s).unwrap()["standing_eggs"], "spaced");
         assert_eq!(serde_json::to_value(s).unwrap()["lava_death"], "spin");
