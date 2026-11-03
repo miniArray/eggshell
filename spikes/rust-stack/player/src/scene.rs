@@ -431,6 +431,7 @@ struct Trail {
     falling: Vec<FallingEgg>,
     /// Steps since Yoshi last moved.
     still: i64,
+    frames: std::collections::VecDeque<(i64, Vec<[f64; 2]>)>,
 }
 /// YFS Yoshi 487-488 and Objects 185-186: when a seventh egg is made or picked up, the
 /// egg with the lowest orderID (the front one, nearest Yoshi) gets mode fallOffScreen:
@@ -480,12 +481,24 @@ impl Trail {
         self.falling.iter().map(|f| (f.colour, f.at)).collect()
     }
     fn update(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
+        if self.last_tick.is_some_and(|last| tick < last) {
+            *self = Self::default();
+        }
+        if self.last_tick == Some(tick) {
+            return self.eggs.clone();
+        }
+        if self.path.is_empty() {
+            self.path.resize(Self::KEEP, at);
+        }
         let steps = match self.last_tick {
             None => 1,
             Some(last) => (tick - last).clamp(0, Self::KEEP as i64) as usize,
         };
         self.last_tick = Some(tick);
-        self.eggs.truncate(count);
+        if self.eggs.len() > count {
+            // Throws remove the first inventory slot, not the tail of the queue.
+            self.eggs.drain(..self.eggs.len() - count);
+        }
         while self.eggs.len() < count {
             self.eggs.push([at[0], at[1] - Self::LIFT]);
         }
@@ -526,7 +539,22 @@ impl Trail {
                 }
             }
         }
+        self.frames.push_back((tick, self.eggs.clone()));
         self.eggs.clone()
+    }
+    fn positions(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
+        // A worker can process an entire catch-up batch while the prepared frame
+        // is still drawing. Retain observed samples until that frame consumes them.
+        if let Some(index) = self
+            .frames
+            .iter()
+            .position(|(t, e)| *t == tick && e.len() == count)
+        {
+            self.frames.drain(..index);
+            self.frames[0].1.clone()
+        } else {
+            vec![[at[0], at[1] - 16.0]; count]
+        }
     }
 }
 /// The original game's walk and run animation rate (YFS Yoshi sheet): while Yoshi moves
@@ -593,6 +621,49 @@ mod trail_tests {
         };
         let seq: Vec<_> = (0..8).map(|k| b.frame(k * 12)).collect();
         assert_eq!(seq, [10, 11, 12, 13, 12, 11, 10, 11]);
+    }
+    #[test]
+    fn all_six_eggs_follow_including_the_oldest_history_entry() {
+        let mut trail = Trail::default();
+        let mut eggs = vec![];
+        for tick in 0..120 {
+            eggs = trail.update(tick, [tick as f64 * 4.0, 100.0], 6);
+        }
+        assert!(eggs[5][0] > 100.0, "sixth egg stayed at spawn: {eggs:?}");
+        assert!(eggs.windows(2).all(|v| v[0][0] > v[1][0]));
+    }
+    #[test]
+    fn trail_advances_on_observed_steps_not_draws_and_rewinds_cleanly() {
+        let mut trail = Trail::default();
+        for tick in 0..90 {
+            trail.update(
+                tick,
+                [tick as f64 * 4.0, 100.0 + (tick as f64 / 10.0).sin() * 20.0],
+                6,
+            );
+        }
+        let eggs = trail.positions(89, [356.0, 100.0], 6);
+        for _ in 0..10 {
+            assert_eq!(trail.positions(89, [356.0, 100.0], 6), eggs);
+        }
+        // A skipped render cannot replace ten actual positions with one endpoint.
+        assert!(eggs.iter().any(|e| (e[1] - 84.0).abs() > 1.0));
+        trail.update(90, [360.0, 100.0], 5);
+        assert_eq!(trail.positions(89, [356.0, 100.0], 6), eggs);
+        assert!(trail.eggs[0][0] < eggs[0][0]); // first slot was thrown
+        assert_eq!(trail.update(2, [20.0, 50.0], 1), vec![[20.0, 34.0]]);
+        assert_eq!(trail.path.len(), 60);
+    }
+    #[test]
+    fn a_prepared_frame_survives_a_multi_step_pipeline_batch() {
+        let mut trail = Trail::default();
+        let first = trail.update(1, [10.0, 100.0], 6);
+        for tick in 2..100 {
+            trail.update(tick, [tick as f64 * 10.0, 100.0], 6);
+        }
+        assert_eq!(trail.positions(1, [10.0, 100.0], 6), first);
+        trail.positions(99, [990.0, 100.0], 6);
+        assert_eq!(trail.frames.len(), 1);
     }
     #[test]
     fn run_frames_follow_speed() {
@@ -1474,6 +1545,11 @@ impl Scene {
         p: &Presentation,
         session: &eggshell_spike_core::Session,
     ) -> Result<(), String> {
+        {
+            let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
+            trail.pops(p.player.egg_pops, &p.player.eggs);
+            trail.update(p.tick, pixel(p.player.motion.current), p.player.eggs.len());
+        }
         self.held_melons
             .lock()
             .map_err(|_| "held melon lock poisoned")?
@@ -2477,8 +2553,7 @@ impl Scene {
             let body = pixel(p.player.motion.current);
             let (trail, falling) = {
                 let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
-                trail.pops(p.player.egg_pops, &p.player.eggs);
-                let eggs = trail.update(p.tick, body, p.player.eggs.len());
+                let eggs = trail.positions(p.tick, body, p.player.eggs.len());
                 (eggs, trail.falling())
             };
             if let Ok(egg_art) = self.object("o7", 0) {
@@ -2907,6 +2982,89 @@ mod tests {
         for (got, want) in rgba.iter().zip(want) {
             assert!((f64::from(*got) - want).abs() < 1e-6, "{rgba:?}");
         }
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
+    fn per_step_trail_is_independent_of_render_cadence() {
+        let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let mut level: Value = serde_json::from_str(include_str!(
+            "../../core/tests/fixtures/collections.level.json"
+        ))
+        .unwrap();
+        level["startpoint"]["X"] = 64.into();
+        level["startpoint"]["Y"] = 384.into();
+        let objects = level["maps"]["map1"]["objects"].as_object_mut().unwrap();
+        objects.clear();
+        for slot in 0..6 {
+            objects.insert(
+                format!("egg{slot}"),
+                serde_json::json!({"A":"o7","X":64,"Y":368}),
+            );
+        }
+        let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let scenes = (0..2)
+            .map(|_| {
+                let mut scene = Scene::prepare(
+                    session.world(),
+                    &session.admission_report().admitted_codes,
+                    &pack,
+                    Path::new(&env("PLAYER_METRICS")),
+                )
+                .unwrap();
+                scene.prepare_headless_assets(&pack).unwrap();
+                scene
+            })
+            .collect::<Vec<_>>();
+        let mut egg_images = std::collections::BTreeSet::new();
+        for (_, animation) in &scenes[0].object("o7", 0).unwrap().animations {
+            egg_images.extend(animation.frames.iter().map(|frame| frame.image));
+        }
+        let mut compared = 0;
+        for step in 0..180 {
+            session
+                .advance(if step < 90 {
+                    2 | if (30..50).contains(&step) { 4 } else { 0 }
+                } else {
+                    0
+                })
+                .unwrap();
+            let p = session.presentation();
+            let before = session.snapshot().unwrap();
+            for scene in &scenes {
+                scene.observe_feel(&p, &session).unwrap();
+            }
+            let dense = scenes[0].picture(&p, [640.0, 480.0], 0).unwrap();
+            if step % 9 == 0 {
+                let sparse = scenes[1].picture(&p, [640.0, 480.0], 0).unwrap();
+                let egg_quads = |picture: &Picture| {
+                    picture
+                        .world
+                        .iter()
+                        .filter(|q| egg_images.contains(&q.image))
+                        .map(|q| (q.image, q.corners))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(egg_quads(&dense), egg_quads(&sparse));
+                assert_eq!(egg_quads(&dense).len(), 6);
+                compared += 1;
+            }
+            assert_eq!(session.snapshot().unwrap(), before);
+        }
+        assert_eq!(compared, 20);
+        println!(
+            "TRAIL_SCENE_PROBE steps=180 sparse_dense_pairs={compared} six_eggs=true snapshots_unchanged=true"
+        );
     }
     /// Every code the core can create during play has an object binding in the pinned
     /// pack or draws as its placeholder, and the verification levels that spawn them
