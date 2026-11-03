@@ -149,7 +149,7 @@ impl Run {
                 run.apply_consumer(action)?;
             }
             run.consume_item_requests();
-            if run.player.after_life(&map, &mut run.sound) {
+            if run.player.after_life(&map, run.camera, &mut run.sound) {
                 run.deaths = run.deaths.saturating_add(1);
             }
             run.tick2(&map)?;
@@ -790,7 +790,6 @@ impl Run {
                     }
                     let mut context = crate::actors::ActorStep {
                         map,
-                        camera: self.camera,
                         player: &mut self.player,
                         rng: &mut self.rng,
                     };
@@ -1038,10 +1037,7 @@ impl Run {
             self.attempt_ticks = self.attempt_ticks.saturating_add(1);
             // step.gd (Godot 629ef5d): Collision.begin_step runs before Life.before_step, so
             // companion physics sees this frame's registered solids.
-            if self
-                .player
-                .before_play_life(&map, self.camera, &mut self.sound)
-            {
+            if self.player.before_play_life(&map, &mut self.sound) {
                 self.deaths = self.deaths.saturating_add(1);
             }
         } else {
@@ -1361,7 +1357,7 @@ impl Run {
                     continue;
                 }
                 if w.kind == crate::actors::ActorKind::Thief {
-                    self.thief_contact(index, action, &map)?;
+                    self.thief_contact(index, action)?;
                     continue;
                 }
                 if w.kind == crate::actors::ActorKind::Roller {
@@ -1705,7 +1701,7 @@ impl Run {
             self.apply_consumer(action)?;
         }
         self.consume_item_requests();
-        if self.player.after_life(&map, &mut self.sound) {
+        if self.player.after_life(&map, self.camera, &mut self.sound) {
             self.deaths = self.deaths.saturating_add(1);
         }
         self.tick2(&map)?;

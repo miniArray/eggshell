@@ -121,7 +121,6 @@ impl Run {
             entities,
             player,
             rng,
-            camera,
             ..
         } = self;
         let e = &mut entities[index];
@@ -139,12 +138,7 @@ impl Run {
         }
         let (px, py, player_facing) = (player.body.x, player.body.y, player.facing);
         let captured = player.captured_by != 0;
-        let step = ActorStep {
-            map,
-            camera: *camera,
-            player,
-            rng,
-        };
+        let step = ActorStep { map, player, rng };
         let action = w.process(
             token,
             &mut e.body,

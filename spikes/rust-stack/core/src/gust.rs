@@ -104,7 +104,6 @@ impl Run {
             entities,
             player,
             rng,
-            camera,
             ..
         } = self;
         let e = &mut entities[index];
@@ -116,12 +115,7 @@ impl Run {
             w.started = 1;
             w.impact_cursor = player.impact;
         }
-        let step = ActorStep {
-            map,
-            camera: *camera,
-            player,
-            rng,
-        };
+        let step = ActorStep { map, player, rng };
         let action = w.process(
             token,
             &mut e.body,

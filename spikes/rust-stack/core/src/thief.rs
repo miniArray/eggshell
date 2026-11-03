@@ -348,7 +348,6 @@ impl Run {
             entities,
             player,
             rng,
-            camera,
             ..
         } = self;
         let e = &mut entities[index];
@@ -364,12 +363,7 @@ impl Run {
                 e.facing = if player.body.x > e.body.x { 1 } else { -1 };
             }
         }
-        let mut step = ActorStep {
-            map,
-            camera: *camera,
-            player,
-            rng,
-        };
+        let mut step = ActorStep { map, player, rng };
         let action = w.process(
             token,
             &mut e.body,
@@ -441,12 +435,7 @@ impl Run {
         }
     }
     /// sneak_thief.gd contact.
-    pub(crate) fn thief_contact(
-        &mut self,
-        index: usize,
-        input: u8,
-        map: &Probe,
-    ) -> Result<(), Error> {
+    pub(crate) fn thief_contact(&mut self, index: usize, input: u8) -> Result<(), Error> {
         let pb = self.player.bounds();
         let p = self.player.body;
         let captured = self.player.captured_by != 0;
@@ -486,7 +475,7 @@ impl Run {
         {
             // A touch from the side takes the companion straight into a bubble the thief
             // carries (damage.gd separate: an instant bubble).
-            self.player.separate_in_world(0, true, map, self.camera);
+            self.player.separate(0, true);
             if self.player.life.companion_mode == BUBBLE {
                 let e = &mut self.entities[index];
                 if let Kind::Walker(w) = &mut e.kind {

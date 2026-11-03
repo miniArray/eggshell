@@ -192,6 +192,7 @@ impl Player {
         l.companion_direction = if l.companion_dx >= 0 { 1 } else { -1 };
         l.companion_vx = 0;
         l.companion_vy = 0;
+        l.bubble_collision_disabled = 0;
         if instant {
             l.companion_direction = if self.recovery_x >= self.body.x {
                 1
@@ -200,24 +201,11 @@ impl Player {
             };
         }
     }
-    pub fn separate_in_world(
-        &mut self,
-        velocity: i64,
-        instant: bool,
-        map: &Probe,
-        camera: Position,
-    ) {
-        let eligible = self.life.separated == 0 && self.life_phase == 0;
-        self.separate(velocity, instant);
-        if eligible && self.life.health == 0 && instant {
-            self.start_rescue(map, camera);
-        }
-    }
     pub fn catch_companion(&mut self, box_: [i64; 4]) -> bool {
         if self.life_phase != 0
             || self.captured_by != 0
             || self.life.companion_mode != 2
-            || self.life.bubble_bound_ticks != 0
+            || self.life.bubble_collision_disabled != 0
         {
             return false;
         }
@@ -360,7 +348,7 @@ impl Player {
         false
     }
     /// Returns true only when a new death starts.
-    pub fn before_play_life(&mut self, map: &Probe, camera: Position, sound: &mut Sound) -> bool {
+    pub fn before_play_life(&mut self, map: &Probe, sound: &mut Sound) -> bool {
         self.life.invulnerable = (self.life.invulnerable - 1).max(0);
         self.life.hurt = (self.life.hurt - 1).max(0);
         // life.gd _hurt_step: the knocked pose clears one step before its input lock ends,
@@ -371,7 +359,7 @@ impl Player {
             self.life.hurt_phase = HURT_RECOVERED;
         }
         self.life.separation_grace = (self.life.separation_grace - 1).max(0);
-        let died = self.companion_step(map, camera, sound);
+        let died = self.companion_step(map, sound);
         if self.life.separated != 0 && self.life.health > 0 {
             if self.life.health_wait <= 0 {
                 self.life.health_wait = 46;
@@ -380,9 +368,6 @@ impl Player {
             if self.life.health_wait <= 0 {
                 self.life.health -= 1;
                 self.life.health_wait = if self.life.health != 0 { 46 } else { 0 };
-                if self.life.health == 0 && self.life.companion_mode == 2 {
-                    self.start_rescue(map, camera);
-                }
             }
         } else if self.life.separated == 0 && self.life.health < 10 {
             if self.life.health_wait <= 0 {
@@ -396,7 +381,7 @@ impl Player {
         }
         died
     }
-    fn companion_step(&mut self, map: &Probe, camera: Position, sound: &mut Sound) -> bool {
+    fn companion_step(&mut self, map: &Probe, sound: &mut Sound) -> bool {
         match self.life.companion_mode {
             1 => {
                 self.life.companion_age += 1;
@@ -409,28 +394,10 @@ impl Player {
                     self.life.companion_mode = 2;
                     self.life.companion_age = 0;
                     self.bubble_settle(map);
-                    if self.life.health == 0 {
-                        self.start_rescue(map, camera);
-                    }
                 }
             }
-            2 => {
-                if self.life.health == 0 && self.life.rescue_active == 0 {
-                    self.start_rescue(map, camera);
-                }
-                if self.life.rescue_active != 0 {
-                    if !self.catch_companion([
-                        self.body.x - 12 * S,
-                        self.body.y - 56 * S,
-                        self.body.x + 12 * S,
-                        self.body.y,
-                    ]) {
-                        self.rescue_step();
-                    }
-                } else {
-                    self.bubble_step(map);
-                }
-            }
+            // companion_bubble.gd advance: the rescue events moved to after_step.
+            2 => self.bubble_step(map, self.life.rescue_active == 0),
             4 => {
                 self.recovery_y -= 256 * 60;
                 for p in &mut self.life.rescuers {
@@ -453,32 +420,42 @@ impl Player {
             ..Body::default()
         };
         body.prepare_recovering(&probe, BUBBLE_BOX, BUBBLE_PHYSICAL, BUBBLE_PHYSICAL);
-        if body.overlaps(&probe, BUBBLE_BOX, 0, 0) {
-            body.x += (self.body.x - body.x).signum() * 96 * 60;
-            body.y += (self.body.y - body.y).signum() * 96 * 60;
-        }
         self.recovery_x = body.x;
         self.recovery_y = body.y;
     }
-    fn bubble_step(&mut self, map: &Probe) {
-        self.life.companion_age = if self.life.companion_age >= 300 {
-            61
-        } else {
-            self.life.companion_age + 1
-        };
-        let age = self.life.companion_age;
-        self.life.companion_vy = if age <= 60 {
-            -192 * 60 * age / 60
-        } else {
-            let leg = (age - 61) % 240;
-            -192 * 60 + 384 * 60 * leg.min(240 - leg) / 120
-        };
-        if self.life.bubble_bound_ticks != 0 {
-            self.life.bubble_bound_ticks -= 1;
+    /// companion_bubble.gd advance: body motion only; the embedded drift, the map-edge
+    /// bound and the rescue are events after player motion (bubble_events). While the
+    /// rescue runs the platform is disabled: only a running bound still moves it.
+    fn bubble_step(&mut self, map: &Probe, platform_enabled: bool) {
+        if self.life.bubble_bound_ticks < 0 {
+            return;
+        }
+        if platform_enabled {
+            self.life.companion_age = if self.life.companion_age >= 300 {
+                61
+            } else {
+                self.life.companion_age + 1
+            };
+            let age = self.life.companion_age;
+            self.life.companion_vy = if age <= 60 {
+                -192 * 60 * age / 60
+            } else {
+                let leg = (age - 61) % 240;
+                -192 * 60 + 384 * 60 * leg.min(240 - leg) / 120
+            };
+        }
+        if self.life.bubble_bound_ticks > 0 {
+            let remaining = self.life.bubble_bound_ticks - 1;
             let span = self.life.bubble_bound_to_x - self.life.bubble_bound_from_x;
-            self.recovery_x =
-                self.life.bubble_bound_from_x + span * (6 - self.life.bubble_bound_ticks) / 6;
-            self.recovery_y += self.life.companion_vy;
+            self.recovery_x = self.life.bubble_bound_from_x + span * (6 - remaining) / 6;
+            // -1 queues the natural completion for complete_bubble_events.
+            self.life.bubble_bound_ticks = if remaining != 0 { remaining } else { -1 };
+            if platform_enabled {
+                self.recovery_y += self.life.companion_vy;
+            }
+            return;
+        }
+        if !platform_enabled {
             return;
         }
         let probe = map.with_polygon(&BUBBLE);
@@ -493,10 +470,6 @@ impl Player {
         }
         if self.life.companion_direction > 0 && here.wall_probe(&probe, BUBBLE_BOX, 1, 2, 3) {
             self.life.companion_direction = -1;
-        }
-        if here.overlaps(&probe, BUBBLE_BOX, 0, 0) {
-            self.recovery_x += (self.body.x - self.recovery_x).signum() * 96 * 60;
-            self.recovery_y += (self.body.y - self.recovery_y).signum() * 96 * 60;
         }
         let mut body = Body {
             x: self.recovery_x,
@@ -534,14 +507,59 @@ impl Player {
         self.recovery_y = body.y;
         self.life.companion_vx = body.vx;
         self.life.companion_vy = body.vy;
+    }
+    /// companion_bubble.gd events (Godot e2a800c, f044292): after player motion and the
+    /// catch, an embedded bubble drifts toward the player, then a bubble past the map
+    /// edge starts its bound (which disables its collisions until it completes).
+    fn bubble_events(&mut self, map: &Probe) {
+        self.bubble_drift(map);
+        if self.life.bubble_collision_disabled != 0 {
+            return;
+        }
         let left = 32 * S;
         let right = left.max(map.width_pixels * S - 32 * S);
         if self.recovery_x < left || self.recovery_x > right {
             self.life.bubble_bound_ticks = 6;
+            self.life.bubble_collision_disabled = 1;
             self.life.bubble_bound_from_x = self.recovery_x;
             self.life.bubble_bound_to_x = self.recovery_x.clamp(left, right);
             self.life.companion_direction = if self.recovery_x < left { 1 } else { -1 };
             self.life.companion_vx = 0;
+        }
+    }
+    /// companion_bubble.gd drift: the overlap is selected once; each axis event reads the
+    /// position the previous one left.
+    fn bubble_drift(&mut self, map: &Probe) {
+        if self.life.bubble_collision_disabled != 0 || self.life.rescue_mask != 0 {
+            return;
+        }
+        let probe = map.with_polygon(&BUBBLE);
+        let here = Body {
+            x: self.recovery_x,
+            y: self.recovery_y,
+            ..Body::default()
+        };
+        if !here.overlaps(&probe, BUBBLE_BOX, 0, 0) {
+            return;
+        }
+        if self.recovery_x > self.body.x {
+            self.recovery_x -= 96 * 60;
+        }
+        if self.recovery_x < self.body.x {
+            self.recovery_x += 96 * 60;
+        }
+        if self.recovery_y > self.body.y {
+            self.recovery_y -= 96 * 60;
+        }
+        if self.recovery_y < self.body.y {
+            self.recovery_y += 96 * 60;
+        }
+    }
+    /// companion_bubble.gd complete_events: a bound that finished restores collisions.
+    fn complete_bubble_events(&mut self) {
+        if self.life.bubble_bound_ticks == -1 {
+            self.life.bubble_bound_ticks = 0;
+            self.life.bubble_collision_disabled = 0;
         }
     }
     fn start_rescue(&mut self, map: &Probe, camera: Position) {
@@ -591,7 +609,7 @@ impl Player {
                 x: p.x - self.recovery_x,
                 y: p.y - self.recovery_y,
             };
-            if rescuer_overlaps(delta) {
+            if self.life.bubble_collision_disabled == 0 && rescuer_overlaps(delta) {
                 *p = target;
                 self.life.rescue_mask |= 1 << index;
             }
@@ -601,7 +619,7 @@ impl Player {
             self.life.rescue_ticks = 90;
         }
     }
-    pub fn after_life(&mut self, map: &Probe, sound: &mut Sound) -> bool {
+    pub fn after_life(&mut self, map: &Probe, camera: Position, sound: &mut Sound) -> bool {
         if self.life_phase != 0 {
             return false;
         }
@@ -649,6 +667,16 @@ impl Player {
             self.catch_companion(rect);
         } else if self.life.companion_mode == 0 {
             self.attach();
+        }
+        // life.gd after_step: the bubble's events, then its rescue.
+        if self.life.companion_mode == 2 {
+            self.bubble_events(map);
+            if self.life.rescue_active != 0 {
+                self.rescue_step();
+            } else if self.life.health == 0 {
+                self.start_rescue(map, camera);
+            }
+            self.complete_bubble_events();
         }
         false
     }
@@ -847,10 +875,60 @@ mod bubble_physics_tests {
             player.life.companion_vx = previous;
             player.recovery_x = 1000 * S;
             player.recovery_y = 600 * S;
-            player.bubble_step(&map);
+            player.bubble_step(&map, true);
             assert_eq!(player.recovery_x - 1000 * S, distance, "{previous}");
             assert_eq!(player.life.companion_vx, (previous + 512).min(48 * 60));
         }
+    }
+
+    #[test]
+    fn companion_bubble_bound_is_an_event_that_disables_collisions_until_it_completes() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"bubble", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{}}}
+        })
+        .to_string();
+        let world = crate::World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let map = Probe::new(&world.maps[0]);
+        let mut sound = Sound::default();
+        let mut player = Player::new(
+            Body {
+                x: 400 * S,
+                y: 1000 * S,
+                ..Body::default()
+            },
+            1,
+        );
+        player.life.separated = 1;
+        player.life.health = 5;
+        player.life.companion_mode = 2;
+        player.life.companion_age = 100;
+        player.recovery_x = 20 * S;
+        player.recovery_y = 600 * S;
+        // The body step leaves the bound to the events after player motion.
+        player.bubble_step(&map, true);
+        assert_eq!(player.life.bubble_bound_ticks, 0);
+        player.after_life(&map, Position::default(), &mut sound);
+        assert_eq!(player.life.bubble_bound_ticks, 6);
+        assert_eq!(player.life.bubble_collision_disabled, 1);
+        for _ in 0..6 {
+            player.bubble_step(&map, true);
+        }
+        assert_eq!(player.life.bubble_bound_ticks, -1);
+        assert_eq!(player.recovery_x, 32 * S);
+        player.after_life(&map, Position::default(), &mut sound);
+        assert_eq!(
+            (
+                player.life.bubble_bound_ticks,
+                player.life.bubble_collision_disabled
+            ),
+            (0, 0)
+        );
     }
 }
 
@@ -890,7 +968,6 @@ mod knock_recovery_tests {
                 .unwrap()
                 .maps[0],
             ),
-            Position::default(),
             &mut sound,
         );
         assert_eq!(

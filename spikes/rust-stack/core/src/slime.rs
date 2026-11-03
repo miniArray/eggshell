@@ -98,7 +98,6 @@ impl Run {
             entities,
             player,
             rng,
-            camera,
             ..
         } = self;
         let e = &mut entities[index];
@@ -113,12 +112,7 @@ impl Run {
                 e.facing = if player.body.x > e.body.x { 1 } else { -1 };
             }
         }
-        let mut step = ActorStep {
-            map,
-            camera: *camera,
-            player,
-            rng,
-        };
+        let mut step = ActorStep { map, player, rng };
         let action = w.process(
             token,
             &mut e.body,

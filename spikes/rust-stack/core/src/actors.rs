@@ -317,7 +317,6 @@ pub(crate) struct Actor {
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
-    pub camera: Position,
     pub player: &'a mut Player,
     pub rng: &'a mut Rng,
 }
@@ -1182,8 +1181,7 @@ impl Actor {
             self.phase += 1;
             self.timer -= 1;
             if self.phase == 30 {
-                step.player
-                    .separate_in_world(-*facing * 400 * 60, true, step.map, step.camera);
+                step.player.separate(-*facing * 400 * 60, true);
             }
             if self.phase > 60 && step.player.pressed_input & 4 != 0 {
                 self.timer = (self.timer - 30).max(0);
