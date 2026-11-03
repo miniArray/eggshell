@@ -19,10 +19,11 @@ const BUTTON_LAYOUT_ROW: usize = 22;
 const ELASTIC_TONGUE_ROW: usize = 23;
 const THROW_MODE_ROW: usize = 24;
 const LAVA_DEATH_ROW: usize = 25;
-const PREVIEW_ROW: usize = 26;
-const RESTART_ROW: usize = 27;
-const RESET_ROW: usize = 28;
-const RESUME_ROW: usize = 29;
+const WORRIED_YOSHI_ROW: usize = 26;
+const PREVIEW_ROW: usize = 27;
+const RESTART_ROW: usize = 28;
+const RESET_ROW: usize = 29;
+const RESUME_ROW: usize = 30;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -79,6 +80,7 @@ impl Model {
                 BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
                 THROW_MODE_ROW => s.throw_mode.toggle(),
                 LAVA_DEATH_ROW => s.lava_death.toggle(),
+                WORRIED_YOSHI_ROW => s.worried_yoshi = !s.worried_yoshi,
                 ZOOM_STEPS_ROW => s.zoom_steps.cycle(delta),
                 _ => {}
             }
@@ -100,6 +102,7 @@ impl Model {
                 BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
                 THROW_MODE_ROW => s.throw_mode.toggle(),
                 LAVA_DEATH_ROW => s.lava_death.toggle(),
+                WORRIED_YOSHI_ROW => s.worried_yoshi = !s.worried_yoshi,
                 ZOOM_STEPS_ROW => s.zoom_steps.toggle(),
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESTART_ROW => return Action::Restart,
@@ -176,6 +179,7 @@ impl MenuPage for Page<'_> {
             format!("Elastic tongue: {}", on(s.elastic_tongue)),
             format!("Egg throw: {}", s.throw_mode.label()),
             format!("Lava death: {}", s.lava_death.label()),
+            format!("Worried Yoshi: {}", on(s.worried_yoshi)),
             "Preview shake".into(),
             "Restart level".into(),
             "Reset to defaults".into(),
@@ -274,6 +278,18 @@ impl ReleaseGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn worried_row_toggles_and_reset_restores_default() {
+        let mut s = FeelSettings::default();
+        let mut model = Model {
+            focus: WORRIED_YOSHI_ROW,
+        };
+        assert_eq!(model.input(input::RIGHT, &mut s), Action::None);
+        assert!(!s.worried_yoshi);
+        assert_eq!(serde_json::to_value(s).unwrap()["worried_yoshi"], false);
+        model.input(input::JUMP, &mut s);
+        assert!(s.worried_yoshi);
+    }
     #[test]
     fn lava_row_toggles_original_and_back_without_preview() {
         let mut s = FeelSettings::default();

@@ -768,3 +768,21 @@ Feel **Lava death: spin / original** stores `lava_death`. Spin is the requested
 spike deviation from reference lava art. Both choices keep the existing black
 fade and core respawn timing. “Original” restores the checked hurt poses, not
 the missing core launch/fall physics.
+
+### Worried Yoshi (spike deviation)
+
+Feel **Worried Yoshi: on/off** stores `worried_yoshi` (default `true`). While the
+rider is lost, the saved-step observer selects an eight-step Hurt flinch,
+then alternates LookAround/IdleTurn every 18 steps while idle. Idle art advances
+every two steps and trembles one level pixel every three steps. Walk/Sprint
+cadence is 1.75 times its normal speed-scaled rate. Other actions keep their
+normal poses after the initial flinch. Black/near-white solid quads draw a short
+separation exclamation and a small periodic sweat drop. No external art is used.
+
+The option stops on the exact caught/return packet (companion mode 3), not after
+the return arc. It is also off during death, goals and respawn. Draws never
+advance its clock; skipped draws and pipelined catch-up share the same saved-step
+samples. Restore/rewind, map changes and missing observations reset this local
+visual history. No physics, rescue collision, countdown, snapshot or replay
+state changes. The pack has no dedicated worried/scared player animation; these
+are existing poses and procedural cues, not reference-fidelity claims.

@@ -165,6 +165,7 @@ pub struct Scene {
     pub paused_offset: [f64; 2],
     dust: std::sync::Mutex<crate::dust::Dust>,
     death_pose: std::sync::Mutex<crate::death_pose::DeathPose>,
+    worried_yoshi: std::sync::Mutex<crate::worried_yoshi::WorriedYoshi>,
     elastic_tongue: std::sync::Mutex<crate::elastic_tongue::ElasticTongue>,
     held_melons: std::sync::Mutex<crate::held_melons::HeldMelons>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
@@ -968,6 +969,7 @@ impl Scene {
             paused_offset: [0.0; 2],
             dust: std::sync::Mutex::new(crate::dust::Dust::default()),
             death_pose: std::sync::Mutex::new(crate::death_pose::DeathPose::default()),
+            worried_yoshi: std::sync::Mutex::new(crate::worried_yoshi::WorriedYoshi::default()),
             elastic_tongue: std::sync::Mutex::new(crate::elastic_tongue::ElasticTongue::default()),
             held_melons: std::sync::Mutex::new(crate::held_melons::HeldMelons::default()),
             uniform: HashMap::new(),
@@ -1301,6 +1303,10 @@ impl Scene {
         p: &Presentation,
         session: &eggshell_spike_core::Session,
     ) -> Result<(), String> {
+        self.worried_yoshi
+            .lock()
+            .map_err(|_| "worried yoshi lock poisoned")?
+            .observe(p);
         self.captors
             .lock()
             .map_err(|_| "captor clock lock poisoned")?
@@ -2294,6 +2300,19 @@ impl Scene {
 
         let mut rider_position = None;
         if p.player.visible {
+            let worry = if self
+                .feel
+                .lock()
+                .map_err(|_| "feel lock poisoned")?
+                .worried_yoshi
+            {
+                self.worried_yoshi
+                    .lock()
+                    .map_err(|_| "worried yoshi lock poisoned")?
+                    .sample(p)
+            } else {
+                None
+            };
             let pose = &p.player.selected_pose;
             let running = ["Walk0", "Walk1", "Sprint0", "Sprint1"].contains(&pose.name.as_str());
             let literal = if running {
@@ -2327,6 +2346,11 @@ impl Scene {
                         .map_err(|_| "feel lock poisoned")?
                         .lava_death,
                 )?;
+            let f = if let Some(sample) = worry {
+                sample.frame(p, &self.player)?.unwrap_or(f)
+            } else {
+                f
+            };
             if p.companions.mode == 0 {
                 rider_position = self.saddle.at(
                     f.image,
@@ -2344,6 +2368,9 @@ impl Scene {
                 origin: f.origin,
                 ..Transform::default()
             };
+            if let Some(sample) = worry {
+                t.position[0] += sample.offset(p);
+            }
             t = t.ratio(p.player.visual.scale)?;
             if self.density > 1 {
                 t = t.snap_dense(plan.scale);
@@ -2401,6 +2428,12 @@ impl Scene {
                 ),
             ));
             order += 1;
+            if let Some(sample) = worry {
+                for quad in sample.cues(t.position, p.player.facing, &plan, self.solid) {
+                    commands.push((11, order, quad));
+                    order += 1;
+                }
+            }
             // The aim cursor: 144 px from the egg's start point (x, y-32) along the throw
             // direction (YFS EggTargetObj: origin 160 px below its 32 px target).
             if let (Some(angle), Some(target)) = (p.player.aim_degrees, &self.egg_target) {
@@ -2792,6 +2825,178 @@ mod tests {
         assert_eq!(fallback_head_box(hint, &[aux.clone()]), None);
         aux.picture.visible = false;
         assert_eq!(fallback_head_box(hint, &[aux]), None);
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
+    fn worried_yoshi_real_separation_pictures_and_sparse_draws() {
+        let env = |name: &str| std::env::var(name).unwrap();
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let mut level: Value = serde_json::from_str(include_str!(
+            "../../core/tests/fixtures/collections.level.json"
+        ))
+        .unwrap();
+        level["startpoint"]["X"] = 64.into();
+        level["startpoint"]["Y"] = 384.into();
+        level["maps"]["map1"]["objects"] = serde_json::json!({"0":{"A":"e1","X":128,"Y":368}});
+        let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let scenes = (0..2)
+            .map(|_| {
+                let mut scene = Scene::prepare(
+                    session.world(),
+                    &session.admission_report().admitted_codes,
+                    &pack,
+                    Path::new(&env("PLAYER_METRICS")),
+                )
+                .unwrap();
+                scene.prepare_headless_assets(&pack).unwrap();
+                scene.feel.lock().unwrap().shake_enabled = false;
+                scene
+            })
+            .collect::<Vec<_>>();
+        let scene = &scenes[0];
+        let mut separated = None;
+        let mut seen = [false; 3];
+        let mut compared = 0;
+        for step in 0..500 {
+            let age = separated.map_or(-1, |start| step - start);
+            session
+                .advance(
+                    if separated.is_none() && step < 90 || (90..115).contains(&age) {
+                        2
+                    } else {
+                        0
+                    },
+                )
+                .unwrap();
+            let p = session.presentation();
+            let before = session.snapshot().unwrap();
+            for scene in &scenes {
+                scene.observe_feel(&p, &session).unwrap();
+            }
+            let picture = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+            let Some(sample) = scene.worried_yoshi.lock().unwrap().sample(&p) else {
+                continue;
+            };
+            separated.get_or_insert(step);
+            if step % 9 == 0 {
+                let sparse = scenes[1].picture(&p, [640.0, 480.0], 0).unwrap();
+                assert_eq!(picture.world, sparse.world);
+                compared += 1;
+            }
+            let category = if sample.age == 0 {
+                Some(0)
+            } else if sample.age > 8
+                && sample.age % 48 < 28
+                && p.player.selected_pose.name.starts_with("Walk")
+            {
+                Some(2)
+            } else if sample.age > 40
+                && p.player.velocity.x == 0
+                && p.player.selected_pose.name.starts_with("Idle")
+            {
+                Some(1)
+            } else {
+                None
+            };
+            if let Some(category) = category.filter(|c| !seen[*c]) {
+                if !p.player.visible {
+                    continue;
+                }
+                scene.feel.lock().unwrap().worried_yoshi = false;
+                let ordinary = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+                scene.feel.lock().unwrap().worried_yoshi = true;
+                assert_ne!(picture.world, ordinary.world);
+                assert_eq!(
+                    picture.world,
+                    scene.picture(&p, [640.0, 480.0], 0).unwrap().world
+                );
+                if let Ok(dir) = std::env::var("PLAYER_PICTURE_OUT") {
+                    let quads = |picture: &Picture| {
+                        picture.world.iter().map(|q|serde_json::json!({"file":scene.catalog.files.get(q.image).cloned(),"corners":q.corners,"uv":q.uv,"color":q.color})).collect::<Vec<_>>()
+                    };
+                    let name = ["separation", "idle", "walking"][category];
+                    std::fs::write(Path::new(&dir).join(format!("worried-{name}.json")),serde_json::to_vec(&serde_json::json!({"tick":p.tick,"age":sample.age,"pose":p.player.selected_pose.name,"worried":quads(&picture),"ordinary":quads(&ordinary)})).unwrap()).unwrap();
+                    println!(
+                        "WORRIED_PICTURE {name} tick={} age={} pose={}",
+                        p.tick, sample.age, p.player.selected_pose.name
+                    );
+                }
+                seen[category] = true;
+            }
+            assert_eq!(session.snapshot().unwrap(), before);
+        }
+        assert!(seen.iter().all(|v| *v), "separation/idle/walking {seen:?}");
+        assert!(compared > 20);
+        let mut rescue = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let mut caught = false;
+        let mut returned = false;
+        for step in 0..400 {
+            let p = rescue.presentation();
+            let dx = p.companions.companion.motion.current.x - p.player.motion.current.x;
+            let dy = p.companions.companion.motion.current.y - p.player.motion.current.y;
+            let input = if p.companions.mode == 0 {
+                if step < 25 { 2 } else { 0 }
+            } else if p.companions.mode == 3 {
+                0
+            } else {
+                (if dx > 8 * SCALE {
+                    2
+                } else if dx < -8 * SCALE {
+                    1
+                } else {
+                    0
+                }) | (if dy < -36 * SCALE && step % 30 < 20 {
+                    4
+                } else {
+                    0
+                }) | (if step % 24 == 0 { 8 } else { 0 })
+                    | (if dy < -30 * SCALE && dx.abs() < 28 * SCALE {
+                        16
+                    } else {
+                        0
+                    })
+            };
+            rescue.advance(input).unwrap();
+            let p = rescue.presentation();
+            scene.observe_feel(&p, &rescue).unwrap();
+            if p.companions.mode == 3 {
+                caught = true;
+                assert!(scene.worried_yoshi.lock().unwrap().sample(&p).is_none());
+                let normal = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+                scene.feel.lock().unwrap().worried_yoshi = false;
+                assert_eq!(
+                    normal.world,
+                    scene.picture(&p, [640.0, 480.0], 0).unwrap().world
+                );
+                scene.feel.lock().unwrap().worried_yoshi = true;
+            }
+            if caught && p.companions.mode == 0 {
+                returned = true;
+                break;
+            }
+        }
+        assert!(
+            caught && returned,
+            "actual rescue caught={caught} returned={returned}"
+        );
+        println!(
+            "WORRIED_SCENE sparse_dense_pairs={compared} snapshots_unchanged=true actual_caught_and_return_stops=true"
+        );
     }
     #[test]
     #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]

@@ -169,6 +169,7 @@ pub struct FeelSettings {
     pub elastic_tongue: bool,
     pub throw_mode: ThrowMode,
     pub lava_death: LavaDeath,
+    pub worried_yoshi: bool,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -199,6 +200,7 @@ impl Default for FeelSettings {
             elastic_tongue: true,
             throw_mode: ThrowMode::Patient,
             lava_death: LavaDeath::Spin,
+            worried_yoshi: true,
         }
     }
 }
@@ -325,6 +327,7 @@ mod tests {
         assert!(s.elastic_tongue);
         assert_eq!(s.throw_mode, ThrowMode::Patient);
         assert_eq!(s.lava_death, LavaDeath::Spin);
+        assert!(s.worried_yoshi);
         assert_eq!(serde_json::to_value(s).unwrap()["lava_death"], "spin");
         assert_eq!(serde_json::to_value(s).unwrap()["throw_mode"], "patient");
         assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");
