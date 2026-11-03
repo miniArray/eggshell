@@ -18,26 +18,37 @@ use std::{collections::HashMap, path::Path};
 
 /// Runtime codes the pinned pack has no object art for. runtime_objects.gd make_node
 /// then draws Dressing.placeholder: a square of the code's hue over the body box.
-/// Object-table key of the pack's ShyGuyRollSprite visual.
-const ROLL_SPRITE: &str = "#visual:ShyGuyRollSprite";
-/// Original art for runtime codes the pack has no object entry for: the pack visual
-/// (by source type) or object entry the original game draws for them. Godot drew
+/// Object-table key of the rolling masked walker's sprite (pack role `roll_sprite`).
+const ROLL_SPRITE: &str = "#role:roll_sprite";
+/// Pack art for runtime codes the pack has no object entry for. The codes listed here
+/// draw the named object entry. Every other packless code draws the pack visual that the
+/// pack's role map names for the code (the role is the runtime code). Godot drew
 /// placeholders for all of these. enemy_overlap has no art (it is never drawn).
-const PACKLESS_ART: [(&str, &str); 10] = [
-    ("enemy_pellet", "SnifitBullet"),
-    ("enemy_shot", "BulletBill"),
-    ("enemy_petal", "EggoDilPetal"),
-    ("enemy_mace", "Spikeball"),
-    // A Koopa knocked out of its shell (YFS Enemies: KoopaTroopa spawns BeachKoopa):
-    // the e7 BeachKoopa object art.
-    ("enemy_runner", "object:e7"),
-    // The Ptooie Plant (e41) spits a Needlenose: the e40 object art.
-    ("enemy_spike", "object:e40"),
-    ("enemy_disc", "RotoDisc"),
-    ("seed_shot", "MelonSeed"),
-    ("fire_shot", "YoshiFireProjectile"),
-    ("ice_shot", "YoshiIceProjectile"),
+const PACKLESS_OBJECTS: [(&str, &str); 2] = [
+    // The shelled walker knocked out of its shell runs as the e7 object art.
+    ("enemy_runner", "e7"),
+    // The e41 spitter's shot: the e40 object art.
+    ("enemy_spike", "e40"),
 ];
+/// Pack roles of the stilt walker's (e35) animated parts. The core names the same roles
+/// in each part's asset_key.
+const STILT_ROLES: [&str; 3] = ["stilt_feet", "stilt_poles", "stilt_top"];
+/// Pack roles of the left, right and up tongue nine-patches.
+const TONGUE_ROLES: [&str; 3] = ["tongue_left", "tongue_right", "tongue_up"];
+/// The pack visual that the pack's role map names for `role` (by `source_type`), when
+/// the map has the role and the pack has that visual. `sliced` also requires slices.
+fn role_visual<'a>(
+    manifest: &'a Value,
+    roles: &crate::pack::Roles,
+    role: &str,
+    sliced: bool,
+) -> Option<&'a Value> {
+    let source = roles.source(role)?;
+    manifest.get("visuals")?.as_object()?.values().find(|e| {
+        e.get("source_type").and_then(Value::as_str) == Some(source)
+            && (!sliced || e.get("slices").is_some())
+    })
+}
 pub const PACKLESS_RUNTIME_CODES: [&str; 11] = [
     "enemy_disc",
     "enemy_mace",
@@ -142,10 +153,10 @@ pub struct Scene {
     saddle: crate::egg_trail::HandPoints,
     companions: [Option<Visual>; 3],
     captors: std::sync::Mutex<crate::captors::Captors>,
-    /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
+    /// Left, right and up tongue nine-patches (TONGUE_ROLES), when the pack has all three.
     tongue: Option<[Visual; 3]>,
     /// Stilt walker recolour per variant. The original recolours the parts at run time
-    /// (ShyGuy_Colors); the pack's pre-coloured e1 frames give the same colour pairs.
+    /// from a colour table; the pack's pre-coloured e1 frames give the same colour pairs.
     stilt_palettes: HashMap<i64, Vec<PaletteSwap>>,
     /// pack_dressing.gd decoration_plan: each extendable scenery (code, variant)'s pack
     /// `source_type`, which names the d28 cap animation.
@@ -652,22 +663,10 @@ impl Scene {
             }
             let Some(entry) = object_entries.get(code) else {
                 if PACKLESS_RUNTIME_CODES.contains(&code) {
-                    let source = PACKLESS_ART
-                        .iter()
-                        .find(|(c, _)| *c == code)
-                        .map(|(_, s)| *s);
-                    let entry = source.and_then(|s| match s.strip_prefix("object:") {
-                        Some(object) => object_entries.get(object),
-                        None => pack
-                            .manifest
-                            .get("visuals")
-                            .and_then(Value::as_object)
-                            .and_then(|v| {
-                                v.values().find(|e| {
-                                    e.get("source_type").and_then(Value::as_str) == Some(s)
-                                })
-                            }),
-                    });
+                    let entry = match PACKLESS_OBJECTS.iter().find(|(c, _)| *c == code) {
+                        Some((_, object)) => object_entries.get(*object),
+                        None => role_visual(&pack.manifest, &pack.roles, code, false),
+                    };
                     if let Some(entry) = entry {
                         let mut bound = HashMap::new();
                         bound.insert(0, catalog.visual(entry, 0, density, false)?);
@@ -756,26 +755,22 @@ impl Scene {
                 slot.insert(variant_palette(pack, variant)?);
             }
         }
-        // The original stilt walker's animated parts, by pack source type.
+        // The original stilt walker's animated parts, by pack role. A part the pack has
+        // no art for is not drawn.
         if world
             .maps
             .iter()
             .flat_map(|m| m.placements.iter())
             .any(|p| p.code == "e35")
         {
-            for name in ["StiltGuy_Feet", "StiltGuy_PolesMiddle", "StiltGuy_Top"] {
-                let entry = pack
-                    .manifest
-                    .get("visuals")
-                    .and_then(Value::as_object)
-                    .and_then(|v| {
-                        v.values()
-                            .find(|e| e.get("source_type").and_then(Value::as_str) == Some(name))
-                    })
-                    .ok_or_else(|| format!("pack has no {name} for e35"))?;
+            for role in STILT_ROLES {
+                let Some(entry) = role_visual(&pack.manifest, &pack.roles, role, false) else {
+                    visual_omissions.push(format!("stilt walker: pack has no {role} art"));
+                    continue;
+                };
                 let mut bound = HashMap::new();
                 bound.insert(0, catalog.visual(entry, 0, density, false)?);
-                objects.insert(name.to_owned(), bound);
+                objects.insert(role.to_owned(), bound);
             }
         }
         // Visible pound-post art (o23): bind the colours and forms the level places,
@@ -820,22 +815,16 @@ impl Scene {
         }
         // Drawing-only parts: span stalks and spike strips, and extendable scenery parts
         // (span_dressing.gd, pack_dressing.gd decoration_plan).
-        // The Shy Guy roll sprite (drawn for a rolling e1/e2; see ROLL_SPRITE).
-        let roll_entry = pack
-            .manifest
-            .get("visuals")
-            .and_then(Value::as_object)
-            .and_then(|v| {
-                v.values().find(|e| {
-                    e.get("source_type").and_then(Value::as_str) == Some("ShyGuyRollSprite")
-                })
-            });
-        if let Some(entry) =
-            roll_entry.filter(|_| objects.contains_key("e1") || objects.contains_key("e2"))
-        {
-            let mut bound = HashMap::new();
-            bound.insert(0, catalog.visual(entry, 0, density, false)?);
-            objects.insert(ROLL_SPRITE.to_owned(), bound);
+        // The masked walker's roll sprite (drawn for a rolling e1/e2; see ROLL_SPRITE).
+        if objects.contains_key("e1") || objects.contains_key("e2") {
+            match role_visual(&pack.manifest, &pack.roles, "roll_sprite", false) {
+                Some(entry) => {
+                    let mut bound = HashMap::new();
+                    bound.insert(0, catalog.visual(entry, 0, density, false)?);
+                    objects.insert(ROLL_SPRITE.to_owned(), bound);
+                }
+                None => visual_omissions.push("roll sprite: pack has no roll_sprite art".into()),
+            }
         }
         let mut decor_caps = HashMap::new();
         for p in world.maps.iter().flat_map(|m| m.placements.iter()) {
@@ -907,20 +896,9 @@ impl Scene {
                 .transpose()?,
         ];
         let tongue = {
-            let visuals = pack.manifest.get("visuals").and_then(Value::as_object);
-            let find = |name: &str| {
-                visuals.and_then(|v| {
-                    v.values().find(|e| {
-                        e.get("source_type").and_then(Value::as_str) == Some(name)
-                            && e.get("slices").is_some()
-                    })
-                })
-            };
-            match (
-                find("YoshiTongueL"),
-                find("YoshiTongueR"),
-                find("YoshiTongueU"),
-            ) {
+            let [left, right, up] =
+                TONGUE_ROLES.map(|role| role_visual(&pack.manifest, &pack.roles, role, true));
+            match (left, right, up) {
                 (Some(l), Some(r), Some(u)) => Some([
                     catalog.visual(l, 0, density, false)?,
                     catalog.visual(r, 0, density, false)?,
@@ -928,7 +906,7 @@ impl Scene {
                 ]),
                 _ => {
                     visual_omissions
-                        .push("tongue: pack has no YoshiTongueL/R/U nine-patches".into());
+                        .push("tongue: pack has no left/right/up tongue nine-patches".into());
                     None
                 }
             }
@@ -2005,8 +1983,8 @@ impl Scene {
                         && state.animation.as_deref() == Some("Roll"),
                     self.objects.get(ROLL_SPRITE),
                 ) {
-                    // The pack's ShyGuy "Roll" frame is fully transparent: the original
-                    // (YFS Enemies sheet) hides the Shy Guy and spawns a ShyGuyRollSprite
+                    // The pack's e1/e2 "Roll" frame is fully transparent: the original
+                    // hides the walker and spawns a separate roll sprite (ROLL_SPRITE)
                     // child playing "<colour>Roll", turning at 1248 degrees per second
                     // in the roll direction. Godot drew the empty frame (invisible).
                     let art = roll.get(&0).ok_or("roll sprite binding")?;
@@ -2103,13 +2081,18 @@ impl Scene {
                     if !aux.visible {
                         continue;
                     }
-                    let key = match auxiliary.kind {
-                        EntityAuxiliaryKind::PlantHead => "e5_head",
-                        EntityAuxiliaryKind::StiltFeet => "StiltGuy_Feet",
-                        EntityAuxiliaryKind::StiltPoles => "StiltGuy_PolesMiddle",
-                        EntityAuxiliaryKind::StiltTop => "StiltGuy_Top",
+                    let (key, optional) = match auxiliary.kind {
+                        EntityAuxiliaryKind::PlantHead => ("e5_head", false),
+                        EntityAuxiliaryKind::StiltFeet => (STILT_ROLES[0], true),
+                        EntityAuxiliaryKind::StiltPoles => (STILT_ROLES[1], true),
+                        EntityAuxiliaryKind::StiltTop => (STILT_ROLES[2], true),
                     };
-                    let art = self.object(aux.visual.asset_key.as_deref().unwrap_or(key), 0)?;
+                    let key = aux.visual.asset_key.as_deref().unwrap_or(key);
+                    // A stilt part the pack has no art for was recorded as an omission.
+                    if optional && !self.objects.contains_key(key) {
+                        continue;
+                    }
+                    let art = self.object(key, 0)?;
                     let frame = art.sample(aux.tick, &aux.animation, 0, aux.visual.frame);
                     let mut t = auxiliary_transform(
                         auxiliary,
@@ -2641,7 +2624,7 @@ impl Scene {
         })
     }
     /// The object-table key an entity draws with: its semantic asset key, except that the
-    /// fire and ice shots use their own original art (PACKLESS_ART) instead of the e16
+    /// fire and ice shots use their own original art (pack roles) instead of the e16
     /// stand-in when the pack has it.
     fn art_key<'a>(&self, entity: &'a EntityPicture) -> &'a str {
         if ["fire_shot", "ice_shot"].contains(&entity.code.as_str())
@@ -2793,6 +2776,29 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn roles_name_pack_visuals_and_a_missing_role_finds_nothing() {
+        let manifest = serde_json::json!({"visuals":{
+            "1":{"source_type":"Strip"},
+            "2":{"source_type":"Patch","slices":[1,1,1,1]},
+        }});
+        let roles = crate::pack::Roles::parse(
+            br#"{"version":1,"roles":{"stilt_poles":"Strip","tongue_up":"Patch","tongue_left":"Strip"}}"#,
+        )
+        .unwrap();
+        let found = |role, sliced| role_visual(&manifest, &roles, role, sliced);
+        assert_eq!(found("stilt_poles", false), Some(&manifest["visuals"]["1"]));
+        assert_eq!(found("tongue_up", true), Some(&manifest["visuals"]["2"]));
+        // A nine-patch role needs slices; an unmapped role or an empty map finds nothing.
+        assert_eq!(found("tongue_left", true), None);
+        assert_eq!(found("roll_sprite", false), None);
+        let empty = crate::pack::Roles::default();
+        assert_eq!(role_visual(&manifest, &empty, "stilt_poles", false), None);
+        // Every role the scene asks for is a lowercase role name.
+        for role in STILT_ROLES.iter().chain(&TONGUE_ROLES) {
+            assert!(role.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
+        }
+    }
     fn head() -> EntityAuxiliaryPicture {
         EntityAuxiliaryPicture {
             kind: EntityAuxiliaryKind::PlantHead,

@@ -385,9 +385,9 @@ fn actor_visible(e: &crate::entity::Entity) -> bool {
         e.origin.placed().is_some() && (e.status == 0 || (e.status == 2 && e.can_respawn != 0));
     eligible && (e.status == 1 || inactive)
 }
-/// The original stilt walker (YFS Enemies sheet, StiltGuyCollision events): StiltGuy_Feet at
-/// the body, a StiltGuy_PolesMiddle strip on the feet's top grown to height-68 px, and
-/// StiltGuy_Top on the poles. Feet play "Walk" (12 frames, 20 fps) once per stride and the
+/// The original stilt walker: the feet (asset key and pack role `stilt_feet`) at the body,
+/// a pole strip (`stilt_poles`) on the feet's top grown to height-68 px, and the top
+/// (`stilt_top`) on the poles. Feet play "Walk" (12 frames, 20 fps) once per stride and the
 /// poles copy the feet frame; the top advances one of its 24 frames per feet frame. Knocked:
 /// feet and poles frame 9, top frame 21. The Godot port drew the still editor image instead.
 /// Colours: the player recolours the parts per variant from the pack's e1 colour frames.
@@ -434,7 +434,7 @@ fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryP
     vec![
         part(
             EntityAuxiliaryKind::StiltFeet,
-            "StiltGuy_Feet",
+            "stilt_feet",
             e.body.y,
             feet,
             None,
@@ -442,7 +442,7 @@ fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryP
         ),
         part(
             EntityAuxiliaryKind::StiltPoles,
-            "StiltGuy_PolesMiddle",
+            "stilt_poles",
             feet_top,
             feet,
             Some(poles as f64),
@@ -450,7 +450,7 @@ fn stilt_parts(e: &crate::entity::Entity, visible: bool) -> Vec<EntityAuxiliaryP
         ),
         part(
             EntityAuxiliaryKind::StiltTop,
-            "StiltGuy_Top",
+            "stilt_top",
             feet_top - poles * SCALE,
             top,
             None,

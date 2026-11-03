@@ -31,11 +31,69 @@ pub fn safe_file(root: &Path, file: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// File name of the optional role map in a pack folder.
+pub const ROLES_FILE: &str = "roles.json";
+/// Environment variable that names a role map outside the pack folder. It is read only
+/// when the pack folder has no `roles.json`.
+pub const ROLES_ENV: &str = "EGGSHELL_PACK_ROLES";
+
+/// Neutral drawing roles (for example `tongue_left` or `stilt_feet`) mapped to the
+/// `source_type` names of the pack's own visuals. The pack side supplies this map, so the
+/// player never names a pack's visuals itself. A missing map or role means the pack has
+/// no art for that role: the scene records a visual omission and draws without it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Roles(std::collections::BTreeMap<String, String>);
+impl Roles {
+    /// Parses `{"version": 1, "roles": {"<role>": "<source type>", ...}}`.
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let value: Value =
+            serde_json::from_slice(bytes).map_err(|e| format!("pack role map: {e}"))?;
+        if value.get("version").and_then(Value::as_u64) != Some(1) {
+            return Err("pack role map: unsupported version (expected 1)".into());
+        }
+        let roles = value
+            .get("roles")
+            .and_then(Value::as_object)
+            .ok_or("pack role map: `roles` must be an object")?;
+        let mut map = std::collections::BTreeMap::new();
+        for (role, source) in roles {
+            let source = source
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| format!("pack role map: role {role} needs a non-empty name"))?;
+            map.insert(role.clone(), source.to_owned());
+        }
+        Ok(Self(map))
+    }
+    /// The role map for a pack folder: `<root>/roles.json`, else the file that
+    /// `EGGSHELL_PACK_ROLES` names, else an empty map. A map that exists but does not
+    /// parse is an error.
+    pub fn find(root: &Path) -> Result<Self, String> {
+        Self::find_with(root, std::env::var_os(ROLES_ENV))
+    }
+    fn find_with(root: &Path, fallback: Option<std::ffi::OsString>) -> Result<Self, String> {
+        let path = match root.join(ROLES_FILE) {
+            path if path.is_file() => path,
+            _ => match fallback {
+                Some(path) if !path.is_empty() => PathBuf::from(path),
+                _ => return Ok(Self::default()),
+            },
+        };
+        let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Self::parse(&bytes)
+    }
+    /// The pack visual `source_type` for a role, when the map has one.
+    pub fn source(&self, role: &str) -> Option<&str> {
+        self.0.get(role).map(String::as_str)
+    }
+}
+
 pub struct Pack {
     pub root: PathBuf,
     pub manifest: Value,
     pub drawing: Value,
     pub density: u32,
+    pub roles: Roles,
     file_hashes: std::collections::BTreeMap<String, String>,
 }
 impl Pack {
@@ -62,11 +120,13 @@ impl Pack {
         if !(1..=4).contains(&density) {
             return Err("unsupported pack density".into());
         }
+        let roles = Roles::find(root)?;
         Ok(Self {
             root: root.to_owned(),
             manifest,
             drawing,
             density,
+            roles,
             file_hashes,
         })
     }
@@ -141,6 +201,58 @@ mod tests {
         }
     }
     #[test]
+    fn role_map_parses_and_rejects_bad_shapes() {
+        let roles =
+            Roles::parse(br#"{"version":1,"roles":{"tongue_up":"Up","stilt_top":"Top"}}"#).unwrap();
+        assert_eq!(roles.source("tongue_up"), Some("Up"));
+        assert_eq!(roles.source("stilt_top"), Some("Top"));
+        assert_eq!(roles.source("roll_sprite"), None);
+        for bad in [
+            &br#"{"roles":{}}"#[..],
+            br#"{"version":2,"roles":{}}"#,
+            br#"{"version":1}"#,
+            br#"{"version":1,"roles":{"tongue_up":3}}"#,
+            br#"{"version":1,"roles":{"tongue_up":""}}"#,
+            b"not json",
+        ] {
+            assert!(Roles::parse(bad).is_err());
+        }
+    }
+    #[test]
+    fn role_map_comes_from_the_pack_folder_then_the_fallback_file() {
+        let root = std::env::temp_dir().join(format!("eggshell-roles-{}", std::process::id()));
+        let elsewhere = root.join("elsewhere.json");
+        let folder = root.join("pack");
+        fs::create_dir_all(&folder).unwrap();
+        // No map anywhere: no roles, no error.
+        assert_eq!(Roles::find_with(&folder, None).unwrap(), Roles::default());
+        assert_eq!(
+            Roles::find_with(&folder, Some(Default::default())).unwrap(),
+            Roles::default()
+        );
+        fs::write(
+            &elsewhere,
+            br#"{"version":1,"roles":{"fire_shot":"Elsewhere"}}"#,
+        )
+        .unwrap();
+        let found = Roles::find_with(&folder, Some(elsewhere.clone().into())).unwrap();
+        assert_eq!(found.source("fire_shot"), Some("Elsewhere"));
+        // A map in the pack folder wins over the fallback.
+        fs::write(
+            folder.join(ROLES_FILE),
+            br#"{"version":1,"roles":{"fire_shot":"Here"}}"#,
+        )
+        .unwrap();
+        let found = Roles::find_with(&folder, Some(elsewhere.into())).unwrap();
+        assert_eq!(found.source("fire_shot"), Some("Here"));
+        // A named fallback that is missing, or a bad map, is an error.
+        fs::remove_file(folder.join(ROLES_FILE)).unwrap();
+        assert!(Roles::find_with(&folder, Some(root.join("missing.json").into())).is_err());
+        fs::write(folder.join(ROLES_FILE), b"{}").unwrap();
+        assert!(Roles::find_with(&folder, None).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn digest_known() {
         assert_eq!(
             hash(b"abc"),
@@ -203,6 +315,7 @@ mod normal_tests {
             manifest: Value::Null,
             drawing: Value::Null,
             density: 1,
+            roles: Roles::default(),
             file_hashes: Default::default(),
         };
         assert!(pack.normal("foo.png", [2, 1]).is_err());

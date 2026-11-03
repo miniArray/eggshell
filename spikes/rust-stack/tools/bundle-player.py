@@ -233,6 +233,25 @@ for name in files:
     provenance["private_assets"][name] = digest(target)
     assert digest(target) == inventory[name], f"private pack inventory mismatch: {name}"
 
+# The pack's role map (neutral drawing role -> pack visual name) is private data kept
+# outside this repository. EGGSHELL_PACK_ROLES names it; otherwise the pack folder's own
+# roles.json is used. The player reads it from private-pack/roles.json.
+roles_env = os.environ.get("EGGSHELL_PACK_ROLES")
+roles_path = Path(roles_env) if roles_env else pack / "roles.json"
+assert roles_path.is_file(), (
+    f"pack role map missing: {roles_path} (set EGGSHELL_PACK_ROLES to the private roles.json)"
+)
+roles = json.loads(roles_path.read_text())
+assert roles.get("version") == 1 and isinstance(roles.get("roles"), dict), (
+    f"pack role map has an unsupported shape: {roles_path}"
+)
+assert all(isinstance(v, str) and v for v in roles["roles"].values()), (
+    f"pack role map needs a non-empty name for every role: {roles_path}"
+)
+shutil.copyfile(roles_path, private / "roles.json")
+(private / "roles.json").chmod(0o600)
+provenance["pack_roles_sha256"] = digest(private / "roles.json")
+
 if presentation_bundle:
     inputs = bundle / "private-input"
     inputs.mkdir(mode=0o700)
