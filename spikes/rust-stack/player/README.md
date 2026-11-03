@@ -35,6 +35,18 @@ data when present in the pinned closure; that fix needs fresh device observation
 
 `--play` requires `--level`, `--collision`, `--schema`, `--pack-root`,
 `--pack-inventory`, `--view-metrics` and isolated `--save-dir` paths.
+
+Pack role map: the player asks the pack for some art by neutral drawing role
+(`tongue_left`, `tongue_right`, `tongue_up`, `stilt_feet`, `stilt_poles`,
+`stilt_top`, `roll_sprite`, and the packless runtime codes such as `fire_shot`).
+The pack side maps each role to the `source_type` of one of its visuals in
+`roles.json` in the pack folder: `{"version": 1, "roles": {"<role>": "<name>"}}`.
+When the pack folder has no `roles.json`, the player reads the file that
+`EGGSHELL_PACK_ROLES` names. The bundle step copies the map into
+`private-pack/roles.json` (from `EGGSHELL_PACK_ROLES`, else the pack folder) and
+stops if there is none. Without a map, or for a role the map does not name, the
+scene records a visual omission and draws without that part. Real-pack tests that
+check tongue or stilt pictures need the map.
 Optional: `--replay`, `--ticks`, `--seconds` (hard1..900s bound), `--windowed`,
 `--restore`, `--uncapped`, `--capture-tick` plus private `--capture` path.
 All runs currently label `benchmark_eligible=false` and `target_A_B_claim=false`.
