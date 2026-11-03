@@ -18,8 +18,16 @@ fn main() {
     let mut curve = ElasticTongue::default();
     let mut seen = 0;
     let mut bent = 0;
-    for step in 0..240 {
-        let mask = input::RIGHT | if step % 36 < 12 { input::USE } else { 0 };
+    let mut airborne = [0; 3];
+    for step in 0..480 {
+        let phase = step % 90;
+        let mask = input::RIGHT
+            | if step % 36 < 12 { input::USE } else { 0 }
+            | if step > 30 && phase < 75 && !(30..33).contains(&phase) {
+                input::JUMP
+            } else {
+                0
+            };
         session.advance(mask).unwrap();
         let before = session.snapshot().unwrap();
         let p = session.presentation();
@@ -38,13 +46,24 @@ fn main() {
             let bend = curve.bend(p.tick, p.map_index, length);
             assert_eq!(point(mouth, tip, bend, 0.0), mouth);
             assert_eq!(point(mouth, tip, bend, 1.0), tip);
+            if !p.player.on_floor {
+                assert_eq!(bend, [0.0; 2], "air tongue must stay straight");
+                airborne[0] += usize::from(p.player.velocity.y < 0);
+                airborne[1] += usize::from(p.player.velocity.y > 0);
+                airborne[2] +=
+                    usize::from(session.saved_field("flutter_remaining").unwrap_or(0) > 0);
+            }
             seen += 1;
             bent += usize::from(bend != [0.0; 2]);
         }
         assert_eq!(session.snapshot().unwrap(), before);
     }
     assert!(seen > 0 && bent > 0);
+    assert!(
+        airborne.iter().all(|n| *n > 0),
+        "ascending/falling/fluttering coverage {airborne:?}"
+    );
     println!(
-        "TONGUE_PROBE steps=240 tongue_steps={seen} bent_steps={bent} endpoints_exact=true snapshots_unchanged=true"
+        "TONGUE_PROBE steps=480 ascending_falling_fluttering={airborne:?} tongue_steps={seen} bent_steps={bent} endpoints_exact=true snapshots_unchanged=true"
     );
 }

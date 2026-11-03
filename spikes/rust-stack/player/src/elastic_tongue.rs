@@ -18,7 +18,7 @@ impl ElasticTongue {
         self.step(
             p.tick,
             p.map_index,
-            p.player.tongue.is_some(),
+            p.player.tongue.is_some() && p.player.on_floor && !p.player.swimming,
             [
                 p.player.velocity.x as f64 / SCALE as f64,
                 p.player.velocity.y as f64 / SCALE as f64,
@@ -120,6 +120,17 @@ mod tests {
         assert_eq!(clock.bend(2, 1, 100.0), [0.0; 2]);
         clock.step(3, 2, false, [0.0; 2]);
         assert_eq!(clock.bend(3, 2, 100.0), [0.0; 2]);
+    }
+    #[test]
+    fn leaving_ground_discards_the_bend_instead_of_dragging_air_tongues() {
+        let mut clock = ElasticTongue::default();
+        clock.step(1, 1, true, [4.0, 0.0]);
+        assert_ne!(clock.bend(1, 1, 100.0), [0.0; 2]);
+        // The observer gates deformation to a grounded, non-swimming tongue.
+        for (tick, velocity) in [(2, [4.0, -12.0]), (3, [4.0, 12.0]), (4, [4.0, -1.0])] {
+            clock.step(tick, 1, false, velocity);
+            assert_eq!(clock.bend(tick, 1, 100.0), [0.0; 2]);
+        }
     }
     #[test]
     fn segmented_art_keeps_source_coverage_and_shared_edges() {

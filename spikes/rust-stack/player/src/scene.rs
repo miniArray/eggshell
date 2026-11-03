@@ -2361,8 +2361,9 @@ impl Scene {
             } else {
                 &p.player.visual.palette
             };
+            let elastic = settings.elastic_tongue && p.player.on_floor && !p.player.swimming;
             let patches = slices_uniform(size, target, cuts, self.uniform_for(f.image))?;
-            let patches = if settings.elastic_tongue {
+            let patches = if elastic {
                 crate::elastic_tongue::segments(patches, tongue.up, unit)
             } else {
                 patches
@@ -2387,7 +2388,7 @@ impl Scene {
                 target[0].max(cuts.left + cuts.right)
             };
             let mut corner = corner;
-            if settings.elastic_tongue && (tongue.up || p.player.facing < 0) {
+            if elastic && (tongue.up || p.player.facing < 0) {
                 corner[axis] = -extent;
             }
             for patch in patches {
@@ -2403,7 +2404,7 @@ impl Scene {
                     [1.0, 1.0, 1.0, p.player.visual.alpha as f32],
                     palette,
                 );
-                if settings.elastic_tongue && extent > 0.0 {
+                if elastic && extent > 0.0 {
                     let points = [
                         [local[0], local[1]],
                         [local[0] + local[2], local[1]],
