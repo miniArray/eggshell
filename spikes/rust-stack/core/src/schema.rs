@@ -5,6 +5,9 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
 pub const REFERENCE_SOURCE: &str = "297ada9a022d0ddc297dd2d4091c5dccfab4531e";
+pub const V11_REFERENCE_SOURCE: &str = "8b4573cd67eb3c2672a5d412d32c4fe780d34efd";
+pub const V11_SCHEMA_DIGEST: &str =
+    "727f2c16b0616c519893562a6155e29ce312d5d0a4c22ea17309279e62d60185";
 /// Complete baseline registry, including every unused declaration.
 pub const V10_SCHEMA_DIGEST: &str =
     "12034df2601b61728f41efa24c05b3679830af0ba217a41e5c1446441b6052ee";
@@ -12,9 +15,13 @@ pub const V10_SCHEMA_DIGEST: &str =
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Field(pub String, pub i64);
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct Collection(pub String, pub Vec<Field>);
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct EntitySchema {
     pub code: String,
     pub fields: Vec<Field>,
+    #[serde(default)]
+    pub collections: Vec<Collection>,
     pub dynamic: bool,
     pub enemy: bool,
 }
@@ -32,6 +39,7 @@ struct Metadata {
 }
 #[derive(Clone, Debug)]
 pub struct Schema {
+    version: u32,
     digest: [u8; 32],
     level: Vec<Field>,
     player: Vec<Field>,
@@ -45,10 +53,14 @@ impl Schema {
         }
         let metadata: Metadata =
             serde_json::from_str(json).map_err(|e| invalid(&format!("schema JSON: {e}")))?;
-        if metadata.version != 10
-            || metadata.source_sha != REFERENCE_SOURCE
-            || metadata.digest != V10_SCHEMA_DIGEST
-        {
+        let supported = match metadata.version {
+            10 => metadata.source_sha == REFERENCE_SOURCE && metadata.digest == V10_SCHEMA_DIGEST,
+            11 => {
+                metadata.source_sha == V11_REFERENCE_SOURCE && metadata.digest == V11_SCHEMA_DIGEST
+            }
+            _ => false,
+        };
+        if !supported {
             return Err(invalid("schema version/source"));
         }
         let digest = decode_hash(&metadata.digest)?;
@@ -66,10 +78,38 @@ impl Schema {
             fields_json(&metadata.common),
         ];
         for entity in &metadata.entities {
-            expected.push(serde_json::json!([
-                entity.code,
-                fields_json(&entity.fields)
-            ]));
+            if metadata.version == 10 {
+                if !entity.collections.is_empty() {
+                    return Err(invalid("v10 cannot declare collections"));
+                }
+                expected.push(serde_json::json!([
+                    entity.code,
+                    fields_json(&entity.fields)
+                ]));
+            } else {
+                expected.push(serde_json::json!([
+                    entity.code,
+                    fields_json(&entity.fields),
+                    entity
+                        .collections
+                        .iter()
+                        .map(|Collection(name, fields)| {
+                            serde_json::json!([name, fields_json(fields)])
+                        })
+                        .collect::<Vec<_>>()
+                ]));
+            }
+            let mut names = entity
+                .fields
+                .iter()
+                .map(|f| f.0.as_str())
+                .collect::<HashSet<_>>();
+            for Collection(name, fields) in &entity.collections {
+                if name.is_empty() || !names.insert(name) || fields.is_empty() {
+                    return Err(invalid("collection schema/name"));
+                }
+                check_fields(fields)?;
+            }
             if entity.fields.len() < metadata.common.len()
                 || entity.fields[..metadata.common.len()] != metadata.common
             {
@@ -98,12 +138,22 @@ impl Schema {
             }
         }
         Ok(Self {
+            version: metadata.version,
             digest,
             level: metadata.level,
             player: metadata.player,
             common: metadata.common,
             entities: metadata.entities,
         })
+    }
+    pub fn current() -> Result<Self, Error> {
+        Self::parse(include_str!("../../../../data/snapshot-schema-v11.json"))
+    }
+    pub fn legacy() -> Result<Self, Error> {
+        Self::parse(include_str!("../../../../data/snapshot-schema-v10.json"))
+    }
+    pub fn version(&self) -> u32 {
+        self.version
     }
     pub fn digest(&self) -> [u8; 32] {
         self.digest
@@ -122,6 +172,9 @@ impl Schema {
     }
     pub fn entity(&self, code: &str) -> Option<&EntitySchema> {
         self.entities.iter().find(|entry| entry.code == code)
+    }
+    pub fn entity_collections(&self, code: &str) -> &[Collection] {
+        self.entity(code).map_or(&[], |entry| &entry.collections)
     }
     pub fn entity_fields(&self, code: &str) -> &[Field] {
         self.entity(code)

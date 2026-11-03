@@ -85,7 +85,7 @@ impl Life {
 life_fields! {
  hurt:0,hurt_phase:0,invulnerable:0,health:10,health_wait:0,separated:0,recovery_delay:0,hits:0,hurt_deceleration:0,
  death_cause:0,quick_death:0,companion_mode:0,companion_age:0,companion_vx:0,companion_vy:0,companion_direction:1,
- companion_from_x:0,companion_from_y:0,companion_dx:0,bubble_bound_ticks:0,bubble_bound_from_x:0,bubble_bound_to_x:0,
+ companion_from_x:0,companion_from_y:0,companion_dx:0,bubble_bound_ticks:0,bubble_collision_disabled:0,bubble_bound_from_x:0,bubble_bound_to_x:0,
  separation_grace:0,rescue_active:0,rescue_mask:0,rescue_ticks:0,checkpoint_awards:0,
 }
 impl Life {
@@ -102,7 +102,8 @@ impl Life {
             && (self.hurt_phase == 0 || self.hurt > 0)
             && (self.hurt_phase != HURT_RECOVERED || self.hurt == 1)
             && [0, 128, 648, 1296].contains(&self.hurt_deceleration)
-            && (0..=6).contains(&self.bubble_bound_ticks)
+            && (-1..=6).contains(&self.bubble_bound_ticks)
+            && (0..=1).contains(&self.bubble_collision_disabled)
             && (0..=36).contains(&self.recovery_delay)
             && (0..=30).contains(&self.separation_grace)
             && (0..=15).contains(&self.rescue_mask)

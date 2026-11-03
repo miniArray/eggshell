@@ -118,6 +118,13 @@ pub(crate) struct Actor {
     pub roll_grace: i64,
     pub roll_bounce: i64,
     pub ground_form: i64,
+    pub birth_frame: i64,
+    pub birth_serial: i64,
+    pub birth_phase: i64,
+    pub knock_active: i64,
+    pub knock_tweens: Vec<crate::knockback::Tween>,
+    pub squash_batch: i64,
+    pub squash_ordinal: i64,
     pub phase: i64,
     pub timer: i64,
     pub cycles: i64,
@@ -340,6 +347,13 @@ impl Actor {
             roll_grace: 0,
             roll_bounce: 0,
             ground_form: 0,
+            birth_frame: 0,
+            birth_serial: 0,
+            birth_phase: 2,
+            knock_active: 0,
+            knock_tweens: Vec::new(),
+            squash_batch: 0,
+            squash_ordinal: 0,
             phase: 0,
             timer: 0,
             cycles: 0,
@@ -522,6 +536,13 @@ impl Actor {
             1
         };
         (0..=last).contains(&self.variant)
+            && self.birth_frame >= -1
+            && self.birth_serial >= 0
+            && (0..=3).contains(&self.birth_phase)
+            && (0..=1).contains(&self.knock_active)
+            && self.knock_tweens.iter().all(crate::knockback::Tween::valid)
+            && self.squash_batch >= 0
+            && self.squash_ordinal >= 0
             && (![ActorKind::Shell, ActorKind::Runner].contains(&self.kind) || self.shell_valid())
             && (self.kind != ActorKind::Armored || self.armored_valid())
             && (self.kind != ActorKind::Spear || self.spear_valid())
@@ -1233,6 +1254,12 @@ fields!(
     roll_grace,
     roll_bounce,
     ground_form,
+    birth_frame,
+    birth_serial,
+    birth_phase,
+    knock_active,
+    squash_batch,
+    squash_ordinal,
     phase,
     timer,
     cycles,

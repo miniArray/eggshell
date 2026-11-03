@@ -5,7 +5,7 @@ use crate::{
     math::{screen_centre, Rng},
     player::{Player, Sound},
     schema::{Field, Schema},
-    wire::{WireEntity, WireSnapshot},
+    wire::{WireCollection, WireEntity, WireSnapshot},
     Error, Position, World, SCALE as S,
 };
 #[derive(Clone, Debug)]
@@ -25,6 +25,9 @@ pub(crate) struct Run {
     pub goal_reached: i64,
     pub deaths: i64,
     pub dynamic_serial: i64,
+    pub birth_serial: i64,
+    pub soft_squash_batch: i64,
+    pub soft_squash_ordinal: i64,
     pub checkpoint: crate::checkpoint::Memory,
     pub consumers: crate::consumers::Consumers,
     pub message: crate::blocks::Message,
@@ -108,6 +111,9 @@ impl Run {
             goal_reached: 0,
             deaths: 0,
             dynamic_serial: 1,
+            birth_serial: 0,
+            soft_squash_batch: 0,
+            soft_squash_ordinal: 0,
             checkpoint: crate::checkpoint::Memory::default(),
             consumers: crate::consumers::Consumers::default(),
             message: crate::blocks::Message::default(),
@@ -1724,6 +1730,21 @@ impl Run {
                     code: code.to_owned(),
                     id: e.id(world).into_owned(),
                     values,
+                    collections: schema
+                        .entity_collections(code)
+                        .iter()
+                        .map(|declaration| {
+                            let rows = match (&e.kind, declaration.0.as_str()) {
+                                (Kind::Walker(actor), "knock_tweens") => actor
+                                    .knock_tweens
+                                    .iter()
+                                    .map(crate::knockback::Tween::row)
+                                    .collect(),
+                                _ => Vec::new(),
+                            };
+                            WireCollection { rows }
+                        })
+                        .collect(),
                 }
             })
             .collect();
@@ -1755,6 +1776,9 @@ impl Run {
             "goal_reached" => self.goal_reached,
             "deaths" => self.deaths,
             "dynamic_serial" => self.dynamic_serial,
+            "birth_serial" => self.birth_serial,
+            "soft_squash_batch" => self.soft_squash_batch,
+            "soft_squash_ordinal" => self.soft_squash_ordinal,
             "life_ready" => 1,
             "run_spawn_x" => world.spawn.x,
             "run_spawn_y" => world.spawn.y,
@@ -1935,6 +1959,9 @@ impl Run {
         // implemented range.
         let outside: Vec<&str> = [
             ("self.frame < 0", self.frame < 0),
+            ("self.birth_serial < 0", self.birth_serial < 0),
+            ("self.soft_squash_batch < 0", self.soft_squash_batch < 0),
+            ("self.soft_squash_ordinal < 0", self.soft_squash_ordinal < 0),
             ("self.play_ticks < 0", self.play_ticks < 0),
             ("self.total_play_ticks < self.play_ticks", self.total_play_ticks < self.play_ticks),
             ("self.attempt_ticks < 0", self.attempt_ticks < 0),

@@ -1,4 +1,4 @@
-//! Literal v10 structural codec for differential inspection only.
+//! Literal v10/v11 structural codec for differential inspection and save boundaries.
 //!
 //! These indexed scalar arrays are serialization metadata, NOT gameplay state.
 //! This module does not implement type/lifetime/movement valid_state hooks and
@@ -13,10 +13,15 @@ const MAX_ENTITIES: usize = 100_000;
 const MAX_TEXT: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WireCollection {
+    pub rows: Vec<Vec<i64>>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WireEntity {
     pub code: String,
     pub id: String,
     pub values: Vec<i64>,
+    pub collections: Vec<WireCollection>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WireSnapshot {
@@ -34,6 +39,14 @@ pub struct Difference {
     pub actual: String,
 }
 impl WireSnapshot {
+    pub fn format_version(bytes: &[u8]) -> Result<u32, Error> {
+        if bytes.len() < 12 || &bytes[..8] != b"EGGSTATE" {
+            return Err(refuse("format/version"));
+        }
+        Ok(u32::from_le_bytes(
+            bytes[8..12].try_into().map_err(|_| refuse("version"))?,
+        ))
+    }
     pub fn decode(bytes: &[u8], identity: [u8; 32], schema: &Schema) -> Result<Self, Error> {
         let minimum = 76 + 8 * (schema.level().len() + schema.player().len()) + 4 + 32;
         if bytes.len() < minimum || bytes.len() > MAX_BYTES {
@@ -47,7 +60,7 @@ impl WireSnapshot {
             bytes: &bytes[..end],
             at: 0,
         };
-        if cursor.take(8)? != b"EGGSTATE" || cursor.u32()? != 10 {
+        if cursor.take(8)? != b"EGGSTATE" || cursor.u32()? != schema.version() {
             return Err(refuse("format/version"));
         }
         if cursor.take(32)? != identity {
@@ -72,7 +85,29 @@ impl WireSnapshot {
                 return Err(refuse("entity field count"));
             }
             let values = cursor.values(fields.len())?;
-            entities.push(WireEntity { code, id, values });
+            let mut collections = Vec::new();
+            for declaration in schema.entity_collections(&code) {
+                let count = cursor.u32()? as usize;
+                let width = declaration.1.len();
+                let row_bytes = width
+                    .checked_mul(8)
+                    .filter(|n| *n > 0)
+                    .ok_or_else(|| refuse("collection row schema"))?;
+                if count > (end - cursor.at) / row_bytes {
+                    return Err(refuse("collection row count/truncation"));
+                }
+                let mut rows = Vec::with_capacity(count);
+                for _ in 0..count {
+                    rows.push(cursor.values(width)?);
+                }
+                collections.push(WireCollection { rows });
+            }
+            entities.push(WireEntity {
+                code,
+                id,
+                values,
+                collections,
+            });
         }
         if cursor.at != end {
             return Err(refuse("trailing bytes/count"));
@@ -90,7 +125,7 @@ impl WireSnapshot {
         self.validate_structure(schema)?;
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"EGGSTATE");
-        bytes.extend_from_slice(&10u32.to_le_bytes());
+        bytes.extend_from_slice(&schema.version().to_le_bytes());
         bytes.extend_from_slice(&self.identity);
         bytes.extend_from_slice(&schema.digest());
         for value in self.level.iter().chain(&self.player) {
@@ -106,6 +141,14 @@ impl WireSnapshot {
             for value in &entity.values {
                 bytes.extend_from_slice(&value.to_le_bytes());
             }
+            for collection in &entity.collections {
+                bytes.extend_from_slice(&(collection.rows.len() as u32).to_le_bytes());
+                for row in &collection.rows {
+                    for value in row {
+                        bytes.extend_from_slice(&value.to_le_bytes());
+                    }
+                }
+            }
             if bytes.len() > MAX_BYTES - 32 {
                 return Err(refuse("oversized output"));
             }
@@ -113,7 +156,7 @@ impl WireSnapshot {
         bytes.extend_from_slice(&hash(&bytes));
         Ok(bytes)
     }
-    fn validate_structure(&self, schema: &Schema) -> Result<(), Error> {
+    pub(crate) fn validate_structure(&self, schema: &Schema) -> Result<(), Error> {
         if self.level.len() != schema.level().len()
             || self.player.len() != schema.player().len()
             || self.entities.len() > MAX_ENTITIES
@@ -135,8 +178,23 @@ impl WireSnapshot {
                 || entity.id.len() > MAX_TEXT
                 || !ids.insert(&entity.id)
                 || fields.len() != entity.values.len()
+                || entity.collections.len() != schema.entity_collections(&entity.code).len()
             {
                 return Err(refuse("entity identity/schema"));
+            }
+            for (collection, declaration) in entity
+                .collections
+                .iter()
+                .zip(schema.entity_collections(&entity.code))
+            {
+                if collection.rows.len() > u32::MAX as usize
+                    || collection
+                        .rows
+                        .iter()
+                        .any(|row| row.len() != declaration.1.len())
+                {
+                    return Err(refuse("collection rows/schema"));
+                }
             }
             let read = |name| required(&entity.values, fields, name);
             if read("map_index")? != map {
@@ -269,6 +327,48 @@ impl WireSnapshot {
                     return Some(diff(&scope, name, token, a.to_string(), b.to_string()));
                 }
             }
+            for ((declaration, expected), actual) in schema
+                .entity_collections(&expected.code)
+                .iter()
+                .zip(&expected.collections)
+                .zip(&actual.collections)
+            {
+                if expected.rows.len() != actual.rows.len() {
+                    return Some(diff(
+                        &scope,
+                        &format!("{}.count", declaration.0),
+                        token,
+                        expected.rows.len().to_string(),
+                        actual.rows.len().to_string(),
+                    ));
+                }
+                for (row_index, (expected, actual)) in
+                    expected.rows.iter().zip(&actual.rows).enumerate()
+                {
+                    for ((field, expected), actual) in
+                        declaration.1.iter().zip(expected).zip(actual)
+                    {
+                        if expected != actual {
+                            return Some(diff(
+                                &scope,
+                                &format!("{}[{row_index}].{}", declaration.0, field.0),
+                                token,
+                                expected.to_string(),
+                                actual.to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+            if expected.collections.len() != actual.collections.len() {
+                return Some(diff(
+                    &scope,
+                    "collection_count",
+                    token,
+                    expected.collections.len().to_string(),
+                    actual.collections.len().to_string(),
+                ));
+            }
             if expected.values.len() != actual.values.len() {
                 return Some(diff(
                     &scope,
@@ -345,5 +445,97 @@ impl<'a> Cursor<'a> {
 fn refuse(reason: &str) -> Error {
     Error::Snapshot {
         reason: reason.into(),
+    }
+}
+
+#[cfg(test)]
+mod layout11_tests {
+    use super::*;
+
+    fn put(values: &mut [i64], fields: &[Field], name: &str, value: i64) {
+        values[fields.iter().position(|f| f.0 == name).unwrap()] = value;
+    }
+    fn armor(schema: &Schema) -> WireSnapshot {
+        let mut level = schema.level().iter().map(|f| f.1).collect::<Vec<_>>();
+        put(&mut level, schema.level(), "map_index", 1);
+        put(&mut level, schema.level(), "dynamic_serial", 1);
+        let fields = schema.entity_fields("e11");
+        let mut values = fields.iter().map(|f| f.1).collect::<Vec<_>>();
+        for (name, value) in [
+            ("source_index", 0),
+            ("token", 1),
+            ("map_index", 1),
+            ("family_index", 0),
+            ("status", 1),
+            ("facing", -1),
+            ("knock_active", 1),
+        ] {
+            put(&mut values, fields, name, value);
+        }
+        WireSnapshot {
+            identity: [7; 32],
+            level,
+            player: schema.player().iter().map(|f| f.1).collect(),
+            entities: vec![WireEntity {
+                code: "e11".into(),
+                id: "armor".into(),
+                values,
+                collections: vec![WireCollection {
+                    rows: vec![
+                        vec![448 * 60, 29, 60, 1],
+                        vec![-48 * 60, 90, 90, 0],
+                        vec![100, 0, 30, 3],
+                    ],
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn v11_collection_rows_round_trip_in_registration_and_release_order() {
+        let schema = Schema::current().unwrap();
+        assert_eq!(schema.version(), 11);
+        let state = armor(&schema);
+        let bytes = state.encode(&schema).unwrap();
+        assert_eq!(WireSnapshot::format_version(&bytes).unwrap(), 11);
+        assert_eq!(
+            WireSnapshot::decode(&bytes, state.identity, &schema).unwrap(),
+            state
+        );
+        let mut reordered = state.clone();
+        reordered.entities[0].collections[0].rows.swap(0, 1);
+        let difference = state.first_difference(&reordered, &schema).unwrap();
+        assert_eq!(difference.field, "knock_tweens[0].from_vx");
+    }
+
+    #[test]
+    fn v11_collection_count_is_bounded_by_remaining_payload_before_allocation() {
+        let schema = Schema::current().unwrap();
+        let state = armor(&schema);
+        let mut bytes = state.encode(&schema).unwrap();
+        let count_offset = 76
+            + (schema.level().len() + schema.player().len()) * 8
+            + 4
+            + 4
+            + 3
+            + 4
+            + 5
+            + 4
+            + schema.entity_fields("e11").len() * 8;
+        bytes[count_offset..count_offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let end = bytes.len() - 32;
+        let digest = hash(&bytes[..end]);
+        bytes[end..].copy_from_slice(&digest);
+        assert!(WireSnapshot::decode(&bytes, state.identity, &schema).is_err());
+    }
+
+    #[test]
+    fn v11_encoder_refuses_collection_schema_mismatches() {
+        let schema = Schema::current().unwrap();
+        let mut state = armor(&schema);
+        state.entities[0].collections[0].rows[0].pop();
+        assert!(state.encode(&schema).is_err());
+        state.entities[0].collections.clear();
+        assert!(state.encode(&schema).is_err());
     }
 }

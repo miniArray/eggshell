@@ -41,6 +41,9 @@ impl Run {
                 "goal_reached" => run.goal_reached = *value,
                 "deaths" => run.deaths = *value,
                 "dynamic_serial" => run.dynamic_serial = *value,
+                "birth_serial" => run.birth_serial = *value,
+                "soft_squash_batch" => run.soft_squash_batch = *value,
+                "soft_squash_ordinal" => run.soft_squash_ordinal = *value,
                 "play_ticks" => run.play_ticks = *value,
                 "total_play_ticks" => run.total_play_ticks = *value,
                 "coins" => run.coins = *value,
@@ -266,6 +269,22 @@ impl Run {
                 };
                 if !handled && value != default {
                     return Err(refuse(name));
+                }
+            }
+            for (collection, declaration) in encoded
+                .collections
+                .iter()
+                .zip(schema.entity_collections(&encoded.code))
+            {
+                match (&mut e.kind, declaration.0.as_str()) {
+                    (Kind::Walker(actor), "knock_tweens") => {
+                        actor.knock_tweens = collection
+                            .rows
+                            .iter()
+                            .map(|row| crate::knockback::Tween::from_row(row))
+                            .collect::<Result<_, _>>()?;
+                    }
+                    _ => return Err(refuse(&declaration.0)),
                 }
             }
         }

@@ -247,8 +247,7 @@ if presentation_bundle:
         "lagoon.level.json": Path("tests/fixtures/lagoon.level.json"),
         "lagoon.input.json": Path("tests/fixtures/lagoon.input.json"),
         "collision_table.json": Path("data/collision_table.json"),
-        "schema.json": Path.home()
-        / "eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.json",
+        "schema.json": Path("data/snapshot-schema-v11.json"),
         "view-metrics.json": stage / "view-metrics.json",
         "target.level.json": Path.home()
         / ".local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json",

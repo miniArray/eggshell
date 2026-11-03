@@ -46,6 +46,8 @@
                 ./build.rs
                 ../core/Cargo.toml
                 ../core/src
+                ../../../data/snapshot-schema-v10.json
+                ../../../data/snapshot-schema-v11.json
                 ../core/tests/fixtures/collections.level.json
                 ../core/tests/fixtures/actors_target.level.json
                 ../core/tests/fixtures/stilts_target.level.json

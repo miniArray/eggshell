@@ -1,4 +1,4 @@
-//! Engine-independent fixed-tick experiment. No engine, I/O, or clock dependencies.
+//! Engine-independent fixed ticks. Only legacy save migration emits a load diagnostic.
 use std::fmt;
 
 mod actors;
@@ -32,6 +32,7 @@ mod helmet;
 mod hound;
 mod items;
 mod juggler;
+mod knockback;
 mod launcher;
 mod ledge;
 mod life;
@@ -52,6 +53,7 @@ mod render_index;
 mod roller;
 mod runtime;
 mod sack;
+mod save_migration;
 pub mod schema;
 mod shell;
 mod shooter;
@@ -537,7 +539,12 @@ pub struct Session {
 }
 impl Session {
     pub fn load(level_json: &str, collision_json: &str, schema_json: &str) -> Result<Self, Error> {
-        let schema = schema::Schema::parse(schema_json)?;
+        let supplied = schema::Schema::parse(schema_json)?;
+        let schema = if supplied.version() == 10 {
+            schema::Schema::current()?
+        } else {
+            supplied
+        };
         if schema::hash(collision_json.as_bytes())
             != schema::decode_hash(
                 "a143014159ced2f04f82386471c7fbf6e628f4760c4085655b7e9392b0dde6d6",
@@ -599,7 +606,12 @@ impl Session {
         schema_json: &str,
         omit_dice_colours: bool,
     ) -> Result<Self, Error> {
-        let schema = schema::Schema::parse(schema_json)?;
+        let supplied = schema::Schema::parse(schema_json)?;
+        let schema = if supplied.version() == 10 {
+            schema::Schema::current()?
+        } else {
+            supplied
+        };
         if schema::hash(collision_json.as_bytes())
             != schema::decode_hash(
                 "a143014159ced2f04f82386471c7fbf6e628f4760c4085655b7e9392b0dde6d6",
@@ -680,13 +692,33 @@ impl Session {
             .encode(&self.schema)
     }
     pub fn restore(&mut self, bytes: &[u8]) -> Result<(), Error> {
-        let wire = wire::WireSnapshot::decode(bytes, self.world.identity, &self.schema)?;
+        let (wire, migrated) = match wire::WireSnapshot::format_version(bytes)? {
+            10 => {
+                let legacy = schema::Schema::legacy()?;
+                let wire = wire::WireSnapshot::decode(bytes, self.world.identity, &legacy)?;
+                let (wire, report) =
+                    save_migration::migrate(wire, &self.world, &legacy, &self.schema)?;
+                (wire, Some(report))
+            }
+            11 => (
+                wire::WireSnapshot::decode(bytes, self.world.identity, &self.schema)?,
+                None,
+            ),
+            _ => {
+                return Err(Error::Unsupported {
+                    requirements: vec!["snapshot version outside v10/v11 support".into()],
+                })
+            }
+        };
         let state = state::Run::restored(&wire, &self.world, &self.schema)?;
         self.previous = presentation::Previous::of(&state, self.world.maps[0].placements.len());
         self.render_index.update(&state, &self.world);
         self.state = state;
         self.stats.tick = self.state.frame;
         self.stats.restore_count += 1;
+        if let Some(report) = migrated {
+            report.print();
+        }
         self.interpolate = false;
         Ok(())
     }
