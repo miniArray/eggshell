@@ -1,5 +1,9 @@
 # Eggshell
 
+<p align="center">
+  <img src="art/logo/eggshell-logo.jpg" alt="Eggshell: the title in chunky crayon letters over pastel hills, with a chick in a cracked eggshell" width="800">
+</p>
+
 Eggshell is a Godot platform-level player for Linux. It uses a fixed 60 Hz
 integer simulation, separate graphics packs and resumable play sessions.
 
