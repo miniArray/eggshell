@@ -65,7 +65,6 @@ impl Run {
             entities,
             player,
             rng,
-            frame,
             camera,
             ..
         } = self;
@@ -84,7 +83,6 @@ impl Run {
         let px = player.body.x;
         let mut step = ActorStep {
             map,
-            frame: *frame,
             camera: *camera,
             player,
             rng,
@@ -243,7 +241,6 @@ impl Run {
             entities,
             player,
             rng,
-            frame,
             camera,
             ..
         } = self;
@@ -261,7 +258,6 @@ impl Run {
         }
         let mut step = ActorStep {
             map,
-            frame: *frame,
             camera: *camera,
             player,
             rng,

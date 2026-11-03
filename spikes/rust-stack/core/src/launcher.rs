@@ -280,7 +280,6 @@ impl Run {
             entities,
             player,
             rng,
-            frame,
             camera,
             ..
         } = self;
@@ -299,7 +298,6 @@ impl Run {
         let (px, py) = (player.body.x, player.body.y);
         let step = ActorStep {
             map,
-            frame: *frame,
             camera: *camera,
             player,
             rng,

@@ -121,7 +121,6 @@ impl Run {
             entities,
             player,
             rng,
-            frame,
             camera,
             ..
         } = self;
@@ -142,7 +141,6 @@ impl Run {
         let captured = player.captured_by != 0;
         let step = ActorStep {
             map,
-            frame: *frame,
             camera: *camera,
             player,
             rng,

@@ -323,6 +323,12 @@ impl Entity {
     /// opt-in birth cull runs around `centre`.
     pub(crate) fn created(&mut self, birth: Birth, serial: &mut i64, centre: crate::Position) {
         self.born(birth, serial);
+        // actor.gd created: only the initial map ran the hidden intro ticks before play.
+        if let (Kind::Walker(a), Origin::Placed(_)) = (&mut self.kind, self.origin) {
+            if a.kind == ActorKind::Flyer && a.ground_form == 0 {
+                a.timer = if birth.phase == INITIAL_BIRTH { 150 } else { 0 };
+            }
+        }
         self.creation_cull(centre);
     }
     /// The birth identity part of entity_lifecycle.gd created.
@@ -382,6 +388,15 @@ impl Entity {
         };
         if self.status == 3 || held == 1 || (awake && self.can_despawn == 0) {
             return Ok(awake && self.status == 1);
+        }
+        // actor.gd waiting_step: an inactive airborne flyer keeps bobbing; the birth-only
+        // distance cull is not repeated here.
+        if self.status == 0 {
+            if let Kind::Walker(a) = &mut self.kind {
+                if a.kind == ActorKind::Flyer && a.ground_form == 0 {
+                    a.flyer_bob(&mut self.body)?;
+                }
+            }
         }
         let far = (self.body.x - centre.x).abs() > self.despawn_radius
             || (self.body.y - centre.y).abs() > self.despawn_radius;
@@ -689,6 +704,39 @@ mod creation_cull_tests {
                 .any(|r| r.0 == "e2" && (1100..1300).contains(&r.1) && r.2 != 2),
             "{rows:?}"
         );
+    }
+
+    #[test]
+    fn actor_flyer_wave_counts_from_creation_while_waiting() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"flyer", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":8192, "height":2048, "objects":{
+                "f":{"A":"e2", "X":1000, "Y":128}
+            }}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let run = Run::create(&world, &mut Stats::default()).unwrap();
+        let flyer = &run.entities[0];
+        let super::Kind::Walker(a) = &flyer.kind else {
+            unreachable!()
+        };
+        // Created at 150 on the initial map, then two waiting bobs in the level-start steps.
+        assert_eq!((flyer.status, a.timer), (0, 152));
+        assert_eq!(
+            flyer.body.y,
+            128 * crate::SCALE + crate::math::sine(152, 180, 12 * crate::SCALE).unwrap()
+        );
+        assert_eq!(a.body_bounds(-1)[2], 8 * crate::SCALE);
+        let mut later = a.clone();
+        later.timer = 153;
+        assert_eq!(later.body_bounds(-1)[2], 10 * crate::SCALE);
+        assert_eq!(later.body_bounds(1)[0], -10 * crate::SCALE);
     }
 
     #[test]

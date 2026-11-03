@@ -111,7 +111,6 @@ impl Run {
             entities,
             player,
             rng,
-            frame,
             camera,
             ..
         } = self;
@@ -128,7 +127,6 @@ impl Run {
         }
         let step = ActorStep {
             map,
-            frame: *frame,
             camera: *camera,
             player,
             rng,

@@ -317,7 +317,6 @@ pub(crate) struct Actor {
 }
 pub(crate) struct ActorStep<'a, 'w> {
     pub map: &'a Probe<'w>,
-    pub frame: i64,
     pub camera: Position,
     pub player: &'a mut Player,
     pub rng: &'a mut Rng,
@@ -637,11 +636,14 @@ impl Actor {
         match self.kind {
             ActorKind::Walker => [-10 * S, -18 * S, 10 * S, 16 * S],
             ActorKind::Flyer if self.ground_form != 0 => [-10 * S, -18 * S, 10 * S, 16 * S],
+            // enemy_motion.gd box: the airborne timer is the creation-relative wave age;
+            // only the first 24 fps fly picture is narrower.
             ActorKind::Flyer => {
+                let right = if self.timer * 24 / 60 % 4 == 0 { 8 } else { 10 } * S;
                 if facing < 0 {
-                    [-12 * S, -16 * S, 8 * S, 22 * S]
+                    [-12 * S, -16 * S, right, 22 * S]
                 } else {
-                    [-8 * S, -16 * S, 12 * S, 22 * S]
+                    [-right, -16 * S, 12 * S, 22 * S]
                 }
             }
             ActorKind::Flower => [-14 * S, -34 * S, 14 * S, 16 * S],
@@ -882,15 +884,7 @@ impl Actor {
                         *facing = body.vx.signum();
                     }
                 }
-                let clock = step
-                    .frame
-                    .checked_add(152)
-                    .ok_or_else(|| Error::Unsupported {
-                        requirements: vec![
-                            "flyer intro clock exceeds admitted integer range".into()
-                        ],
-                    })?;
-                body.y = self.spawn_y + sine(clock % 180, 180, 12 * S)?;
+                self.flyer_bob(body)?;
             }
             ActorKind::Flower => {
                 if self.mode == 1 {
@@ -938,6 +932,13 @@ impl Actor {
         }
         Ok(After::Nothing)
     }
+    /// enemies.gd bob: the airborne flyer's vertical wave runs on its own age (timer)
+    /// from creation, including time spent waiting off screen.
+    pub fn flyer_bob(&mut self, body: &mut Body) -> Result<(), Error> {
+        self.timer = (self.timer + 1) % 180;
+        body.y = self.spawn_y + sine(self.timer, 180, 12 * S)?;
+        Ok(())
+    }
     /// actor.gd, armored_walker.gd and soft_walker.gd FIELDS: the codes with birth fields
     /// (e1, e2, e3, e5, e20, e21, e32, e11, e23).
     pub fn has_birth(&self) -> bool {
@@ -957,6 +958,8 @@ impl Actor {
     pub fn activation_bounds(&self, facing: i64) -> [i64; 4] {
         let picture = match self.kind {
             ActorKind::Flat => [-18, -24, 16, 16],
+            // actor.gd: an airborne e2 wakes by its 32 x 54 fly picture.
+            ActorKind::Flyer if self.ground_form == 0 => [-18, -32, 14, 22],
             // actor.gd: wake e3 by its first walking picture, not its contact body.
             ActorKind::Flower => [-24, -36, 16, 16],
             // shell_walker.gd: the 44 x 64 walking picture.

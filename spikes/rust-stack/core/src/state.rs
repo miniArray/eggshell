@@ -779,7 +779,6 @@ impl Run {
                     }
                     let mut context = crate::actors::ActorStep {
                         map,
-                        frame: self.frame,
                         camera: self.camera,
                         player: &mut self.player,
                         rng: &mut self.rng,
