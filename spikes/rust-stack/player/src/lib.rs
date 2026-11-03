@@ -19,6 +19,7 @@ pub mod geometry;
 pub mod gles;
 pub mod goal_music;
 pub mod gradient;
+pub mod held_melons;
 pub mod hud;
 pub mod input;
 pub mod level_index;

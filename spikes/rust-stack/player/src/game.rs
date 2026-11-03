@@ -632,7 +632,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
     // Also clear a restored finished save before the first input call or pause.
     saves.autosave(&session, false, &mut Samples::default())?;
     let initial_picture = session.presentation();
-    scene.observe_feel(&initial_picture)?;
+    scene.observe_feel(&initial_picture, &session)?;
     sound.observe_feel(
         &initial_picture,
         *scene.feel.lock().map_err(|_| "feel lock poisoned")?,
@@ -848,7 +848,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
             sound.replaced();
             let p = session.presentation_region([0; 4]);
             sound.observe_feel(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
-            scene.observe_feel(&p)?;
+            scene.observe_feel(&p, &session)?;
         }
         if controls.save {
             saves.manual(&session, &mut save)?;
@@ -898,7 +898,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                         let p = session.presentation_region([0; 4]);
                         sound.observe_feel(&p, *scene_ref.feel.lock().map_err(|_| "feel lock poisoned")?);
                         audio_observe.add(timer.finish());
-                        scene_ref.observe_feel(&p)?;
+                        scene_ref.observe_feel(&p, session)?;
                         if session.stats().tick == saved_tick {
                             held += 1;
                             if require_active_window {
@@ -1044,7 +1044,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
                     let p = session.presentation_region([0; 4]);
                     sound.observe_feel(&p, *scene.feel.lock().map_err(|_| "feel lock poisoned")?);
                     audio_observe.add(timer.finish());
-                    scene.observe_feel(&p)?;
+                    scene.observe_feel(&p, &session)?;
                     if session.stats().tick == saved_tick {
                         held_saved_frame_calls += 1;
                         if require_active_window {

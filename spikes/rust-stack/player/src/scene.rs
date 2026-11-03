@@ -163,6 +163,7 @@ pub struct Scene {
     dust: std::sync::Mutex<crate::dust::Dust>,
     death_pose: std::sync::Mutex<crate::death_pose::DeathPose>,
     elastic_tongue: std::sync::Mutex<crate::elastic_tongue::ElasticTongue>,
+    held_melons: std::sync::Mutex<crate::held_melons::HeldMelons>,
     /// Per sliced image: middle columns / rows all identical (drawn as one stretched band).
     uniform: HashMap<usize, [bool; 2]>,
     hud: Hud,
@@ -1141,6 +1142,7 @@ impl Scene {
             dust: std::sync::Mutex::new(crate::dust::Dust::default()),
             death_pose: std::sync::Mutex::new(crate::death_pose::DeathPose::default()),
             elastic_tongue: std::sync::Mutex::new(crate::elastic_tongue::ElasticTongue::default()),
+            held_melons: std::sync::Mutex::new(crate::held_melons::HeldMelons::default()),
             uniform: HashMap::new(),
             hud,
             density,
@@ -1466,8 +1468,16 @@ impl Scene {
     ) -> Result<Picture, String> {
         self.picture_configured(p, container, zoom.into(), true, false)
     }
-    /// Fed once per successful step even when that step is not drawn. Only DTO reads.
-    pub fn observe_feel(&self, p: &Presentation) -> Result<(), String> {
+    /// Fed once per successful step even when not drawn. Read-only presentation observers.
+    pub fn observe_feel(
+        &self,
+        p: &Presentation,
+        session: &eggshell_spike_core::Session,
+    ) -> Result<(), String> {
+        self.held_melons
+            .lock()
+            .map_err(|_| "held melon lock poisoned")?
+            .observe(session);
         self.death_pose
             .lock()
             .map_err(|_| "death pose lock poisoned")?
@@ -1711,6 +1721,12 @@ impl Scene {
                 y: p.player.motion.current.y + t.mouth[1] + dy,
             }
         });
+        let held_melons = self
+            .held_melons
+            .lock()
+            .map_err(|_| "held melon lock poisoned")?
+            .tokens(p.tick, p.map_index)
+            .to_vec();
         // Match Godot creation categories only for equal-z painter order. This
         // never groups or changes core dispatch, Session rows or activation.
         for category in 0..4 {
@@ -1746,27 +1762,8 @@ impl Scene {
                     work.entities_selected += 1;
                     work.entity_layers.entry(work_layer).or_default().selected += 1;
                 }
-                let pulled;
-                let entity = match tongue_tip {
-                    Some(tip) if entity.held && !entity.hidden && entity.code.starts_with('e') => {
-                        let b = entity.body_bounds;
-                        let at = eggshell_spike_core::Position {
-                            x: tip.x - (b[0] + b[2]) / 2,
-                            y: tip.y - (b[1] + b[3]) / 2,
-                        };
-                        pulled = EntityPicture {
-                            motion: eggshell_spike_core::Motion {
-                                previous: at,
-                                current: at,
-                            },
-                            visible: true,
-                            held: false,
-                            ..entity.clone()
-                        };
-                        &pulled
-                    }
-                    _ => entity,
-                };
+                let pulled = crate::held_melons::pulled(entity, tongue_tip, &held_melons);
+                let entity = pulled.as_ref().unwrap_or(entity);
                 if !entity.visible || entity.held || entity.hidden {
                     continue;
                 }
