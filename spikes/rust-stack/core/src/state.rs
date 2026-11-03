@@ -925,6 +925,9 @@ impl Run {
                 self.refresh_block_solid(next - 1, map);
             }
         }
+        // dispatch_loops.gd: the phase-0 family events run after every body of the phase
+        // (actor.gd after_advance first, in registry order).
+        self.fish_finish_advance(map);
         // Captures skip phase 1 exactly as DispatchLoops.advance does.
         if self.player.captured_by != 0 {
             return Ok(());

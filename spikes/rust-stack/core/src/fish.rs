@@ -6,9 +6,9 @@ use crate::{
     math::{sine, Rng},
     Error, SCALE as S,
 };
-/// A turn: the 0.15 s wait and the 0.4 s turn picture (33 ticks), plus one tick because
-/// a simulated control press reaches the Platform movement on the next tick.
-const TURN_TICKS: i64 = 34;
+/// A turn includes the pause, turn picture, zero-duration event wait and the final
+/// queued control press. The mirror changes one tick after the picture returns to swim.
+const TURN_TICKS: i64 = 35;
 
 /// enemy_motion.gd box for e20/e21.
 pub(crate) fn bounds(mode: i64, facing: i64) -> [i64; 4] {
@@ -131,10 +131,26 @@ impl Actor {
         let b = bounds(self.mode, *facing);
         let wet = map.water_overlaps([body.x + b[0], body.y + b[1], body.x + b[2], body.y + b[3]]);
         if [3, 4].contains(&self.mode) {
-            body.vy = (body.vy + 2048).min(704 * 60);
+            // Water checks run after the body. An arc keeps zero water gravity and its
+            // float wave until the event sees its origin leave the water.
+            let floating = self.mode == 4 && self.water != 0;
+            let gravity = if floating { 0 } else { 2048 };
+            let dy = if body.vy != 0 {
+                (body.vy + gravity / 2).min(704 * 60)
+            } else {
+                0
+            };
+            body.vy = (body.vy + gravity).min(704 * 60);
             let falling = body.vy > 0;
-            let (vx, vy) = (body.vx, body.vy);
-            self.fish_translate(body, *facing, map, b, vx, vy);
+            let vx = body.vx;
+            self.fish_translate(body, *facing, map, b, vx, dy);
+            if floating {
+                let previous_wave = sine(self.phase, 60, 6 * S)?;
+                self.phase = (self.phase + 1) % 60;
+                let wave = sine(self.phase, 60, 6 * S)? - previous_wave;
+                self.fish_translate(body, *facing, map, b, 0, wave);
+                self.water = i64::from(origin_wet);
+            }
             if origin_wet && falling {
                 self.mode = 0;
                 self.phase = 0;
@@ -248,26 +264,6 @@ impl Actor {
                     self.timer = 10;
                     body.vx = 0;
                 }
-            } else if self.variant >= 2 && self.water != 0 && self.fish_ready != 0 {
-                let mut jump = self.variant == 3 && self.fish_jumps > 0;
-                if self.variant == 2 {
-                    jump = if *facing < 0 {
-                        body.x < self.home_x + if self.fish_left > 0 { -64 } else { 192 } * S
-                    } else {
-                        body.x > self.home_x + if self.fish_left > 0 { -192 } else { 64 } * S
-                    };
-                }
-                if jump {
-                    self.mode = 4;
-                    self.water = 0;
-                    body.vy = -800 * 60;
-                    body.vx = *facing * 128 * 60;
-                    if self.variant == 2 {
-                        self.fish_ready = 0;
-                    } else {
-                        self.fish_jumps -= 1;
-                    }
-                }
             }
         }
         let dx = if braking {
@@ -282,16 +278,35 @@ impl Actor {
             body.vx
         };
         self.fish_translate(body, *facing, map, b, dx, 0);
-        // The patrol turn is tested in the events, after this frame's move.
-        if self.mode == 0
-            && self.variant <= 2
-            && (body.x < self.home_x - self.fish_left && *facing < 0
-                || body.x > self.home_x + self.fish_right && *facing > 0)
-        {
-            self.mode = 1;
-            self.timer = TURN_TICKS;
+        // The jump event reads this frame's position; the patrol turn waits for
+        // finish_advance, after every fish has moved.
+        if self.mode == 0 && self.variant >= 2 && self.water != 0 && self.fish_ready != 0 {
+            let mut jump = self.variant == 3 && self.fish_jumps > 0;
+            if self.variant == 2 {
+                jump = if *facing < 0 {
+                    body.x < self.home_x + if self.fish_left > 0 { -64 } else { 192 } * S
+                } else {
+                    body.x > self.home_x + if self.fish_left > 0 { -192 } else { 64 } * S
+                };
+            }
+            if jump {
+                self.mode = 4;
+                body.vy = -800 * 60;
+                body.vx = *facing * 128 * 60;
+                if self.variant == 2 {
+                    self.fish_ready = 0;
+                } else {
+                    self.fish_jumps -= 1;
+                }
+            }
         }
         Ok(())
+    }
+    /// entity_lifecycle.gd born_before: birth identity orders equal-frame bodies by their
+    /// native phase, then their serial.
+    pub(crate) fn born_before(&self, other: &Actor) -> bool {
+        (self.birth_frame, self.birth_phase, self.birth_serial)
+            < (other.birth_frame, other.birth_phase, other.birth_serial)
     }
     /// actor.gd view_state for e20/e21.
     pub fn fish_animation(&self, body: Body, facing: i64) -> &'static str {
@@ -337,5 +352,104 @@ impl Body {
             self.vy = (self.vy + 2048).min(704 * 60);
         }
         landed
+    }
+}
+
+impl crate::state::Run {
+    /// enemy_fish.gd finish_advance (Godot 024d409, 7835ba5): each direction's patrol
+    /// event selects every crossing fish but turns only the first-born one, after every
+    /// body of the movement phase has finished moving.
+    pub(crate) fn fish_finish_advance(&mut self, map: &Probe) {
+        let mut picked: [Option<usize>; 2] = [None, None];
+        for (index, e) in self.entities.iter().enumerate() {
+            let crate::entity::Kind::Walker(w) = &e.kind else {
+                continue;
+            };
+            if ![ActorKind::Fish, ActorKind::LandFish].contains(&w.kind)
+                || e.status != 1
+                || w.held != 0
+                || w.spat != 0
+                || w.hidden != 0
+                || w.frozen != 0
+                || w.water == 0
+                || w.variant > 2
+                || w.mode != 0
+            {
+                continue;
+            }
+            let side = if e.facing < 0 && e.body.x < w.home_x - w.fish_left {
+                0
+            } else if e.facing > 0 && e.body.x > w.home_x + w.fish_right {
+                1
+            } else {
+                continue;
+            };
+            let first = picked[side].is_none_or(|p| match &self.entities[p].kind {
+                crate::entity::Kind::Walker(f) => w.born_before(f),
+                _ => true,
+            });
+            if first {
+                picked[side] = Some(index);
+            }
+        }
+        for index in picked.into_iter().flatten() {
+            if let crate::entity::Kind::Walker(w) = &mut self.entities[index].kind {
+                w.mode = 1;
+                w.timer = TURN_TICKS;
+            }
+            self.refresh_block_solid(index, map);
+        }
+    }
+}
+
+#[cfg(test)]
+mod finish_advance_tests {
+    use crate::{entity::Kind, state::Run, Stats, World, SCALE as S};
+
+    #[test]
+    fn enemy_fish_finish_advance_turns_only_the_first_born_crossing_fish() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"fish", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{
+                "a":{"A":"e20", "X":500, "Y":600},
+                "b":{"A":"e20", "X":520, "Y":600},
+                "c":{"A":"e20", "X":540, "Y":600}
+            }}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let mut run = Run::create(&world, &mut Stats::default()).unwrap();
+        // b is born first; a and b cross the left patrol edge; c crosses the right one.
+        for (index, (serial, facing)) in [(2, -1), (1, -1), (3, 1)].into_iter().enumerate() {
+            let e = &mut run.entities[index];
+            e.status = 1;
+            e.facing = facing;
+            let Kind::Walker(w) = &mut e.kind else {
+                unreachable!()
+            };
+            w.birth_frame = 0;
+            w.birth_phase = 0;
+            w.birth_serial = serial;
+            w.water = 1;
+            w.mode = 0;
+            w.fish_left = 10 * S;
+            w.fish_right = 10 * S;
+            w.home_x = e.body.x + facing * -20 * S;
+        }
+        run.fish_finish_advance(&crate::body::Probe::new(&world.maps[0]));
+        let turns: Vec<(i64, i64)> = run
+            .entities
+            .iter()
+            .map(|e| match &e.kind {
+                Kind::Walker(w) => (w.mode, w.timer),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(turns, [(0, 0), (1, 35), (1, 35)]);
     }
 }
