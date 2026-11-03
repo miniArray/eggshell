@@ -68,6 +68,12 @@ impl DeathPose {
                     return art.sample_required(0, name, 0, Some(frame));
                 }
             }
+            if let Some((start, false)) = start {
+                let age = tick.saturating_sub(start);
+                if age < 156 && art.animations.iter().any(|(name, _)| name == "Spin") {
+                    return art.sample_required(0, "Spin", 0, Some(slowing_spin_frame(age)));
+                }
+            }
             // For wet actions the suffix denotes water, not a full mouth. The DTO
             // has no separate full-mouth flag; use Defeat0 in those ambiguous poses.
             let full = pose.name.ends_with('1')
@@ -78,11 +84,31 @@ impl DeathPose {
             if let Some((start, _)) = start
                 && art.animations.iter().any(|(bound, _)| bound == name)
             {
-                return art.sample_required(tick.saturating_sub(start), name, 0, None);
+                return art.sample_required(tick.saturating_sub(start + 156), name, 0, None);
             }
         }
         art.sample_required(pose.tick, &pose.name, pose.frame, literal)
     }
+}
+
+/// Frame duration changes with the current speed, rather than integrating speed
+/// into a phase. This matters near the end: the final spin frame holds for 36 steps.
+fn slowing_spin_frame(age: i64) -> i64 {
+    let mut frame = 0;
+    let mut start = 0.0;
+    for step in 24..=age.min(155) {
+        let time = (step - 23) as f64;
+        let speed = 24.0 * (1.0 - (step - 24) as f64 / 132.0);
+        let duration = 60.0 / speed;
+        if time >= start + duration {
+            frame = (frame + 1) % 6;
+            start += duration;
+            if time > start + duration {
+                start = time;
+            }
+        }
+    }
+    frame
 }
 
 /// Cell coverage is presentation-only. Read just the player's occupied tile range.
@@ -116,6 +142,45 @@ fn lava_in_bounds(bounds: [i64; 4], map: &Map) -> bool {
 mod tests {
     use super::*;
     use crate::binding::Catalog;
+    #[test]
+    fn impact_spin_frame_schedule_includes_hold_and_slowdown() {
+        let changes = [
+            (0, 0),
+            (26, 1),
+            (29, 2),
+            (31, 3),
+            (34, 4),
+            (37, 5),
+            (40, 0),
+            (42, 1),
+            (45, 2),
+            (49, 3),
+            (52, 4),
+            (55, 5),
+            (58, 0),
+            (62, 1),
+            (65, 2),
+            (69, 3),
+            (73, 4),
+            (77, 5),
+            (82, 0),
+            (87, 1),
+            (92, 2),
+            (97, 3),
+            (104, 4),
+            (111, 5),
+            (120, 0),
+        ];
+        for age in 0..156 {
+            let expected = changes
+                .iter()
+                .rev()
+                .find(|(start, _)| *start <= age)
+                .unwrap()
+                .1;
+            assert_eq!(slowing_spin_frame(age), expected, "impact age {age}");
+        }
+    }
     fn fixture_art(defeat: bool) -> Visual {
         let mut animations = serde_json::json!({"Fall0":{"fps":0,"frames":[{"file":"fall.png"}]}});
         if defeat {
@@ -125,6 +190,10 @@ mod tests {
                     {"file":format!("{name}-2.png")},{"file":format!("{name}-3.png")},{"file":format!("{name}-4.png")}
                 ]});
             }
+        }
+        if defeat {
+            animations["Spin"] = serde_json::json!({"fps":24,"loop":true,"frames":
+                (0..6).map(|i| serde_json::json!({"file":format!("spin-{i}.png")})).collect::<Vec<_>>()});
         }
         Catalog::default()
             .visual(
@@ -214,11 +283,16 @@ mod tests {
         let mut clock = DeathPose::default();
         clock.observe_step(100, Lifetime::Active, false);
         clock.observe_step(101, Lifetime::Dying, false);
-        let first = clock
-            .frame(101, Lifetime::Dying, &pose, &art, None)
-            .unwrap()
-            .image;
-        for (age, frame) in [(0, 0), (2, 0), (3, 1), (5, 2), (8, 3), (10, 4), (240, 4)] {
+        let first = art.sample(0, "Defeat0", 0, None).image;
+        for (age, frame) in [
+            (156, 0),
+            (158, 0),
+            (159, 1),
+            (161, 2),
+            (164, 3),
+            (166, 4),
+            (240, 4),
+        ] {
             clock.observe_step(101 + age, Lifetime::Dying, false);
             assert_eq!(
                 clock
@@ -256,7 +330,7 @@ mod tests {
                 .frame(400, Lifetime::Dying, &pose, &art, None)
                 .unwrap()
                 .image,
-            first
+            art.sample(0, "Spin", 0, Some(0)).image
         );
         clock.observe_step(100, Lifetime::Dying, false); // Restore: start a new local episode.
         assert_eq!(
@@ -264,7 +338,7 @@ mod tests {
                 .frame(100, Lifetime::Dying, &pose, &art, None)
                 .unwrap()
                 .image,
-            first
+            art.sample(0, "Spin", 0, Some(0)).image
         );
         let full = PoseSelection {
             name: "Fall1".into(),
@@ -274,7 +348,7 @@ mod tests {
             clock
                 .frame(100, Lifetime::Dying, &full, &art, None)
                 .unwrap(),
-            art.sample(0, "Defeat1", 0, None)
+            art.sample(0, "Spin", 0, Some(0))
         );
     }
     #[test]
@@ -293,7 +367,7 @@ mod tests {
             clock
                 .frame(206, Lifetime::Dying, &pose, &art, None)
                 .unwrap(),
-            art.sample(6, "Defeat0", 0, None)
+            art.sample(0, "Spin", 0, Some(0))
         );
         let missing = fixture_art(false);
         assert_eq!(

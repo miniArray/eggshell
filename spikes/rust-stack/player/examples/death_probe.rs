@@ -34,57 +34,70 @@ fn main() {
         .map(|(name, _)| name.as_str())
         .collect();
     println!("DEATH_PROBE pack_death_names={death_names:?}");
-    let mut level: serde_json::Value =
-        serde_json::from_str(include_str!("../tests/fixtures/lighting.level.json")).unwrap();
-    // Start on the fixture's lava. No saved state or core internals are changed.
-    level["startpoint"]["X"] = 400.into();
-    level["maps"]["map1"]["objects"] = serde_json::json!({});
-    let mut session = Session::load_benchmark_unverified(
-        &level.to_string(),
-        include_str!("../../../../src/level/collision_table.json"),
-        &schema,
-    )
-    .unwrap();
-    let mut death = eggshell_spike_player::death_pose::DeathPose::default();
-    let mut rendered = BTreeSet::new();
-    let mut phases = BTreeSet::new();
-    let mut poses = BTreeSet::new();
-    for call in 1..=310 {
-        session.advance(0).unwrap();
-        let p = session.presentation();
-        death.observe(&p, &session.world().maps[p.map_index - 1]);
-        if p.player.lifetime == Lifetime::Dying {
-            let pose = &p.player.selected_pose;
-            let frame = art
-                .sample_required(pose.tick, &pose.name, pose.frame, None)
-                .unwrap();
-            poses.insert(pose.name.clone());
-            rendered.insert(
-                death
-                    .frame(p.tick, p.player.lifetime, pose, &art, None)
-                    .unwrap()
-                    .image,
+    for impact in [false, true] {
+        let mut level: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/lighting.level.json")).unwrap();
+        // Start on the fixture's lava. No saved state or core internals are changed.
+        level["startpoint"]["X"] = 400.into();
+        level["maps"]["map1"]["objects"] = serde_json::json!({});
+        if impact {
+            level["startpoint"]["X"] = 128.into();
+            level["startpoint"]["Y"] = 384.into();
+            level["maps"]["map1"]["layer1"]["castle32"] = serde_json::json!(
+                "{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"240x-1,60x0\"}"
             );
-            assert!(p.player.visible);
-            assert_eq!(p.player.visual.alpha, 1.0);
-            if phases.insert(p.player.life_phase) {
-                println!(
-                    "DEATH_PROBE call={call} tick={} lifetime={:?} phase={} visible={} pose={pose:?} frame_image={} position={:?} follow={:?}",
-                    p.tick,
-                    p.player.lifetime,
-                    p.player.life_phase,
-                    p.player.visible,
-                    frame.image,
-                    p.player.motion.current,
-                    p.follow.current
+            level["maps"]["map1"]["layer2"] = serde_json::json!({});
+            level["maps"]["map1"]["objects"] = serde_json::json!({"0":{"A":"o12","X":192,"Y":368}});
+        }
+        let mut session = Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let mut death = eggshell_spike_player::death_pose::DeathPose::default();
+        let mut rendered = BTreeSet::new();
+        let mut phases = BTreeSet::new();
+        let mut poses = BTreeSet::new();
+        for call in 1..=310 {
+            session
+                .advance(if impact && call <= 30 { 2 } else { 0 })
+                .unwrap();
+            let p = session.presentation();
+            death.observe(&p, &session.world().maps[p.map_index - 1]);
+            if p.player.lifetime == Lifetime::Dying {
+                let pose = &p.player.selected_pose;
+                let frame = art
+                    .sample_required(pose.tick, &pose.name, pose.frame, None)
+                    .unwrap();
+                poses.insert(pose.name.clone());
+                rendered.insert(
+                    death
+                        .frame(p.tick, p.player.lifetime, pose, &art, None)
+                        .unwrap()
+                        .image,
                 );
+                assert!(p.player.visible);
+                assert_eq!(p.player.visual.alpha, 1.0);
+                if phases.insert(p.player.life_phase) {
+                    println!(
+                        "DEATH_PROBE call={call} tick={} lifetime={:?} phase={} visible={} pose={pose:?} frame_image={} position={:?} follow={:?}",
+                        p.tick,
+                        p.player.lifetime,
+                        p.player.life_phase,
+                        p.player.visible,
+                        frame.image,
+                        p.player.motion.current,
+                        p.follow.current
+                    );
+                }
             }
         }
+        assert_eq!(phases, BTreeSet::from([2, 3]));
+        assert_eq!(rendered.len(), if impact { 11 } else { 2 });
+        println!(
+            "DEATH_PROBE impact={impact} rendered_death_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
+            rendered.len()
+        );
     }
-    assert_eq!(phases, BTreeSet::from([2, 3]));
-    assert_eq!(rendered.len(), 2);
-    println!(
-        "DEATH_PROBE rendered_hurt_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
-        rendered.len()
-    );
 }

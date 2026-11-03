@@ -641,3 +641,34 @@ checks real Session → observer → Scene meshes while rising, near the apex,
 falling and grounded, comparing elastic on/off and checking snapshot identity.
 Set `PLAYER_PICTURE_OUT` to a private directory to export the real mesh and art
 paths for a host picture probe; this does not establish GPU pixel parity.
+
+### Death presentation (current; replaces the historical death passes above)
+
+| Route | Picture sequence, age in saved steps |
+| --- | --- |
+| Lava | Hurt0/1 frame 0 at ages 0–14, frame 1 at 15–47, frame 0 thereafter |
+| Non-lava instant defeat | Spin frame 0 at ages 0–23; slowing Spin at 24–155; Defeat0/1 starts at 156 and holds frame 4 from 166 |
+
+The spin slows from 24 fps to zero over 132 steps. Each frame's duration uses
+its current speed, not the integral of speed. The last Spin frame therefore
+holds for 36 steps. Pack frames keep their original origins and sizes; the flat
+final picture is Defeat frame 4. The non-lava route now uses this sequence
+instead of starting Defeat immediately. Generic defeat covers spike contacts
+and a core-reported non-lava crushing death, if one is produced.
+
+Cause classification is presentation-only: on the first Dying step, body bounds
+intersecting an occupied compiled lava cell lock the lava route. All other
+Dying episodes take the generic route, including thorn/spike entities and any
+crushing solid. There is no distinct crush signal or death cause in the public
+presentation packet. The observer does not invent collisions or a crushing death.
+
+The checked spike route holds its world body position through Spin and Defeat.
+Lava instead holds briefly, launches and falls, using Hurt throughout: **no Spin
+or final flat pose was observed on that route**. The core freezes its dying body,
+so the lava launch/fall remains a simulation gap, not a drawing-only trajectory.
+A physical crush route has not been established by the host probe. The generic
+sequence must not be treated as proof that crushing is implemented in the core.
+
+Keep the full-screen black fade: it starts at age 240 and reaches black at 300.
+This is retained spike presentation policy (also observed on normal reference
+deaths), not a sprite-alpha fade or a change to respawn timing. No core changes.
