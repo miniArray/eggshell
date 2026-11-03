@@ -611,3 +611,21 @@ accepted `--feel /tmp/play3-feel.json`, logged `source=file`, then correctly
 rejected the intentionally incomplete invocation with `--index required`.
 That CLI parse check is not a rendered-list acceptance claim. No device/aka build,
 deploy, push, core change, main update or rust/conversion update was performed.
+
+### Air tongue mesh repair
+
+The mesh and observer now share the same airborne/non-swimming gate. The old
+mesh gate still required grounded motion, so it suppressed the airborne bend
+regardless of the observer. Velocity is already level pixels per simulation
+step after division by `SCALE`; no seconds conversion is needed. The 24-pixel
+control-point cap gives a maximum 12-pixel midpoint bow (quadratic factor 1/2).
+The 35%-of-length control-point cap gives at most 17.5% of length as a bow.
+The existing easing reaches a visible 8–12-pixel bow during normal fast ascent
+and descent; the apex eases toward straight. Ground contact resets to straight.
+This remains an optional spike deviation from the straight reference tongue.
+
+Headless pack-backed regression `airborne_tongue_picture_uses_curve_and_ground_is_rigid`
+checks real Session → observer → Scene meshes while rising, near the apex,
+falling and grounded, comparing elastic on/off and checking snapshot identity.
+Set `PLAYER_PICTURE_OUT` to a private directory to export the real mesh and art
+paths for a host picture probe; this does not establish GPU pixel parity.

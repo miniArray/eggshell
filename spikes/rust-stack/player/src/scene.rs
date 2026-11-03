@@ -2437,7 +2437,7 @@ impl Scene {
             } else {
                 &p.player.visual.palette
             };
-            let elastic = settings.elastic_tongue && p.player.on_floor && !p.player.swimming;
+            let elastic = crate::elastic_tongue::enabled(settings.elastic_tongue, p);
             let patches = slices_uniform(size, target, cuts, self.uniform_for(f.image))?;
             let patches = if elastic {
                 crate::elastic_tongue::segments(patches, tongue.up, unit)
@@ -3064,6 +3064,111 @@ mod tests {
         assert_eq!(compared, 20);
         println!(
             "TRAIL_SCENE_PROBE steps=180 sparse_dense_pairs={compared} six_eggs=true snapshots_unchanged=true"
+        );
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
+    fn airborne_tongue_picture_uses_curve_and_ground_is_rigid() {
+        let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let mut session = eggshell_spike_core::Session::load(
+            include_str!("../../core/tests/fixtures/collections.level.json"),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let mut scene = Scene::prepare(
+            session.world(),
+            &session.admission_report().admitted_codes,
+            &pack,
+            Path::new(&env("PLAYER_METRICS")),
+        )
+        .unwrap();
+        scene.prepare_headless_assets(&pack).unwrap();
+        let mut seen = [false; 4];
+        for step in 0..1200 {
+            let phase = step % 120;
+            session
+                .advance(
+                    if phase < 45 { crate::input::JUMP } else { 0 }
+                        | if step % 19 < 12 { crate::input::USE } else { 0 },
+                )
+                .unwrap();
+            let p = session.presentation();
+            let before = session.snapshot().unwrap();
+            scene.observe_feel(&p, &session).unwrap();
+            let Some(tongue) = p.player.tongue else {
+                continue;
+            };
+            let vy = p.player.velocity.y as f64 / SCALE as f64;
+            let category = if p.player.on_floor {
+                Some(3)
+            } else if vy < -7.0 {
+                Some(0)
+            } else if vy.abs() < 1.0 {
+                Some(1)
+            } else if vy > 7.0 {
+                Some(2)
+            } else {
+                None
+            };
+            let Some(category) = category.filter(|i| !seen[*i]) else {
+                continue;
+            };
+            let length = tongue.length as f64 / SCALE as f64;
+            if length < 64.0 {
+                continue;
+            }
+            scene.feel.lock().unwrap().elastic_tongue = true;
+            let curved = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+            scene.feel.lock().unwrap().elastic_tongue = false;
+            let rigid = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+            let bend = scene
+                .elastic_tongue
+                .lock()
+                .unwrap()
+                .bend(p.tick, p.map_index, length);
+            if category == 3 {
+                assert_eq!(curved.world, rigid.world);
+                assert_eq!(bend, [0.0; 2]);
+            } else {
+                assert_ne!(curved.world, rigid.world);
+            }
+            if category == 0 || category == 2 {
+                assert!(
+                    (8.0..=20.0).contains(&(bend[1].abs() / 2.0)),
+                    "bow {bend:?}"
+                );
+            }
+            let name = ["rising", "apex", "falling", "grounded"][category];
+            if let Ok(dir) = std::env::var("PLAYER_PICTURE_OUT") {
+                let quads = |picture: &Picture| {
+                    picture.world.iter().filter(|q| q.image < scene.catalog.files.len()).map(|q|
+                    serde_json::json!({"file":scene.catalog.files[q.image],"corners":q.corners,"uv":q.uv,"color":q.color})).collect::<Vec<_>>()
+                };
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(Path::new(&dir).join(format!("tongue-{name}.json")), serde_json::to_vec(&serde_json::json!({"tick":p.tick,"vy":vy,"length":length,"bend":bend,"curved":quads(&curved),"rigid":quads(&rigid)})).unwrap()).unwrap();
+            }
+            println!(
+                "TONGUE_PICTURE {name} tick={} vy={vy} length={length} bow={} grounded_straight={}",
+                p.tick,
+                bend[1] / 2.0,
+                category == 3
+            );
+            assert_eq!(session.snapshot().unwrap(), before);
+            seen[category] = true;
+            if seen.iter().all(|v| *v) {
+                break;
+            }
+        }
+        assert!(
+            seen.iter().all(|v| *v),
+            "rising/apex/falling/grounded {seen:?}"
         );
     }
     /// Every code the core can create during play has an object binding in the pinned

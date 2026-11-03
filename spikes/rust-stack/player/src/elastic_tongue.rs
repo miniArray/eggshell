@@ -1,4 +1,8 @@
 //! Drawing-only tongue lag. Saved-step observations, never wall-clock animation.
+
+pub fn enabled(setting: bool, p: &Presentation) -> bool {
+    setting && p.player.tongue.is_some() && !p.player.on_floor && !p.player.swimming
+}
 use crate::geometry::Patch;
 use eggshell_spike_core::{Presentation, SCALE};
 
@@ -20,7 +24,7 @@ impl ElasticTongue {
             p.map_index,
             // Spike feel (user request): straight on the ground, elastic only while
             // airborne, where vertical motion bends the body. Swimming stays rigid.
-            p.player.tongue.is_some() && !p.player.on_floor && !p.player.swimming,
+            enabled(true, p),
             [
                 p.player.velocity.x as f64 / SCALE as f64,
                 p.player.velocity.y as f64 / SCALE as f64,
@@ -131,7 +135,7 @@ mod tests {
         for tick in 2..10 {
             clock.step(tick, 1, true, [0.0, 8.0]);
         }
-        assert!(clock.bend(9, 1, 100.0)[1] < 0.0);
+        assert!((-20.0..=-8.0).contains(&(clock.bend(9, 1, 100.0)[1] / 2.0)));
         // Grounded (the observer passes out=false): straight at once.
         clock.step(10, 1, false, [4.0, 0.0]);
         assert_eq!(clock.bend(10, 1, 100.0), [0.0; 2]);

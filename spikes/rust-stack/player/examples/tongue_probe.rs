@@ -47,11 +47,14 @@ fn main() {
             assert_eq!(point(mouth, tip, bend, 0.0), mouth);
             assert_eq!(point(mouth, tip, bend, 1.0), tip);
             if !p.player.on_floor {
-                assert_eq!(bend, [0.0; 2], "air tongue must stay straight");
+                assert_ne!(bend, [0.0; 2], "air tongue must bend");
                 airborne[0] += usize::from(p.player.velocity.y < 0);
                 airborne[1] += usize::from(p.player.velocity.y > 0);
                 airborne[2] +=
                     usize::from(session.saved_field("flutter_remaining").unwrap_or(0) > 0);
+            }
+            if p.player.on_floor {
+                assert_eq!(bend, [0.0; 2], "ground tongue must stay straight");
             }
             seen += 1;
             bent += usize::from(bend != [0.0; 2]);
