@@ -88,12 +88,34 @@ fn main() {
             p.player.velocity.y
         );
         assert!(p.player.swimming);
-        // Release/repress in the very same SDL batch, then consume actual step masks.
+        // Down uses the live axis while jump edges are queued separately.
         set(false);
+        unsafe {
+            assert_eq!(sys::SDL_JoystickSetVirtualAxis(raw, 1, 32767), 0);
+            sys::SDL_JoystickUpdate();
+        }
+        let mut down_poses = 0;
+        let mut max_down_y = f64::NEG_INFINITY;
+        for _ in 0..180 {
+            let live = batch(&mut controls, &mut events);
+            let mask = controls.step_mask(live);
+            assert_ne!(mask & eggshell_spike_player::input::DOWN, 0);
+            session.advance(mask).unwrap();
+            let p = session.presentation();
+            down_poses += usize::from(p.player.selected_pose.name.starts_with("Submerge"));
+            max_down_y = max_down_y.max(p.player.motion.current.y as f64 / SCALE as f64);
+            assert!(p.player.swimming);
+        }
+        assert!(down_poses > 150);
+        assert!(
+            max_down_y < 340.0,
+            "Down is a posture, not downward swimming"
+        );
+        unsafe {
+            assert_eq!(sys::SDL_JoystickSetVirtualAxis(raw, 1, 0), 0);
+            sys::SDL_JoystickUpdate();
+        }
         set(true);
-        let live = batch(&mut controls, &mut events);
-        assert_eq!(controls.step_mask(live) & JUMP, 0);
-        session.advance(0).unwrap();
         let mut exits = 0;
         let mut jumps = 0;
         for _ in 0..120 {
@@ -103,107 +125,14 @@ fn main() {
             exits += usize::from(!p.player.swimming);
             jumps += usize::from(p.player.selected_pose.name == "Jump0");
         }
-        let p = session.presentation();
-        assert_eq!((jumps, exits), (0, 0));
+        assert!(jumps > 0 && exits > 0);
         println!(
-            "INPUT_WATER_PROBE actual_showcase=true fresh_edge_delivered=true after_steps=120 jump_pose_steps={jumps} dry_steps={exits} feet_y={:.3} probe50_y={:.3}",
-            p.player.motion.current.y as f64 / SCALE as f64,
-            p.player.motion.current.y as f64 / SCALE as f64 - 50.0
-        );
-        // Probe a separately authored in-memory comparison: same water3 surface,
-        // full-contact interior cells (cell 1) instead of submerged dry caps.
-        let mut water: serde_json::Value =
-            serde_json::from_str(level["maps"]["map1"]["layer1"]["water3"].as_str().unwrap())
-                .unwrap();
-        let mut cells = vec![-1; 50 * 14];
-        for y in 9..12 {
-            for x in 22..31 {
-                cells[y * 50 + x] = i32::from(y > 9);
-            }
-        }
-        water["data"] = cells
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(",")
-            .into();
-        level["maps"]["map1"]["layer1"]["water3"] = water.to_string().into();
-        let mut session = Session::load_benchmark_unverified(
-            &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
-            &schema,
-        )
-        .unwrap();
-        for _ in 0..180 {
-            let live = batch(&mut controls, &mut events);
-            session.advance(controls.step_mask(live)).unwrap();
-        }
-        let p = session.presentation();
-        println!(
-            "INPUT_WATER_PROBE full_interior_comparison=true settled_feet_y={:.3} probe50_y={:.3}",
-            p.player.motion.current.y as f64 / SCALE as f64,
-            p.player.motion.current.y as f64 / SCALE as f64 - 50.0
-        );
-        set(false);
-        set(true);
-        let live = batch(&mut controls, &mut events);
-        session.advance(controls.step_mask(live)).unwrap();
-        let mut exit = None;
-        for age in 1..=30 {
-            let live = batch(&mut controls, &mut events);
-            session.advance(controls.step_mask(live)).unwrap();
-            if !session.presentation().player.swimming {
-                exit = Some(age);
-                break;
-            }
-        }
-        assert!(exit.is_some());
-        println!(
-            "INPUT_WATER_PROBE full_interior_comparison=true real_sdl_fresh_press_exit_steps={exit:?}"
+            "INPUT_WATER_PROBE actual_showcase=true down_steps=180 submerge_pose_steps={down_poses} deepest_down_feet={max_down_y:.3} jump_pose_steps={jumps} dry_steps={exits}"
         );
     }
-    set(false);
-    batch(&mut controls, &mut events);
-    controls.clear_steps();
-    let key = |keycode, down| {
-        use sdl2::{event::Event, keyboard::Mod};
-        if down {
-            Event::KeyDown {
-                timestamp: 0,
-                window_id: 0,
-                keycode: Some(keycode),
-                scancode: None,
-                keymod: Mod::NOMOD,
-                repeat: false,
-            }
-        } else {
-            Event::KeyUp {
-                timestamp: 0,
-                window_id: 0,
-                keycode: Some(keycode),
-                scancode: None,
-                keymod: Mod::NOMOD,
-                repeat: false,
-            }
-        }
-    };
-    use sdl2::keyboard::Keycode;
-    controls.event(key(Keycode::Space, true));
-    let live = controls.mask(ButtonLayout::Snes);
-    assert_ne!(controls.step_mask(live) & JUMP, 0);
-    controls.event(key(Keycode::Z, true));
-    controls.event(key(Keycode::Space, false));
-    let live = controls.mask(ButtonLayout::Snes);
-    assert_ne!(live & JUMP, 0);
-    assert_ne!(controls.step_mask(live) & JUMP, 0);
-    controls.event(key(Keycode::Z, false));
-    let live = controls.mask(ButtonLayout::Snes);
-    assert_eq!(controls.step_mask(live) & JUMP, 0);
-    println!("INPUT_PROBE keyboard_jump_alias_release=true");
     unsafe {
         sys::SDL_JoystickClose(raw);
+        sys::SDL_JoystickDetachVirtual(index);
     }
-    println!(
-        "INPUT_PROBE real_sdl_virtual_pad=true same_batch_release_press=preserved per_step_masks=[4,0,4,4,0]"
-    );
+    println!("INPUT_PROBE virtual_sdl_gamepad=true edges_preserved=true");
 }

@@ -434,6 +434,21 @@ mod tests {
         assert_eq!(steps.next_mask(0), 0);
     }
     #[test]
+    fn queued_jump_edges_preserve_down_and_all_other_live_actions() {
+        let mut steps = JumpSteps::default();
+        steps.event(1, true);
+        steps.event(1, false);
+        steps.event(1, true);
+        let live = DOWN | RIGHT | USE | THROW | LOCK;
+        for expected_jump in [JUMP, 0, JUMP, JUMP] {
+            assert_eq!(steps.next_mask(live), live | expected_jump);
+        }
+        assert_eq!(steps.next_mask(UP), UP | JUMP);
+        steps.event(1, false);
+        assert_eq!(steps.next_mask(DOWN), DOWN);
+    }
+
+    #[test]
     fn input_bits_match_reference_order() {
         assert_eq!(
             [
