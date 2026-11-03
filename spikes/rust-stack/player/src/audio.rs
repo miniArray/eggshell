@@ -491,6 +491,9 @@ pub struct AudioMap {
     pub music_settings: HashMap<String, TrackSettings>,
     pub events: HashMap<String, Vec<String>>,
     pub tracks: HashMap<String, String>,
+    /// Remote level music (a map's `{src, dat}`), keyed by the exact `src` URL: the
+    /// private copy fetched once beside the pack and its SHA-256 (add_custom_music).
+    pub custom: HashMap<String, (std::path::PathBuf, String)>,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TrackSettings {
@@ -607,6 +610,58 @@ impl AudioMap {
     pub fn settings_for(&self, track: &str) -> TrackSettings {
         self.music_settings.get(track).copied().unwrap_or_default()
     }
+    /// The original plays a map's remote music link as CustomMusic (Audio events 2-4).
+    /// Eggshell plays a private copy of it: `dir/index.json` maps each URL to an Ogg
+    /// file under `dir` and its SHA-256 (fetch-custom-music.py). A level whose URL
+    /// has no copy stays silent, as before. Returns the number of tracks added.
+    pub fn add_custom_music(&mut self, dir: &std::path::Path) -> Result<usize, String> {
+        let text = std::fs::read_to_string(dir.join("index.json"))
+            .map_err(|e| format!("custom music index: {e}"))?;
+        let index: Value =
+            serde_json::from_str(&text).map_err(|e| format!("custom music index: {e}"))?;
+        let mut added = 0;
+        for (url, entry) in index
+            .get("tracks")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            let (Some(file), Some(digest)) = (
+                entry.get("file").and_then(safe_file).and_then(ogg_name),
+                entry.get("sha256").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            if !url.starts_with("https://") || self.music.contains_key(url) {
+                continue;
+            }
+            self.music.insert(url.clone(), file.to_owned());
+            self.custom
+                .insert(url.clone(), (dir.join(file), digest.to_owned()));
+            added += 1;
+        }
+        Ok(added)
+    }
+    /// A track's bytes: a custom copy checked against its index digest, else the
+    /// verified pack file.
+    fn track_bytes(&self, key: &str, file: &str, pack: &Pack) -> Result<Vec<u8>, String> {
+        match self.custom.get(key) {
+            Some((path, digest)) => {
+                let bytes = std::fs::read(path).map_err(|e| format!("{path:?}: {e}"))?;
+                if crate::pack::hash(&bytes) != *digest {
+                    return Err(format!("custom music hash mismatch: {path:?}"));
+                }
+                Ok(bytes)
+            }
+            None => pack.verified_bytes(file),
+        }
+    }
+}
+fn ogg_name(file: &str) -> Option<&str> {
+    std::path::Path::new(file)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("ogg"))
+        .then_some(file)
 }
 
 /// The looping level track of one map.
@@ -1089,7 +1144,16 @@ impl Observer {
                 if let (Some(file), std::collections::hash_map::Entry::Vacant(slot)) =
                     (map.music.get(&key), music_bytes.entry(key.clone()))
                 {
-                    slot.insert(Arc::from(pack.verified_bytes(file)?));
+                    match map.track_bytes(&key, file, pack) {
+                        Ok(bytes) => {
+                            slot.insert(Arc::from(bytes));
+                        }
+                        // A broken custom copy leaves the level silent, never unplayable.
+                        Err(e) if map.custom.contains_key(&key) => {
+                            eprintln!("RUST_AUDIO_ERROR custom_music {e}");
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
             }
             let mut files: Vec<_> = map.effects.iter().collect();
@@ -1860,6 +1924,43 @@ mod tests {
             })
         );
         assert_eq!(track(""), None);
+    }
+
+    #[test]
+    fn custom_music_plays_the_private_copy_with_the_level_settings() {
+        let dir = std::env::temp_dir().join(format!("custom-music-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("tracks")).unwrap();
+        std::fs::write(dir.join("tracks/a.ogg"), b"not really ogg").unwrap();
+        let digest = crate::pack::hash(b"not really ogg");
+        std::fs::write(
+            dir.join("index.json"),
+            serde_json::json!({"tracks": {
+                "https://example.invalid/a.mp3": {"file": "tracks/a.ogg", "sha256": digest},
+                "https://example.invalid/escape": {"file": "../x.ogg", "sha256": digest},
+                "http://example.invalid/plain": {"file": "tracks/a.ogg", "sha256": digest}
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        let mut audio = manifest(serde_json::json!({"music": {"1": "audio/one.ogg"}}));
+        assert_eq!(audio.add_custom_music(&dir).unwrap(), 1);
+        let level = r#"{"version":"1","name":"t","desc":"","author":"t","startpoint":{"map":1,"X":32,"Y":32},"maps":{"map1":{"width":640,"height":480,"objects":{},"music":{"src":"https://example.invalid/a.mp3","dat":"2.5,-5"}}}}"#;
+        let world = World::compile(level, r#"{"version":2,"tilemaps":{}}"#).unwrap();
+        assert_eq!(
+            level_track(&world, 1, &audio),
+            Some(LevelTrack {
+                key: "https://example.invalid/a.mp3".into(),
+                loop_start: 2.5,
+                volume_db: -5.0
+            })
+        );
+        let (path, want) = audio.custom["https://example.invalid/a.mp3"].clone();
+        assert_eq!(crate::pack::hash(&std::fs::read(&path).unwrap()), want);
+        // A changed copy is refused by its digest.
+        std::fs::write(dir.join("tracks/a.ogg"), b"changed").unwrap();
+        let pack_less = audio.custom.get("https://example.invalid/a.mp3").unwrap();
+        assert_ne!(crate::pack::hash(&std::fs::read(&pack_less.0).unwrap()), pack_less.1);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     struct Fields(HashMap<&'static str, i64>);

@@ -34,6 +34,8 @@ play() {
 # The original's animated tileset frames, when the bundle has them.
 tiles=()
 if [[ -d "$ROOT/private-animated-tiles" ]]; then tiles=(--animated-tiles "$ROOT/private-animated-tiles"); fi
+# Private copies of remote level music, when the bundle has them.
+if [[ -d "$ROOT/private-custom-music" ]]; then tiles+=(--custom-music "$ROOT/private-custom-music"); fi
 if [[ "${3:-}" == shots ]]; then
   # Unattended pictures: frame PNGs every 150 steps from the start of the recorded route,
   # then every 100 idle steps from the newest hands-on autosave (if any). Saves aside.

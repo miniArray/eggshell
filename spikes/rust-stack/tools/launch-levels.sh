@@ -43,6 +43,8 @@ play() {
 # The original's animated tileset frames, when the bundle has them.
 tiles=()
 if [[ -d "$ROOT/private-animated-tiles" ]]; then tiles=(--animated-tiles "$ROOT/private-animated-tiles"); fi
+# Private copies of remote level music, when the bundle has them.
+if [[ -d "$ROOT/private-custom-music" ]]; then tiles+=(--custom-music "$ROOT/private-custom-music"); fi
 # The target keeps the save folder of launch-playtest, so autosaves carry across both.
 save_dir() {
   if [[ $1 == "$TARGET_FILE" ]]; then

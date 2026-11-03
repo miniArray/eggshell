@@ -220,7 +220,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         match key.as_str() {
             "--level" | "--collision" | "--schema" | "--pack-root" | "--pack-inventory"
             | "--view-metrics" | "--replay" | "--restore" | "--save-dir" | "--capture"
-            | "--result" | "--animated-tiles" => {
+            | "--result" | "--animated-tiles" | "--custom-music" => {
                 files.insert(key, args.next().ok_or("missing argument value")?);
             }
             "--input-offset" => {
@@ -458,7 +458,17 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     }
     let mut controls = Controls::open(&gpu.sdl)?;
     // Sound derives cues from each saved step and never writes state (audio_player.gd).
-    let audio_map = crate::audio::AudioMap::parse(&pack.manifest);
+    let mut audio_map = crate::audio::AudioMap::parse(&pack.manifest);
+    // Private copies of maps' remote music links (bundle private-custom-music); without
+    // them those maps stay silent, as Godot played them.
+    if let Some(dir) = files
+        .get("--custom-music")
+        .map(PathBuf::from)
+        .filter(|d| d.is_dir())
+    {
+        let tracks = audio_map.add_custom_music(&dir)?;
+        println!("RUST_CUSTOM_MUSIC dir={dir:?} tracks={tracks}");
+    }
     let (mut audio_device, audio_out) = if mute || audio_map.is_empty() {
         (None, None)
     } else {
