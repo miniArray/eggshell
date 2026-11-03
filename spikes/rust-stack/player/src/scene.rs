@@ -2921,6 +2921,12 @@ mod tests {
                 continue;
             };
             separated.get_or_insert(step);
+            if sample.age < 20
+                && let Ok(dir) = std::env::var("PLAYER_PICTURE_OUT")
+            {
+                let quads = picture.world.iter().map(|q| serde_json::json!({"file":scene.catalog.files.get(q.image).cloned(),"corners":q.corners,"uv":q.uv,"color":q.color})).collect::<Vec<_>>();
+                std::fs::write(Path::new(&dir).join(format!("worried-pop-{:02}.json", sample.age)), serde_json::to_vec(&serde_json::json!({"tick":p.tick,"age":sample.age,"visible":p.player.visible,"worried":quads})).unwrap()).unwrap();
+            }
             if step % 9 == 0 {
                 let sparse = scenes[1].picture(&p, [640.0, 480.0], 0).unwrap();
                 assert_eq!(picture.world, sparse.world);

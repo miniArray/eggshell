@@ -139,37 +139,63 @@ impl Sample {
         }
     }
     pub fn cues(&self, body: [f64; 2], facing: i64, plan: &Plan, solid: usize) -> Vec<Quad> {
+        // Pixel glyph dimensions replace the old 5x9 / 5x7 cues; no pack sprite exists.
+        const EXCLAMATION: &[[f64; 4]] = &[[0.0, 0.0, 6.0, 10.0], [0.0, 14.0, 6.0, 2.0]];
+        const SWEAT: &[[f64; 4]] = &[
+            [4.0, 0.0, 2.0, 2.0],
+            [2.0, 2.0, 6.0, 4.0],
+            [0.0, 6.0, 10.0, 6.0],
+            [2.0, 12.0, 6.0, 2.0],
+        ];
+        // One short separation pop. Quantize the scaled edges, not the outline width.
+        let (scale, bounce) = match self.age {
+            0 => (0.75, 0.0),
+            1 => (1.0, -2.0),
+            2..=3 => (1.25, -4.0),
+            4..=5 => (1.125, -2.0),
+            _ => (1.0, 0.0),
+        };
+        let body = body.map(crate::screen::godot_round);
         let mut quads = Vec::new();
-        let mut rect = |offset: [f64; 2], size: [f64; 2], color| {
-            quads.push(sprite_quad(
-                solid,
-                [1.0; 2],
-                Transform {
-                    position: [body[0] + offset[0] * facing as f64, body[1] + offset[1]],
-                    scale: [size[0] * facing as f64, size[1]],
-                    ..Transform::default()
-                },
-                plan,
-                color,
-                &[],
-            ));
+        let mut glyph = |anchor: [f64; 2], shape: &[[f64; 4]]| {
+            let rects = shape
+                .iter()
+                .map(|[x, y, w, h]| {
+                    [x * scale, y * scale, (x + w) * scale, (y + h) * scale]
+                        .map(crate::screen::godot_round)
+                })
+                .collect::<Vec<_>>();
+            // Stroke the whole silhouette first, then fill it: no dark internal seams.
+            for (pad, color) in [(1.0, INK), (0.0, HIGHLIGHT)] {
+                for [left, top, right, bottom] in &rects {
+                    quads.push(sprite_quad(
+                        solid,
+                        [1.0; 2],
+                        Transform {
+                            position: [
+                                body[0] + (anchor[0] + left - pad) * facing as f64,
+                                body[1] + anchor[1] + top - pad + bounce,
+                            ],
+                            scale: [
+                                (right - left + 2.0 * pad) * facing as f64,
+                                bottom - top + 2.0 * pad,
+                            ],
+                            ..Transform::default()
+                        },
+                        plan,
+                        color,
+                        &[],
+                    ));
+                }
+            }
         };
         if self.age < 20 {
-            // Small outlined exclamation, only at separation; no enclosing UI panel.
-            rect([2.0, -78.0], [5.0, 9.0], INK);
-            rect([3.0, -77.0], [3.0, 4.0], HIGHLIGHT);
-            rect([3.0, -71.0], [3.0, 1.0], HIGHLIGHT);
+            glyph([3.0, -87.0], EXCLAMATION);
         }
-        // A short, repeating falling sweat drop, not a time-based particle system.
+        // Keep the existing 48-step falling-drop cycle; only separation gets the pop.
         let phase = self.age % 48;
         if phase < 28 {
-            let y = -50.0 + (phase / 7) as f64;
-            rect([32.0, y], [1.0, 1.0], INK);
-            rect([31.0, y + 1.0], [3.0, 2.0], INK);
-            rect([30.0, y + 3.0], [5.0, 3.0], INK);
-            rect([31.0, y + 6.0], [3.0, 1.0], INK);
-            rect([32.0, y + 2.0], [1.0, 1.0], HIGHLIGHT);
-            rect([31.0, y + 3.0], [3.0, 2.0], HIGHLIGHT);
+            glyph([27.0, -54.0 + (phase / 7) as f64], SWEAT);
         }
         quads
     }
@@ -177,6 +203,125 @@ impl Sample {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn native_cues(age: i64, facing: i64) -> Vec<Quad> {
+        let plan =
+            crate::screen::plan([640.0, 480.0], [640.0, 480.0], [320.0, 240.0], 1, 0).unwrap();
+        Sample { age, phase: 0.0 }.cues([320.25, 240.25], facing, &plan, 0)
+    }
+    fn exclamation_bounds(age: i64) -> [f32; 4] {
+        let corners = native_cues(age, 1)
+            .into_iter()
+            .filter(|q| q.corners[0][1] < 175.0)
+            .flat_map(|q| q.corners)
+            .collect::<Vec<_>>();
+        [
+            corners.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min),
+            corners.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min),
+            corners
+                .iter()
+                .map(|p| p[0])
+                .fold(f32::NEG_INFINITY, f32::max),
+            corners
+                .iter()
+                .map(|p| p[1])
+                .fold(f32::NEG_INFINITY, f32::max),
+        ]
+    }
+    #[test]
+    fn cues_double_native_size_and_keep_exactly_one_pixel_outline_and_grid() {
+        let bounds = exclamation_bounds(8);
+        assert_eq!([bounds[2] - bounds[0], bounds[3] - bounds[1]], [8.0, 18.0]);
+        for facing in [-1, 1] {
+            let quads = native_cues(8, facing);
+            let mut pixels = std::collections::BTreeMap::new();
+            for q in &quads {
+                for [x, y] in q.corners {
+                    assert_eq!(x.fract(), 0.0);
+                    assert_eq!(y.fract(), 0.0);
+                }
+                let left = q.corners.iter().map(|p| p[0] as i32).min().unwrap();
+                let right = q.corners.iter().map(|p| p[0] as i32).max().unwrap();
+                for y in q.corners[0][1] as i32..q.corners[2][1] as i32 {
+                    for x in left..right {
+                        pixels.insert((x, y), q.color);
+                    }
+                }
+            }
+            // Every highlight has an unbroken outline, and no ink is thicker than one pixel.
+            for (&(x, y), &color) in &pixels {
+                if color == HIGHLIGHT {
+                    for dx in -1..=1 {
+                        for dy in -1..=1 {
+                            assert!(
+                                pixels.contains_key(&(x + dx, y + dy)),
+                                "open outline at {x},{y}"
+                            );
+                        }
+                    }
+                } else {
+                    assert!(
+                        (-1..=1).any(|dx| (-1..=1)
+                            .any(|dy| pixels.get(&(x + dx, y + dy)) == Some(&HIGHLIGHT))),
+                        "thick outline at {x},{y}"
+                    );
+                }
+            }
+            let drop = pixels
+                .keys()
+                .filter(|(_, y)| *y > 175)
+                .copied()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                drop.iter().map(|p| p.0).max().unwrap() - drop.iter().map(|p| p.0).min().unwrap()
+                    + 1,
+                12
+            );
+            assert_eq!(
+                drop.iter().map(|p| p.1).max().unwrap() - drop.iter().map(|p| p.1).min().unwrap()
+                    + 1,
+                16
+            );
+        }
+    }
+    #[test]
+    fn pop_and_facing_keep_level_pixel_edges_at_each_zoom() {
+        for zoom in [0.0, 0.25, 1.0] {
+            let plan =
+                crate::screen::plan([640.0, 480.0], [2048.0, 448.0], [800.0, 224.0], 1, zoom)
+                    .unwrap();
+            for facing in [-1, 1] {
+                for age in 0..20 {
+                    let quads = Sample { age, phase: 0.0 }.cues([800.25, 300.75], facing, &plan, 0);
+                    for q in quads {
+                        for corner in q.corners {
+                            for (axis, value) in corner.iter().enumerate() {
+                                let level = (f64::from(*value)
+                                    - crate::screen::godot_round(plan.offset[axis]))
+                                    / plan.scale;
+                                assert_eq!(
+                                    level.fract(),
+                                    0.0,
+                                    "age={age} facing={facing} zoom={zoom}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn separation_pop_grows_overshoots_and_settles_in_six_saved_steps() {
+        let size = |age| {
+            let b = exclamation_bounds(age);
+            [b[2] - b[0], b[3] - b[1]]
+        };
+        assert!(size(0)[1] < size(2)[1]);
+        assert!(size(2)[1] > size(6)[1]);
+        assert_eq!(exclamation_bounds(6), exclamation_bounds(19));
+        assert_eq!(native_cues(2, 1), native_cues(2, 1));
+        assert!(native_cues(28, 1).is_empty());
+    }
     #[test]
     fn saved_steps_not_draws_drive_episode_and_panicky_cadence() {
         let mut clock = WorriedYoshi::default();
