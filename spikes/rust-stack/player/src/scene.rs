@@ -1209,9 +1209,13 @@ impl Scene {
             self.binary
                 .push(image.rgba.chunks_exact(4).all(|p| p[3] == 0 || p[3] == 255));
             bytes += image.rgba.len();
-            if gpu.upload(&image)? != self.sizes.len() - 1 {
+            let id = gpu.upload(&image)?;
+            if id != self.sizes.len() - 1 {
                 return Err("GPU animated tile binding identity mismatch".into());
             }
+            // Spike lighting: the frames take the lit path like their still tile
+            // (no sidecar normals; opt-in alpha bevels apply to both alike).
+            gpu.upload_normal(id, None, [image.width, image.height])?;
         }
         self.prepare_art_cull_margin();
         println!(
@@ -2388,7 +2392,30 @@ impl Scene {
                 .map_err(|_| "egg trail lock poisoned")?
                 .positions(p.tick, p.map_index, body, p.player.eggs.len());
             if let Ok(egg_art) = self.object("o7", 0) {
-                for (slot, (colour, at)) in p.player.eggs.iter().zip(&trail).enumerate() {
+                // Front eggs pushed out of a full queue fall behind the line.
+                for (colour, at) in &trail.falling {
+                    let name = ["Green", "Yellow", "Red", "Purple"][(*colour).clamp(0, 3) as usize];
+                    let ef = egg_art.sample(p.tick, name, 0, None);
+                    commands.push((
+                        11,
+                        order,
+                        sprite_quad(
+                            ef.image,
+                            self.sizes[ef.image],
+                            Transform {
+                                position: *at,
+                                scale: [1.0 / self.density as f64; 2],
+                                origin: ef.origin,
+                                ..Transform::default()
+                            },
+                            &plan,
+                            [1.0, 1.0, 1.0, 1.0],
+                            &[],
+                        ),
+                    ));
+                    order += 1;
+                }
+                for (slot, (colour, at)) in p.player.eggs.iter().zip(&trail.carried).enumerate() {
                     let name = ["Green", "Yellow", "Red", "Purple"][(*colour).clamp(0, 3) as usize];
                     let ef = egg_art.sample(p.tick, name, 0, None);
                     commands.push((
@@ -3529,19 +3556,24 @@ mod tests {
                 let p = session.presentation();
                 let before = session.snapshot().unwrap();
                 scene.observe_feel(&p, &session).unwrap();
-                let positions = scene.trail.lock().unwrap().positions(
-                    p.tick,
-                    p.map_index,
-                    pixel(p.player.motion.current),
-                    p.player.eggs.len(),
-                );
+                let positions = scene
+                    .trail
+                    .lock()
+                    .unwrap()
+                    .positions(
+                        p.tick,
+                        p.map_index,
+                        pixel(p.player.motion.current),
+                        p.player.eggs.len(),
+                    )
+                    .carried;
                 assert_eq!(positions.len(), p.player.eggs.len());
                 assert!(positions.iter().flatten().all(|v| v.is_finite()));
                 carrying += usize::from(!positions.is_empty());
                 aiming += usize::from(p.player.aim_degrees.is_some());
                 scene.picture(&p, [640.0, 480.0], 0).unwrap();
                 assert_eq!(session.snapshot().unwrap(), before);
-                out.push(serde_json::json!({"tick":p.tick,"mask":mask,"player":pixel(p.player.motion.current),"eggs":positions,"aim":p.player.aim_degrees,"swimming":p.player.swimming,"origins":(0..p.player.eggs.len()).map(|i|session.saved_field(&format!("egg_origin_{i}"))).collect::<Vec<_>>(),"loose":p.entities.iter().filter(|e| e.code=="o7" && e.status==EntityStatus::Active).map(|e| pixel(e.motion.current)).collect::<Vec<_>>()}));
+                out.push(serde_json::json!({"tick":p.tick,"mask":mask,"player":pixel(p.player.motion.current),"eggs":positions,"aim":p.player.aim_degrees,"swimming":p.player.swimming,"egg_pops":p.player.egg_pops,"loose":p.entities.iter().filter(|e| e.code=="o7" && e.status==EntityStatus::Active).map(|e| pixel(e.motion.current)).collect::<Vec<_>>()}));
             }
             std::fs::write(
                 Path::new(&dir).join(format!("egg-{name}-session.json")),

@@ -32,7 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn valid_step(s: &TrailStep) -> bool {
     s.player
         .iter()
-        .chain(&s.initial)
         .chain(&s.grab)
         .chain(s.hand.iter().flatten())
         .chain(s.pickups.iter().flatten())
