@@ -97,6 +97,97 @@ fn main() {
     println!(
         "INPUT_LAYOUT_PROBE snes_positions=true xbox_unchanged=true both_shoulders=true menu_confirm_back=true"
     );
+    // Hasty mode through the same virtual SDL buttons and the real simulation.
+    controls.set_throw_mode(eggshell_spike_player::feel::ThrowMode::Hasty);
+    for (layout, throw_button, lock_button, tongue_button) in [
+        (ButtonLayout::Snes, 1, 9, 2),
+        (ButtonLayout::Snes, 3, 10, 2),
+        (ButtonLayout::Xbox, 9, 10, 2),
+    ] {
+        controls.mask(layout);
+        controls.clear_steps();
+        let schema = std::fs::read_to_string(
+            std::env::var("PLAYER_SCHEMA").expect("PLAYER_SCHEMA for hasty Session probe"),
+        )
+        .unwrap();
+        let mut level: serde_json::Value = serde_json::from_str(include_str!(
+            "../../core/tests/fixtures/collections.level.json"
+        ))
+        .unwrap();
+        level["startpoint"]["X"] = 64.into();
+        level["startpoint"]["Y"] = 384.into();
+        level["maps"]["map1"]["objects"] =
+            serde_json::json!({"0":{"A":"o7","X":64,"Y":368},"1":{"A":"o7","X":64,"Y":368}});
+        let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let set_button = |button, down| unsafe {
+            assert_eq!(
+                sys::SDL_JoystickSetVirtualButton(raw, button, u8::from(down)),
+                0
+            );
+            sys::SDL_JoystickUpdate();
+        };
+        let step = |controls: &mut Controls,
+                    events: &mut sdl2::EventPump,
+                    session: &mut eggshell_spike_core::Session| {
+            for event in events.poll_iter() {
+                controls.event(event);
+            }
+            let live = controls.mask(layout);
+            let mask = controls.step_mask(live);
+            session.advance(mask).unwrap();
+            mask
+        };
+        for _ in 0..30 {
+            step(&mut controls, &mut events, &mut session);
+        }
+        assert_eq!(session.presentation().player.eggs.len(), 2);
+        set_button(throw_button, true);
+        assert_ne!(step(&mut controls, &mut events, &mut session) & 64, 0);
+        for _ in 0..30 {
+            assert_eq!(step(&mut controls, &mut events, &mut session) & 64, 0);
+        }
+        assert!(session.presentation().player.aim_degrees.is_some());
+        set_button(lock_button, true);
+        step(&mut controls, &mut events, &mut session);
+        let angle = session.presentation().player.aim_degrees;
+        for _ in 0..12 {
+            step(&mut controls, &mut events, &mut session);
+            assert_eq!(session.presentation().player.aim_degrees, angle);
+        }
+        set_button(lock_button, false);
+        set_button(throw_button, false);
+        assert_ne!(step(&mut controls, &mut events, &mut session) & 64, 0);
+        assert_eq!(session.presentation().player.eggs.len(), 1);
+        assert!(session.presentation().player.aim_degrees.is_none());
+        for _ in 0..35 {
+            step(&mut controls, &mut events, &mut session);
+        }
+        set_button(throw_button, true);
+        step(&mut controls, &mut events, &mut session);
+        for _ in 0..20 {
+            step(&mut controls, &mut events, &mut session);
+        }
+        assert!(session.presentation().player.aim_degrees.is_some());
+        set_button(tongue_button, true);
+        step(&mut controls, &mut events, &mut session);
+        assert!(session.presentation().player.aim_degrees.is_none());
+        set_button(tongue_button, false);
+        set_button(throw_button, false);
+        for _ in 0..40 {
+            assert_eq!(step(&mut controls, &mut events, &mut session) & 64, 0);
+        }
+        assert!(session.presentation().player.aim_degrees.is_none());
+        assert_eq!(session.presentation().player.eggs.len(), 1);
+        println!(
+            "INPUT_HASTY_PROBE layout={layout:?} throw_button={throw_button} hold_release=true lock=true tongue_cancel_no_restart=true"
+        );
+    }
+    controls.set_throw_mode(eggshell_spike_player::feel::ThrowMode::Patient);
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() == 2 {
         use eggshell_spike_core::{SCALE, Session};

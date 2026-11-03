@@ -17,10 +17,11 @@ const GLOW_STYLE_ROW: usize = 20;
 const ZOOM_STEPS_ROW: usize = 21;
 const BUTTON_LAYOUT_ROW: usize = 22;
 const ELASTIC_TONGUE_ROW: usize = 23;
-const PREVIEW_ROW: usize = 24;
-const RESTART_ROW: usize = 25;
-const RESET_ROW: usize = 26;
-const RESUME_ROW: usize = 27;
+const THROW_MODE_ROW: usize = 24;
+const PREVIEW_ROW: usize = 25;
+const RESTART_ROW: usize = 26;
+const RESET_ROW: usize = 27;
+const RESUME_ROW: usize = 28;
 pub const ROWS: usize = RESUME_ROW + 1;
 #[derive(Default)]
 pub struct Model {
@@ -75,6 +76,7 @@ impl Model {
                 GLOW_STYLE_ROW => s.glow_style.toggle(),
                 ELASTIC_TONGUE_ROW => s.elastic_tongue = !s.elastic_tongue,
                 BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
+                THROW_MODE_ROW => s.throw_mode.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.cycle(delta),
                 _ => {}
             }
@@ -94,6 +96,7 @@ impl Model {
                 GLOW_STYLE_ROW => s.glow_style.toggle(),
                 ELASTIC_TONGUE_ROW => s.elastic_tongue = !s.elastic_tongue,
                 BUTTON_LAYOUT_ROW => s.button_layout.toggle(),
+                THROW_MODE_ROW => s.throw_mode.toggle(),
                 ZOOM_STEPS_ROW => s.zoom_steps.toggle(),
                 PREVIEW_ROW => return Action::Preview { hit: false },
                 RESTART_ROW => return Action::Restart,
@@ -168,6 +171,7 @@ impl MenuPage for Page<'_> {
                 }
             ),
             format!("Elastic tongue: {}", on(s.elastic_tongue)),
+            format!("Egg throw: {}", s.throw_mode.label()),
             "Preview shake".into(),
             "Restart level".into(),
             "Reset to defaults".into(),
@@ -266,6 +270,27 @@ impl ReleaseGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn throw_mode_row_toggles_and_round_trips_without_preview() {
+        let mut s = FeelSettings::default();
+        let mut model = Model {
+            focus: THROW_MODE_ROW,
+        };
+        assert_eq!(model.input(input::RIGHT, &mut s), Action::None);
+        assert_eq!(s.throw_mode, crate::feel::ThrowMode::Hasty);
+        assert_eq!(serde_json::to_value(s).unwrap()["throw_mode"], "hasty");
+        assert_eq!(
+            Page {
+                model: &model,
+                settings: &s
+            }
+            .items()[THROW_MODE_ROW]
+                .label,
+            "Egg throw: hasty"
+        );
+        model.input(input::JUMP, &mut s);
+        assert_eq!(s.throw_mode, crate::feel::ThrowMode::Patient);
+    }
     #[test]
     fn new_rows_toggle_on_confirm_and_arrows_in_the_existing_menu() {
         let mut m = Model::default();

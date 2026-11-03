@@ -754,3 +754,11 @@ frame's `Saddle` image point, including grab, walking aim and toss frames;
 separated rider motion remains core-owned. Mounted duck/look-up and movement
 select the pack's corresponding rider pictures. The core still provides only a
 fixed mounted offset and idle/cry selection; no gameplay position is changed.
+
+Feel **Egg throw** stores `throw_mode` (`"patient"`, default; or `"hasty"`).
+Patient keeps the two-press control. Hasty sends a THROW press on physical down,
+a neutral step, and another press on release. Tongue cancels the pending release
+throw. Lock and both button layouts use their normal mappings. Quick taps keep
+both presses; aliases act as one held button. Pause, slot chords and layout/mode
+changes discard pending throws. Recorded/replayed masks and core rules do not
+change; this option applies only to live SDL/keyboard input.

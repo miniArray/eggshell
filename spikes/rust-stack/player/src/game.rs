@@ -719,6 +719,13 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<RunExit, String> {
     };
     let mut goal_choice: Option<&str> = None;
     while completed < stop && ready.elapsed() < Duration::from_secs(seconds) {
+        controls.set_throw_mode(
+            scene
+                .feel
+                .lock()
+                .map_err(|_| "feel lock poisoned")?
+                .throw_mode,
+        );
         controls.reset_actions();
         for event in events.poll_iter() {
             controls.event(event);

@@ -96,6 +96,28 @@ impl ButtonLayout {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThrowMode {
+    #[default]
+    Patient,
+    Hasty,
+}
+impl ThrowMode {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Patient => Self::Hasty,
+            Self::Hasty => Self::Patient,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Patient => "patient",
+            Self::Hasty => "hasty",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeelSettings {
@@ -123,6 +145,7 @@ pub struct FeelSettings {
     pub zoom_steps: ZoomSteps,
     pub button_layout: ButtonLayout,
     pub elastic_tongue: bool,
+    pub throw_mode: ThrowMode,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -151,6 +174,7 @@ impl Default for FeelSettings {
             zoom_steps: ZoomSteps::Whole,
             button_layout: ButtonLayout::Snes,
             elastic_tongue: true,
+            throw_mode: ThrowMode::Patient,
         }
     }
 }
@@ -275,6 +299,8 @@ mod tests {
         assert_eq!(s.zoom_steps, ZoomSteps::Whole);
         assert_eq!(s.button_layout, ButtonLayout::Snes);
         assert!(s.elastic_tongue);
+        assert_eq!(s.throw_mode, ThrowMode::Patient);
+        assert_eq!(serde_json::to_value(s).unwrap()["throw_mode"], "patient");
         assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");
         assert_eq!(serde_json::to_value(s).unwrap()["zoom_steps"], "whole");
         assert_eq!(serde_json::to_value(s).unwrap()["glow_style"], "pixel");

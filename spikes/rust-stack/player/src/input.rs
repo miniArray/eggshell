@@ -1,5 +1,5 @@
 //! SDL input adapter. Core owns gameplay held/released edge semantics.
-use crate::feel::ButtonLayout;
+use crate::feel::{ButtonLayout, ThrowMode};
 use sdl2::{
     controller::{Axis, Button, GameController},
     event::Event,
@@ -16,6 +16,7 @@ pub struct Controls {
     _joysticks: Vec<Joystick>,
     keyboard: u8,
     jump: JumpSteps,
+    throwing: ThrowSteps,
     previous_actions: u16,
     layout: ButtonLayout,
     wait_faces: bool,
@@ -75,6 +76,7 @@ impl Controls {
             _joysticks: joysticks,
             keyboard: 0,
             jump: JumpSteps::default(),
+            throwing: ThrowSteps::default(),
             previous_actions: 0,
             layout: ButtonLayout::default(),
             wait_faces: false,
@@ -91,10 +93,18 @@ impl Controls {
     }
     /// Consume exactly once per simulation call, not once per render/event batch.
     pub fn step_mask(&mut self, live: u8) -> u8 {
-        self.jump.next_mask(live)
+        let mask = self.jump.next_mask(live);
+        self.throwing.next_mask(mask)
     }
     pub fn clear_steps(&mut self) {
         self.jump.pending.clear();
+        self.throwing.clear();
+    }
+    pub fn set_throw_mode(&mut self, mode: ThrowMode) {
+        if mode != self.throwing.mode {
+            self.throwing.mode = mode;
+            self.throwing.clear();
+        }
     }
     pub fn reset_actions(&mut self) {
         self.pause_toggle = false;
@@ -130,6 +140,9 @@ impl Controls {
                 if keymask(key) == JUMP {
                     self.jump.event(key_source(key), true);
                 }
+                if keymask(key) == THROW {
+                    self.throwing.edges.event(key_source(key), true);
+                }
                 self.keyboard |= keymask(key) & !JUMP;
                 match key {
                     Keycode::Escape => self.exit = true,
@@ -149,16 +162,25 @@ impl Controls {
                 if keymask(key) == JUMP {
                     self.jump.event(key_source(key), false);
                 }
+                if keymask(key) == THROW {
+                    self.throwing.edges.event(key_source(key), false);
+                }
                 self.keyboard &= !keymask(key);
             }
             Event::ControllerButtonDown { which, button, .. } => {
                 self.events += 1;
+                if is_throw_button(self.layout, button) {
+                    self.throwing.edges.event(pad_source(which, button), true);
+                }
                 if is_jump_button(self.layout, button) {
                     self.jump.event(pad_source(which, button), true);
                 }
             }
             Event::ControllerButtonUp { which, button, .. } => {
                 self.events += 1;
+                if is_throw_button(self.layout, button) {
+                    self.throwing.edges.event(pad_source(which, button), false);
+                }
                 if is_jump_button(self.layout, button) {
                     self.jump.event(pad_source(which, button), false);
                 }
@@ -178,6 +200,8 @@ impl Controls {
                     .collect();
                 self.jump.sample(pads);
                 self.jump.pending.clear();
+                self.throwing.edges.sources.retain(|id| *id < (1_u64 << 63));
+                self.throwing.clear();
             }
             _ => {}
         }
@@ -186,13 +210,19 @@ impl Controls {
     /// then sample action edges once; duplicate interfaces cannot double-toggle.
     pub fn mask(&mut self, layout: ButtonLayout) -> u8 {
         let pressed = |b| self.controllers.iter().any(|c| c.button(layout.button(b)));
-        if layout != self.layout {
+        let layout_changed = layout != self.layout;
+        if layout_changed {
             self.wait_faces = true;
             self.layout = layout;
             // A face can change action while held. Discard edges from the old
             // mapping; the SDL snapshot below establishes the new aggregate.
             self.jump.pending.clear();
             self.jump.sources.retain(|id| *id >= (1_u64 << 63));
+            self.throwing
+                .edges
+                .sources
+                .retain(|id| *id >= (1_u64 << 63));
+            self.throwing.clear();
         }
         if ![Button::A, Button::B, Button::X, Button::Y]
             .into_iter()
@@ -273,6 +303,23 @@ impl Controls {
         if keyboard & USE != 0 || (!self.wait_faces && faces.1 & USE != 0) {
             self.menu_mask |= USE;
         }
+        let mut throws: Vec<_> = self
+            .controllers
+            .iter()
+            .flat_map(|c| {
+                [Button::B, Button::Y, Button::LeftShoulder]
+                    .into_iter()
+                    .filter(|b| is_throw_button(layout, *b) && c.button(*b))
+                    .map(|b| pad_source(c.instance_id(), b))
+            })
+            .collect();
+        if self.keyboard & THROW != 0 {
+            throws.push(key_source(Keycode::C));
+        }
+        self.throwing.edges.sample(throws);
+        if back || layout_changed {
+            self.throwing.clear();
+        }
         // Slot chords suppress keyboard throw/lock as the reference global action does.
         if back {
             result &= !(THROW | LOCK);
@@ -322,6 +369,57 @@ impl Controls {
         result
     }
 }
+/// Translate physical transitions at the input boundary. Replays bypass this adapter.
+#[derive(Default)]
+struct ThrowSteps {
+    edges: JumpSteps,
+    mode: ThrowMode,
+    armed: bool,
+    suppressed: bool,
+    pulse: bool,
+}
+impl ThrowSteps {
+    fn clear(&mut self) {
+        self.edges.pending.clear();
+        self.armed = false;
+        self.suppressed = !self.edges.sources.is_empty();
+    }
+    fn next_mask(&mut self, live: u8) -> u8 {
+        if self.mode == ThrowMode::Patient {
+            self.edges.pending.clear();
+            return live;
+        }
+        let base = live & !THROW;
+        if live & USE != 0 {
+            self.clear(); // Releasing a cancelled aim must not start another aim.
+            self.pulse = false;
+            return base;
+        }
+        if self.pulse {
+            self.pulse = false;
+            return base; // Two fast transitions still need a neutral core step.
+        }
+        if let Some(down) = self.edges.pending.pop_front() {
+            if self.suppressed {
+                if !down {
+                    self.suppressed = false;
+                }
+            } else if down {
+                self.armed = true;
+                self.pulse = true;
+            } else if self.armed {
+                self.armed = false;
+                self.pulse = true;
+            }
+        }
+        base | if self.pulse { THROW } else { 0 }
+    }
+}
+fn is_throw_button(layout: ButtonLayout, button: Button) -> bool {
+    face_masks(layout, |b| b == button).0 & THROW != 0
+        || layout == ButtonLayout::Xbox && button == Button::LeftShoulder
+}
+
 fn pad_source(id: u32, button: Button) -> u64 {
     (u64::from(id) << 8) | button as u64
 }
@@ -418,6 +516,54 @@ pub fn replay(path: &Path) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hasty_preserves_fast_taps_aliases_cancel_and_other_bits() {
+        let mut steps = ThrowSteps {
+            mode: ThrowMode::Hasty,
+            ..ThrowSteps::default()
+        };
+        steps.edges.event(1, true);
+        steps.edges.event(2, true);
+        steps.edges.event(1, false);
+        assert_eq!(steps.next_mask(RIGHT | LOCK | THROW), RIGHT | LOCK | THROW);
+        assert_eq!(steps.next_mask(RIGHT | LOCK | THROW), RIGHT | LOCK);
+        assert_eq!(steps.next_mask(RIGHT | LOCK | THROW), RIGHT | LOCK);
+        steps.edges.event(2, false);
+        assert_eq!(steps.next_mask(DOWN), DOWN | THROW);
+        assert_eq!(steps.next_mask(DOWN), DOWN);
+        steps.edges.event(1, true);
+        steps.edges.event(1, false);
+        assert_eq!(steps.next_mask(0), THROW);
+        assert_eq!(steps.next_mask(0), 0);
+        assert_eq!(steps.next_mask(0), THROW);
+        assert_eq!(steps.next_mask(0), 0);
+        steps.edges.event(1, true);
+        assert_eq!(steps.next_mask(THROW), THROW);
+        assert_eq!(steps.next_mask(USE | THROW), USE);
+        steps.edges.event(1, false);
+        assert_eq!(steps.next_mask(0), 0);
+        steps.edges.event(1, true);
+        assert_eq!(steps.next_mask(THROW), THROW);
+    }
+    #[test]
+    fn patient_is_literal_and_mode_switch_or_pause_does_not_throw_on_release() {
+        let mut steps = ThrowSteps::default();
+        for mask in [THROW, THROW, 0, THROW, 0] {
+            assert_eq!(steps.next_mask(mask), mask);
+        }
+        steps.edges.event(1, true);
+        steps.mode = ThrowMode::Hasty;
+        steps.clear();
+        assert_eq!(steps.next_mask(THROW), 0);
+        steps.edges.event(1, false);
+        assert_eq!(steps.next_mask(0), 0);
+        steps.edges.event(1, true);
+        assert_eq!(steps.next_mask(THROW), THROW);
+        steps.clear();
+        steps.edges.event(1, false);
+        assert_eq!(steps.next_mask(0), 0);
+        assert_eq!(steps.next_mask(0), 0);
+    }
     #[test]
     fn snes_uses_positions_and_xbox_retains_label_aliases() {
         for (button, snes, xbox) in [
