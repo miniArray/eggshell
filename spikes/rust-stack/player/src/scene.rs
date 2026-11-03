@@ -138,6 +138,7 @@ pub struct Scene {
     maps: Vec<PreparedMap>,
     objects: HashMap<String, HashMap<i64, Visual>>,
     player: Visual,
+    egg_hands: crate::egg_trail::HandPoints,
     companions: [Option<Visual>; 3],
     captors: std::sync::Mutex<crate::captors::Captors>,
     /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
@@ -151,7 +152,7 @@ pub struct Scene {
     /// The original's aim cursor (hud EggTarget), when the pack has it.
     egg_target: Option<Visual>,
     /// Drawing-only trail of Yoshi positions for carried eggs (never saved, never sim).
-    trail: std::sync::Mutex<Trail>,
+    trail: std::sync::Mutex<crate::egg_trail::EggTrail>,
     /// Animated tileset frames from outside the pack (scene ids after the generated
     /// images), loaded by `add_animated_tiles`.
     animated_files: Vec<std::path::PathBuf>,
@@ -411,153 +412,6 @@ fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String
         .map(|(from, (to, _, _))| PaletteSwap { from, to })
         .collect())
 }
-/// Carried eggs (drawing only; Godot drew none). Original (YFS Yoshi sheet, group
-/// "Egg Following"): Every tick: YoshiPos.Push(Yoshi.X) / SetXY(last, 1, Yoshi.Y); when
-/// YoshiPos.Width > 60: Delete(0); for each "follow" egg: TweenTwoProperties("pos",
-/// YoshiPos.At(count - egg.idx10, 0) + offsetX, YoshiPos.At(count - egg.idx10, 1) - 16,
-/// 0.1 s) with idx10 = 10 * egg index. That pushes while Yoshi stands too, so the eggs
-/// would close up on him; the user's playtest of the original shows standing eggs
-/// spaced and countable on the ground. So: a position is pushed only when Yoshi moved
-/// (spacing = 10 moved steps per egg, as in the original while walking), and once he
-/// has stood still for STILL_TICKS the eggs drop to his feet level, keeping their x.
-#[derive(Default)]
-struct Trail {
-    last_tick: Option<i64>,
-    path: std::collections::VecDeque<[f64; 2]>,
-    eggs: Vec<[f64; 2]>,
-    /// The last seen PlayerPicture::egg_pops and egg colours (front first).
-    pops: Option<u64>,
-    colours: Vec<i64>,
-    /// Front eggs pushed out of a full queue, falling off screen.
-    falling: Vec<FallingEgg>,
-    /// Steps since Yoshi last moved.
-    still: i64,
-    frames: std::collections::VecDeque<(i64, Vec<[f64; 2]>)>,
-}
-/// YFS Yoshi 487-488 and Objects 185-186: when a seventh egg is made or picked up, the
-/// egg with the lowest orderID (the front one, nearest Yoshi) gets mode fallOffScreen:
-/// collisions off, its Platform on (gravity 1600 px/s^2, max fall 576 px/s), and it
-/// despawns off screen. The rest move up one place.
-struct FallingEgg {
-    at: [f64; 2],
-    vy: f64,
-    fallen: f64,
-    colour: i64,
-}
-impl Trail {
-    const KEEP: usize = 60;
-    const SPACING: usize = 10;
-    /// One tween step: a 0.1 s (6-tick) tween restarted every tick moves a sixth.
-    const STEP: f64 = 1.0 / 6.0;
-    /// Egg Platform gravity and fall cap in px per tick (1600 px/s^2, 576 px/s at 60 Hz).
-    const GRAVITY: f64 = 1600.0 / 3600.0;
-    const MAX_FALL: f64 = 576.0 / 60.0;
-    /// Steps without movement before the eggs drop to Yoshi's feet level.
-    const STILL_TICKS: i64 = 6;
-    /// Eggs hang 16 px above the recorded position (the original's At(.., 1) - 16).
-    const LIFT: f64 = 16.0;
-    /// Taller than any view, so a dropped egg is off screen before it is forgotten.
-    const FORGET: f64 = 1024.0;
-    /// Call before update with this frame's pop count and egg colours. A rise drops that
-    /// many front eggs, with the colours they had on the last frame.
-    fn pops(&mut self, pops: u64, colours: &[i64]) {
-        if let Some(last) = self.pops {
-            let n = (pops.saturating_sub(last) as usize).min(self.eggs.len());
-            for k in 0..n {
-                let at = self.eggs.remove(0);
-                self.falling.push(FallingEgg {
-                    at,
-                    vy: 0.0,
-                    fallen: 0.0,
-                    colour: self.colours.get(k).copied().unwrap_or(0),
-                });
-            }
-        }
-        // A restore starts the count again at 0; that only resets the baseline.
-        self.pops = Some(pops);
-        self.colours = colours.to_vec();
-    }
-    /// Colour and position of every dropped egg still falling.
-    fn falling(&self) -> Vec<(i64, [f64; 2])> {
-        self.falling.iter().map(|f| (f.colour, f.at)).collect()
-    }
-    fn update(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
-        if self.last_tick.is_some_and(|last| tick < last) {
-            *self = Self::default();
-        }
-        if self.last_tick == Some(tick) {
-            return self.eggs.clone();
-        }
-        if self.path.is_empty() {
-            self.path.resize(Self::KEEP, at);
-        }
-        let steps = match self.last_tick {
-            None => 1,
-            Some(last) => (tick - last).clamp(0, Self::KEEP as i64) as usize,
-        };
-        self.last_tick = Some(tick);
-        if self.eggs.len() > count {
-            // Throws remove the first inventory slot, not the tail of the queue.
-            self.eggs.drain(..self.eggs.len() - count);
-        }
-        while self.eggs.len() < count {
-            self.eggs.push([at[0], at[1] - Self::LIFT]);
-        }
-        if steps > 0 {
-            if self.path.back() == Some(&at) {
-                self.still += steps as i64;
-            } else {
-                self.still = 0;
-                self.path.push_back(at);
-                while self.path.len() > Self::KEEP {
-                    self.path.pop_front();
-                }
-            }
-        }
-        for _ in 0..steps {
-            for f in &mut self.falling {
-                f.vy = (f.vy + Self::GRAVITY).min(Self::MAX_FALL);
-                f.at[1] += f.vy;
-                f.fallen += f.vy;
-            }
-            self.falling.retain(|f| f.fallen < Self::FORGET);
-            for (k, egg) in self.eggs.iter_mut().enumerate() {
-                let back = Self::SPACING * (k + 1);
-                let target = self
-                    .path
-                    .len()
-                    .checked_sub(1 + back)
-                    .and_then(|i| self.path.get(i))
-                    .or(self.path.front())
-                    .copied()
-                    .unwrap_or(at);
-                let mut goal = [target[0], target[1] - Self::LIFT];
-                if self.still >= Self::STILL_TICKS {
-                    goal[1] = at[1] - Self::LIFT;
-                }
-                for i in 0..2 {
-                    egg[i] += (goal[i] - egg[i]) * Self::STEP;
-                }
-            }
-        }
-        self.frames.push_back((tick, self.eggs.clone()));
-        self.eggs.clone()
-    }
-    fn positions(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
-        // A worker can process an entire catch-up batch while the prepared frame
-        // is still drawing. Retain observed samples until that frame consumes them.
-        if let Some(index) = self
-            .frames
-            .iter()
-            .position(|(t, e)| *t == tick && e.len() == count)
-        {
-            self.frames.drain(..index);
-            self.frames[0].1.clone()
-        } else {
-            vec![[at[0], at[1] - 16.0]; count]
-        }
-    }
-}
 /// The original game's walk and run animation rate (YFS Yoshi sheet): while Yoshi moves
 /// on the ground in Walk or Sprint (Sprint from 320 px/s), the animation speed is
 /// |vx| / 8 frames per second. Godot used the pack's fixed 8 fps, so a run at speed
@@ -583,30 +437,7 @@ impl RunClock {
     }
 }
 #[cfg(test)]
-mod trail_tests {
-    use super::Trail;
-    #[test]
-    fn standing_eggs_stay_spaced_and_drop_to_yoshi_level() {
-        let mut t = Trail::default();
-        // Walk right 2 px a step on y 100, jump the last 20 steps (y 80), then land.
-        for tick in 0..60 {
-            let y = if tick >= 40 { 80.0 } else { 100.0 };
-            t.update(tick, [tick as f64 * 2.0, y], 3);
-        }
-        let mut eggs = Vec::new();
-        for tick in 60..200 {
-            eggs = t.update(tick, [118.0, 100.0], 3);
-        }
-        // Spaced by 10 recorded positions (20 px) behind Yoshi (the landing adds one
-        // record at x 118), all at his feet level - 16.
-        for (k, egg) in eggs.iter().enumerate() {
-            let x = 120.0 - 20.0 * (k + 1) as f64;
-            assert!(
-                (egg[0] - x).abs() < 0.5 && (egg[1] - 84.0).abs() < 0.5,
-                "{k} {egg:?}"
-            );
-        }
-    }
+mod run_clock_tests {
     #[test]
     fn tile_animation_frames_and_ping_pong() {
         let a = super::TileAnimation {
@@ -624,49 +455,6 @@ mod trail_tests {
         assert_eq!(seq, [10, 11, 12, 13, 12, 11, 10, 11]);
     }
     #[test]
-    fn all_six_eggs_follow_including_the_oldest_history_entry() {
-        let mut trail = Trail::default();
-        let mut eggs = vec![];
-        for tick in 0..120 {
-            eggs = trail.update(tick, [tick as f64 * 4.0, 100.0], 6);
-        }
-        assert!(eggs[5][0] > 100.0, "sixth egg stayed at spawn: {eggs:?}");
-        assert!(eggs.windows(2).all(|v| v[0][0] > v[1][0]));
-    }
-    #[test]
-    fn trail_advances_on_observed_steps_not_draws_and_rewinds_cleanly() {
-        let mut trail = Trail::default();
-        for tick in 0..90 {
-            trail.update(
-                tick,
-                [tick as f64 * 4.0, 100.0 + (tick as f64 / 10.0).sin() * 20.0],
-                6,
-            );
-        }
-        let eggs = trail.positions(89, [356.0, 100.0], 6);
-        for _ in 0..10 {
-            assert_eq!(trail.positions(89, [356.0, 100.0], 6), eggs);
-        }
-        // A skipped render cannot replace ten actual positions with one endpoint.
-        assert!(eggs.iter().any(|e| (e[1] - 84.0).abs() > 1.0));
-        trail.update(90, [360.0, 100.0], 5);
-        assert_eq!(trail.positions(89, [356.0, 100.0], 6), eggs);
-        assert!(trail.eggs[0][0] < eggs[0][0]); // first slot was thrown
-        assert_eq!(trail.update(2, [20.0, 50.0], 1), vec![[20.0, 34.0]]);
-        assert_eq!(trail.path.len(), 60);
-    }
-    #[test]
-    fn a_prepared_frame_survives_a_multi_step_pipeline_batch() {
-        let mut trail = Trail::default();
-        let first = trail.update(1, [10.0, 100.0], 6);
-        for tick in 2..100 {
-            trail.update(tick, [tick as f64 * 10.0, 100.0], 6);
-        }
-        assert_eq!(trail.positions(1, [10.0, 100.0], 6), first);
-        trail.positions(99, [990.0, 100.0], 6);
-        assert_eq!(trail.frames.len(), 1);
-    }
-    #[test]
     fn run_frames_follow_speed() {
         use super::{RunClock, SCALE};
         let mut c = RunClock::default();
@@ -679,45 +467,6 @@ mod trail_tests {
         let vx = -8 * SCALE;
         assert_eq!(c.frame(21, vx, 2), 1);
         assert_eq!(c.frame(22, vx, 2), 0);
-    }
-    #[test]
-    fn a_seventh_egg_drops_the_front_egg() {
-        let mut t = Trail::default();
-        let colours = [1, 0, 0, 0, 0, 2];
-        t.pops(0, &colours);
-        let before = t.update(0, [100.0, 50.0], 6);
-        // Made at six: the pop count rises, the front (yellow) egg falls, the rest
-        // move up one place and the new egg appears at Yoshi.
-        t.pops(1, &[0, 0, 0, 0, 2, 0]);
-        let after = t.update(1, [100.0, 50.0], 6);
-        assert_eq!(after[..5], before[1..]);
-        let falling = t.falling();
-        assert_eq!(falling.len(), 1);
-        assert_eq!(falling[0].0, 1);
-        assert!(falling[0].1[1] > before[0][1]);
-        // It keeps falling at most 9.6 px per tick, then is forgotten.
-        let mut last = falling[0].1[1];
-        for tick in 2..200 {
-            t.pops(1, &[0; 6]);
-            t.update(tick, [100.0, 50.0], 6);
-            if let Some((_, at)) = t.falling().first() {
-                assert!(at[1] - last <= 9.6 + 1e-9);
-                last = at[1];
-            }
-        }
-        assert!(t.falling().is_empty());
-        // A restore resets the count without dropping anything.
-        t.pops(0, &[0; 6]);
-        t.update(200, [100.0, 50.0], 6);
-        assert!(t.falling().is_empty());
-    }
-    #[test]
-    fn short_history_leaves_eggs_where_they_appeared() {
-        let mut t = Trail::default();
-        let eggs = t.update(0, [10.0, 50.0], 1);
-        assert_eq!(eggs, vec![[10.0, 34.0]]);
-        let eggs = t.update(5, [30.0, 50.0], 1);
-        assert_eq!(eggs, vec![[10.0, 34.0]]);
     }
 }
 fn fallback_head_box(
@@ -1194,10 +943,12 @@ impl Scene {
                 })
                 .collect()
         };
+        let egg_hands = crate::egg_trail::HandPoints::prepare(&pack.manifest, &catalog);
         Ok(Self {
             catalog,
             maps,
             objects,
+            egg_hands,
             player,
             companions,
             captors: std::sync::Mutex::new(crate::captors::Captors::default()),
@@ -1205,7 +956,7 @@ impl Scene {
             stilt_palettes,
             decor_caps,
             egg_target,
-            trail: std::sync::Mutex::new(Trail::default()),
+            trail: std::sync::Mutex::new(crate::egg_trail::EggTrail::default()),
             run_clock: std::sync::Mutex::new(RunClock::default()),
             animated_files: Vec::new(),
             shake: std::sync::Mutex::new(crate::shake::Shake::default()),
@@ -1550,11 +1301,36 @@ impl Scene {
             .lock()
             .map_err(|_| "captor clock lock poisoned")?
             .observe(p);
-        {
-            let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
-            trail.pops(p.player.egg_pops, &p.player.eggs);
-            trail.update(p.tick, pixel(p.player.motion.current), p.player.eggs.len());
-        }
+        let hand = if p.player.aim_degrees.is_some() {
+            let pose = &p.player.selected_pose;
+            let frame = self
+                .player
+                .sample_required(pose.tick, &pose.name, pose.frame, None)?;
+            Some(
+                self.egg_hands
+                    .at(frame.image, [0.0; 2], p.player.facing, self.density)
+                    .ok_or("aim pose lacks pack egg image point")?,
+            )
+        } else {
+            None
+        };
+        let grab = if hand.is_some() {
+            let grab_pose = if p.player.selected_pose.name.ends_with('1') {
+                "GrabEgg1"
+            } else {
+                "GrabEgg0"
+            };
+            let grab = self.player.sample_required(0, grab_pose, 0, Some(0))?;
+            self.egg_hands
+                .at(grab.image, [0.0; 2], p.player.facing, self.density)
+                .ok_or("grab pose lacks pack egg image point")?
+        } else {
+            [0.0; 2]
+        };
+        self.trail
+            .lock()
+            .map_err(|_| "egg trail lock poisoned")?
+            .observe(p, session, hand, grab);
         self.held_melons
             .lock()
             .map_err(|_| "held melon lock poisoned")?
@@ -2556,24 +2332,27 @@ impl Scene {
             };
             // Carried eggs trail behind Yoshi (drawn first, so Yoshi covers them).
             let body = pixel(p.player.motion.current);
-            let (trail, falling) = {
-                let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
-                let eggs = trail.positions(p.tick, body, p.player.eggs.len());
-                (eggs, trail.falling())
-            };
+            let trail = self
+                .trail
+                .lock()
+                .map_err(|_| "egg trail lock poisoned")?
+                .positions(p.tick, p.map_index, body, p.player.eggs.len());
             if let Ok(egg_art) = self.object("o7", 0) {
-                let carried = p.player.eggs.iter().copied().zip(trail.iter().copied());
-                for (colour, at) in carried.chain(falling) {
-                    let name = ["Green", "Yellow", "Red", "Purple"][colour.clamp(0, 3) as usize];
+                for (slot, (colour, at)) in p.player.eggs.iter().zip(&trail).enumerate() {
+                    let name = ["Green", "Yellow", "Red", "Purple"][(*colour).clamp(0, 3) as usize];
                     let ef = egg_art.sample(p.tick, name, 0, None);
                     commands.push((
                         11,
-                        order,
+                        if slot == 0 && p.player.aim_degrees.is_some() {
+                            order + p.player.eggs.len() as u64 + 1
+                        } else {
+                            order
+                        },
                         sprite_quad(
                             ef.image,
                             self.sizes[ef.image],
                             Transform {
-                                position: at,
+                                position: *at,
                                 scale: [1.0 / self.density as f64; 2],
                                 origin: ef.origin,
                                 ..Transform::default()
@@ -3255,6 +3034,192 @@ mod tests {
         println!(
             "CAPTOR_SCENE_PROBE active_steps={active} all_four_pack_frames=true four_sprites_per_step=true snapshots_unchanged=true"
         );
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA, PLAYER_METRICS, PLAYER_EGG_CASES_DIR"]
+    fn egg_states_through_real_session_and_scene() {
+        use crate::input::{DOWN, JUMP, LEFT, LOCK, RIGHT, THROW, USE};
+        let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let dir = env("PLAYER_EGG_CASES_DIR");
+        for name in [
+            "walk", "run", "turn", "jump", "flutter", "fall", "collect", "throw", "water",
+            "platform", "block", "mint", "cancel",
+        ] {
+            let level =
+                std::fs::read_to_string(Path::new(&dir).join(format!("egg-{name}.level.json")))
+                    .unwrap();
+            let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+                &level,
+                include_str!("../../../../src/level/collision_table.json"),
+                &schema,
+            )
+            .unwrap();
+            let mut scene = Scene::prepare(
+                session.world(),
+                &session.admission_report().admitted_codes,
+                &pack,
+                Path::new(&env("PLAYER_METRICS")),
+            )
+            .unwrap();
+            scene.prepare_headless_assets(&pack).unwrap();
+            let mut out = Vec::new();
+            let mut aiming = 0;
+            let mut carrying = 0;
+            for t in 0..560 {
+                let phase = t - 120;
+                let mask = if name == "mint" {
+                    if t < 3 {
+                        RIGHT
+                    } else if t < 16 {
+                        USE
+                    } else if (30..90).contains(&t) {
+                        DOWN
+                    } else {
+                        0
+                    }
+                } else if name == "block" {
+                    if (10..40).contains(&t) {
+                        JUMP
+                    } else if t > 45 {
+                        let p = session.presentation();
+                        p.entities
+                            .iter()
+                            .find(|e| e.code == "o7" && e.status == EntityStatus::Active)
+                            .map_or(0, |e| {
+                                if e.motion.current.x > p.player.motion.current.x {
+                                    RIGHT
+                                } else {
+                                    LEFT
+                                }
+                            })
+                    } else {
+                        0
+                    }
+                } else if t < 30 {
+                    RIGHT
+                } else if phase < 0 {
+                    0
+                } else {
+                    match name {
+                        "walk" => {
+                            if phase < 24 {
+                                RIGHT
+                            } else {
+                                0
+                            }
+                        }
+                        "run" | "fall" | "collect" => {
+                            if phase < 140 {
+                                RIGHT
+                            } else {
+                                0
+                            }
+                        }
+                        "turn" => {
+                            if phase < 90 {
+                                RIGHT
+                            } else if phase < 180 {
+                                LEFT
+                            } else {
+                                0
+                            }
+                        }
+                        "jump" => {
+                            if phase < 35 {
+                                JUMP
+                            } else {
+                                0
+                            }
+                        }
+                        "flutter" => {
+                            if phase < 85 {
+                                JUMP
+                            } else {
+                                0
+                            }
+                        }
+                        "throw" => {
+                            (if phase < 70 { RIGHT } else { 0 })
+                                | if [30, 60, 100, 130].contains(&phase) {
+                                    THROW
+                                } else if (40..50).contains(&phase) {
+                                    LOCK
+                                } else {
+                                    0
+                                }
+                        }
+                        "cancel" => {
+                            (if phase < 70 { RIGHT } else { 0 })
+                                | if [30, 100, 130].contains(&phase) {
+                                    THROW
+                                } else if phase == 60 {
+                                    USE
+                                } else {
+                                    0
+                                }
+                        }
+                        "water" => {
+                            if phase < 140 {
+                                RIGHT
+                            } else if (150..180).contains(&phase) {
+                                DOWN
+                            } else if (200..235).contains(&phase) {
+                                JUMP
+                            } else {
+                                0
+                            }
+                        }
+                        "platform" => {
+                            (if phase < 70 { RIGHT } else { 0 })
+                                | if (10..40).contains(&phase) { JUMP } else { 0 }
+                        }
+                        _ => unreachable!(),
+                    }
+                };
+                session.advance(mask).unwrap();
+                let p = session.presentation();
+                let before = session.snapshot().unwrap();
+                scene.observe_feel(&p, &session).unwrap();
+                let positions = scene.trail.lock().unwrap().positions(
+                    p.tick,
+                    p.map_index,
+                    pixel(p.player.motion.current),
+                    p.player.eggs.len(),
+                );
+                assert_eq!(positions.len(), p.player.eggs.len());
+                assert!(positions.iter().flatten().all(|v| v.is_finite()));
+                carrying += usize::from(!positions.is_empty());
+                aiming += usize::from(p.player.aim_degrees.is_some());
+                scene.picture(&p, [640.0, 480.0], 0).unwrap();
+                assert_eq!(session.snapshot().unwrap(), before);
+                out.push(serde_json::json!({"tick":p.tick,"mask":mask,"player":pixel(p.player.motion.current),"eggs":positions,"aim":p.player.aim_degrees,"swimming":p.player.swimming,"origins":(0..p.player.eggs.len()).map(|i|session.saved_field(&format!("egg_origin_{i}"))).collect::<Vec<_>>(),"loose":p.entities.iter().filter(|e| e.code=="o7" && e.status==EntityStatus::Active).map(|e| pixel(e.motion.current)).collect::<Vec<_>>()}));
+            }
+            std::fs::write(
+                Path::new(&dir).join(format!("egg-{name}-session.json")),
+                serde_json::to_vec(&out).unwrap(),
+            )
+            .unwrap();
+            if name == "block" {
+                assert!(
+                    out.iter()
+                        .any(|r| !r["loose"].as_array().unwrap().is_empty())
+                );
+            } else {
+                assert!(carrying > 100, "{name}: no acquisitions");
+            }
+            if name == "throw" {
+                assert!(aiming > 30);
+            }
+            println!(
+                "EGG_SCENE_PROBE case={name} steps=560 carrying_steps={carrying} aiming_steps={aiming} snapshots_unchanged=true"
+            );
+        }
     }
     /// Every code the core can create during play has an object binding in the pinned
     /// pack or draws as its placeholder, and the verification levels that spawn them

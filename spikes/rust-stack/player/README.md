@@ -687,3 +687,64 @@ rewind/map changes reset it. Core positions and capture timing remain untouched.
 The headless `capture_episode_draws_four_pack_animated_captors` regression runs
 a real contact/countdown/capture episode and checks four pack sprites per step,
 all four flight frames, and byte-identical snapshots before/after drawing.
+
+### Carried egg states (current)
+
+The trail is not a fixed-distance chain or a spring. It has these distinct paths:
+
+| State / transition | Position rule and ownership |
+| --- | --- |
+| Loose / block-created | Core-owned o7 body. A block launches a loose egg; it does not fly directly into an inventory slot. Ground contacts, bounces and pickup belong to the core. |
+| Joining | Preserve the acquired egg's world position. The first follow target is scheduled on the next step, so movement starts one step later. |
+| Following / catching up | Keep 60 body-position samples, prefilled at startup. One-based order k uses sample `size - 10*k`, shifted up 16 level pixels. Restart a 0.1-second linear tween each step. Advance the previous target by 1/6 before scheduling the next target. |
+| Settling / idle | Continue the same history and tween. With no body movement, all eggs approach the same point. There is no additional fixed spacing, random idle force or standing hop. |
+| Jump / flutter / fall / landing | Follow the recorded body arc with 10-step per-egg delays and tween lag. No separate carried-egg gravity, landing impulse or collision with the floor. The delayed vertical arc can look like a hop after the player lands. |
+| Turning | Keep world-space history; do not mirror or teleport the line. Old direction samples pass through each delay before the new direction arrives. |
+| Aiming / held | Remove the first core inventory slot from the following line and draw it at the player's pack-authored per-frame egg image point, in front of the body. The first grab uses GrabEgg frame 0. Remaining eggs close their delays to orders 1..N-1. |
+| Aim cancelled | Return the held picture to following with its tail delay. Core inventory order is not changed by this presentation adapter; the ordering gap below remains. |
+| Throw | Remove the first displayed slot; the core draws and simulates the thrown o7. No duplicate carried egg remains at the hand. |
+| Newly laid | Start at body y-16. Hold through the next step. A rearward 32-pixel target offset decays linearly over nine steps, then normal following remains. This is distinct from a picked-up loose egg. |
+| Added at capacity | Placed inventory origins identify the oldest removed slot even when count stays six. Reindex after the current follow targets are scheduled; retain the new pickup position. |
+| Swimming / platforms | Use the same body history, including buoyancy and support motion. Swimming is not a new independent carried-egg force. Water layering is separate from position. |
+
+Pack egg art alternates two frames at 6 fps, with different heights and origins.
+That changes the silhouette; it is not an independent bounce in the follow rule.
+Random lateral velocity belongs to loose block spawns, not to carried following.
+
+`egg_trail.rs` owns only presentation history and scheduled tween targets. It
+observes every successful simulation step, not every draw. The renderer reads
+cached positions. Pausing/repeated drawing does not move eggs; rewind, map change
+or a skipped observation resets history rather than inventing intermediate steps.
+The held anchor comes from the actual bound frame; a missing required image point
+is an error. A narrow read-only bridge reads `egg_origin_0..5` and
+`move_digest_ticks`, since the presentation packet omits those acquisition facts.
+Runtime pickup matching additionally uses observed o7 status transitions. No
+snapshot or gameplay state is written.
+
+Host checks cover steady running, idle convergence, all six delays, pickup hold,
+capacity replacement, laying offset, held/throw/cancel transitions, rewind and
+multi-step pipeline retention. `egg_trace_probe PRIVATE_INPUT PRIVATE_OUTPUT`
+runs the same position adapter on neutral trace rows. The pack-backed ignored
+`egg_states_through_real_session_and_scene` test runs real Session → observer →
+Scene paths with unchanged snapshots. Private inputs and outputs are not fixtures
+in this repository. Position-adapter comparisons are not whole-simulation parity.
+
+#### Remaining inventory / core contract gaps
+
+- The reference keeps egg positions, order, modes, position history and active
+  tweens on runtime objects. The core packet contains only inventory colours and
+  aiming. Exact restore, identity and handoff need an authoritative core contract;
+  this drawing history is not serialized. Initial animation phase is not exposed.
+- Cancelling aim returns the selected egg to the end of the reference queue.
+  The core keeps its inventory order. The next aim/throw can therefore select a
+  different egg. Do not rotate core-owned colours or invent a gameplay throw here.
+- The reference's overflow egg becomes a falling world object. The core removes
+  the old inventory entry without creating that object. This adapter does not
+  fabricate a collision-bearing dropped egg. Full-capacity runtime-origin-zero
+  replacements also lack a reliable identity signal.
+- A special support/transport overlap mode collapses eggs to the body over
+  0.06 seconds and clears history. That mode is not in the presentation packet.
+  Per-egg water layering and capture-driven inventory drops also need core signals.
+- A host block course exposes a simulation difference: its loose egg remains on
+  the block in the core instead of following the checked lateral launch and later
+  pickup. The adapter does not alter that core body to make the trail test pass.
