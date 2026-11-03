@@ -406,7 +406,7 @@ mod tests {
         *water = water.as_str().unwrap().replace("24x0", "24x1").into();
         let world = eggshell_spike_core::World::compile(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
         )
         .unwrap();
         let map = &world.maps[0];

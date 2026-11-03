@@ -11,7 +11,7 @@ fn main() {
     let level = include_str!("../../core/tests/fixtures/collections.level.json");
     let mut session = Session::load(
         level,
-        include_str!("../../../../src/level/collision_table.json"),
+        include_str!("../../../../data/collision_table.json"),
         &schema,
     )
     .unwrap();

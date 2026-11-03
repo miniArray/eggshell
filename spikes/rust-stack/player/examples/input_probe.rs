@@ -120,7 +120,7 @@ fn main() {
             serde_json::json!({"0":{"A":"o7","X":64,"Y":368},"1":{"A":"o7","X":64,"Y":368}});
         let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -199,7 +199,7 @@ fn main() {
         level["startpoint"]["Y"] = 384.into();
         let mut session = Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();

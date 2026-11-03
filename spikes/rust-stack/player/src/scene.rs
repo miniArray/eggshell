@@ -2872,7 +2872,7 @@ mod tests {
         level["maps"]["map1"]["objects"] = serde_json::json!({"0":{"A":"e1","X":128,"Y":368}});
         let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -2966,7 +2966,7 @@ mod tests {
         assert!(compared > 20);
         let mut rescue = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -3045,7 +3045,7 @@ mod tests {
             serde_json::json!({"0":{"A":"o7","X":64,"Y":368},"1":{"A":"o7","X":64,"Y":368}});
         let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -3171,7 +3171,7 @@ mod tests {
         }
         let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -3240,7 +3240,7 @@ mod tests {
         let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
         let mut session = eggshell_spike_core::Session::load(
             include_str!("../../core/tests/fixtures/collections.level.json"),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -3352,7 +3352,7 @@ mod tests {
         level["maps"]["map1"]["objects"] = serde_json::json!({"0":{"A":"e1","X":128,"Y":368}});
         let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();
@@ -3426,7 +3426,7 @@ mod tests {
                     .unwrap();
             let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
                 &level,
-                include_str!("../../../../src/level/collision_table.json"),
+                include_str!("../../../../data/collision_table.json"),
                 &schema,
             )
             .unwrap();

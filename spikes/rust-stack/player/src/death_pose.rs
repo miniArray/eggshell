@@ -252,7 +252,7 @@ mod tests {
     fn lava_uses_hurt_frames_not_spin_and_fades_at_the_end() {
         let world = eggshell_spike_core::World::compile(
             include_str!("../tests/fixtures/lighting.level.json"),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
         )
         .unwrap();
         let map = &world.maps[0];

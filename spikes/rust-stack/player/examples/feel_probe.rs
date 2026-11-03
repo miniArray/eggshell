@@ -6,7 +6,7 @@ use eggshell_spike_player::{
     goal_music::Proximity,
 };
 fn main() {
-    let collision = include_str!("../../../../src/level/collision_table.json");
+    let collision = include_str!("../../../../data/collision_table.json");
     let schema_path = std::env::args()
         .nth(1)
         .expect("usage: cargo run --example feel_probe -- SCHEMA.json");

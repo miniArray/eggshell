@@ -55,7 +55,7 @@ fn main() {
         }
         let mut session = Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();

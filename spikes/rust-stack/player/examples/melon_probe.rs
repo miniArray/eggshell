@@ -11,7 +11,7 @@ fn main() {
             "layer1":{"castle32":"{\"c2tilemap\":true,\"width\":20,\"height\":15,\"data\":\"240x-1,60x0\"}"},"layer2":{},"bgcolor":"0,0,0"}}});
         let mut session = Session::load_benchmark_unverified(
             &level.to_string(),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
             &schema,
         )
         .unwrap();

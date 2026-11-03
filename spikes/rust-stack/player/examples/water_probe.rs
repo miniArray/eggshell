@@ -18,7 +18,7 @@ fn pool(schema: &str, capped: bool) -> Session {
         "maps":{"map1":{"width":640,"height":480,"objects":{},"layer1":layer,"layer2":{},"bgcolor":"0,0,0"}}});
     Session::load_benchmark_unverified(
         &level.to_string(),
-        include_str!("../../../../src/level/collision_table.json"),
+        include_str!("../../../../data/collision_table.json"),
         schema,
     )
     .unwrap()

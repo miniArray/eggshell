@@ -51,6 +51,7 @@
                 ../core/tests/fixtures/stilts_target.level.json
                 ../core/tests/fixtures/checkpoint_target.level.json
                 ../core/tests/fixtures/posts_target.level.json
+                ../../../data/collision_table.json
                 ../../../tests/fixtures/bounce.level.json
                 ../../../tests/fixtures/lagoon.level.json
               ];

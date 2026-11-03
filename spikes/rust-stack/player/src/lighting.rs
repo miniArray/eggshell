@@ -205,7 +205,7 @@ mod tests {
     fn screenshot_fixture_has_lamps_coins_goal_and_real_lava_layers() {
         let world = eggshell_spike_core::World::compile(
             include_str!("../tests/fixtures/lighting.level.json"),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
         )
         .unwrap();
         assert_eq!(world.maps.len(), 2);
@@ -227,7 +227,7 @@ mod tests {
     fn dark_map_lights_never_increase_visible_area() {
         let world = eggshell_spike_core::World::compile(
             include_str!("../tests/fixtures/lighting.level.json"),
-            include_str!("../../../../src/level/collision_table.json"),
+            include_str!("../../../../data/collision_table.json"),
         )
         .unwrap();
         let frame = Frame::new(
