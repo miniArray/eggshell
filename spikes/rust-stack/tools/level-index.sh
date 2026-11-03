@@ -7,7 +7,7 @@ set -euo pipefail
 [[ "$NIX_CONFIG" == *'builders ='* ]]
 OUT=$1
 cargo run --quiet --locked --release --manifest-path spikes/rust-stack/player/Cargo.toml -- --level-index \
-  "$HOME/.local/share/eggshell-run/corpus/levels" src/level/collision_table.json \
+  "${PLAYER_LEVELS_DIR:-$HOME/.local/share/eggshell-run/corpus/levels}" src/level/collision_table.json \
   "$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.json" \
   "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
   "$HOME/eggshell-remote/artifacts/full-rust-ab/player/presentation-stage/view-metrics.json" "$OUT" |

@@ -341,7 +341,10 @@ if presentation_bundle:
         subprocess.run(["shellcheck", "--shell=bash", str(launcher)], check=True)
         if level_index_path:
             # Level list (launch-levels): the index of this build and its playable levels.
-            corpus = Path.home() / ".local/share/eggshell-run/corpus/levels"
+            corpus = Path(
+                os.environ.get("PLAYER_LEVELS_DIR")
+                or Path.home() / ".local/share/eggshell-run/corpus/levels"
+            )
             index = json.loads(Path(level_index_path).read_text())
             assert index["levels"], "empty level index"
             levels_dir = inputs / "levels"

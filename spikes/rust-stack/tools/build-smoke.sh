@@ -23,6 +23,14 @@ PACKAGE=$(cat "$HOME/eggshell-remote/player-built-path")
 cd "$ROOT"
 if [[ "${PLAYER_PLAYTEST_BUNDLE:-}" == 1 ]]; then
   # Level list index of this source (host build of the same tree): which corpus levels play.
+  if [[ -n "${PLAYER_EXTRA_LEVELS:-}" ]]; then
+    # Private extra levels (never Git) join the corpus in the list: a folder of links.
+    PLAYER_LEVELS_DIR="$HOME/eggshell-remote/levels-with-extra"
+    rm -rf "$PLAYER_LEVELS_DIR"
+    mkdir -p "$PLAYER_LEVELS_DIR"
+    ln -s "$HOME/.local/share/eggshell-run/corpus/levels/"*.json "$PLAYER_EXTRA_LEVELS/"*.json "$PLAYER_LEVELS_DIR/"
+    export PLAYER_LEVELS_DIR
+  fi
   LEVEL_INDEX="$HOME/eggshell-remote/level-index-$EXPECTED_SOURCE_SHA.json"
   bash spikes/rust-stack/tools/level-index.sh "$LEVEL_INDEX"
   export LEVEL_INDEX
