@@ -1,10 +1,11 @@
-//! Public invented course; the v10 fixture was written by unchanged main 0ccdc3f.
+//! Public invented course; the v10 fixture was written by unchanged main 34aed28
+//! (core/src tree 682153c), the last layout-10 main before the layout-11 stack.
 use eggshell_spike_core::{schema::Schema, wire::WireSnapshot, Session};
 
 const LEVEL: &str = include_str!("fixtures/actors_target.level.json");
 const COLLISION: &str = include_str!("../../../../data/collision_table.json");
 const METADATA: &str = include_str!("../../../../data/snapshot-schema-v11.json");
-const LEGACY_SAVE: &[u8] = include_bytes!("fixtures/v10-0ccdc3f-actors-t160.state");
+const LEGACY_SAVE: &[u8] = include_bytes!("fixtures/v10-34aed28-actors-t160.state");
 
 #[test]
 fn current_main_v10_save_migrates_and_continues_for_600_steps() {
