@@ -921,6 +921,8 @@ impl Actor {
     pub fn activation_bounds(&self, facing: i64) -> [i64; 4] {
         let picture = match self.kind {
             ActorKind::Flat => [-18, -24, 16, 16],
+            // actor.gd: wake e3 by its first walking picture, not its contact body.
+            ActorKind::Flower => [-24, -36, 16, 16],
             // shell_walker.gd: the 44 x 64 walking picture.
             ActorKind::Shell | ActorKind::Runner => [-28, -48, 16, 16],
             ActorKind::Spear => return self.spear_activation(),
@@ -1386,3 +1388,73 @@ fields!(
     from_w,
     from_h
 );
+
+#[cfg(test)]
+mod flower_activation_tests {
+    use super::*;
+    use crate::{
+        entity::{Entity, Kind},
+        World,
+    };
+
+    #[test]
+    fn actor_flower_activation_uses_the_first_walking_picture_in_both_directions() {
+        let flower = Actor::new(ActorKind::Flower, 0, 0, Position::default());
+        assert_eq!(
+            flower.activation_bounds(-1),
+            [-24 * S, -36 * S, 16 * S, 16 * S]
+        );
+        assert_eq!(
+            flower.activation_bounds(1),
+            [-16 * S, -36 * S, 24 * S, 16 * S]
+        );
+    }
+
+    #[test]
+    fn actor_flower_wakes_before_its_contact_body_enters_the_view() {
+        for (mirror, outside) in [(0, 20), (1, 15)] {
+            let level = serde_json::json!({
+                "version":"s3.8", "name":"flower activation", "desc":"", "author":"test",
+                "startpoint":{"map":1, "X":128, "Y":128},
+                "maps":{"map1":{"width":4096, "height":2048,
+                    "objects":{"flower":{"A":"e3", "X":2000, "Y":1000, "M":mirror}}}}
+            })
+            .to_string();
+            let world = World::compile(
+                &level,
+                include_str!("../../../../data/collision_table.json"),
+            )
+            .unwrap();
+            let source = &world.maps[0].placements[0];
+            let mut entity = Entity::placed(
+                0,
+                source,
+                Kind::Walker(Box::new(Actor::new(
+                    ActorKind::Flower,
+                    0,
+                    mirror,
+                    source.position,
+                ))),
+                0,
+            );
+            let centre = Position {
+                x: entity.body.x - entity.activation_x - outside * S,
+                y: entity.body.y,
+            };
+            let position = entity.body;
+            let Kind::Walker(flower) = &entity.kind else {
+                unreachable!()
+            };
+            assert!(
+                entity.body.x + flower.body_bounds(entity.facing)[0]
+                    >= centre.x + entity.activation_x
+            );
+            let map = Probe::new(&world.maps[0]);
+            let mut rng = Rng::from_saved(1).unwrap();
+            assert!(!entity.lifecycle(&map, centre, centre, 0, &mut rng).unwrap());
+            assert_eq!(entity.status, 1);
+            assert_eq!((entity.body.x, entity.body.y), (position.x, position.y));
+            assert!(entity.lifecycle(&map, centre, centre, 0, &mut rng).unwrap());
+        }
+    }
+}
