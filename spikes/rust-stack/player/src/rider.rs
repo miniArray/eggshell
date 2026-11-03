@@ -40,10 +40,22 @@ mod tests {
     }
     #[test]
     fn saddle_point_tracks_each_frame_and_mirrors_at_pack_density() {
-        let manifest = serde_json::json!({"player":{"EggToss0":{"frames":[
-            {"file":"a.png","size":[46,62],"origin":[16,62],"image_points":[["Saddle",18.0/46.0,24.0/62.0]]},
-            {"file":"b.png","size":[56,62],"origin":[24,62],"image_points":[["Saddle",18.0/56.0,24.0/62.0]]}
-        ]}}});
+        use crate::egg_trail::frame_with_point;
+        let frames = [
+            frame_with_point(
+                "a.png",
+                [46, 62],
+                [16, 62],
+                ("Saddle", 18.0 / 46.0, 24.0 / 62.0),
+            ),
+            frame_with_point(
+                "b.png",
+                [56, 62],
+                [24, 62],
+                ("Saddle", 18.0 / 56.0, 24.0 / 62.0),
+            ),
+        ];
+        let manifest = serde_json::json!({"player":{"EggToss0":{"frames":frames}}});
         let mut catalog = crate::binding::Catalog::default();
         catalog.image("a.png").unwrap();
         catalog.image("b.png").unwrap();

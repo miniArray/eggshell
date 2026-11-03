@@ -300,6 +300,27 @@ fn pixels(p: eggshell_spike_core::Position) -> [f64; 2] {
     [p.x as f64 / SCALE as f64, p.y as f64 / SCALE as f64]
 }
 
+/// Manifest key of a player frame's named points: `[[name, x / width, y / height], ...]`.
+pub(crate) const FRAME_POINTS: &str = "image_points";
+/// A player frame entry with one named point, as the pack manifest stores it (tests).
+#[cfg(test)]
+pub(crate) fn frame_with_point(
+    file: &str,
+    size: [u32; 2],
+    origin: [u32; 2],
+    point: (&str, f64, f64),
+) -> serde_json::Value {
+    let mut frame = serde_json::Map::new();
+    frame.insert("file".into(), file.into());
+    frame.insert("size".into(), serde_json::json!(size));
+    frame.insert("origin".into(), serde_json::json!(origin));
+    frame.insert(
+        FRAME_POINTS.into(),
+        serde_json::json!([[point.0, point.1, point.2]]),
+    );
+    frame.into()
+}
+
 /// Keep the pack's per-frame hand anchors; no invented pose-dependent offsets.
 #[derive(Default)]
 pub struct HandPoints(HashMap<usize, [f64; 2]>);
@@ -325,7 +346,7 @@ impl HandPoints {
                     .flatten()
                 {
                     let Some(point) = frame
-                        .get("image_points")
+                        .get(FRAME_POINTS)
                         .and_then(serde_json::Value::as_array)
                         .and_then(|ps| ps.iter().find(|p| p[0].as_str() == Some(name)))
                     else {
@@ -377,9 +398,13 @@ mod tests {
     }
     #[test]
     fn held_anchor_uses_pack_size_origin_facing_and_density() {
-        let manifest = serde_json::json!({"player":{"GrabEgg0":{"fps":24,"frames":[{
-            "file":"hand.png","size":[42,60],"origin":[20,60],"image_points":[["Egg",12.0/42.0,34.0/60.0]]
-        }]}}});
+        let frame = frame_with_point(
+            "hand.png",
+            [42, 60],
+            [20, 60],
+            ("Egg", 12.0 / 42.0, 34.0 / 60.0),
+        );
+        let manifest = serde_json::json!({"player":{"GrabEgg0":{"fps":24,"frames":[frame]}}});
         let mut catalog = crate::binding::Catalog::default();
         let art = catalog
             .visual(
