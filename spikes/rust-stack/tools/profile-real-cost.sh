@@ -18,7 +18,7 @@ SCHEMA="$ROOT/core/stride-4.7.2/schema.json"
 for name in real-64d3d5f1d77b3fe14198c693 real-6aa65f0c574012395a0faddf scale-2400; do
   if [[ "$name" == real-* ]]; then level="$ROOT/scaling/real-screens-v2/$name.level.json"; mode=real-screen; else level="$ROOT/scaling/$name.level.json"; mode=synthetic; fi
   perf record -e cpu-clock:u -F 4999 --call-graph fp -o "$D/$name.perf.data" -- \
-    "$BIN" --benchmark-profile-host "$level" src/level/collision_table.json "$SCHEMA" 300 "$mode" | tee "$D/$name.profile.txt"
+    "$BIN" --benchmark-profile-host "$level" data/collision_table.json "$SCHEMA" 300 "$mode" | tee "$D/$name.profile.txt"
   perf script -i "$D/$name.perf.data" > "$D/$name.perf.script.txt"
   perf report -i "$D/$name.perf.data" --stdio --children > "$D/$name.perf.report.txt"
 done
@@ -28,7 +28,7 @@ cp "$CARGO_TARGET_DIR/release/eggshell-spike-player" "$D/work-player"
 BIN="$D/work-player"
 for name in real-64d3d5f1d77b3fe14198c693 real-6aa65f0c574012395a0faddf scale-2400; do
   if [[ "$name" == real-* ]]; then level="$ROOT/scaling/real-screens-v2/$name.level.json"; mode=real-screen; original="$HOME/.local/share/eggshell-run/corpus/levels/${name#real-}.json"; else level="$ROOT/scaling/$name.level.json"; mode=synthetic; original=-; fi
-  "$BIN" --benchmark-work-host "$level" src/level/collision_table.json "$SCHEMA" 300 "$mode" "$original" \
+  "$BIN" --benchmark-work-host "$level" data/collision_table.json "$SCHEMA" 300 "$mode" "$original" \
     "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$ROOT/player/presentation-stage/view-metrics.json" "$D/$name.work.json"
 done

@@ -9,7 +9,7 @@ fn data() -> (String, String, String, PathBuf) {
     let root = PathBuf::from(std::env::var("CORE_ORACLE_DIR").unwrap());
     (
         fs::read_to_string(fixture("stride.level.json")).unwrap(),
-        fs::read_to_string(fixture("../../src/level/collision_table.json")).unwrap(),
+        fs::read_to_string(fixture("../../data/collision_table.json")).unwrap(),
         fs::read_to_string(root.join("schema.json")).unwrap(),
         root,
     )

@@ -23,7 +23,7 @@ print(json.dumps([2] * 40 + [6] * 14 + [2] * 20 + [8] + [0] * 12 + [2] * 30 + [0
 for id in "$@"; do
   perf record -q -e cpu-clock:u -F 4999 --call-graph fp -o "$D/$id.perf.data" -- \
     "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-profile-host \
-    "$HOME/.local/share/eggshell-run/corpus/levels/$id.json" src/level/collision_table.json "$SCHEMA" 600 real-screen
+    "$HOME/.local/share/eggshell-run/corpus/levels/$id.json" data/collision_table.json "$SCHEMA" 600 real-screen
   printf 'SELF_PROFILE %s\n' "$id"
   perf report -i "$D/$id.perf.data" --stdio --no-children -g none --sort symbol 2>/dev/null \
     | grep -E "^ +[0-9]" | head -15 || true

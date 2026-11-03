@@ -14,7 +14,7 @@ SCHEMA="$ROOT/core/stride-4.7.2/schema.json"
 for name in "$@"; do
   perf record -q -e cpu-clock:u -F 4999 --call-graph fp -o "$D/$name.perf.data" -- \
     "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-profile-host \
-    "$ROOT/scaling/${REAL_SCREENS_DIR:-real-screens-v2}/$name.level.json" src/level/collision_table.json "$SCHEMA" 300 real-screen
+    "$ROOT/scaling/${REAL_SCREENS_DIR:-real-screens-v2}/$name.level.json" data/collision_table.json "$SCHEMA" 300 real-screen
   printf 'SELF_PROFILE %s\n' "$name"
   perf report -i "$D/$name.perf.data" --stdio --no-children -g none --sort symbol 2>/dev/null \
     | grep -E "^ +[0-9]" | head -15 || true

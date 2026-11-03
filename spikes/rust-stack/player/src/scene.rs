@@ -2738,7 +2738,7 @@ mod tests {
         )
         .unwrap();
         let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
-        let collision = include_str!("../../../../src/level/collision_table.json");
+        let collision = include_str!("../../../../data/collision_table.json");
         let fixtures = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fixtures");
         let mut drawn = std::collections::BTreeSet::new();
         for name in [

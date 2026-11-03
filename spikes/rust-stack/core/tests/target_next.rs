@@ -17,7 +17,7 @@ fn target_has_uninterrupted_every_tick_parity() {
         home.join(".local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"),
     )
     .unwrap();
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
+    let collision = fs::read_to_string(project.join("data/collision_table.json")).unwrap();
     let world = World::compile(&level, &collision).unwrap();
     assert_eq!(
         world.maps.iter().map(|m| m.placements.len()).sum::<usize>(),

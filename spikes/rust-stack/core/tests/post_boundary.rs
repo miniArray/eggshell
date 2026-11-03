@@ -11,7 +11,7 @@ fn post_and_pound_boundaries_refuse_atomically() {
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let dir = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
     let level = fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap();
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
+    let collision = fs::read_to_string(project.join("data/collision_table.json")).unwrap();
     let metadata = fs::read_to_string(dir.join("schema.json")).unwrap();
     let schema = Schema::parse(&metadata).unwrap();
     let inputs: Vec<u8> =
@@ -80,7 +80,7 @@ fn pound_post_mutation_survives_dead_body_early_return() {
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let dir = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
     let level = fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap();
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
+    let collision = fs::read_to_string(project.join("data/collision_table.json")).unwrap();
     let metadata = fs::read_to_string(dir.join("schema.json")).unwrap();
     let schema = Schema::parse(&metadata).unwrap();
     let mut session = Session::load(&level, &collision, &metadata).unwrap();

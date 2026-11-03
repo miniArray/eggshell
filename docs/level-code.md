@@ -72,7 +72,7 @@ diagnostic slot (`layer2` behind `layer1`). Draw order never blocks play.
 Optional `layer3` draws at overlay slot 16, after regular terrain and actors.
 This is an Eggshell fallback; it has neither solid nor liquid contacts.
 
-`src/level/collision_table.json` version 2 supplies tile size, solid and water
+`data/collision_table.json` version 2 supplies tile size, solid and water
 membership, disabled tiles, full tiles and tile-local polygons for every
 tileset the level format can name. A level that names a tileset absent from the
 table is refused (`Unsupported tilemap`); terrain is never skipped. A tileset

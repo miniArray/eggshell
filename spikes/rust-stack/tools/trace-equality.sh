@@ -15,7 +15,7 @@ SCHEMA="$ROOT/core/stride-4.7.2/schema.json"
 : > "$OUT.partial"
 for name in ${TRACE_LEVELS:-real-64d3d5f1d77b3fe14198c693 real-6aa65f0c574012395a0faddf real-66476d1f0e6c18cafbaaf355 scale-2400}; do
   if [[ "$name" == real-* ]]; then file="$ROOT/scaling/${REAL_SCREENS_DIR:-real-screens-v2}/$name.level.json"; mode=real-screen; else file="$ROOT/scaling/$name.level.json"; mode=synthetic; fi
-  "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-trace-host "$file" src/level/collision_table.json "$SCHEMA" 600 "$mode" \
+  "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-trace-host "$file" data/collision_table.json "$SCHEMA" 600 "$mode" \
     "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$ROOT/player/presentation-stage/view-metrics.json" | tee -a "$OUT.partial"
 done

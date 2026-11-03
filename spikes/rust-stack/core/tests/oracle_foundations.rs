@@ -92,7 +92,7 @@ fn unchanged_target_placements_terrain_transforms_and_contacts_match() {
     )
     .unwrap();
     let collision = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../src/level/collision_table.json"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../data/collision_table.json"),
     )
     .unwrap();
     let actual = World::compile(&level, &collision).unwrap();

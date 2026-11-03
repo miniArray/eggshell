@@ -15,8 +15,8 @@ ROOT="$HOME/eggshell-remote/artifacts/full-rust-ab/scaling"
 SCHEMA="$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.json"
 for name in scale-1600 scale-2400 scale-400-dark; do
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-host-check \
-    "$ROOT/$name.level.json" src/level/collision_table.json "$SCHEMA" 120
+    "$ROOT/$name.level.json" data/collision_table.json "$SCHEMA" 120
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-zoom-range \
-    "$ROOT/$name.level.json" src/level/collision_table.json
+    "$ROOT/$name.level.json" data/collision_table.json
 done
 printf 'STRESS_HOST_CHECKS_DONE benchmark_unverified_level=true saves_disabled=true\n'

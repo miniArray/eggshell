@@ -11,7 +11,7 @@ input=$(mktemp --suffix=.json)
 for walk in $(seq 20 10 400); do
   python3 -c "import json,sys; w=int(sys.argv[1]); print(json.dumps([2]*w+[8]+[0]*20+[8]+[0]*80))" "$walk" > "$input"
   out=$(cargo run --quiet --release --manifest-path spikes/rust-stack/player/Cargo.toml -- --held-trace "$level" \
-    src/level/collision_table.json "$C/stride-4.7.2/schema.json" "$HOME/.local/share/eggshell/packs/original-v3-final" \
+    data/collision_table.json "$C/stride-4.7.2/schema.json" "$HOME/.local/share/eggshell/packs/original-v3-final" \
     "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$HOME/eggshell-remote/artifacts/full-rust-ab/player/presentation-stage/view-metrics.json" "$input" 2>&1 || true)
   if grep -q 'held=false' <<<"$out" && grep -q 'held=true' <<<"$out"; then

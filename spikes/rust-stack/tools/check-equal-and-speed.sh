@@ -34,7 +34,7 @@ mkdir -p "$D"
 for name in $BENCH; do
   perf record -q -e cpu-clock:u -F 4999 --call-graph fp -o "$D/$name.perf.data" -- \
     "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-profile-host \
-    "$ROOT/scaling/$REAL_SCREENS_DIR/$name.level.json" src/level/collision_table.json "$SCHEMA" 300 real-screen 2>/dev/null \
+    "$ROOT/scaling/$REAL_SCREENS_DIR/$name.level.json" data/collision_table.json "$SCHEMA" 300 real-screen 2>/dev/null \
     | grep -o 'step_ms_p50":[0-9.]*' | sed "s/^/STEP ${name:5:8} /"
 done
 for name in real-6a737f7064c334870404d4e0 real-6a436c973e11434283469b06 real-64d3d5f1d77b3fe14198c693; do

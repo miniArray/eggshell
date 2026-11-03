@@ -9,7 +9,7 @@ use std::{fs, io::Write, path::PathBuf};
 fn pack_sweep_admission_and_idle() {
     let home = PathBuf::from(std::env::var("HOME").unwrap());
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
+    let collision = fs::read_to_string(project.join("data/collision_table.json")).unwrap();
     let schema = fs::read_to_string(
         home.join("eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.json"),
     )

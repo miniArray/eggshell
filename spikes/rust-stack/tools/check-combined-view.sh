@@ -23,12 +23,12 @@ rust cargo build --release --manifest-path spikes/rust-stack/player/Cargo.toml
 SCHEMA="$ROOT/core/stride-4.7.2/schema.json"
 for name in real-64d3d5f1d77b3fe14198c693 real-6aa65f0c574012395a0faddf real-66476d1f0e6c18cafbaaf355 scale-2400; do
   if [[ "$name" == real-* ]]; then file="$ROOT/scaling/real-screens-v2/$name.level.json"; mode=real-screen; else file="$ROOT/scaling/$name.level.json"; mode=synthetic; fi
-  spikes/rust-stack/player/target/release/eggshell-spike-player --benchmark-profile-host "$file" src/level/collision_table.json "$SCHEMA" 300 "$mode" | tee "$D/$name.profile.txt"
+  spikes/rust-stack/player/target/release/eggshell-spike-player --benchmark-profile-host "$file" data/collision_table.json "$SCHEMA" 300 "$mode" | tee "$D/$name.profile.txt"
 done
 rust cargo build --release --features benchmark-work-counters --manifest-path spikes/rust-stack/player/Cargo.toml
 for name in real-64d3d5f1d77b3fe14198c693 real-6aa65f0c574012395a0faddf real-66476d1f0e6c18cafbaaf355 scale-2400; do
   if [[ "$name" == real-* ]]; then file="$ROOT/scaling/real-screens-v2/$name.level.json"; mode=real-screen; original="$HOME/.local/share/eggshell-run/corpus/levels/${name#real-}.json"; else file="$ROOT/scaling/$name.level.json"; mode=synthetic; original=-; fi
-  spikes/rust-stack/player/target/release/eggshell-spike-player --benchmark-work-host "$file" src/level/collision_table.json "$SCHEMA" 300 "$mode" "$original" \
+  spikes/rust-stack/player/target/release/eggshell-spike-player --benchmark-work-host "$file" data/collision_table.json "$SCHEMA" 300 "$mode" "$original" \
     "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$ROOT/player/presentation-stage/view-metrics.json" "$D/$name.work.json"
 done

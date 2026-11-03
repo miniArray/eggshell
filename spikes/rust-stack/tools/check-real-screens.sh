@@ -21,11 +21,11 @@ SCHEMA="$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.js
 for file in "$ROOT"/real-*.level.json; do
   name=${file##*/}; name=${name%.level.json}
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-host-check \
-    "$file" src/level/collision_table.json "$SCHEMA" 120 real-screen
+    "$file" data/collision_table.json "$SCHEMA" 120 real-screen
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-zoom-range \
-    "$file" src/level/collision_table.json real-screen
+    "$file" data/collision_table.json real-screen
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --validate-real-screen-assets \
-    "$file" src/level/collision_table.json "$HOME/.local/share/eggshell/packs/original-v3-final" \
+    "$file" data/collision_table.json "$HOME/.local/share/eggshell/packs/original-v3-final" \
     "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$HOME/eggshell-remote/artifacts/full-rust-ab/player/presentation-stage/view-metrics.json" "$ROOT/asset-$name.json"
 done

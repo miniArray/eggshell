@@ -1,4 +1,4 @@
-# Resolve Rust/Godot from the baseline repository's locked nixpkgs, not NIX_PATH.
+# Resolve the Rust tools from the baseline repository's locked nixpkgs, not NIX_PATH.
 let
   lock = builtins.fromJSON (builtins.readFile ../../../flake.lock);
   source = builtins.fetchTree lock.nodes.nixpkgs.locked;
@@ -11,9 +11,7 @@ pkgs.mkShell {
     rustfmt
     clippy
     python3
-    godot_4
     git
-    gdtoolkit_4
     ruff
     shellcheck
     nixfmt

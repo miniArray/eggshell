@@ -16,12 +16,12 @@ ROOT="$HOME/eggshell-remote/artifacts/full-rust-ab/scaling/mixed-v2"
 SCHEMA="$HOME/eggshell-remote/artifacts/full-rust-ab/core/stride-4.7.2/schema.json"
 for name in mix-500 mix-2000 mix-500-dark wide-400-dark; do
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-host-check \
-    "$ROOT/$name.level.json" src/level/collision_table.json "$SCHEMA" 120
+    "$ROOT/$name.level.json" data/collision_table.json "$SCHEMA" 120
   rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --benchmark-zoom-range \
-    "$ROOT/$name.level.json" src/level/collision_table.json
+    "$ROOT/$name.level.json" data/collision_table.json
 done
 rust cargo run --manifest-path spikes/rust-stack/player/Cargo.toml -- --validate-assets \
-  "$ROOT/mix-500-dark.level.json" src/level/collision_table.json \
+  "$ROOT/mix-500-dark.level.json" data/collision_table.json \
   "$HOME/.local/share/eggshell/packs/original-v3-final" "$HOME/eggshell-remote/player-pack-files.sha256.json" \
   "$HOME/eggshell-remote/artifacts/full-rust-ab/player/presentation-stage/view-metrics.json" "$ROOT/mixed-asset-bindings.json"
 printf 'MIXED_HOST_CHECKS_DONE benchmark_unverified_level=true saves_disabled=true\n'

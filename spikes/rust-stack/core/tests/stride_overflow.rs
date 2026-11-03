@@ -9,7 +9,7 @@ fn overflowing_saved_frame_refuses_atomically_instead_of_panicking() {
     let schema = Schema::parse(&metadata).unwrap();
     let mut session = Session::load(
         &fs::read_to_string(project.join("tests/fixtures/stride.level.json")).unwrap(),
-        &fs::read_to_string(project.join("src/level/collision_table.json")).unwrap(),
+        &fs::read_to_string(project.join("data/collision_table.json")).unwrap(),
         &metadata,
     )
     .unwrap();

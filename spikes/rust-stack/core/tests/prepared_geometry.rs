@@ -7,7 +7,7 @@ fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 fn collision() -> String {
-    fs::read_to_string(project().join("src/level/collision_table.json")).unwrap()
+    fs::read_to_string(project().join("data/collision_table.json")).unwrap()
 }
 #[test]
 fn bounce_preparation_keeps_one_ordered_integer_bridge_owner() {

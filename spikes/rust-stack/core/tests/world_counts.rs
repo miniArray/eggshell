@@ -10,7 +10,7 @@ fn data() -> (serde_json::Value, String) {
             &fs::read_to_string(project().join("tests/fixtures/stride.level.json")).unwrap(),
         )
         .unwrap(),
-        fs::read_to_string(project().join("src/level/collision_table.json")).unwrap(),
+        fs::read_to_string(project().join("data/collision_table.json")).unwrap(),
     )
 }
 #[test]

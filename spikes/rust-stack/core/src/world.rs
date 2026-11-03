@@ -732,7 +732,7 @@ mod tests {
         false
     }
     fn check_indexed_level(path: &std::path::Path, boxes: usize) -> usize {
-        let collision = include_str!("../../../../src/level/collision_table.json");
+        let collision = include_str!("../../../../data/collision_table.json");
         let raw = std::fs::read_to_string(path).unwrap();
         let world = World::compile_benchmark_real_screen(&raw, collision).unwrap();
         let mut checks = 0;

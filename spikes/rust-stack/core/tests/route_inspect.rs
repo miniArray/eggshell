@@ -18,7 +18,7 @@ fn parent_legal_route_runtime_suffix() {
             home.join(".local/share/eggshell-run/corpus/levels/6600ab52a3bb0805d316b9f1.json"),
         )
         .unwrap(),
-        &fs::read_to_string(project.join("src/level/collision_table.json")).unwrap(),
+        &fs::read_to_string(project.join("data/collision_table.json")).unwrap(),
     )
     .unwrap();
     let bytes = fs::read(

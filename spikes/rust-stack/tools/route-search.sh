@@ -12,7 +12,7 @@ route=$(mktemp --suffix=.json)
 for phase in $(seq 0 4 56); do
   python3 -c "import json,sys; p,n=int(sys.argv[1]),int(sys.argv[2]); print(json.dumps([6 if (i+p)%60>=46 else 2 for i in range(n)]))" "$phase" "$steps" > "$route"
   found=$(HELD_TRACE_IMAGE=$image cargo run --quiet --release --manifest-path spikes/rust-stack/player/Cargo.toml -- --held-trace "$level" \
-    src/level/collision_table.json "$C/stride-4.7.2/schema.json" "$HOME/.local/share/eggshell/packs/original-v3-final" \
+    data/collision_table.json "$C/stride-4.7.2/schema.json" "$HOME/.local/share/eggshell/packs/original-v3-final" \
     "$HOME/eggshell-remote/player-pack-files.sha256.json" \
     "$HOME/eggshell-remote/artifacts/full-rust-ab/player/presentation-stage/view-metrics.json" "$route" 2>&1 |
     grep '^HELD_TRACE_IMAGE' | awk '{print $2}' | sed -n '1p;$p' | tr '\n' ' ' || true)

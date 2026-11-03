@@ -23,7 +23,7 @@ fn malformed_runtime_suffix_restore_is_atomic() {
     let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let root = PathBuf::from(std::env::var("CORE_FIXTURE_DIR").unwrap());
     let level = fs::read_to_string(std::env::var("CORE_FIXTURE_LEVEL").unwrap()).unwrap();
-    let collision = fs::read_to_string(project.join("src/level/collision_table.json")).unwrap();
+    let collision = fs::read_to_string(project.join("data/collision_table.json")).unwrap();
     let metadata = fs::read_to_string(root.join("schema.json")).unwrap();
     let schema = Schema::parse(&metadata).unwrap();
     let inputs: Vec<u8> =

@@ -1,146 +1,66 @@
 # Eggshell
 
-Eggshell is a Godot platform-level player for Linux. It uses a fixed 60 Hz
-integer simulation, separate graphics packs and resumable play sessions.
+Eggshell is a platform-level player for Linux handhelds, written in Rust. It runs a
+fixed 60 Hz integer simulation, draws with OpenGL ES through SDL2 on Wayland, and
+plays music and effects from a graphics pack. The target device is the Anbernic
+RG35XX Pro (Mali-G31, Panfrost).
 
-Pantry is the bundled graphics pack: a chick in half an eggshell in a kitchen
-at insect scale. It draws the `garden`, `levelEnd` and `water3` tilemaps, the
-player, 24 object codes, a 1:1 kitchen wall and wall-mounted shelves under
-raised terrain. Other tilemaps and object codes still draw as diagnostic shapes. See
-[graphics packs](docs/graphics.md) and the [art sources](art/pantry/README.md).
-No third-party artwork, music, fonts or levels ship with the player.
+Status (2026-11-03): all 858 levels of the reference corpus load, play and match the
+former Godot game on every tick of a 900-tick route. On the RG35XX Pro, 849 of 854
+measured levels hold 60 frames per second.
 
-## Run
+Godot was removed on 2026-11-03. The last Godot game is at tag `godot-final`. The Godot
+state checker that proved the Rust game equal to it runs from tag `rust-parity-oracle`.
 
-Enter the pinned development shell and build its engine link:
+## Layout
 
-```sh
-nix develop
-nix build .#godot --out-link build/godot
-# Import built-in textures after a fresh checkout or artwork change:
-godot --headless --path . --editor --import
-bash tools/play --path . -- --level-code=tests/fixtures/stride.level.json
-```
+| Path | What |
+| --- | --- |
+| `spikes/rust-stack/core` | Simulation: level compile, the step, saves (`v10`), presentation state. |
+| `spikes/rust-stack/player` | The game: SDL2 window, GLES drawing, input, audio, menus, level list. |
+| `spikes/rust-stack/tools` | Gate, bundle and device scripts. |
+| `data/collision_table.json` | Tile collision shapes that every level compile reads. |
+| `tests/fixtures` | Public test levels and input routes. |
+| `packs/pantry`, `art/pantry` | The built-in Pantry graphics pack and its sources. |
+| `docs` | The level code format and the graphics pack format. |
 
-| Action | Keyboard | Controller |
-| --- | --- | --- |
-| Move | Left/right or A/D | Left stick or D-pad |
-| Jump and flutter | Space or Z | Either lower face button |
-| Tongue or spit | Shift or X | Either upper face button |
-| Look or direct upward | Up or W | Stick or D-pad up |
-| Crouch, pound or dive | Down or S | Stick or D-pad down |
-| Aim, then throw | C | Left shoulder |
-| Toggle aim lock | V | Right shoulder |
-| Save / restore slot | F5 / F9 | Back + left / right shoulder |
-| Zoom in / out | `=` / `-` (or keypad `+` / `-`) | Right stick up / down |
-| Reset zoom | `0` (or keypad `0`) | Right stick press |
-| Pause menu | Escape or P | Start |
+No third-party artwork, music, fonts or levels are in Git. The original pack and the
+level corpus are private inputs that the device bundle copies in at build time.
 
-In the menu:
-
-| Action | Keyboard | Controller |
-| --- | --- | --- |
-| Move the focus | Up/Down or W/S | D-pad or left stick |
-| Change a value | Left/Right or A/D | D-pad or left stick |
-| Select | Enter, Space or Z | A (lower face button) |
-| Back; resume on the first page | Escape, Backspace or X | B (right face button) |
-| Close the menu | P | Start |
-| Page through the level list | Page Up / Page Down | Left / right shoulder |
-
-Movement reaches running speed without a modifier. Hold jump to flutter.
-Up directs tongue and spit actions upward. Down in the air starts a ground
-pound; in water it selects the submerged posture. Press throw twice to aim
-and throw. Up selects vertical aim; tongue cancels aim.
-Eating a fire or ice melon, or a burning bubble, fills the mouth with fire or
-ice breath; the tongue button then breathes it (up held breathes upward).
-The game automatically resumes the last session by default.
-The pause menu stops play. It offers Resume, Restart level, the manual slot,
-the level list and Settings: zoom, music and effects volume, quick death, a play
-timer and resume where I left off. See [menus](docs/ui.md).
-
-Pass `--levels=DIR` after the separator to open a folder of level files. The
-menu then lists each level by name and author and offers Next level after a
-goal. Each level in the folder keeps its own autosave and slot. With
-`--levels` alone, the game starts at the list.
-Zoom changes only the picture, in whole steps that keep art pixels square. It
-stops before the view shows space outside the level, and the last zoom is saved.
-
-Use `--pack=/absolute/path` after the argument separator to select an external
-version 2 or 3 graphics pack. A pack never supplies the level. A pack may also
-supply music and sound effects; Pantry has none, so it is silent. Use `--mute`
-after the separator to silence all audio.
-
-## Implemented behavior
-
-- Acceleration, turns, jumping, fluttering, crouching, ground pounds, swimming
-  and flowing-water pushes.
-- Directed tongue, held-item, digestion, aiming and emission state with object hooks.
-- Bounce pads, semisolid bridges, checkpoints and a timed goal sequence.
-- Walkers, flyers, tumblers, shelled and armored walkers, shooters and fish.
-- Coins, red coins, flowers, health drops, food contacts and thrown inventory items.
-- Releasing blocks, linked solids, timed switches and saved message pages.
-- Moving and falling supports, redirect clouds, rock blocks, posts and rotated gates.
-- Typed decorations, top-only decoration strips and tick-driven effects.
-- Ledges and spans, counting and dice blocks, arrow lifts, launchers, seed melons,
-  balloons and more walker, hopper and flyer families.
-- Fire and ice breath: burning and freezing enemies, thawing, lamps lit and put
-  out, and burning bubbles.
-- Saved sound events, which a listening ghost follows.
-- Knockback, temporary immunity, a moving companion bubble and body or tongue rescue.
-- Countdown, capture, death and checkpoint respawn phases with a run HUD.
-- Several compiled maps, map selection, three drawing layers and map effects.
-- A type registry and composed version 11 snapshots with autosave and automatic resume.
-- Pack music and sound effects derived from saved state, with music and effect volumes.
-- Container-sized camera fitting with integer scales and nearest-neighbor graphics.
-- Player zoom in whole steps, and blended pictures on high-refresh displays.
-- A pause menu with settings, and a level list for a folder of level files.
-
-Terrain collision uses integer polygons, slope walking and floor snapping.
-Player colliders follow the action and posture. Companion rescue uses the full
-tongue reach; eating keeps its separate tip sensor. Map travel is a simulation
-interface; no travel object is implemented yet.
-Registered food and projectile families use the saved player-side requests.
-Some object codes and variants remain unsupported. Such an object loads as an
-inert placeholder and logs `Unsupported object <code> (<reason>)`; the level
-still loads. Malformed object data still stops the level.
-Packs without art use diagnostic shapes; absent action poses use the default pose.
-Messages use Up/Down for pages and Throw to close. Red coins change only the red
-counter. A level editor is not implemented.
-
-## Physics and screens
-
-Physics advances exactly 60 times per second on every device. Screen shape,
-zoom, refresh rate and graphics packs do not change the simulation. On displays
-faster than 60 Hz, pictures blend positions between fixed steps; snapshot bytes
-stay the same. Pass `--smooth=on` or `--smooth=off` after the separator to
-override the automatic choice.
-
-## Tests
-
-Fast synthetic player checks (no game scene or graphics pack):
+## Build
 
 ```sh
-nix develop -c godot --headless --path . --script tests/moves.gd
-nix develop -c godot --headless --path . --script tests/move_input.gd
-nix develop -c godot --headless --path . --script tests/view_motion.gd
-nix develop -c godot --headless --path . --script tests/view_invariance.gd
+# Host build and tests (Linux x86_64).
+nix develop ./spikes/rust-stack/player -c cargo test --manifest-path spikes/rust-stack/core/Cargo.toml --release
+nix develop ./spikes/rust-stack/player -c cargo test --manifest-path spikes/rust-stack/player/Cargo.toml --lib
+# The aarch64 game binary for the handheld.
+nix build ./spikes/rust-stack/player#arm64
 ```
 
-The full suite is reserved for hardening. Its recorded routes need updates after
-movement changes:
+The full gate (`spikes/rust-stack/tools/check-conversion.sh TAG BASE_TAG`) and the
+device bundle (`spikes/rust-stack/tools/build-smoke.sh`) run on the build host `aka`.
 
-```sh
-nix develop -c python3 tests/check_all.py
-```
+## Controls
 
-The suite uses six original geometric courses in `tests/fixtures/`.
-It needs no external game, download or graphics pack. Tests cover parsing,
-movement, objects, enemies, damage, view invariance, exact restoration,
-clean shutdown and twenty hard-kill recovery cycles.
+| Action | Controller |
+| --- | --- |
+| Move | D-pad |
+| Jump, hold to flutter | A or B |
+| Tongue or spit | X or Y |
+| Aim, then throw | L1 |
+| Aim lock | R1 |
+| Ground pound, lay an egg | Down |
+| Zoom in / out, reset zoom | R2 / L2, R3 |
+| Pause | Start |
+| Save / load slot | Select + L1 / Select + R1 |
+| Quit | Select + Start |
 
-## Development
+In the level list, the D-pad moves, L1/R1 page, A plays and B goes back. After a goal
+the menu offers Next level, Restart level, Levels and Quit.
 
-Read `docs/architecture.md`, `docs/level-code.md`, `docs/graphics.md`,
-`docs/saves.md` and `docs/ui.md`. Tools under `tools/device*` target a development handheld.
-They require a separately configured, host-key-pinned SSH transport.
-No device operation runs as part of the public test suite.
+## Known gaps
+
+- Levels whose music is a web link play no music (275 of 858).
+- Five levels drop frames on the RG35XX Pro; the slowest holds 336 of 600 frames.
+- Fixes made to the Godot game after commit `297ada9` are not in the Rust game.
+- The Pantry pack builder was a Godot script; the built pack in `packs/pantry` stays.

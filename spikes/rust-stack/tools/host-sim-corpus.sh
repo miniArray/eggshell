@@ -23,7 +23,7 @@ for id in "$@"; do
   # User-space instructions are the load-independent number on a busy host.
   perf stat -x, -e instructions:u -o "$ROOT/speed/host-sim-$id.perf" -- \
     "$CARGO_TARGET_DIR/release/eggshell-spike-player" --benchmark-profile-host \
-    "$HOME/.local/share/eggshell-run/corpus/levels/$id.json" src/level/collision_table.json "$SCHEMA" "$ticks" real-screen \
+    "$HOME/.local/share/eggshell-run/corpus/levels/$id.json" data/collision_table.json "$SCHEMA" "$ticks" real-screen \
     | sed -n 's/^HOST_SIM_PROFILE //p' | sed "s/^/$id /" | grep -o '^[0-9a-f]* \|"step_ms_p[0-9]*":[0-9.]*\|"step_ms_max":[0-9.]*' | tr '\n' ' '
   printf 'instructions_u=%s\n' "$(grep instructions "$ROOT/speed/host-sim-$id.perf" | cut -d, -f1)"
 done

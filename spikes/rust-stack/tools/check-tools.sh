@@ -10,5 +10,3 @@ ruff check spikes/rust-stack/tools
 shellcheck --shell=bash spikes/rust-stack/tools/*.sh
 nixfmt spikes/rust-stack/player/flake.nix spikes/rust-stack/player/sdl2.nix
 nixfmt --check spikes/rust-stack/player/flake.nix spikes/rust-stack/player/sdl2.nix
-gdformat spikes/rust-stack/tools/export-view-metrics.gd
-gdlint spikes/rust-stack/tools/export-view-metrics.gd
