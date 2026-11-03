@@ -1,9 +1,9 @@
-//! Host only (aka): the level list index for the device bundle. Lists a level folder in
-//! level_list.gd order and, for each readable level, records whether this build can play
+//! Host only (aka): the level list index for the device bundle. Lists a level folder
+//! sorted by title (level_list::sort_by_title) and, for each readable level, records whether this build can play
 //! it: core admission, scene preparation, and a short idle run with a picture per step.
 //! A level that fails any of these is listed as unavailable with the reason.
 use crate::{
-    level_list::{Entry, entry, natural_cmp, refusal_reason},
+    level_list::{Entry, entry, natural_cmp, refusal_reason, sort_by_title},
     pack::Pack,
     scene::Scene,
 };
@@ -153,6 +153,7 @@ pub fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             }
         }
     }
+    sort_by_title(&mut levels);
     for e in &levels {
         println!(
             "LEVEL_INDEX_ENTRY file={} ok={} reason={:?}",

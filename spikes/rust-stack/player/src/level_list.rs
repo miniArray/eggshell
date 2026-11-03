@@ -109,6 +109,14 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     (a.len() - i).cmp(&(b.len() - j))
 }
 
+/// Level list order: by shown title (natural, case-insensitive), then by file name.
+/// Eggshell order, not level_list.gd's file order: titles put fan series in sequence
+/// ("1-1 …", "1-2 …"), while corpus file names are Level Share Square IDs.
+pub fn sort_by_title(levels: &mut [Entry]) {
+    levels
+        .sort_by(|a, b| natural_cmp(&a.name, &b.name).then_with(|| natural_cmp(&a.file, &b.file)));
+}
+
 /// The user-facing reason a level cannot be opened, from a core refusal.
 pub fn refusal_reason(error: &eggshell_spike_core::Error) -> String {
     use eggshell_spike_core::Error;
@@ -125,6 +133,18 @@ pub fn refusal_reason(error: &eggshell_spike_core::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn list_sorts_by_title_then_file() {
+        let mut v = vec![
+            entry("c.json", r#"{"name":"1-10 Castle","maps":{}}"#),
+            entry("a.json", r#"{"name":"1-2 Cave","maps":{}}"#),
+            entry("d.json", r#"{"name":"1-2 cave","maps":{}}"#),
+            entry("b.json", r#"{"name":"1-1 Start","maps":{}}"#),
+        ];
+        sort_by_title(&mut v);
+        let files: Vec<&str> = v.iter().map(|e| e.file.as_str()).collect();
+        assert_eq!(files, ["b.json", "a.json", "d.json", "c.json"]);
+    }
     #[test]
     fn entries_follow_level_list_rules() {
         let e = entry("a.json", r#"{"name":" Two\nlines ","author":0,"maps":{}}"#);
