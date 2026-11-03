@@ -6,6 +6,8 @@ use crate::{
     polygon, Position, SCALE as S,
 };
 const BUBBLE_BOX: [i64; 4] = [-30 * S, -60 * S, 30 * S, 0];
+/// life.gd HURT_RECOVERED: the knocked pose has cleared; one input-lock tick remains.
+pub(crate) const HURT_RECOVERED: i64 = 3;
 /// companion_bubble.gd PHYSICAL_WIDTH / PHYSICAL_HEIGHT: terrain recovery extents.
 const BUBBLE_PHYSICAL: i64 = 64 * S;
 const BUBBLE: [Position; 8] = [
@@ -96,8 +98,9 @@ impl Life {
             && (0..=120).contains(&self.health_wait)
             && (0..=63).contains(&self.hurt)
             && (0..=121).contains(&self.invulnerable)
-            && (0..=2).contains(&self.hurt_phase)
+            && (0..=HURT_RECOVERED).contains(&self.hurt_phase)
             && (self.hurt_phase == 0 || self.hurt > 0)
+            && (self.hurt_phase != HURT_RECOVERED || self.hurt == 1)
             && [0, 128, 648, 1296].contains(&self.hurt_deceleration)
             && (0..=6).contains(&self.bubble_bound_ticks)
             && (0..=36).contains(&self.recovery_delay)
@@ -359,8 +362,12 @@ impl Player {
     pub fn before_play_life(&mut self, map: &Probe, camera: Position, sound: &mut Sound) -> bool {
         self.life.invulnerable = (self.life.invulnerable - 1).max(0);
         self.life.hurt = (self.life.hurt - 1).max(0);
-        if self.life.hurt == 0 || self.life.hurt == 1 && self.life.hurt_phase == 1 {
+        // life.gd _hurt_step: the knocked pose clears one step before its input lock ends,
+        // and that last lock tick stays distinct from Spin's.
+        if self.life.hurt == 0 {
             self.life.hurt_phase = 0;
+        } else if self.life.hurt == 1 && self.life.hurt_phase == 1 {
+            self.life.hurt_phase = HURT_RECOVERED;
         }
         self.life.separation_grace = (self.life.separation_grace - 1).max(0);
         let died = self.companion_step(map, camera, sound);
@@ -843,5 +850,71 @@ mod bubble_physics_tests {
             assert_eq!(player.recovery_x - 1000 * S, distance, "{previous}");
             assert_eq!(player.life.companion_vx, (previous + 512).min(48 * 60));
         }
+    }
+}
+
+#[cfg(test)]
+mod knock_recovery_tests {
+    use super::*;
+
+    fn knocked(hurt: i64, hurt_phase: i64) -> Player {
+        let mut player = Player::new(
+            Body {
+                x: 400 * S,
+                y: 400 * S,
+                ..Body::default()
+            },
+            1,
+        );
+        player.life.hurt = hurt;
+        player.life.hurt_phase = hurt_phase;
+        player
+    }
+
+    #[test]
+    fn life_hurt_step_marks_the_cleared_knock_pose_on_its_last_lock_tick() {
+        let mut player = knocked(2, 1);
+        let mut sound = Sound::default();
+        player.before_play_life(
+            &Probe::new(
+                &crate::World::compile(
+                    &serde_json::json!({
+                        "version":"s3.8", "name":"knock", "desc":"", "author":"test",
+                        "startpoint":{"map":1, "X":400, "Y":400},
+                        "maps":{"map1":{"width":4096, "height":2048, "objects":{}}}
+                    })
+                    .to_string(),
+                    include_str!("../../../../data/collision_table.json"),
+                )
+                .unwrap()
+                .maps[0],
+            ),
+            Position::default(),
+            &mut sound,
+        );
+        assert_eq!(
+            (player.life.hurt, player.life.hurt_phase),
+            (1, HURT_RECOVERED)
+        );
+        assert!(player.life.valid(player.life_phase, player.life_ticks));
+    }
+
+    #[test]
+    fn enemy_body_bounce_runs_only_after_the_knocked_pose_clears() {
+        let mut sound = Sound::default();
+        // A cleared knock pose bounces, with the held jump read from the raw input.
+        let mut recovered = knocked(1, HURT_RECOVERED);
+        recovered.previous_input = 4;
+        recovered.enemy_bounce(0, 0, false, &mut sound);
+        assert_eq!(recovered.body.vy, (-320 - 384) * 60);
+        // Spin's last lock tick, a running knock pose and an open message block it.
+        for (hurt, phase, modal) in [(1, 0, false), (5, 1, false), (0, 0, true)] {
+            let mut player = knocked(hurt, phase);
+            player.enemy_bounce(0, 4, modal, &mut sound);
+            assert_eq!(player.body.vy, 0, "{hurt} {phase} {modal}");
+        }
+        let mut free = knocked(0, 0);
+        free.enemy_bounce(0, 0, false, &mut sound);
+        assert_eq!(free.body.vy, -320 * 60);
     }
 }

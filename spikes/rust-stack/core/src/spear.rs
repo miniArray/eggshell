@@ -253,7 +253,12 @@ impl Run {
             if w.contact == 0 && w.has_spear == 0 {
                 let vy = e.body.vy;
                 if !pounding {
-                    self.player.stomp(vy, input, &mut self.sound);
+                    self.player.enemy_bounce(
+                        vy,
+                        input,
+                        self.message.modal_token != 0,
+                        &mut self.sound,
+                    );
                 }
                 let e = &mut self.entities[index];
                 if let Kind::Walker(w) = &mut e.kind {

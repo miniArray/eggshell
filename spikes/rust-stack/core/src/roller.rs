@@ -229,7 +229,12 @@ impl Run {
         if touching {
             if e.body.y > p.y + 8 * S && w.contact == 0 {
                 // enemy_body.gd bounce (Moves.bounce).
-                self.player.stomp(e.body.vy, input, &mut self.sound);
+                self.player.enemy_bounce(
+                    e.body.vy,
+                    input,
+                    self.message.modal_token != 0,
+                    &mut self.sound,
+                );
                 if w.mode != ROLL {
                     w.roller_drop();
                 }

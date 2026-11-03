@@ -308,6 +308,25 @@ impl Player {
     pub fn stomp(&mut self, enemy_vy: i64, input: u8, sound: &mut Sound) {
         self.bounce(-(enemy_vy / 2).abs() - 320 * 60, input, sound);
     }
+    /// enemy_body.gd bounce: enemy bounce callbacks inherit the player's movement gate,
+    /// not damage immunity. They run after the knocked pose clears but before its last
+    /// input-lock tick ends; then only the held-jump check reads this step's raw input.
+    pub fn enemy_bounce(&mut self, enemy_vy: i64, input: u8, modal: bool, sound: &mut Sound) {
+        let recovered = self.life.hurt == 1 && self.life.hurt_phase == crate::life::HURT_RECOVERED;
+        if (self.locks_input() && !recovered)
+            || self.life_phase != 0
+            || self.captured_by != 0
+            || modal
+        {
+            return;
+        }
+        let input = if recovered {
+            (input & !4) | (self.previous_input as u8 & 4)
+        } else {
+            input
+        };
+        self.stomp(enemy_vy, input, sound);
+    }
     /// moves.gd bounce with a negative launch `velocity` (before the jump bonus).
     pub fn bounce(&mut self, velocity: i64, input: u8, sound: &mut Sound) {
         let pounding = [1, 2, 3].contains(&self.action);

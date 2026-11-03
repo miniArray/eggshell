@@ -288,7 +288,12 @@ impl Run {
         if touching {
             if e.body.y > p.y - 8 * S && w.contact == 0 {
                 if !pounding {
-                    self.player.stomp(e.body.vy, input, &mut self.sound);
+                    self.player.enemy_bounce(
+                        e.body.vy,
+                        input,
+                        self.message.modal_token != 0,
+                        &mut self.sound,
+                    );
                 }
                 w.remove(&mut e.status, &mut e.can_respawn);
             } else if e.body.y < p.y - 8 * S {

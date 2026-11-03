@@ -221,7 +221,8 @@ impl Run {
         if touching {
             if e.body.y > p.y - 8 * S && ![2, 3].contains(&self.player.action) {
                 let vy = e.body.vy;
-                self.player.stomp(vy, input, &mut self.sound);
+                self.player
+                    .enemy_bounce(vy, input, self.message.modal_token != 0, &mut self.sound);
             }
             self.remove_enemy(index)?;
         }

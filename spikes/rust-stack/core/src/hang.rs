@@ -242,7 +242,12 @@ impl Run {
                 let vy = e.body.vy;
                 w.remove(&mut e.status, &mut e.can_respawn);
                 if !pounding {
-                    self.player.stomp(vy, input, &mut self.sound);
+                    self.player.enemy_bounce(
+                        vy,
+                        input,
+                        self.message.modal_token != 0,
+                        &mut self.sound,
+                    );
                 }
             }
         } else if touching && w.mode != FLEE {

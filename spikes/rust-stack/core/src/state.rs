@@ -1445,7 +1445,12 @@ impl Run {
                                 continue;
                             }
                             if w.mode < FLAT_FLATTEN {
-                                self.player.stomp(e.body.vy, action, &mut self.sound);
+                                self.player.enemy_bounce(
+                                    e.body.vy,
+                                    action,
+                                    self.message.modal_token != 0,
+                                    &mut self.sound,
+                                );
                             }
                             w.timer = if w.mode == FLAT_FLAT { 63 } else { 65 };
                             w.mode = FLAT_FLATTEN;
@@ -1499,7 +1504,12 @@ impl Run {
                 if touching {
                     if e.body.y > self.player.body.y - 8 * S && w.contact == 0 {
                         if ![2, 3].contains(&self.player.action) {
-                            self.player.stomp(e.body.vy, action, &mut self.sound);
+                            self.player.enemy_bounce(
+                                e.body.vy,
+                                action,
+                                self.message.modal_token != 0,
+                                &mut self.sound,
+                            );
                         }
                         e.status = 3;
                     } else if e.body.y < self.player.body.y - 8 * S

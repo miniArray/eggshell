@@ -465,7 +465,8 @@ impl Run {
                 self.thief_defeat(index)?;
             } else {
                 let vy = e.body.vy;
-                self.player.stomp(vy, input, &mut self.sound);
+                self.player
+                    .enemy_bounce(vy, input, self.message.modal_token != 0, &mut self.sound);
                 let e = &mut self.entities[index];
                 let Kind::Walker(w) = &mut e.kind else {
                     unreachable!()

@@ -290,7 +290,12 @@ impl Run {
                 } else {
                     let vy = e.body.vy;
                     w.wing_knock(e.body, 12, 0, 1);
-                    self.player.stomp(vy, input, &mut self.sound);
+                    self.player.enemy_bounce(
+                        vy,
+                        input,
+                        self.message.modal_token != 0,
+                        &mut self.sound,
+                    );
                 }
             }
         } else if touching {

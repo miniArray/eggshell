@@ -481,7 +481,8 @@ impl Run {
         w.contact = i64::from(touching);
         let (x, vy) = (e.body.x, e.body.vy);
         if bounce {
-            self.player.stomp(vy, input, &mut self.sound);
+            self.player
+                .enemy_bounce(vy, input, self.message.modal_token != 0, &mut self.sound);
         }
         if hurt {
             self.player.hurt(x, &mut self.sound);
