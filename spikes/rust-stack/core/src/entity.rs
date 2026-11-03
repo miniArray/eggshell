@@ -86,6 +86,17 @@ pub(crate) enum Kind {
     /// snow_tree.gd d22.
     SnowTree(crate::snow_tree::SnowTree),
 }
+/// entity_lifecycle.gd BIRTH_PHASES: the native phase that created a row.
+/// TICK_BIRTH (1) is only item_stem.gd's, whose payloads have no birth fields.
+pub(crate) const INITIAL_BIRTH: i64 = 0;
+pub(crate) const EVENTS_BIRTH: i64 = 2;
+pub(crate) const TICK2_BIRTH: i64 = 3;
+/// The frame and native phase of one creation (entity_lifecycle.gd created).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Birth {
+    pub frame: i64,
+    pub phase: i64,
+}
 #[derive(Clone, Debug)]
 pub(crate) struct Entity {
     pub origin: Origin,
@@ -307,6 +318,24 @@ impl Entity {
             }
         }
     }
+    /// entity_lifecycle.gd created: rows with birth fields take the next level birth
+    /// serial with this frame and phase (INITIAL_BIRTH on the initial map), then the
+    /// opt-in birth cull runs around `centre`.
+    pub(crate) fn created(&mut self, birth: Birth, serial: &mut i64, centre: crate::Position) {
+        self.born(birth, serial);
+        self.creation_cull(centre);
+    }
+    /// The birth identity part of entity_lifecycle.gd created.
+    pub(crate) fn born(&mut self, birth: Birth, serial: &mut i64) {
+        if let Kind::Walker(a) = &mut self.kind {
+            if a.has_birth() {
+                *serial += 1;
+                a.birth_serial = *serial;
+                a.birth_frame = birth.frame;
+                a.birth_phase = birth.phase;
+            }
+        }
+    }
     /// entity_lifecycle.gd created: only e2, e20, e21 (actor.gd creation_cull), e11 and
     /// e23 (CREATION_CULL) are culled at birth when their origin is outside the despawn
     /// radius of the screen centre. Waiting motion never repeats this check.
@@ -332,6 +361,7 @@ impl Entity {
             self.offscreen = 0;
         }
     }
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn lifecycle(
         &mut self,
         map: &crate::body::Probe,
@@ -339,6 +369,8 @@ impl Entity {
         player: crate::Position,
         impact: i64,
         rng: &mut crate::math::Rng,
+        frame: i64,
+        birth_serial: &mut i64,
     ) -> Result<bool, crate::Error> {
         let awake = self.status == 1;
         let held = match &self.kind {
@@ -500,7 +532,14 @@ impl Entity {
                 fresh.collected = self.collected;
                 fresh.checkpoint_collected = self.checkpoint_collected;
                 *self = fresh;
-                self.creation_cull(centre);
+                self.created(
+                    Birth {
+                        frame,
+                        phase: EVENTS_BIRTH,
+                    },
+                    birth_serial,
+                    centre,
+                );
             }
         }
         if self.status == 0 {
@@ -650,5 +689,44 @@ mod creation_cull_tests {
                 .any(|r| r.0 == "e2" && (1100..1300).contains(&r.1) && r.2 != 2),
             "{rows:?}"
         );
+    }
+
+    #[test]
+    fn entity_lifecycle_created_numbers_initial_births_in_native_key_order() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"births", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":8192, "height":2048, "objects":{
+                "w":{"A":"e1", "X":600, "Y":128},
+                "5":{"A":"o1", "X":700, "Y":128},
+                "2":{"A":"e11", "X":800, "Y":128}
+            }}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let ids: Vec<&str> = world.maps[0]
+            .placements
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(ids, ["2", "5", "w"]);
+        let run = Run::create(&world, &mut Stats::default()).unwrap();
+        let births: Vec<(i64, i64, i64)> = run
+            .entities
+            .iter()
+            .filter_map(|e| match &e.kind {
+                super::Kind::Walker(a) => Some((a.birth_serial, a.birth_frame, a.birth_phase)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            births,
+            [(1, 0, super::INITIAL_BIRTH), (2, 0, super::INITIAL_BIRTH)]
+        );
+        assert_eq!(run.birth_serial, 2);
     }
 }

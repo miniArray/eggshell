@@ -77,12 +77,18 @@ impl Run {
         stats: &mut crate::Stats,
     ) -> Result<Self, Error> {
         // play_state.gd: the camera is set before spawn_map runs the birth hooks.
+        let mut birth_serial = 0;
         let entities = Self::spawn_map(
             world,
             Position {
                 x: world.spawn.x,
                 y: world.spawn.y - 28 * S,
             },
+            crate::entity::Birth {
+                frame: 0,
+                phase: crate::entity::INITIAL_BIRTH,
+            },
+            &mut birth_serial,
         )?;
         let player = Player::new(
             Body {
@@ -111,7 +117,7 @@ impl Run {
             goal_reached: 0,
             deaths: 0,
             dynamic_serial: 1,
-            birth_serial: 0,
+            birth_serial,
             soft_squash_batch: 0,
             soft_squash_ordinal: 0,
             checkpoint: crate::checkpoint::Memory::default(),
@@ -161,13 +167,19 @@ impl Run {
         Ok(run)
     }
     /// registry.gd spawn_map: every placed row is created, then entity_lifecycle.gd
-    /// created applies the opt-in birth cull around the given camera.
-    fn spawn_map(world: &World, camera: Position) -> Result<Vec<Entity>, Error> {
+    /// created numbers its birth in table order and applies the opt-in birth cull around
+    /// the given camera.
+    fn spawn_map(
+        world: &World,
+        camera: Position,
+        birth: crate::entity::Birth,
+        birth_serial: &mut i64,
+    ) -> Result<Vec<Entity>, Error> {
         let map = &world.maps[0];
         let centre = screen_centre(camera, map.width_pixels * S, map.height_pixels * S);
         let mut rows = Self::spawn_rows(world)?;
         for row in &mut rows {
-            row.creation_cull(centre);
+            row.created(birth, birth_serial, centre);
         }
         Ok(rows)
     }
@@ -379,6 +391,11 @@ impl Run {
                 x: spawn.x,
                 y: spawn.y - 28 * S,
             },
+            crate::entity::Birth {
+                frame: self.frame,
+                phase: crate::entity::EVENTS_BIRTH,
+            },
+            &mut self.birth_serial,
         )?;
         for (entity, flag) in self.entities.iter_mut().zip(flags) {
             entity.collected = flag;
@@ -523,6 +540,8 @@ impl Run {
                 },
                 self.player.impact,
                 &mut self.rng,
+                self.frame,
+                &mut self.birth_serial,
             )?;
             // blind_ghost.gd activate: sounds made before it woke up are not news to it.
             if waiting && e.status == 1 {
@@ -924,6 +943,8 @@ impl Run {
                     },
                     self.player.impact,
                     &mut self.rng,
+                    self.frame,
+                    &mut self.birth_serial,
                 )?;
                 if awake {
                     stats.entity_steps += 1;
@@ -943,6 +964,8 @@ impl Run {
                 },
                 self.player.impact,
                 &mut self.rng,
+                self.frame,
+                &mut self.birth_serial,
             )?;
             if let Kind::Pad(pad) = &mut e.kind {
                 if awake {
@@ -2332,6 +2355,22 @@ impl Run {
             if runtime_serials.windows(2).any(|w| w[0] == w[1]) {
                 return Err(unsupported("duplicate entity token"));
             }
+        }
+        // registry.gd valid_table: every birth serial is issued and unique.
+        let mut births: Vec<i64> = self
+            .entities
+            .iter()
+            .filter_map(|e| match &e.kind {
+                Kind::Walker(a) if a.has_birth() => Some(a.birth_serial),
+                _ => None,
+            })
+            .collect();
+        births.sort_unstable();
+        if births.first().is_some_and(|s| *s <= 0)
+            || births.last().is_some_and(|s| *s > self.birth_serial)
+            || births.windows(2).any(|w| w[0] == w[1])
+        {
+            return Err(unsupported("birth serial outside the issued unique range"));
         }
         Ok(())
     }

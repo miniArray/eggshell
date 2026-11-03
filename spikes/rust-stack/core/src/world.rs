@@ -135,7 +135,7 @@ impl World {
             )?;
             let mut placements = Vec::new();
             let mut bridges = Vec::new();
-            for (id, raw) in objects {
+            for (id, raw) in source_ids(objects) {
                 let raw = object(raw, "placement")?;
                 let code = text(raw.get("A"), "placement.A")?.to_string();
                 // level_code.gd _normalize_objects: before writer s3.8 (a string compare),
@@ -582,6 +582,34 @@ impl Map {
                 || right > self.width_pixels * SCALE && left < (self.width_pixels + 32) * SCALE)
     }
 }
+/// registry.gd source_ids (Godot 1e51f18): native Object.entries lists canonical uint32
+/// index keys first, in numeric order, then every other key in source order.
+fn source_ids(objects: &JsonObject<String, Value>) -> Vec<(&String, &Value)> {
+    let index = |key: &str| -> Option<u64> {
+        let canonical = !key.is_empty()
+            && key.len() <= 10
+            && key.bytes().all(|b| b.is_ascii_digit())
+            && (key == "0" || !key.starts_with('0'));
+        canonical
+            .then(|| key.parse::<u64>().ok())
+            .flatten()
+            .filter(|v| *v < 4_294_967_295)
+    };
+    let mut indexed: Vec<(u64, (&String, &Value))> = Vec::new();
+    let mut others = Vec::new();
+    for entry in objects {
+        match index(entry.0) {
+            Some(value) => indexed.push((value, entry)),
+            None => others.push(entry),
+        }
+    }
+    indexed.sort_by_key(|(value, _)| *value);
+    indexed
+        .into_iter()
+        .map(|(_, entry)| entry)
+        .chain(others)
+        .collect()
+}
 fn object<'a>(value: &'a Value, label: &str) -> Result<&'a JsonObject<String, Value>, Error> {
     value
         .as_object()
@@ -851,6 +879,31 @@ mod tests {
         );
         assert!(dice_colours(Some(&Value::String("retained-source".into()))).is_empty());
         assert!(dice_colours(None).is_empty());
+    }
+    #[test]
+    fn registry_source_ids_list_canonical_indices_first_in_numeric_order() {
+        let objects: Value = serde_json::from_str(
+            r#"{"b":0,"10":0,"+3":0,"2":0,"07":0,"4294967295":0,"a":0,"4294967294":0,"0":0}"#,
+        )
+        .unwrap();
+        let order: Vec<&str> = source_ids(objects.as_object().unwrap())
+            .into_iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "0",
+                "2",
+                "10",
+                "4294967294",
+                "b",
+                "+3",
+                "07",
+                "4294967295",
+                "a"
+            ]
+        );
     }
     #[test]
     fn dice_colours_keep_source_and_do_not_block_levels_without_dice() {

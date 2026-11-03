@@ -536,7 +536,15 @@ impl Run {
                 8,
             );
             row.family_index = family;
-            row.creation_cull(centre);
+            // soft_giant.gd burst: a tick2-phase runtime birth.
+            row.created(
+                crate::entity::Birth {
+                    frame: self.frame,
+                    phase: crate::entity::TICK2_BIRTH,
+                },
+                &mut self.birth_serial,
+                centre,
+            );
             self.dynamic_serial = serial + 1;
             self.entities.push(row);
         }

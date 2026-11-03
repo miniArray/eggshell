@@ -151,6 +151,14 @@ impl Run {
             layer,
         );
         row.family_index = family;
+        // stilt_walker.gd spawn_dynamic: an event-phase runtime birth (e1 has no cull).
+        row.born(
+            crate::entity::Birth {
+                frame: self.frame,
+                phase: crate::entity::EVENTS_BIRTH,
+            },
+            &mut self.birth_serial,
+        );
         self.dynamic_serial = serial + 1;
         self.entities.push(row);
         Ok(())

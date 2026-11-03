@@ -938,6 +938,21 @@ impl Actor {
         }
         Ok(After::Nothing)
     }
+    /// actor.gd, armored_walker.gd and soft_walker.gd FIELDS: the codes with birth fields
+    /// (e1, e2, e3, e5, e20, e21, e32, e11, e23).
+    pub fn has_birth(&self) -> bool {
+        matches!(
+            self.kind,
+            ActorKind::Walker
+                | ActorKind::Flyer
+                | ActorKind::Flower
+                | ActorKind::Plant
+                | ActorKind::Fish
+                | ActorKind::LandFish
+                | ActorKind::Armored
+                | ActorKind::SoftWalker
+        )
+    }
     /// flat_walker.gd activation_bounds: the 34 x 40 walking picture (facing left).
     pub fn activation_bounds(&self, facing: i64) -> [i64; 4] {
         let picture = match self.kind {
@@ -1478,10 +1493,14 @@ mod flower_activation_tests {
             );
             let map = Probe::new(&world.maps[0]);
             let mut rng = Rng::from_saved(1).unwrap();
-            assert!(!entity.lifecycle(&map, centre, centre, 0, &mut rng).unwrap());
+            assert!(!entity
+                .lifecycle(&map, centre, centre, 0, &mut rng, 0, &mut 0)
+                .unwrap());
             assert_eq!(entity.status, 1);
             assert_eq!((entity.body.x, entity.body.y), (position.x, position.y));
-            assert!(entity.lifecycle(&map, centre, centre, 0, &mut rng).unwrap());
+            assert!(entity
+                .lifecycle(&map, centre, centre, 0, &mut rng, 0, &mut 0)
+                .unwrap());
         }
     }
 }
