@@ -405,12 +405,55 @@ struct Trail {
     last_tick: Option<i64>,
     path: std::collections::VecDeque<[f64; 2]>,
     eggs: Vec<[f64; 2]>,
+    /// The last seen PlayerPicture::egg_pops and egg colours (front first).
+    pops: Option<u64>,
+    colours: Vec<i64>,
+    /// Front eggs pushed out of a full queue, falling off screen.
+    falling: Vec<FallingEgg>,
+}
+/// YFS Yoshi 487-488 and Objects 185-186: when a seventh egg is made or picked up, the
+/// egg with the lowest orderID (the front one, nearest Yoshi) gets mode fallOffScreen:
+/// collisions off, its Platform on (gravity 1600 px/s^2, max fall 576 px/s), and it
+/// despawns off screen. The rest move up one place.
+struct FallingEgg {
+    at: [f64; 2],
+    vy: f64,
+    fallen: f64,
+    colour: i64,
 }
 impl Trail {
     const KEEP: usize = 60;
     const SPACING: usize = 10;
     /// One tween step: a 0.1 s (6-tick) tween restarted every tick moves a sixth.
     const STEP: f64 = 1.0 / 6.0;
+    /// Egg Platform gravity and fall cap in px per tick (1600 px/s^2, 576 px/s at 60 Hz).
+    const GRAVITY: f64 = 1600.0 / 3600.0;
+    const MAX_FALL: f64 = 576.0 / 60.0;
+    /// Taller than any view, so a dropped egg is off screen before it is forgotten.
+    const FORGET: f64 = 1024.0;
+    /// Call before update with this frame's pop count and egg colours. A rise drops that
+    /// many front eggs, with the colours they had on the last frame.
+    fn pops(&mut self, pops: u64, colours: &[i64]) {
+        if let Some(last) = self.pops {
+            let n = (pops.saturating_sub(last) as usize).min(self.eggs.len());
+            for k in 0..n {
+                let at = self.eggs.remove(0);
+                self.falling.push(FallingEgg {
+                    at,
+                    vy: 0.0,
+                    fallen: 0.0,
+                    colour: self.colours.get(k).copied().unwrap_or(0),
+                });
+            }
+        }
+        // A restore starts the count again at 0; that only resets the baseline.
+        self.pops = Some(pops);
+        self.colours = colours.to_vec();
+    }
+    /// Colour and position of every dropped egg still falling.
+    fn falling(&self) -> Vec<(i64, [f64; 2])> {
+        self.falling.iter().map(|f| (f.colour, f.at)).collect()
+    }
     fn update(&mut self, tick: i64, at: [f64; 2], count: usize) -> Vec<[f64; 2]> {
         let steps = match self.last_tick {
             None => 1,
@@ -422,6 +465,12 @@ impl Trail {
             self.eggs.push([at[0], at[1] - 16.0]);
         }
         for _ in 0..steps {
+            for f in &mut self.falling {
+                f.vy = (f.vy + Self::GRAVITY).min(Self::MAX_FALL);
+                f.at[1] += f.vy;
+                f.fallen += f.vy;
+            }
+            self.falling.retain(|f| f.fallen < Self::FORGET);
             self.path.push_back(at);
             while self.path.len() > Self::KEEP {
                 self.path.pop_front();
@@ -520,6 +569,37 @@ mod trail_tests {
         let vx = -8 * SCALE;
         assert_eq!(c.frame(21, vx, 2), 1);
         assert_eq!(c.frame(22, vx, 2), 0);
+    }
+    #[test]
+    fn a_seventh_egg_drops_the_front_egg() {
+        let mut t = Trail::default();
+        let colours = [1, 0, 0, 0, 0, 2];
+        t.pops(0, &colours);
+        let before = t.update(0, [100.0, 50.0], 6);
+        // Made at six: the pop count rises, the front (yellow) egg falls, the rest
+        // move up one place and the new egg appears at Yoshi.
+        t.pops(1, &[0, 0, 0, 0, 2, 0]);
+        let after = t.update(1, [100.0, 50.0], 6);
+        assert_eq!(after[..5], before[1..]);
+        let falling = t.falling();
+        assert_eq!(falling.len(), 1);
+        assert_eq!(falling[0].0, 1);
+        assert!(falling[0].1[1] > before[0][1]);
+        // It keeps falling at most 9.6 px per tick, then is forgotten.
+        let mut last = falling[0].1[1];
+        for tick in 2..200 {
+            t.pops(1, &[0; 6]);
+            t.update(tick, [100.0, 50.0], 6);
+            if let Some((_, at)) = t.falling().first() {
+                assert!(at[1] - last <= 9.6 + 1e-9);
+                last = at[1];
+            }
+        }
+        assert!(t.falling().is_empty());
+        // A restore resets the count without dropping anything.
+        t.pops(0, &[0; 6]);
+        t.update(200, [100.0, 50.0], 6);
+        assert!(t.falling().is_empty());
     }
     #[test]
     fn short_history_leaves_eggs_where_they_appeared() {
@@ -2214,14 +2294,16 @@ impl Scene {
             };
             // Carried eggs trail behind Yoshi (drawn first, so Yoshi covers them).
             let body = pixel(p.player.motion.current);
-            let trail = self
-                .trail
-                .lock()
-                .map_err(|_| "egg trail lock poisoned")?
-                .update(p.tick, body, p.player.eggs.len());
+            let (trail, falling) = {
+                let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
+                trail.pops(p.player.egg_pops, &p.player.eggs);
+                let eggs = trail.update(p.tick, body, p.player.eggs.len());
+                (eggs, trail.falling())
+            };
             if let Ok(egg_art) = self.object("o7", 0) {
-                for (colour, at) in p.player.eggs.iter().zip(&trail) {
-                    let name = ["Green", "Yellow", "Red", "Purple"][(*colour).clamp(0, 3) as usize];
+                let carried = p.player.eggs.iter().copied().zip(trail.iter().copied());
+                for (colour, at) in carried.chain(falling) {
+                    let name = ["Green", "Yellow", "Red", "Purple"][colour.clamp(0, 3) as usize];
                     let ef = egg_art.sample(p.tick, name, 0, None);
                     commands.push((
                         11,
@@ -2230,7 +2312,7 @@ impl Scene {
                             ef.image,
                             self.sizes[ef.image],
                             Transform {
-                                position: *at,
+                                position: at,
                                 scale: [1.0 / self.density as f64; 2],
                                 origin: ef.origin,
                                 ..Transform::default()

@@ -1212,6 +1212,7 @@ impl Run {
         };
         let (colour, ghost, origin_token) = (egg.colour, egg.ignore_terrain, egg.origin_token);
         if let Some(popped) = self.consumers.push_egg(colour, origin, ghost) {
+            self.egg_pops = self.egg_pops.wrapping_add(1);
             self.mark_origin(popped);
         }
         self.player.give_eggs(1);
@@ -1230,6 +1231,8 @@ impl Run {
         match action {
             crate::consumers::Action::Spawn(spawn) => self.spawn_thrown_egg(spawn),
             crate::consumers::Action::MarkOrigin(token) => {
+                // Only a stored egg made at six pushes the front egg out (consumers.rs).
+                self.egg_pops = self.egg_pops.wrapping_add(1);
                 self.mark_origin(token);
                 Ok(())
             }

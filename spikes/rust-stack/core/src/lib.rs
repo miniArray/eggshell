@@ -193,6 +193,9 @@ pub struct PlayerPicture {
     /// Carried egg colours, first slot first (0 green, 1 yellow, 2 red, 3 purple). The
     /// original draws them trailing Yoshi; the Godot port drew none.
     pub eggs: Vec<i64>,
+    /// Running count of eggs pushed out of a full queue (Run::egg_pops, drawing only).
+    /// When it rises, the original drops the front trail egg off screen.
+    pub egg_pops: u64,
     /// Throw direction in degrees (0 right, -90 up) while aiming (moves.gd _emit angle).
     pub aim_degrees: Option<f64>,
 }

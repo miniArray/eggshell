@@ -697,6 +697,7 @@ pub(crate) fn sample_rows(
         eggs: (0..p.food.eggs.clamp(0, 6) as usize)
             .map(|slot| run.consumers.colour[slot])
             .collect(),
+        egg_pops: run.egg_pops,
         aim_degrees: (p.food.aim != 0).then(|| {
             let mut angle = if p.facing > 0 {
                 p.food.aim_angle
