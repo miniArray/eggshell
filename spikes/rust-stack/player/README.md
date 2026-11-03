@@ -672,3 +672,18 @@ sequence must not be treated as proof that crushing is implemented in the core.
 Keep the full-screen black fade: it starts at age 240 and reaches black at 300.
 This is retained spike presentation policy (also observed on normal reference
 deaths), not a sprite-alpha fade or a change to respawn timing. No core changes.
+
+### Capture actor art
+
+The four rescue-timeout captors are `Presentation.companions.rescuers`, not
+runtime entity codes. The old renderer looked only for `hud.captor`; the pinned
+pack instead stores their art under numeric visual entry `486`. Bind that entry
+when the semantic HUD alias is absent. Its four-frame Fly animation loops at
+36 fps with a 16×24-pixel origin and 32×48-pixel art. No new art is generated.
+
+A per-step spawn clock starts all four at frame 0, instead of using the global
+level tick. It survives skipped draws and the pipeline's previous episode;
+rewind/map changes reset it. Core positions and capture timing remain untouched.
+The headless `capture_episode_draws_four_pack_animated_captors` regression runs
+a real contact/countdown/capture episode and checks four pack sprites per step,
+all four flight frames, and byte-identical snapshots before/after drawing.

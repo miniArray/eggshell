@@ -35,3 +35,5 @@ pub mod screen;
 pub mod shake;
 pub mod timing;
 pub mod water_fx;
+
+pub mod captors;

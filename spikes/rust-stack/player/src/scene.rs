@@ -139,6 +139,7 @@ pub struct Scene {
     objects: HashMap<String, HashMap<i64, Visual>>,
     player: Visual,
     companions: [Option<Visual>; 3],
+    captors: std::sync::Mutex<crate::captors::Captors>,
     /// YoshiTongueL, YoshiTongueR, YoshiTongueU nine-patches, when the pack has all three.
     tongue: Option<[Visual; 3]>,
     /// Stilt walker recolour per variant. The original recolours the parts at run time
@@ -1149,8 +1150,7 @@ impl Scene {
             bubble
                 .map(|v| catalog.visual(v, 0, density, false))
                 .transpose()?,
-            hud_entries
-                .get("captor")
+            crate::captors::art(&pack.manifest)
                 .map(|v| catalog.visual(v, 0, density, false))
                 .transpose()?,
         ];
@@ -1200,6 +1200,7 @@ impl Scene {
             objects,
             player,
             companions,
+            captors: std::sync::Mutex::new(crate::captors::Captors::default()),
             tongue,
             stilt_palettes,
             decor_caps,
@@ -1545,6 +1546,10 @@ impl Scene {
         p: &Presentation,
         session: &eggshell_spike_core::Session,
     ) -> Result<(), String> {
+        self.captors
+            .lock()
+            .map_err(|_| "captor clock lock poisoned")?
+            .observe(p);
         {
             let mut trail = self.trail.lock().map_err(|_| "egg trail lock poisoned")?;
             trail.pops(p.player.egg_pops, &p.player.eggs);
@@ -2627,7 +2632,15 @@ impl Scene {
                 continue;
             }
             let (image, origin, scale) = if let Some(art) = &self.companions[index] {
-                let f = art.sample(aux.tick, &aux.animation, 0, aux.visual.frame);
+                let tick = if index == 2 {
+                    self.captors
+                        .lock()
+                        .map_err(|_| "captor clock lock poisoned")?
+                        .age(p.tick)
+                } else {
+                    aux.tick
+                };
+                let f = art.sample(tick, &aux.animation, 0, aux.visual.frame);
                 (
                     f.image,
                     f.origin,
@@ -3169,6 +3182,78 @@ mod tests {
         assert!(
             seen.iter().all(|v| *v),
             "rising/apex/falling/grounded {seen:?}"
+        );
+    }
+    #[test]
+    #[ignore = "requires PLAYER_PACK_ROOT, PLAYER_PACK_INVENTORY, PLAYER_SCHEMA and PLAYER_METRICS"]
+    fn capture_episode_draws_four_pack_animated_captors() {
+        let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let pack = Pack::open(
+            Path::new(&env("PLAYER_PACK_ROOT")),
+            Path::new(&env("PLAYER_PACK_INVENTORY")),
+        )
+        .unwrap();
+        let schema = std::fs::read_to_string(env("PLAYER_SCHEMA")).unwrap();
+        let mut level: Value = serde_json::from_str(include_str!(
+            "../../core/tests/fixtures/collections.level.json"
+        ))
+        .unwrap();
+        level["startpoint"]["X"] = 64.into();
+        level["startpoint"]["Y"] = 384.into();
+        level["maps"]["map1"]["objects"] = serde_json::json!({"0":{"A":"e1","X":128,"Y":368}});
+        let mut session = eggshell_spike_core::Session::load_benchmark_unverified(
+            &level.to_string(),
+            include_str!("../../../../src/level/collision_table.json"),
+            &schema,
+        )
+        .unwrap();
+        let mut scene = Scene::prepare(
+            session.world(),
+            &session.admission_report().admitted_codes,
+            &pack,
+            Path::new(&env("PLAYER_METRICS")),
+        )
+        .unwrap();
+        scene.prepare_headless_assets(&pack).unwrap();
+        let art = scene.companions[2]
+            .as_ref()
+            .expect("captors must bind pack art");
+        let images: std::collections::BTreeSet<_> = art
+            .animations
+            .iter()
+            .flat_map(|(_, a)| a.frames.iter().map(|f| f.image))
+            .collect();
+        assert_eq!(images.len(), 4);
+        let mut frames = std::collections::BTreeSet::new();
+        let mut active = 0;
+        for step in 0..700 {
+            session.advance(if step < 90 { 2 } else { 0 }).unwrap();
+            let p = session.presentation();
+            let before = session.snapshot().unwrap();
+            scene.observe_feel(&p, &session).unwrap();
+            if p.companions.rescuers.iter().any(|a| a.visible) {
+                let picture = scene.picture(&p, [640.0, 480.0], 0).unwrap();
+                let captors: Vec<_> = picture
+                    .world
+                    .iter()
+                    .filter(|q| images.contains(&q.image))
+                    .collect();
+                assert_eq!(captors.len(), 4);
+                let age = scene.captors.lock().unwrap().age(p.tick);
+                assert!(
+                    captors
+                        .iter()
+                        .all(|q| q.image == art.sample(age, "Fly", 0, None).image)
+                );
+                frames.extend(captors.iter().map(|q| q.image));
+                active += 1;
+            }
+            assert_eq!(session.snapshot().unwrap(), before);
+        }
+        assert!(active > 60);
+        assert_eq!(frames.len(), 4);
+        println!(
+            "CAPTOR_SCENE_PROBE active_steps={active} all_four_pack_frames=true four_sprites_per_step=true snapshots_unchanged=true"
         );
     }
     /// Every code the core can create during play has an object binding in the pinned
