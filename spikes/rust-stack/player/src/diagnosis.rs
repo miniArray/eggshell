@@ -482,6 +482,20 @@ pub fn held_trace(arguments: impl Iterator<Item = String>) -> Result<(), String>
             }
         }
         let picture = scene.picture(&p, container, 0)?;
+        if std::env::var_os("HELD_TRACE_PLAYER").is_some() {
+            println!(
+                "HELD_TRACE_PLAYER call={} x={:.1} y={:.1} eggs={} health={} pellets={}",
+                i + 1,
+                p.player.motion.current.x as f64 / eggshell_spike_core::SCALE as f64,
+                p.player.motion.current.y as f64 / eggshell_spike_core::SCALE as f64,
+                p.player.eggs.len(),
+                p.hud.health,
+                p.entities
+                    .iter()
+                    .filter(|e| e.code == "enemy_pellet" && e.visible)
+                    .count()
+            );
+        }
         if let Ok(image) = std::env::var("HELD_TRACE_IMAGE") {
             for q in picture.world.iter().filter(|q| {
                 scene
