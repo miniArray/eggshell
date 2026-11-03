@@ -357,12 +357,25 @@ impl Run {
         if !riders.is_empty() && (moved.x != start.x || moved.y != start.y) {
             self.refresh_block_solid(index, map);
             let (dx, dy) = (moved.x - start.x, moved.y - start.y);
+            let hound = self.entities[index].origin.token();
             for rider in riders {
                 let o = &mut self.entities[rider];
                 let Kind::Walker(w) = &o.kind else { continue };
                 let b = w.body_bounds(o.facing);
                 if dy != 0 {
+                    let old_foot = o.body.y + b[3];
                     motion(&mut o.body, map, b, dy, false);
+                    // ride_hound.gd _carry (Godot c148d86): the original's floor tracking
+                    // pushes a carried body back out of any solid it reaches, so a ledge
+                    // the runner falls past keeps the rider standing on it.
+                    let ledge = if dy > 0 {
+                        o.body.one_way_crossed(map, b, old_foot, hound)
+                    } else {
+                        -1
+                    };
+                    if ledge >= 0 {
+                        o.body.y = ledge - b[3];
+                    }
                 }
                 if dx != 0 {
                     motion(&mut o.body, map, b, dx, true);

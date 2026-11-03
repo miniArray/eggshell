@@ -956,6 +956,14 @@ impl SolidFrame {
             turn: turned(row),
         })
     }
+    /// The entity token of the row behind a handle.
+    pub fn token(&self, handle: i64) -> Option<i64> {
+        if handle > -2 {
+            return None;
+        }
+        let index = *self.handles.get((-2 - handle) as usize)?;
+        Some(self.rows[index].token)
+    }
     pub fn take_updates(&mut self) -> Vec<PostUpdate> {
         std::mem::take(&mut self.updates)
     }

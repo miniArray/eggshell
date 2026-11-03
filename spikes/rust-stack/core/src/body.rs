@@ -106,6 +106,10 @@ impl<'a> Probe<'a> {
     pub fn selected(&self, handle: i64) -> Option<crate::solids::Shape> {
         self.solids.and_then(|s| s.borrow().selected(handle))
     }
+    /// The token of the entity whose registered solid a handle selects.
+    pub fn solid_token(&self, handle: i64) -> Option<i64> {
+        self.solids.and_then(|s| s.borrow().token(handle))
+    }
     /// collision.gd _one_way: a map bridge, or a top-only entity shape.
     pub fn one_way(&self, support: i64) -> bool {
         support > 0 || self.selected(support).is_some_and(|s| s.mode == 2)
@@ -301,6 +305,41 @@ impl Body {
                 && map
                     .selected(support)
                     .is_some_and(|s| self.shape_overlap(b, &s, 0, 0))
+    }
+    /// collision.gd one_way_crossed: the highest top-only edge, other than the solid of
+    /// the entity with token `ignore`, that the foot crossed moving down from `old_foot`;
+    /// -1 when none.
+    pub fn one_way_crossed(&self, map: &Probe, b: [i64; 4], old_foot: i64, ignore: i64) -> i64 {
+        let left = self.x + b[0];
+        let right = self.x + b[2];
+        let foot = self.y + b[3];
+        let mut best = -1;
+        for bridge in &map.bridges {
+            if old_foot <= bridge.top
+                && bridge.top < foot
+                && right >= bridge.left
+                && left <= bridge.right
+            {
+                best = if best < 0 {
+                    bridge.top
+                } else {
+                    best.min(bridge.top)
+                };
+            }
+        }
+        for shape in map.solid_shapes([left, old_foot, right, foot]) {
+            let top = shape.box_[1];
+            if shape.mode == 2
+                && map.solid_token(shape.handle) != Some(ignore)
+                && old_foot <= top
+                && top < foot
+                && right > shape.box_[0]
+                && left < shape.box_[2]
+            {
+                best = if best < 0 { top } else { best.min(top) };
+            }
+        }
+        best
     }
     pub fn floor(&self, map: &Probe, b: [i64; 4]) -> i64 {
         if self.overlaps(map, b, 0, 0) {
@@ -733,5 +772,39 @@ impl Body {
             self.vy = (self.vy + acceleration).min(cap);
         }
         landed
+    }
+}
+
+#[cfg(test)]
+mod one_way_crossed_tests {
+    use super::*;
+
+    #[test]
+    fn collision_one_way_crossed_finds_a_bridge_top_the_foot_passed_moving_down() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"ledge", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{
+                "bridge":{"A":"p1", "X":960, "Y":272, "E1":"192"}
+            }}}
+        })
+        .to_string();
+        let world = crate::World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let map = Probe::new(&world.maps[0]);
+        let b = [-10 * S, -20 * S, 10 * S, 0];
+        let body = |y| Body {
+            x: 960 * S,
+            y: y * S,
+            ..Body::default()
+        };
+        // The bridge top is at 256 px: a foot moving from 250 to 262 crossed it.
+        assert_eq!(body(262).one_way_crossed(&map, b, 250 * S, 0), 256 * S);
+        // Starting below the top, or stopping on or above it, crosses nothing.
+        assert_eq!(body(270).one_way_crossed(&map, b, 257 * S, 0), -1);
+        assert_eq!(body(256).one_way_crossed(&map, b, 250 * S, 0), -1);
     }
 }
