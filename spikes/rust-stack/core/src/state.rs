@@ -1433,28 +1433,8 @@ impl Run {
                     self.slime_contact(index);
                     continue;
                 }
-                if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
-                    continue;
-                }
-                if w.roll != 0 && w.kind != crate::actors::ActorKind::Stilt {
-                    // actor.gd contact: a rolling body breaks on the player after its grace.
-                    let b = self.player.bounds();
-                    if w.roll_grace == 0
-                        && w.roll_up == 0
-                        && self.player.captured_by == 0
-                        && overlap(e.body, w.bounds(e.body, e.facing), self.player.body, b)
-                    {
-                        w.remove(&mut e.status, &mut e.can_respawn);
-                    }
-                    continue;
-                }
-                if self.player.captured_by != 0 {
-                    continue;
-                }
-                if w.kind == crate::actors::ActorKind::Plant {
-                    w.capture(e.body, e.facing, e.family_index, &mut self.player);
-                    continue;
-                }
+                // flat_walker.gd contact: a spat body or a capture still runs it (and clears
+                // its contact memory).
                 if w.kind == crate::actors::ActorKind::Flat {
                     use crate::actors::{FLAT_FLAT, FLAT_FLATTEN};
                     let b = w.body_bounds(e.facing);
@@ -1474,9 +1454,14 @@ impl Run {
                             continue;
                         }
                     }
-                    // enemy_body.gd player_overlap: open edges.
+                    // enemy_body.gd player_overlap: open edges; nothing hidden, held, spat
+                    // or captured touches.
                     let p = self.player.body;
                     let touching = e.status == 1
+                        && w.hidden == 0
+                        && w.held == 0
+                        && w.spat == 0
+                        && self.player.captured_by == 0
                         && e.body.x + b[0] < p.x + pb[2]
                         && e.body.x + b[2] > p.x + pb[0]
                         && e.body.y + b[1] < p.y + pb[3]
@@ -1507,6 +1492,28 @@ impl Run {
                         }
                     }
                     w.contact = i64::from(touching);
+                    continue;
+                }
+                if w.spat != 0 && w.kind != crate::actors::ActorKind::Stilt {
+                    continue;
+                }
+                if w.roll != 0 && w.kind != crate::actors::ActorKind::Stilt {
+                    // actor.gd contact: a rolling body breaks on the player after its grace.
+                    let b = self.player.bounds();
+                    if w.roll_grace == 0
+                        && w.roll_up == 0
+                        && self.player.captured_by == 0
+                        && overlap(e.body, w.bounds(e.body, e.facing), self.player.body, b)
+                    {
+                        w.remove(&mut e.status, &mut e.can_respawn);
+                    }
+                    continue;
+                }
+                if self.player.captured_by != 0 {
+                    continue;
+                }
+                if w.kind == crate::actors::ActorKind::Plant {
+                    w.capture(e.body, e.facing, e.family_index, &mut self.player);
                     continue;
                 }
                 let touching = overlap(
@@ -2353,5 +2360,37 @@ mod catch_event_tests {
         assert_eq!(run.player.body.vy, -100 * 60);
         assert_eq!(run.player.jump_buffer, 6);
         assert_eq!(run.player.life_phase, 1);
+    }
+
+    #[test]
+    fn flat_walker_contact_clears_its_memory_while_spat_over_the_player() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"flat", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{
+                "f":{"A":"e4", "X":140, "Y":128}
+            }}}
+        })
+        .to_string();
+        let world = World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let mut stats = crate::Stats::default();
+        let mut run = Run::create(&world, &mut stats).unwrap();
+        let e = &mut run.entities[0];
+        e.status = 1;
+        e.body = run.player.body;
+        let Kind::Walker(w) = &mut e.kind else {
+            unreachable!()
+        };
+        w.spat = 1;
+        w.contact = 1;
+        run.advance(0, &world, &mut stats).unwrap();
+        let Kind::Walker(w) = &run.entities[0].kind else {
+            unreachable!()
+        };
+        assert_eq!(w.contact, 0);
     }
 }
