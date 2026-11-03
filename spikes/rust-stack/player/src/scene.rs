@@ -2316,7 +2316,17 @@ impl Scene {
                 .death_pose
                 .lock()
                 .map_err(|_| "death pose lock poisoned")?
-                .frame(p.tick, p.player.lifetime, pose, &self.player, literal)?;
+                .frame(
+                    p.tick,
+                    p.player.lifetime,
+                    pose,
+                    &self.player,
+                    literal,
+                    self.feel
+                        .lock()
+                        .map_err(|_| "feel lock poisoned")?
+                        .lava_death,
+                )?;
             if p.companions.mode == 0 {
                 rider_position = self.saddle.at(
                     f.image,

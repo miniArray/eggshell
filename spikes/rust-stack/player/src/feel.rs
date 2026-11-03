@@ -118,6 +118,28 @@ impl ThrowMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LavaDeath {
+    #[default]
+    Spin,
+    Original,
+}
+impl LavaDeath {
+    pub fn toggle(&mut self) {
+        *self = match self {
+            Self::Spin => Self::Original,
+            Self::Original => Self::Spin,
+        };
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Spin => "spin",
+            Self::Original => "original",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeelSettings {
@@ -146,6 +168,7 @@ pub struct FeelSettings {
     pub button_layout: ButtonLayout,
     pub elastic_tongue: bool,
     pub throw_mode: ThrowMode,
+    pub lava_death: LavaDeath,
 }
 impl Default for FeelSettings {
     fn default() -> Self {
@@ -175,6 +198,7 @@ impl Default for FeelSettings {
             button_layout: ButtonLayout::Snes,
             elastic_tongue: true,
             throw_mode: ThrowMode::Patient,
+            lava_death: LavaDeath::Spin,
         }
     }
 }
@@ -300,6 +324,8 @@ mod tests {
         assert_eq!(s.button_layout, ButtonLayout::Snes);
         assert!(s.elastic_tongue);
         assert_eq!(s.throw_mode, ThrowMode::Patient);
+        assert_eq!(s.lava_death, LavaDeath::Spin);
+        assert_eq!(serde_json::to_value(s).unwrap()["lava_death"], "spin");
         assert_eq!(serde_json::to_value(s).unwrap()["throw_mode"], "patient");
         assert_eq!(serde_json::to_value(s).unwrap()["button_layout"], "snes");
         assert_eq!(serde_json::to_value(s).unwrap()["zoom_steps"], "whole");

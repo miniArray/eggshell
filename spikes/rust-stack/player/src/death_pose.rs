@@ -1,5 +1,6 @@
 //! Drawing-only death poses and fade, observed on successful saved steps.
 use crate::binding::{Frame, Visual};
+use crate::feel::LavaDeath;
 use eggshell_spike_core::{Lifetime, Map, PoseSelection, Presentation, SCALE, TerrainHazard};
 
 #[derive(Default)]
@@ -51,9 +52,12 @@ impl DeathPose {
         pose: &PoseSelection,
         art: &'a Visual,
         literal: Option<i64>,
+        lava_death: LavaDeath,
     ) -> Result<&'a Frame, String> {
         if lifetime == Lifetime::Dying {
-            let start = self.episode(tick);
+            let start = self
+                .episode(tick)
+                .map(|(start, lava)| (start, lava && lava_death == LavaDeath::Original));
             if let Some((start, true)) = start {
                 let age = tick.saturating_sub(start);
                 // The launch has a short hold, a rising frame, then a falling frame.
@@ -205,6 +209,46 @@ mod tests {
             .unwrap()
     }
     #[test]
+    fn default_lava_spin_matches_every_impact_frame_and_keeps_fade() {
+        let art = fixture_art(true);
+        let pose = PoseSelection {
+            name: "Fall0".into(),
+            tick: 0,
+            frame: 0,
+        };
+        let mut lava = DeathPose::default();
+        let mut impact = DeathPose::default();
+        lava.observe_step(10, Lifetime::Dying, true);
+        impact.observe_step(10, Lifetime::Dying, false);
+        for age in 0..=300 {
+            assert_eq!(
+                lava.frame(
+                    10 + age,
+                    Lifetime::Dying,
+                    &pose,
+                    &art,
+                    None,
+                    LavaDeath::Spin
+                )
+                .unwrap(),
+                impact
+                    .frame(
+                        10 + age,
+                        Lifetime::Dying,
+                        &pose,
+                        &art,
+                        None,
+                        LavaDeath::Original
+                    )
+                    .unwrap()
+            );
+            assert_eq!(
+                lava.fade(10 + age, Lifetime::Dying),
+                impact.fade(10 + age, Lifetime::Dying)
+            );
+        }
+    }
+    #[test]
     fn lava_uses_hurt_frames_not_spin_and_fades_at_the_end() {
         let world = eggshell_spike_core::World::compile(
             include_str!("../tests/fixtures/lighting.level.json"),
@@ -251,7 +295,14 @@ mod tests {
             );
             assert_eq!(
                 clock
-                    .frame(100 + age, Lifetime::Dying, &pose, &art, None)
+                    .frame(
+                        100 + age,
+                        Lifetime::Dying,
+                        &pose,
+                        &art,
+                        None,
+                        LavaDeath::Original
+                    )
                     .unwrap(),
                 art.sample(0, "Hurt0", 0, Some(i64::from((15..48).contains(&age))))
             );
@@ -259,7 +310,7 @@ mod tests {
         clock.observe_step(401, Lifetime::Respawning, false);
         assert_eq!(
             clock
-                .frame(399, Lifetime::Dying, &pose, &art, None)
+                .frame(399, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap(),
             art.sample(0, "Hurt0", 0, Some(0))
         );
@@ -267,7 +318,7 @@ mod tests {
         clock.observe_step(411, Lifetime::Dying, true);
         assert_eq!(
             clock
-                .frame(411, Lifetime::Dying, &pose, &art, None)
+                .frame(411, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap(),
             art.sample(1, "Defeat0", 0, None)
         );
@@ -296,7 +347,14 @@ mod tests {
             clock.observe_step(101 + age, Lifetime::Dying, false);
             assert_eq!(
                 clock
-                    .frame(101 + age, Lifetime::Dying, &pose, &art, None)
+                    .frame(
+                        101 + age,
+                        Lifetime::Dying,
+                        &pose,
+                        &art,
+                        None,
+                        LavaDeath::Original
+                    )
                     .unwrap()
                     .image,
                 first + frame
@@ -305,7 +363,7 @@ mod tests {
         // Repeated draws/pauses and a phase 2→3 transition do not restart the clock.
         assert_eq!(
             clock
-                .frame(341, Lifetime::Dying, &pose, &art, None)
+                .frame(341, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap()
                 .image,
             first + 4
@@ -313,13 +371,20 @@ mod tests {
         clock.observe_step(342, Lifetime::Respawning, false);
         assert_eq!(
             clock
-                .frame(342, Lifetime::Respawning, &pose, &art, None)
+                .frame(
+                    342,
+                    Lifetime::Respawning,
+                    &pose,
+                    &art,
+                    None,
+                    LavaDeath::Original
+                )
                 .unwrap(),
             art.sample(0, "Fall0", 0, None)
         );
         assert_eq!(
             clock
-                .frame(341, Lifetime::Dying, &pose, &art, None)
+                .frame(341, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap()
                 .image,
             first + 4
@@ -327,7 +392,7 @@ mod tests {
         clock.observe_step(400, Lifetime::Dying, false);
         assert_eq!(
             clock
-                .frame(400, Lifetime::Dying, &pose, &art, None)
+                .frame(400, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap()
                 .image,
             art.sample(0, "Spin", 0, Some(0)).image
@@ -335,7 +400,7 @@ mod tests {
         clock.observe_step(100, Lifetime::Dying, false); // Restore: start a new local episode.
         assert_eq!(
             clock
-                .frame(100, Lifetime::Dying, &pose, &art, None)
+                .frame(100, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap()
                 .image,
             art.sample(0, "Spin", 0, Some(0)).image
@@ -346,7 +411,7 @@ mod tests {
         };
         assert_eq!(
             clock
-                .frame(100, Lifetime::Dying, &full, &art, None)
+                .frame(100, Lifetime::Dying, &full, &art, None, LavaDeath::Original)
                 .unwrap(),
             art.sample(0, "Spin", 0, Some(0))
         );
@@ -365,14 +430,21 @@ mod tests {
         let art = fixture_art(true);
         assert_eq!(
             clock
-                .frame(206, Lifetime::Dying, &pose, &art, None)
+                .frame(206, Lifetime::Dying, &pose, &art, None, LavaDeath::Original)
                 .unwrap(),
             art.sample(0, "Spin", 0, Some(0))
         );
         let missing = fixture_art(false);
         assert_eq!(
             clock
-                .frame(206, Lifetime::Dying, &pose, &missing, None)
+                .frame(
+                    206,
+                    Lifetime::Dying,
+                    &pose,
+                    &missing,
+                    None,
+                    LavaDeath::Original
+                )
                 .unwrap(),
             missing.sample(300, "Fall0", 0, None)
         );

@@ -646,7 +646,8 @@ paths for a host picture probe; this does not establish GPU pixel parity.
 
 | Route | Picture sequence, age in saved steps |
 | --- | --- |
-| Lava | Hurt0/1 frame 0 at ages 0–14, frame 1 at 15–47, frame 0 thereafter |
+| Lava, `lava_death: "spin"` (default) | Same Spin → Defeat sequence as non-lava instant defeat; spike deviation |
+| Lava, `lava_death: "original"` | Hurt0/1 frame 0 at ages 0–14, frame 1 at 15–47, frame 0 thereafter |
 | Non-lava instant defeat | Spin frame 0 at ages 0–23; slowing Spin at 24–155; Defeat0/1 starts at 156 and holds frame 4 from 166 |
 
 The spin slows from 24 fps to zero over 132 steps. Each frame's duration uses
@@ -762,3 +763,8 @@ throw. Lock and both button layouts use their normal mappings. Quick taps keep
 both presses; aliases act as one held button. Pause, slot chords and layout/mode
 changes discard pending throws. Recorded/replayed masks and core rules do not
 change; this option applies only to live SDL/keyboard input.
+
+Feel **Lava death: spin / original** stores `lava_death`. Spin is the requested
+spike deviation from reference lava art. Both choices keep the existing black
+fade and core respawn timing. “Original” restores the checked hurt poses, not
+the missing core launch/fall physics.

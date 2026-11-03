@@ -34,7 +34,11 @@ fn main() {
         .map(|(name, _)| name.as_str())
         .collect();
     println!("DEATH_PROBE pack_death_names={death_names:?}");
-    for impact in [false, true] {
+    for (impact, mode) in [
+        (false, eggshell_spike_player::feel::LavaDeath::Original),
+        (false, eggshell_spike_player::feel::LavaDeath::Spin),
+        (true, eggshell_spike_player::feel::LavaDeath::Spin),
+    ] {
         let mut level: serde_json::Value =
             serde_json::from_str(include_str!("../tests/fixtures/lighting.level.json")).unwrap();
         // Start on the fixture's lava. No saved state or core internals are changed.
@@ -73,7 +77,7 @@ fn main() {
                 poses.insert(pose.name.clone());
                 rendered.insert(
                     death
-                        .frame(p.tick, p.player.lifetime, pose, &art, None)
+                        .frame(p.tick, p.player.lifetime, pose, &art, None, mode)
                         .unwrap()
                         .image,
                 );
@@ -94,9 +98,16 @@ fn main() {
             }
         }
         assert_eq!(phases, BTreeSet::from([2, 3]));
-        assert_eq!(rendered.len(), if impact { 11 } else { 2 });
+        assert_eq!(
+            rendered.len(),
+            if impact || mode == eggshell_spike_player::feel::LavaDeath::Spin {
+                11
+            } else {
+                2
+            }
+        );
         println!(
-            "DEATH_PROBE impact={impact} rendered_death_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
+            "DEATH_PROBE impact={impact} mode={mode:?} rendered_death_frames={} dying_poses={poses:?} required_bindings_resolve=true hidden=false",
             rendered.len()
         );
     }
