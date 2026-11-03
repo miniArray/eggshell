@@ -95,6 +95,29 @@ if [[ "${2:-}" == shots ]]; then
     --schema "$ROOT/private-input/schema.json" "${pack[@]}" --save-dir "$save" "${tiles[@]}" --replay "$spit_route" \
     --ticks 170 --seconds 30 --frame-digest-every 3 --frame-dump-dir "$shots/stride-spit" --no-pipeline ||
     printf 'LEVELS_SHOTS_FAILED stride spit\n'
+  # The hands-on check level (PLAYER_EXTRA_LEVELS 0-check.json): walk right with a hop
+  # every 60 steps (lands on the shell Koopa: its runner, the Snifit shot); and the same
+  # walk stopped after 450 steps (carried eggs standing).
+  if [[ -f "$LEVELS/0-check.json" ]]; then
+    for run in walk:900:0 stand:450:150; do
+      IFS=: read -r name walk stand <<<"$run"
+      route="$ROOT/data/check-$name.json"
+      {
+        printf '['
+        for ((i = 0; i < walk + stand; i++)); do
+          if ((i > 0)); then printf ','; fi
+          if ((i >= walk)); then printf 0; elif (((i + 20) % 60 >= 46)); then printf 6; else printf 2; fi
+        done
+        printf ']\n'
+      } > "$route"
+      mkdir -p "$shots/0-check-$name"
+      save=$(mktemp -d "$ROOT/data/shots-run-XXXXXX")
+      printf 'LEVELS_SHOTS_CHECK %s\n' "$name"
+      play 0-check.json "$save" 20 --replay "$route" --ticks $((walk + stand)) \
+        --frame-digest-every 10 --frame-dump-dir "$shots/0-check-$name" --no-pipeline ||
+        printf 'LEVELS_SHOTS_FAILED 0-check %s\n' "$name"
+    done
+  fi
   # Animated tilesets: Toxic Tunnel (flowing water) idle, a picture every 3 steps.
   toxic=6a01fef0729b503561e9de41.json
   if [[ -f "$LEVELS/$toxic" ]]; then

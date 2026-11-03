@@ -460,8 +460,9 @@ pub fn held_trace(arguments: impl Iterator<Item = String>) -> Result<(), String>
                 );
             }
         }
+        let watch_code = std::env::var("HELD_TRACE_CODE").ok();
         for e in &p.entities {
-            if e.held {
+            if e.held || watch_code.as_deref() == Some(e.code.as_str()) {
                 watched.insert(e.token, i as i64);
             }
         }
@@ -481,6 +482,21 @@ pub fn held_trace(arguments: impl Iterator<Item = String>) -> Result<(), String>
             }
         }
         let picture = scene.picture(&p, container, 0)?;
+        if let Ok(image) = std::env::var("HELD_TRACE_IMAGE") {
+            for q in picture.world.iter().filter(|q| {
+                scene
+                    .image_files()
+                    .get(q.image)
+                    .is_some_and(|f| f.contains(&image))
+            }) {
+                println!(
+                    "HELD_TRACE_IMAGE call={} corners={:?} uv={:?}",
+                    i + 1,
+                    q.corners,
+                    q.uv
+                );
+            }
+        }
         for e in p
             .entities
             .iter()

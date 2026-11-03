@@ -22,12 +22,15 @@ use std::{collections::HashMap, path::Path};
 const ROLL_SPRITE: &str = "#visual:ShyGuyRollSprite";
 /// Original art for runtime codes the pack has no object entry for: the pack visual
 /// (by source type) or object entry the original game draws for them. Godot drew
-/// placeholders for all of these. enemy_runner and enemy_overlap have no art.
-const PACKLESS_ART: [(&str, &str); 9] = [
+/// placeholders for all of these. enemy_overlap has no art (it is never drawn).
+const PACKLESS_ART: [(&str, &str); 10] = [
     ("enemy_pellet", "SnifitBullet"),
     ("enemy_shot", "BulletBill"),
     ("enemy_petal", "EggoDilPetal"),
     ("enemy_mace", "Spikeball"),
+    // A Koopa knocked out of its shell (YFS Enemies: KoopaTroopa spawns BeachKoopa):
+    // the e7 BeachKoopa object art.
+    ("enemy_runner", "object:e7"),
     // The Ptooie Plant (e41) spits a Needlenose: the e40 object art.
     ("enemy_spike", "object:e40"),
     ("enemy_disc", "RotoDisc"),
@@ -395,11 +398,15 @@ fn variant_palette(pack: &Pack, variant: i64) -> Result<Vec<PaletteSwap>, String
         .map(|(from, (to, _, _))| PaletteSwap { from, to })
         .collect())
 }
-/// The original game's carried-egg follow (Yoshi event sheet, YoshiPos): every tick
-/// Yoshi's position is pushed onto a history of at most 60 entries; egg k (1-based) is
-/// tweened over 0.1 s toward the entry 10 * k back, 16 px up, once the history is that
-/// long. A standing Yoshi keeps pushing his own position, so the eggs gather at him.
-/// Godot drew no carried eggs; this is drawing only (never saved, never sim).
+/// Carried eggs (drawing only; Godot drew none). Original (YFS Yoshi sheet, group
+/// "Egg Following"): Every tick: YoshiPos.Push(Yoshi.X) / SetXY(last, 1, Yoshi.Y); when
+/// YoshiPos.Width > 60: Delete(0); for each "follow" egg: TweenTwoProperties("pos",
+/// YoshiPos.At(count - egg.idx10, 0) + offsetX, YoshiPos.At(count - egg.idx10, 1) - 16,
+/// 0.1 s) with idx10 = 10 * egg index. That pushes while Yoshi stands too, so the eggs
+/// would close up on him; the user's playtest of the original shows standing eggs
+/// spaced and countable on the ground. So: a position is pushed only when Yoshi moved
+/// (spacing = 10 moved steps per egg, as in the original while walking), and once he
+/// has stood still for STILL_TICKS the eggs drop to his feet level, keeping their x.
 #[derive(Default)]
 struct Trail {
     last_tick: Option<i64>,
@@ -410,6 +417,8 @@ struct Trail {
     colours: Vec<i64>,
     /// Front eggs pushed out of a full queue, falling off screen.
     falling: Vec<FallingEgg>,
+    /// Steps since Yoshi last moved.
+    still: i64,
 }
 /// YFS Yoshi 487-488 and Objects 185-186: when a seventh egg is made or picked up, the
 /// egg with the lowest orderID (the front one, nearest Yoshi) gets mode fallOffScreen:
@@ -429,6 +438,10 @@ impl Trail {
     /// Egg Platform gravity and fall cap in px per tick (1600 px/s^2, 576 px/s at 60 Hz).
     const GRAVITY: f64 = 1600.0 / 3600.0;
     const MAX_FALL: f64 = 576.0 / 60.0;
+    /// Steps without movement before the eggs drop to Yoshi's feet level.
+    const STILL_TICKS: i64 = 6;
+    /// Eggs hang 16 px above the recorded position (the original's At(.., 1) - 16).
+    const LIFT: f64 = 16.0;
     /// Taller than any view, so a dropped egg is off screen before it is forgotten.
     const FORGET: f64 = 1024.0;
     /// Call before update with this frame's pop count and egg colours. A rise drops that
@@ -462,7 +475,18 @@ impl Trail {
         self.last_tick = Some(tick);
         self.eggs.truncate(count);
         while self.eggs.len() < count {
-            self.eggs.push([at[0], at[1] - 16.0]);
+            self.eggs.push([at[0], at[1] - Self::LIFT]);
+        }
+        if steps > 0 {
+            if self.path.back() == Some(&at) {
+                self.still += steps as i64;
+            } else {
+                self.still = 0;
+                self.path.push_back(at);
+                while self.path.len() > Self::KEEP {
+                    self.path.pop_front();
+                }
+            }
         }
         for _ in 0..steps {
             for f in &mut self.falling {
@@ -471,22 +495,20 @@ impl Trail {
                 f.fallen += f.vy;
             }
             self.falling.retain(|f| f.fallen < Self::FORGET);
-            self.path.push_back(at);
-            while self.path.len() > Self::KEEP {
-                self.path.pop_front();
-            }
             for (k, egg) in self.eggs.iter_mut().enumerate() {
                 let back = Self::SPACING * (k + 1);
-                let Some(target) = self
+                let target = self
                     .path
                     .len()
-                    .checked_sub(back)
-                    .filter(|_| self.path.len() > back)
+                    .checked_sub(1 + back)
                     .and_then(|i| self.path.get(i))
-                else {
-                    continue;
-                };
-                let goal = [target[0], target[1] - 16.0];
+                    .or(self.path.front())
+                    .copied()
+                    .unwrap_or(at);
+                let mut goal = [target[0], target[1] - Self::LIFT];
+                if self.still >= Self::STILL_TICKS {
+                    goal[1] = at[1] - Self::LIFT;
+                }
                 for i in 0..2 {
                     egg[i] += (goal[i] - egg[i]) * Self::STEP;
                 }
@@ -523,20 +545,24 @@ impl RunClock {
 mod trail_tests {
     use super::Trail;
     #[test]
-    fn eggs_gather_at_a_standing_yoshi() {
+    fn standing_eggs_stay_spaced_and_drop_to_yoshi_level() {
         let mut t = Trail::default();
-        for tick in 0..30 {
-            t.update(tick, [tick as f64 * 4.0, 100.0], 2);
+        // Walk right 2 px a step on y 100, jump the last 20 steps (y 80), then land.
+        for tick in 0..60 {
+            let y = if tick >= 40 { 80.0 } else { 100.0 };
+            t.update(tick, [tick as f64 * 2.0, y], 3);
         }
-        // Standing still at x 116 for 90 ticks: the history fills with that spot.
         let mut eggs = Vec::new();
-        for tick in 30..120 {
-            eggs = t.update(tick, [116.0, 100.0], 2);
+        for tick in 60..200 {
+            eggs = t.update(tick, [118.0, 100.0], 3);
         }
-        for egg in eggs {
+        // Spaced by 10 recorded positions (20 px) behind Yoshi (the landing adds one
+        // record at x 118), all at his feet level - 16.
+        for (k, egg) in eggs.iter().enumerate() {
+            let x = 120.0 - 20.0 * (k + 1) as f64;
             assert!(
-                (egg[0] - 116.0).abs() < 0.01 && (egg[1] - 84.0).abs() < 0.01,
-                "{egg:?}"
+                (egg[0] - x).abs() < 0.5 && (egg[1] - 84.0).abs() < 0.5,
+                "{k} {egg:?}"
             );
         }
     }
