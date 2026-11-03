@@ -54,6 +54,49 @@ fn main() {
     set(false);
     let live = batch(&mut controls, &mut events);
     assert_eq!(controls.step_mask(live) & JUMP, 0);
+    // Every physical face and shoulder, through actual SDL sampling and events.
+    for (layout, expected) in [
+        (ButtonLayout::Snes, [JUMP, 64, 8, 64, 128, 128]),
+        (ButtonLayout::Xbox, [JUMP, JUMP, 8, 8, 64, 128]),
+    ] {
+        controls.mask(layout);
+        for (button, expected) in [0, 1, 2, 3, 9, 10].into_iter().zip(expected) {
+            controls.clear_steps();
+            unsafe {
+                assert_eq!(sys::SDL_JoystickSetVirtualButton(raw, button, 1), 0);
+                sys::SDL_JoystickUpdate();
+            }
+            for event in events.poll_iter() {
+                controls.event(event);
+            }
+            let live = controls.mask(layout);
+            assert_eq!(
+                controls.step_mask(live),
+                expected,
+                "{layout:?} physical button {button}"
+            );
+            if button < 2 {
+                let confirm = match layout {
+                    ButtonLayout::Snes => button == 0,
+                    ButtonLayout::Xbox => button == 1,
+                };
+                assert_eq!(controls.menu_mask, if confirm { JUMP } else { 8 });
+            }
+            unsafe {
+                assert_eq!(sys::SDL_JoystickSetVirtualButton(raw, button, 0), 0);
+                sys::SDL_JoystickUpdate();
+            }
+            for event in events.poll_iter() {
+                controls.event(event);
+            }
+            let live = controls.mask(layout);
+            assert_eq!(controls.step_mask(live), 0);
+        }
+    }
+    controls.mask(ButtonLayout::Snes);
+    println!(
+        "INPUT_LAYOUT_PROBE snes_positions=true xbox_unchanged=true both_shoulders=true menu_confirm_back=true"
+    );
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() == 2 {
         use eggshell_spike_core::{SCALE, Session};

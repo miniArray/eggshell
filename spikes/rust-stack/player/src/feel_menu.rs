@@ -159,7 +159,14 @@ impl MenuPage for Page<'_> {
             format!("Auto normals: {}", on(s.auto_normals)),
             format!("Glow style: {}", s.glow_style.label()),
             format!("Zoom steps: {}", s.zoom_steps.label()),
-            format!("Buttons: {}", s.button_layout.label()),
+            format!(
+                "Buttons: {} - {}",
+                s.button_layout.label(),
+                match s.button_layout {
+                    crate::feel::ButtonLayout::Snes => "B jump, Y tongue, A/X egg, L/R lock",
+                    crate::feel::ButtonLayout::Xbox => "A/B jump, X/Y tongue, L egg, R lock",
+                }
+            ),
             format!("Elastic tongue: {}", on(s.elastic_tongue)),
             "Preview shake".into(),
             "Restart level".into(),

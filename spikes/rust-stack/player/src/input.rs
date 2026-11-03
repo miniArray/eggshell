@@ -153,13 +153,13 @@ impl Controls {
             }
             Event::ControllerButtonDown { which, button, .. } => {
                 self.events += 1;
-                if [Button::A, Button::B].contains(&button) {
+                if is_jump_button(self.layout, button) {
                     self.jump.event(pad_source(which, button), true);
                 }
             }
             Event::ControllerButtonUp { which, button, .. } => {
                 self.events += 1;
-                if [Button::A, Button::B].contains(&button) {
+                if is_jump_button(self.layout, button) {
                     self.jump.event(pad_source(which, button), false);
                 }
             }
@@ -189,6 +189,10 @@ impl Controls {
         if layout != self.layout {
             self.wait_faces = true;
             self.layout = layout;
+            // A face can change action while held. Discard edges from the old
+            // mapping; the SDL snapshot below establishes the new aggregate.
+            self.jump.pending.clear();
+            self.jump.sources.retain(|id| *id >= (1_u64 << 63));
         }
         if ![Button::A, Button::B, Button::X, Button::Y]
             .into_iter()
@@ -218,7 +222,7 @@ impl Controls {
             .flat_map(|c| {
                 [Button::A, Button::B]
                     .into_iter()
-                    .filter(|b| c.button(*b))
+                    .filter(|b| is_jump_button(layout, *b) && c.button(*b))
                     .map(|b| pad_source(c.instance_id(), b))
             })
             .collect();
@@ -243,16 +247,25 @@ impl Controls {
             (pressed(Button::DPadRight) || axis(Axis::LeftX, true), RIGHT),
             (faces.0 & JUMP != 0, JUMP),
             (faces.0 & USE != 0, USE),
+            (faces.0 & THROW != 0, THROW),
             (pressed(Button::DPadUp) || axis(Axis::LeftY, false), UP),
             (pressed(Button::DPadDown) || axis(Axis::LeftY, true), DOWN),
-            (pressed(Button::LeftShoulder) && !back, THROW),
-            (pressed(Button::RightShoulder) && !back, LOCK),
+            (
+                layout == ButtonLayout::Xbox && pressed(Button::LeftShoulder) && !back,
+                THROW,
+            ),
+            (
+                (pressed(Button::RightShoulder)
+                    || layout == ButtonLayout::Snes && pressed(Button::LeftShoulder))
+                    && !back,
+                LOCK,
+            ),
         ] {
             if held {
                 result |= bit;
             }
         }
-        // A and B are separate on the paused page, even though both jump in play.
+        // Confirm/back stay separate from gameplay, including face-button throws.
         self.menu_mask = result & (LEFT | RIGHT | UP | DOWN);
         if keyboard & JUMP != 0 || (!self.wait_faces && faces.1 & JUMP != 0) {
             self.menu_mask |= JUMP;
@@ -350,20 +363,42 @@ impl JumpSteps {
     }
 }
 
-/// Shared label mapping for live gameplay and Feel input. Gameplay deliberately
-/// aliases A/B to jump and X/Y to use, as in the reference; menus keep A/B distinct.
+/// Gameplay uses physical positions for SNES; menus retain distinct confirm/back.
+fn is_jump_button(layout: ButtonLayout, button: Button) -> bool {
+    face_masks(layout, |b| b == button).0 & JUMP != 0
+}
 pub fn face_masks(layout: ButtonLayout, physical: impl Fn(Button) -> bool) -> (u8, u8) {
-    let pressed = |b| physical(layout.button(b));
-    let play = if pressed(Button::A) || pressed(Button::B) {
+    let play = match layout {
+        ButtonLayout::Snes => {
+            (if physical(Button::A) { JUMP } else { 0 }
+                | if physical(Button::X) { USE } else { 0 }
+                | if physical(Button::B) || physical(Button::Y) {
+                    THROW
+                } else {
+                    0
+                })
+        }
+        ButtonLayout::Xbox => {
+            (if physical(Button::A) || physical(Button::B) {
+                JUMP
+            } else {
+                0
+            } | if physical(Button::X) || physical(Button::Y) {
+                USE
+            } else {
+                0
+            })
+        }
+    };
+    let menu = if physical(layout.button(Button::A)) {
         JUMP
     } else {
         0
-    } | if pressed(Button::X) || pressed(Button::Y) {
+    } | if physical(layout.button(Button::B)) {
         USE
     } else {
         0
     };
-    let menu = if pressed(Button::A) { JUMP } else { 0 } | if pressed(Button::B) { USE } else { 0 };
     (play, menu)
 }
 pub fn replay(path: &Path) -> Result<Vec<u8>, String> {
@@ -384,12 +419,12 @@ pub fn replay(path: &Path) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     #[test]
-    fn layouts_swap_labels_for_faces_and_keep_reference_gameplay_aliases() {
+    fn snes_uses_positions_and_xbox_retains_label_aliases() {
         for (button, snes, xbox) in [
             (Button::A, (JUMP, JUMP), (JUMP, USE)),
-            (Button::B, (JUMP, USE), (JUMP, JUMP)),
+            (Button::B, (THROW, USE), (JUMP, JUMP)),
             (Button::X, (USE, 0), (USE, 0)),
-            (Button::Y, (USE, 0), (USE, 0)),
+            (Button::Y, (THROW, 0), (USE, 0)),
         ] {
             assert_eq!(face_masks(ButtonLayout::Snes, |b| b == button), snes);
             assert_eq!(face_masks(ButtonLayout::Xbox, |b| b == button), xbox);

@@ -514,15 +514,27 @@ Reset to defaults adopts 2. Smooth mode also uses the stronger default.
 Half advances by 0.5 (1, 1.5, 2, 2.5…). Whole remains the default. Changing mode
 snaps to its nearest step; nearest texture sampling is unchanged.
 
-### Controller labels
+### Controller layouts
 
-Feel adds `Buttons: SNES / Xbox`, key `button_layout` (`"snes"` default,
-`"xbox"` alternative). One logical-to-physical mapping swaps A/B and X/Y for
-live play, Feel, the goal menu and the separate level-list process. Reference
-play aliases A+B to jump and X+Y to tongue/use, so these gameplay pairs remain
-identical after swapping; menus keep confirm/back distinct. Keyboard unchanged.
-Changing layout while holding a face button waits for release before another
-face-button menu action, so changing the setting cannot immediately resume.
+Feel → Buttons selects `button_layout: "snes"` (default) or `"xbox"`.
+SNES maps by physical position on a modern pad, not its printed letters.
+
+| Action | SNES (position / SNES label) | Xbox (modern label, unchanged) |
+| --- | --- | --- |
+| Jump / flutter | Bottom / B | A or B |
+| Tongue | Left / Y | X or Y |
+| Aim, then throw on the next press | Right / A or top / X | L1 |
+| Aim lock | L1 or R1 | R1 |
+| Menu confirm | Bottom / B | B |
+| Menu back | Right / A | A |
+
+Both throw faces feed the existing THROW action; this changes no aim/throw
+rules. Back + shoulders still save/restore instead of throwing or locking.
+Keyboard controls stay unchanged. Menus, Feel and the level list use separate
+confirm/back masks, so a throw face cannot confirm a menu accidentally.
+The Feel row prints the gameplay labels; the existing menu wraps long rows and
+keeps the focused row visible. Changing layout waits for face release before
+another face-button menu action and discards jump edges from the old layout.
 
 Launcher integration: invoke list mode with `--levels ... --feel "$SAVE_ROOT/feel.json"`.
 `--feel PATH` reads that exact file (not the level save directory); omitted,
