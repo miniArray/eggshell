@@ -303,8 +303,7 @@ impl Player {
             1 => {
                 let age = 51 - self.life_ticks;
                 let across = age.min(48);
-                let ax = self.body.x - self.facing * 10 * S;
-                let ay = self.body.y - 24 * S;
+                let Position { x: ax, y: ay } = self.companion_anchor();
                 self.recovery_x =
                     self.life.companion_from_x + (ax - self.life.companion_from_x) * across / 48;
                 self.recovery_y = if age <= 24 {
@@ -664,5 +663,135 @@ impl Player {
         if steer == 0 && self.on_floor == 0 && self.previous_input & 3 != 0 {
             self.body.vx = approach(self.body.vx, 0, 1296);
         }
+    }
+}
+
+#[cfg(test)]
+mod companion_anchor_tests {
+    use super::*;
+
+    fn swimmer() -> Player {
+        let mut player = Player::new(
+            Body {
+                x: 100 * S,
+                y: 200 * S,
+                ..Body::default()
+            },
+            1,
+        );
+        player.water.swimming = 1;
+        player
+    }
+
+    #[test]
+    fn move_pose_companion_anchor_uses_steady_water_and_pre_contact_speed() {
+        for facing in [-1, 1] {
+            let mut player = swimmer();
+            player.facing = facing;
+            player.body.vx = 128 * 60;
+            assert_eq!(
+                player.companion_anchor(),
+                Position {
+                    x: (100 - facing * 10) * S,
+                    y: 168 * S
+                }
+            );
+            player.brake_vx = -128 * 60;
+            player.body.vx = 0;
+            assert_eq!(
+                player.companion_anchor(),
+                Position {
+                    x: (100 - facing * 12) * S,
+                    y: 170 * S
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn move_pose_companion_anchor_falls_back_for_every_nonsteady_pose() {
+        for condition in [
+            "land",
+            "action",
+            "hurt",
+            "transition",
+            "jump",
+            "dive",
+            "aim",
+            "duck",
+            "look",
+        ] {
+            let mut player = swimmer();
+            player.brake_vx = 128 * 60;
+            match condition {
+                "land" => player.water.swimming = 0,
+                "action" => player.action = 10,
+                "hurt" => player.life.hurt = 1,
+                "transition" => player.water.transition = 1,
+                "jump" => player.water.jump = 1,
+                "dive" => player.water.dive = 1,
+                "aim" => player.food.aim = 1,
+                "duck" => player.duck = 1,
+                "look" => player.look = 1,
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                player.companion_anchor(),
+                Position {
+                    x: 90 * S,
+                    y: 176 * S
+                },
+                "{condition}"
+            );
+        }
+    }
+
+    #[test]
+    fn life_separation_starts_at_the_water_pose_anchor() {
+        let mut player = swimmer();
+        player.brake_vx = 128 * 60;
+        let expected = player.companion_anchor();
+        player.separate(0, true);
+        assert_eq!(
+            Position {
+                x: player.recovery_x,
+                y: player.recovery_y
+            },
+            expected
+        );
+        assert_eq!(
+            Position {
+                x: player.life.companion_from_x,
+                y: player.life.companion_from_y
+            },
+            expected
+        );
+    }
+
+    #[test]
+    fn life_rejoin_finishes_at_the_water_pose_anchor() {
+        let mut player = swimmer();
+        player.brake_vx = 128 * 60;
+        player.life_phase = 1;
+        player.life_ticks = 3;
+        player.life.companion_mode = 3;
+        player.life.separated = 1;
+        player.life.companion_from_x = 0;
+        player.life.companion_from_y = 0;
+        let expected = player.companion_anchor();
+        let mut sound = Sound::default();
+        for _ in 0..3 {
+            assert!(!player.phase_tick(&mut sound));
+            assert_eq!(
+                Position {
+                    x: player.recovery_x,
+                    y: player.recovery_y
+                },
+                expected
+            );
+        }
+        assert_eq!(player.life_phase, 0);
+        assert_eq!(player.life.companion_mode, 0);
+        assert_eq!(player.life.separation_grace, 30);
     }
 }

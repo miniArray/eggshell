@@ -184,9 +184,35 @@ impl Player {
         }
         [-12 * S, -height * S, 12 * S, bottom * S]
     }
+    /// move_pose.gd companion_anchor: steady water poses use the pre-contact speed.
+    pub(crate) fn companion_anchor(&self) -> crate::Position {
+        let steady_water = self.action == 0
+            && self.water.swimming != 0
+            && self.life.hurt == 0
+            && self.water.transition == 0
+            && self.water.jump == 0
+            && self.water.dive == 0
+            && self.food.aim == 0
+            && self.duck == 0
+            && self.look == 0;
+        let (dx, dy) = if steady_water {
+            if self.brake_vx != 0 {
+                (12, 30)
+            } else {
+                (10, 32)
+            }
+        } else {
+            (10, 24)
+        };
+        crate::Position {
+            x: self.body.x - self.facing * dx * S,
+            y: self.body.y - dy * S,
+        }
+    }
     pub fn attach(&mut self) {
-        self.recovery_x = self.body.x - self.facing * 10 * S;
-        self.recovery_y = self.body.y - 24 * S;
+        let anchor = self.companion_anchor();
+        self.recovery_x = anchor.x;
+        self.recovery_y = anchor.y;
     }
     pub(crate) fn set_action(&mut self, action: i64, sound: &mut Sound) {
         // moves.gd SOUNDING_ACTIONS: pound start, pound land, tongue, toss, head bump.
