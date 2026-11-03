@@ -6,6 +6,8 @@ use crate::{
     polygon, Position, SCALE as S,
 };
 const BUBBLE_BOX: [i64; 4] = [-30 * S, -60 * S, 30 * S, 0];
+/// companion_bubble.gd PHYSICAL_WIDTH / PHYSICAL_HEIGHT: terrain recovery extents.
+const BUBBLE_PHYSICAL: i64 = 64 * S;
 const BUBBLE: [Position; 8] = [
     Position {
         x: -22 * S,
@@ -442,7 +444,7 @@ impl Player {
             y: self.recovery_y,
             ..Body::default()
         };
-        body.prepare(&probe, BUBBLE_BOX);
+        body.prepare_recovering(&probe, BUBBLE_BOX, BUBBLE_PHYSICAL, BUBBLE_PHYSICAL);
         if body.overlaps(&probe, BUBBLE_BOX, 0, 0) {
             body.x += (self.body.x - body.x).signum() * 96 * 60;
             body.y += (self.body.y - body.y).signum() * 96 * 60;
@@ -494,17 +496,23 @@ impl Player {
             vx: self.life.companion_vx,
             vy: self.life.companion_vy,
         };
-        if body.prepare(&probe, BUBBLE_BOX) {
+        // companion_bubble.gd advance: the platform keeps the pre-recovery floor for ramp
+        // following, even while rising, and settles its sway on that floor.
+        let support = body.floor(&probe, BUBBLE_BOX);
+        if body.prepare_recovering(&probe, BUBBLE_BOX, BUBBLE_PHYSICAL, BUBBLE_PHYSICAL) {
+            body.settle(&probe, BUBBLE_BOX, support);
             let previous = body.vx;
-            let next = (previous + control * 512).clamp(-48 * 60, 48 * 60);
+            let accelerated = previous + control * 512;
+            let next = accelerated.clamp(-48 * 60, 48 * 60);
+            // The displacement integrates the acceleration first, then takes its own cap.
             let distance = if previous != 0 {
-                (previous + next) / 2
+                ((previous + accelerated) / 2).clamp(-48 * 60, 48 * 60)
             } else {
                 0
             };
-            body.horizontal(&probe, BUBBLE_BOX, distance, 0, HorizontalMove::Actor);
+            body.horizontal(&probe, BUBBLE_BOX, distance, support, HorizontalMove::Actor);
             let vy = body.vy;
-            body.vertical(&probe, BUBBLE_BOX, vy);
+            body.vertical_support(&probe, BUBBLE_BOX, vy, support);
             body.vx = if body.vx != previous {
                 (body.vx + control * 512).clamp(-48 * 60, 48 * 60)
             } else {
@@ -793,5 +801,47 @@ mod companion_anchor_tests {
         assert_eq!(player.life_phase, 0);
         assert_eq!(player.life.companion_mode, 0);
         assert_eq!(player.life.separation_grace, 30);
+    }
+}
+
+#[cfg(test)]
+mod bubble_physics_tests {
+    use super::*;
+
+    #[test]
+    fn companion_bubble_integrates_acceleration_before_capping_the_displacement() {
+        let level = serde_json::json!({
+            "version":"s3.8", "name":"bubble", "desc":"", "author":"test",
+            "startpoint":{"map":1, "X":128, "Y":128},
+            "maps":{"map1":{"width":4096, "height":2048, "objects":{}}}
+        })
+        .to_string();
+        let world = crate::World::compile(
+            &level,
+            include_str!("../../../../data/collision_table.json"),
+        )
+        .unwrap();
+        let map = Probe::new(&world.maps[0]);
+        // (previous speed, expected displacement): only a speed near the cap differs from
+        // the old capped-mean rule, which gave 2720 and 2830.
+        for (previous, distance) in [(2560, 2816), (2780, 2880), (512, 768)] {
+            let mut player = Player::new(
+                Body {
+                    x: 400 * S,
+                    y: 1000 * S,
+                    ..Body::default()
+                },
+                1,
+            );
+            player.life.companion_mode = 2;
+            player.life.companion_age = 100;
+            player.life.companion_direction = 1;
+            player.life.companion_vx = previous;
+            player.recovery_x = 1000 * S;
+            player.recovery_y = 600 * S;
+            player.bubble_step(&map);
+            assert_eq!(player.recovery_x - 1000 * S, distance, "{previous}");
+            assert_eq!(player.life.companion_vx, (previous + 512).min(48 * 60));
+        }
     }
 }

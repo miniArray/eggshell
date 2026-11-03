@@ -952,17 +952,14 @@ impl Run {
             self.play_ticks = self.play_ticks.saturating_add(1);
             self.total_play_ticks = self.total_play_ticks.saturating_add(1);
             self.attempt_ticks = self.attempt_ticks.saturating_add(1);
-            // step.gd (297ada9): Life.before_step runs after the frame increment but before
-            // Collision.begin_step, so collision._context is stale and it sees no entity
-            // solids (terrain, borders and bridges only).
-            let bare = crate::body::Probe::new(&world.maps[0]);
+            // step.gd (Godot 629ef5d): Collision.begin_step runs before Life.before_step, so
+            // companion physics sees this frame's registered solids.
             if self
                 .player
-                .before_play_life(&bare, self.camera, &mut self.sound)
+                .before_play_life(&map, self.camera, &mut self.sound)
             {
                 self.deaths = self.deaths.saturating_add(1);
             }
-            stats.terrain_queries += bare.terrain_queries.get();
         } else {
             let goal = self.player.life_phase == 7;
             if self.player.life_phase == 6 {

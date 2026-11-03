@@ -437,11 +437,20 @@ impl Body {
         false
     }
     pub fn prepare(&mut self, map: &Probe, b: [i64; 4]) -> bool {
+        self.prepare_recovering(map, b, b[2] - b[0], b[3] - b[1])
+    }
+    /// collision.gd prepare with a body's recovery_width / recovery_height: the push-out
+    /// search uses the physical dimensions, not the collision polygon's hull.
+    pub fn prepare_recovering(
+        &mut self,
+        map: &Probe,
+        b: [i64; 4],
+        width: i64,
+        height: i64,
+    ) -> bool {
         if !self.overlaps(map, b, 0, 0) {
             return true;
         }
-        let width = b[2] - b[0];
-        let height = b[3] - b[1];
         if self.push(map, b, 0, -1, height / 8) {
             self.vy = 0;
             return true;
